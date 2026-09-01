@@ -18,7 +18,7 @@ export default async function ActionFicheInterceptee({
   await requireDeskUser()
 
   const { id, actionId } = await params
-  const action = await getSiteActionFiche(id, actionId).catch(() => null)
+  const action = await getSiteActionFiche(id, actionId, { withSubjectContext: true }).catch(() => null)
   if (!action) notFound()
   return <ActionFichePanel action={action} />
 }

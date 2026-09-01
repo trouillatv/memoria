@@ -278,7 +278,7 @@ async function FicheSlot({
   // Les trois paramètres sont mutuellement exclusifs : au plus UNE requête.
   const [person, action, decision] = await Promise.all([
     personId ? getSiteIntervenantFiche(siteId, { intervenantId: personId }).catch(() => null) : null,
-    actionId ? getSiteActionFiche(siteId, actionId).catch((e) => { console.error('[sites/[id]] action-fiche', e); return null }) : null,
+    actionId ? getSiteActionFiche(siteId, actionId, { withSubjectContext: true }).catch((e) => { console.error('[sites/[id]] action-fiche', e); return null }) : null,
     decisionId ? getSiteDecisionFiche(siteId, decisionId).catch((e) => { console.error('[sites/[id]] decision-fiche', e); return null }) : null,
   ])
   // La mesure « par quelle porte ouvre-t-on une fiche Intervenant ? » vivait

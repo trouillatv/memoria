@@ -110,6 +110,38 @@ export function ActionFicheBody({ action, back, animateContent = false, variant 
             </section>
           )}
 
+          {/* ── 1.5 CONTEXTE DU SUJET (point 13A) — « dans quelle histoire métier
+               cette action s'inscrit ? ». Distinct de « d'où elle vient » (7A, le
+               fil/chapô). Source de la RAISON = canonical-attention (même moteur que
+               « À surveiller »). Ladder : libellé+lien toujours ; évolution seulement
+               si le moteur en porte une ; badge Réouvert seulement si prouvé ; réserve
+               en compte factuel « sur ce sujet » (coappartenance, jamais causal).
+               Absent si pas de canonical_subject_id — aucun placeholder. ── */}
+          {a.subjectContext && (
+            <section className="rounded-lg border-l-2 border-amber-400/60 bg-amber-50/40 p-3 dark:bg-amber-950/10">
+              <div className="flex items-center gap-2">
+                <h4 className={H4_STRONG}>Contexte du sujet</h4>
+                {a.subjectContext.reopened && (
+                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">Rouvert</span>
+                )}
+              </div>
+              <Link href={a.subjectContext.href} className="mt-1 inline-block text-[13.5px] font-medium text-primary hover:underline">
+                {a.subjectContext.label}
+              </Link>
+              {a.subjectContext.evolution && (
+                <p className="mt-0.5 text-[12.5px] text-muted-foreground">{a.subjectContext.evolution}</p>
+              )}
+              {a.subjectContext.reservesOnSubject > 0 && (
+                <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                  {a.subjectContext.reservesOnSubject} réserve{a.subjectContext.reservesOnSubject > 1 ? 's' : ''} ouverte{a.subjectContext.reservesOnSubject > 1 ? 's' : ''} sur ce sujet
+                </p>
+              )}
+              <Link href={a.subjectContext.href} className="mt-1.5 inline-flex items-center gap-0.5 text-[13px] font-medium text-primary hover:underline">
+                Voir l’histoire du sujet <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </section>
+          )}
+
           {/* ── 2. CHANTIER — le contexte principal : « sur quel chantier ? » ── */}
           <section>
             <h4 className={H4}>📍 Chantier</h4>

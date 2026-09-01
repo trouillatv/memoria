@@ -22,7 +22,7 @@ export default async function ActionFichePage({
   const { id, actionId } = await params
   const [identity, action] = await Promise.all([
     getSiteIdentity(id),
-    getSiteActionFiche(id, actionId).catch(() => null),
+    getSiteActionFiche(id, actionId, { withSubjectContext: true }).catch(() => null),
   ])
   if (!identity || !action) notFound()
 

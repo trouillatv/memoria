@@ -22,6 +22,7 @@ import {
   normalizeActionHistory, groupHistoryByDay, historyNoteFor,
   type RawActionEvent, type ActionHistoryDay,
 } from '@/lib/knowledge/action-history'
+import { deriveCanonicalAttentionItems } from '@/lib/knowledge/canonical-attention'
 
 type Db = SupabaseClient
 
@@ -66,6 +67,28 @@ export interface ActionFicheObserved {
   photoMissing: boolean
   /** Mémo vocal : le texte est alors sa transcription. */
   isVocal: boolean
+}
+
+/** Point 13A — contexte du SUJET CANONIQUE durable auquel l'action appartient.
+ *  Présent dès que `canonical_subject_id` résout un sujet réel (ladder de
+ *  dégradation, cf. getSiteActionFiche). Encart COMPACT — jamais la vie complète
+ *  du sujet (pas de mini-fiche), jamais la provenance (« d'où elle vient » = 7A,
+ *  séparé). Répond seulement à « dans quelle histoire métier cette action
+ *  s'inscrit ? ». */
+export interface ActionFicheSubjectContext {
+  /** Libellé canonique (cliquable vers la vie du sujet). Toujours présent. */
+  label: string
+  /** Lien vers la vie/historique existante du sujet (jamais dupliquée ici). */
+  href: string
+  /** UNE ligne d'attention déterministe, UNIQUEMENT si canonical-attention en
+   *  fournit une (`reasons[0]`). `null` = sujet sans signal → libellé + lien seuls. */
+  evolution: string | null
+  /** `true` UNIQUEMENT si le signal `pv_reopened` est réellement porté (jamais une
+   *  décoration anticipée : 0/22 sur OCEF aujourd'hui → badge absent). */
+  reopened: boolean
+  /** Nombre de réserves OUVERTES partageant ce `canonical_subject_id` (coappartenance
+   *  au sujet, JAMAIS causalité). 0 = rien affiché. Jamais de compteur d'actions. */
+  reservesOnSubject: number
 }
 
 export interface ActionFicheData {
@@ -118,6 +141,9 @@ export interface ActionFicheData {
    *  `false` avec `source === null` = origine réellement inconnue (legacy) →
    *  « Origine non renseignée ». Distinct de `createdByLabel` (QUI a créé). */
   createdManually: boolean
+  /** Contexte du sujet canonique durable (point 13), ou `null`. Desktop uniquement
+   *  (calculé seulement si `withSubjectContext`). Cf. `ActionFicheSubjectContext`. */
+  subjectContext: ActionFicheSubjectContext | null
 }
 
 const PROOF_BUCKET = 'intervention-photos'
@@ -168,7 +194,14 @@ function unavailable(type: ProvenanceType): ActionFicheSource {
   return { type, typeLabel: PROVENANCE_TYPE_LABEL[type], title: 'Origine indisponible', detail: null, href: null, mobileHref: null, linkLabel: '', available: false }
 }
 
-export async function getSiteActionFiche(siteId: string, actionId: string): Promise<ActionFicheData | null> {
+export async function getSiteActionFiche(
+  siteId: string,
+  actionId: string,
+  // Point 13 — le contexte du sujet canonique est DESKTOP-only : les appelants
+  // desktop passent `{ withSubjectContext: true }`. Le mobile omet l'option →
+  // aucune requête d'attention ajoutée, aucun champ, mobile strictement inchangé.
+  opts: { withSubjectContext?: boolean } = {},
+): Promise<ActionFicheData | null> {
   const db = createAdminClient()
   // M3-D — accès par l'org DE LA RESSOURCE (le chantier), jamais `getOrgId()`.
   const { data: site } = await db.from('sites').select('id, organization_id, name').eq('id', siteId).maybeSingle()
@@ -325,6 +358,37 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     }
   }
 
+  // ── Point 13A — Contexte du SUJET canonique (DESKTOP only, opt-in). Ladder de
+  //    dégradation : pas de canonical_subject_id → null (aucun encart) ; sujet réel
+  //    → libellé + lien vers sa vie EXISTANTE ; + item canonical-attention → UNE
+  //    ligne d'attention (`reasons[0]`) ; + `pv_reopened` réel → badge ; + réserve(s)
+  //    ouverte(s) du même sujet → compte factuel. Le libellé vient de canonical_subject
+  //    (autoritatif, existe même sans signal) ; la RAISON vient EXCLUSIVEMENT de
+  //    canonical-attention (MÊME source que « À surveiller » → aucune divergence).
+  //    Jamais de provenance ici (7A, séparé), jamais de compteur d'actions, jamais
+  //    de nouveau moteur/agrégation/LLM. ──
+  const canonicalSubjectId = (a as unknown as { canonical_subject_id: string | null }).canonical_subject_id ?? null
+  let subjectContext: ActionFicheSubjectContext | null = null
+  if (opts.withSubjectContext && canonicalSubjectId) {
+    const { data: cs } = await db.from('canonical_subject')
+      .select('label').eq('id', canonicalSubjectId).eq('site_id', siteId).maybeSingle()
+    if (cs) {
+      const [attentionItems, reservesRes] = await Promise.all([
+        deriveCanonicalAttentionItems(siteId).catch(() => []),
+        db.from('site_reserve').select('id').eq('site_id', siteId)
+          .eq('canonical_subject_id', canonicalSubjectId).eq('status', 'open'),
+      ])
+      const item = attentionItems.find((i) => i.canonicalSubjectId === canonicalSubjectId)
+      subjectContext = {
+        label: (cs as { label: string }).label,
+        href: `/sites/${siteId}/historique/sujets/${canonicalSubjectId}`,
+        evolution: item?.reasons[0] ?? null,
+        reopened: item?.signals.includes('pv_reopened') ?? false,
+        reservesOnSubject: ((reservesRes.data ?? []) as unknown[]).length,
+      }
+    }
+  }
+
   return {
     id: a.id,
     siteId,
@@ -370,5 +434,6 @@ export async function getSiteActionFiche(siteId: string, actionId: string): Prom
     // est enregistrée mais qu'aucune FK de provenance n'existe. `created_from` est
     // structurel (mig 112), jamais inféré du texte.
     createdManually: source === null && a.created_from != null,
+    subjectContext,
   }
 }

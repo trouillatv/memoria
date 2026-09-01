@@ -58,6 +58,7 @@ function makeAction(overrides: Partial<ActionFicheData> = {}): ActionFicheData {
     createdByLabel: null,
     closedByLabel: null,
     createdManually: false,
+    subjectContext: null,
     ...overrides,
   }
 }

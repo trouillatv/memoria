@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest'
 // invariants par lecture de source (même pattern que site-intervenants-view).
 
 const src = readFileSync(join(process.cwd(), 'lib/knowledge/action-fiche.ts'), 'utf8')
+// Point 13A — le composant desktop porte le rendu conditionnel de l'encart sujet.
+const fiche = readFileSync(join(process.cwd(), 'app/(dashboard)/sites/[id]/views/action/ActionFiche.tsx'), 'utf8')
 
 describe('getSiteActionFiche — lecture canonique, fail-closed', () => {
   it('l’action est scopée au chantier (garde IDOR)', () => {
@@ -131,5 +133,70 @@ describe('« Ce qui a été observé » (Slice ②) — la capture PRÉCISE, jam
   it('jamais une photo « du même report » : on ne charge pas les captures par report_id ici', () => {
     // Le bloc observé s'ancre sur la capture unique, pas sur une liste par report.
     expect(src).not.toMatch(/visit_capture'\)[\s\S]{0,200}in\('report_id'/)
+  })
+})
+
+describe('Point 13A — contexte du SUJET canonique (desktop, conditionnel, source unique canonical-attention)', () => {
+  it('opt-in DESKTOP : subjectContext calculé seulement si withSubjectContext ET canonical_subject_id', () => {
+    expect(src).toMatch(/opts:\s*\{\s*withSubjectContext\?:\s*boolean\s*\}/)
+    expect(src).toMatch(/if \(opts\.withSubjectContext && canonicalSubjectId\)/)
+  })
+
+  it('LADDER : libellé depuis canonical_subject (existe même sans signal) ; lien vers la vie EXISTANTE', () => {
+    // le libellé est autoritatif (table sujet), pas seulement l'item d'attention
+    expect(src).toMatch(/from\('canonical_subject'\)[\s\S]*?eq\('id', canonicalSubjectId\)[\s\S]*?eq\('site_id', siteId\)/)
+    expect(src).toMatch(/label: \(cs as \{ label: string \}\)\.label/)
+    // lien = route de vie du sujet existante (même que canonical-attention subjectHref), jamais inventée
+    expect(src).toContain('/historique/sujets/${canonicalSubjectId}')
+  })
+
+  it('RAISON = source UNIQUE canonical-attention (même moteur que « À surveiller »), optionnelle', () => {
+    expect(src).toContain('deriveCanonicalAttentionItems')
+    expect(src).toMatch(/attentionItems\.find\(\(i\) => i\.canonicalSubjectId === canonicalSubjectId\)/)
+    // évolution = 1 ligne, seulement SI le moteur en porte une (item optionnel → null sinon)
+    expect(src).toMatch(/evolution: item\?\.reasons\[0\] \?\? null/)
+  })
+
+  it('badge « Rouvert » JAMAIS une décoration anticipée : dérivé STRICTEMENT du signal, défaut false', () => {
+    // data : reopened = signal réel ?? false (pas de vrai signal → false)
+    expect(src).toMatch(/reopened: item\?\.signals\.includes\('pv_reopened'\) \?\? false/)
+    // render : le badge n'est rendu que si reopened est vrai
+    expect(fiche).toMatch(/subjectContext\.reopened &&/)
+    expect(fiche).toContain('Rouvert')
+  })
+
+  it('réserve = COMPTE factuel « sur ce sujet » (coappartenance, jamais causal, jamais compteur d’actions)', () => {
+    // on compte les réserves OUVERTES du même sujet — jamais site_actions (auto-référence/bruit),
+    // jamais site_deadlines dans cet encart (resserrement audit)
+    expect(src).toMatch(/from\('site_reserve'\)[\s\S]*?eq\('canonical_subject_id', canonicalSubjectId\)[\s\S]*?eq\('status', 'open'\)/)
+    expect(src).toMatch(/reservesOnSubject:/)
+    // pas d'échéance dans l'encart sujet (resserrement audit : réserves seules)
+    expect(src).not.toMatch(/canonical_subject_id', canonicalSubjectId\)[\s\S]{0,120}from\('site_deadlines'\)/)
+    // render : ligne conditionnée au compte, formulation « … sur ce sujet »
+    expect(fiche).toMatch(/subjectContext\.reservesOnSubject > 0/)
+    expect(fiche).toContain('sur ce sujet')
+    expect(fiche).toContain('réserve')
+  })
+
+  it('pas une mini-fiche, pas de provenance dupliquée : jamais getCanonicalSubjectLife', () => {
+    expect(src).not.toContain('getCanonicalSubjectLife')
+    // la provenance (7A) n'est pas recopiée dans l'encart sujet
+    expect(fiche).not.toMatch(/Contexte du sujet[\s\S]{0,400}subjectContext\.source/)
+  })
+})
+
+describe('Point 13A — mobile strictement inchangé (13B plus tard)', () => {
+  const mobilePage = readFileSync(join(process.cwd(), 'app/(field)/m/site/[siteId]/action/[actionId]/page.tsx'), 'utf8')
+  it('la page action mobile n’active PAS withSubjectContext (aucune requête d’attention, aucun encart)', () => {
+    expect(mobilePage).toContain('getSiteActionFiche(siteId, actionId)')
+    expect(mobilePage).not.toContain('withSubjectContext')
+  })
+})
+
+describe('Point 13 — mobile strictement inchangé', () => {
+  const mobilePage = readFileSync(join(process.cwd(), 'app/(field)/m/site/[siteId]/action/[actionId]/page.tsx'), 'utf8')
+  it('la page action mobile n’active PAS withSubjectContext (aucune requête d’attention, aucun encart)', () => {
+    expect(mobilePage).toContain('getSiteActionFiche(siteId, actionId)')
+    expect(mobilePage).not.toContain('withSubjectContext')
   })
 })

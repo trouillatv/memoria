@@ -30,7 +30,7 @@ export default async function ActionsPage({
 
   // Fail-closed : getSiteActionFiche vérifie que l'action appartient bien au site.
   const actionFiche = actionId && actionSite
-    ? await getSiteActionFiche(actionSite, actionId).catch(() => null)
+    ? await getSiteActionFiche(actionSite, actionId, { withSubjectContext: true }).catch(() => null)
     : null
 
   return (
