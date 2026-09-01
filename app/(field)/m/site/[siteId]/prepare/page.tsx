@@ -4,30 +4,26 @@ import { ChevronRight } from 'lucide-react'
 import { requireSiteAccess as requireFieldSiteAccess } from '@/lib/field/site-access'
 import { requireSiteAccess } from '@/lib/auth/resource-access'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getActiveVisit } from '@/lib/db/visits'
+import { getActiveVisit, buildSiteStatusSummary } from '@/lib/db/visits'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listActivePreparationItems } from '@/lib/db/visit-preparation'
-import { buildLiveDebrief } from '@/lib/knowledge/live-debrief'
-import type { LiveDebriefObjectItem } from '@/lib/knowledge/live-debrief'
-import { selectPreparationObjective } from '@/lib/knowledge/visit-preparation'
+import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
+import { SiteStatusCard } from '../SiteStatusCard'
 import { VisitLauncher } from '../VisitLauncher'
-import { VisitBriefClient } from './VisitBriefClient'
+import { DeltaBlock, VisitBriefClient } from './VisitBriefClient'
 import type { PrepItemSeed } from './VisitBriefClient'
 import { CopilotMobileSheet } from '../CopilotMobileSheet'
+import { VisitBriefingBlock } from './VisitBriefingBlock'
 import { OverdueDeadlinesSection } from './OverdueDeadlinesSection'
-import { PrepareReadSpine } from './PrepareReadSpine'
 
 /**
  * « Préparer ma visite » — le brief décisionnel avant d'aller sur le chantier.
+ * Structure cible :
+ *   État rapide → Depuis le dernier PV → Priorités proposées → Sujets à garder
+ *   → Mon plan → Démarrer la visite · N points
  *
- * Point 11A : colonne de LECTURE convergée sur LiveDebrief (même vérité métier
- * que le desktop) — Objectif → À traiter → À surveiller → Depuis la venue → À
- * retenir. Sobriété : plafond + « Voir plus », zéro agrégat, on NE recrée pas
- * Actions/Réserves/Suivi (on lie).
- *
- * « Mon plan » reste sur sa mécanique P1-A inchangée (VisitBriefClient, source
- * pvAttention/pvToVerify canonical_subject) : la surface de lecture du Brief et
- * la source du plan personnel répondent à deux fonctions distinctes.
+ * Les blocs pvAttention / pvLastDelta / pvToVerify viennent de getSiteOverview()
+ * (déjà calculé) — aucun fetch supplémentaire.
  */
 export default async function PrepareVisitPage({
   params,
@@ -47,36 +43,15 @@ export default async function PrepareVisitPage({
     .maybeSingle()
   if (!site) notFound()
 
-  const [activeVisit, overview, rawPrepItems, live] = await Promise.all([
+  const [status, activeVisit, overview, rawPrepItems, briefing] = await Promise.all([
+    buildSiteStatusSummary(siteId).catch(() => []),
     getActiveVisit(siteId).catch(() => null),
-    // Conservé UNIQUEMENT pour « Mon plan » (pvAttention/pvToVerify, mécanique P1-A).
     getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
     listActivePreparationItems(siteId, user.id).catch(() => []),
-    buildLiveDebrief(siteId, user.id).catch(() => null),
+    buildVisitBriefing(siteId).catch(() => null),
   ])
 
-  // Objectif « pourquoi j'y vais » — MÊME sélecteur déterministe existant
-  // (selectPreparationObjective), nourri par la vérité commune LiveDebrief.
-  const objItem = (kind: LiveDebriefObjectItem['kind']) =>
-    (live?.toHandle.find((i) => i.kind === kind) as LiveDebriefObjectItem | undefined) ?? null
-  const objAction = objItem('action')
-  const objDeadline = objItem('deadline')
-  const objReserve = objItem('reserve')
-  const objWatch = live?.toWatch.find((i) => i.kind === 'informational_signal') ?? null
-  const next = live?.confirmedToday.nextEvent ?? null
-  const rawObjective = live
-    ? selectPreparationObjective({
-        scheduled: next ? { kind: 'scheduled', text: 'Préparer le prochain passage prévu', sourceId: null, sourceHref: next.href } : null,
-        action: objAction ? { kind: 'action', text: objAction.title, sourceId: objAction.id, sourceHref: objAction.href } : null,
-        deadline: objDeadline ? { kind: 'deadline', text: objDeadline.title, sourceId: objDeadline.id, sourceHref: objDeadline.href } : null,
-        reserve: objReserve ? { kind: 'reserve', text: `Vérifier la réserve « ${objReserve.title} »`, sourceId: objReserve.id, sourceHref: objReserve.href } : null,
-        watchpoint: objWatch ? { kind: 'watchpoint', text: objWatch.title, sourceId: objWatch.canonicalSubjectId, sourceHref: objWatch.href } : null,
-        decision: null,
-      })
-    : null
-  const objective = rawObjective ? { text: rawObjective.text, href: rawObjective.sourceHref } : null
-
-  // Sérialisation JSON-safe pour le client component (« Mon plan » inchangé)
+  // Sérialisation JSON-safe pour le client component
   const prepItems: PrepItemSeed[] = rawPrepItems.map((p) => ({
     id: p.id,
     stableKey: p.stableKey,
@@ -87,6 +62,7 @@ export default async function PrepareVisitPage({
     priority: p.priority,
     reason: p.reason,
   }))
+
   const planCount = prepItems.length
 
   return (
@@ -109,25 +85,24 @@ export default async function PrepareVisitPage({
         </Link>
       </header>
 
-      {/* Colonne de lecture (LiveDebrief) — sobre, plafonnée, lecture seule */}
-      {live && (
-        <PrepareReadSpine
-          objective={objective}
-          toHandle={live.toHandle}
-          toWatch={live.toWatch}
-          sinceLastVisit={live.sinceLastVisit}
-          confirmedToday={live.confirmedToday}
-        />
-      )}
+      {/* 0 — Briefing intelligent avant terrain */}
+      {briefing && <VisitBriefingBlock briefing={briefing} siteId={siteId} />}
 
-      {/* Confrontation échéances ↔ preuve terrain (info unique — conservé, à
-          arbitrer en recette : peut recouper « À traiter »). */}
+      {/* 1 — Confrontation échéances ↔ terrain */}
       <OverdueDeadlinesSection siteId={siteId} />
+
+      {/* 2 — État rapide du chantier */}
+      <SiteStatusCard cells={status} />
+
+      {/* 3 — Depuis le dernier PV */}
+      {overview.pvLastDelta && (
+        <DeltaBlock delta={overview.pvLastDelta} />
+      )}
 
       {/* Copilote — poser une question avant d'arriver sur le chantier */}
       <CopilotMobileSheet siteId={siteId} siteName={site.name} />
 
-      {/* Mon plan — mécanique P1-A INCHANGÉE (source pvAttention/pvToVerify) */}
+      {/* 3 — Brief interactif : Priorités + Sujets + Mon plan */}
       {(overview.pvAttention.length > 0 || overview.pvToVerify.length > 0 || planCount > 0) && (
         <VisitBriefClient
           siteId={siteId}
@@ -137,9 +112,10 @@ export default async function PrepareVisitPage({
         />
       )}
 
-      {!live && overview.pvAttention.length === 0 && overview.pvToVerify.length === 0 && planCount === 0 && (
+      {/* Aucune donnée PV : message d'état */}
+      {overview.pvAttention.length === 0 && overview.pvToVerify.length === 0 && planCount === 0 && (
         <p className="rounded-2xl border border-dashed border-foreground/10 px-4 py-4 text-[13px] text-muted-foreground">
-          Pas encore de données de préparation sur ce chantier.
+          Pas encore de sujets analysés sur ce chantier. Importez un PV pour obtenir des priorités.
         </p>
       )}
 
