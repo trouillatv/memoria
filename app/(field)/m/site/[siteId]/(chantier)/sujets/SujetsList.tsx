@@ -249,7 +249,6 @@ export function SujetsList({ subjects, siteId }: {
   subjects: NavigableSubjectSummary[]
   siteId: string
 }) {
-  const [tab, setTab] = useState<Tab>('surveiller')
   const nowMs = Date.now()
 
   // Bucket map — calculé une seule fois, réutilisé dans les tabs et le tri "Tout"
@@ -279,6 +278,17 @@ export function SujetsList({ subjects, siteId }: {
   const radarToTreat = radarSorted.filter((s) => s.activeObjects.total > 0)
   const radarToKnow  = radarSorted.filter((s) => s.activeObjects.total === 0)
 
+  // Onglet d'entrée DÉTERMINISTE : ne jamais faire atterrir sur un onglet vide.
+  // « À surveiller » a du contenu s'il y a des signaux d'attention, ou — sur un
+  // chantier jeune — le radar de premier PV. Sinon on descend vers « En mouvement »,
+  // puis « Tout » (jamais vide dès qu'il existe des sujets). Avant, le défaut « À
+  // surveiller » en dur faisait atterrir BELLA sur un vide trompeur alors que « En
+  // mouvement »/« Tout » étaient pleins (audit UX 2026-09-01).
+  const surveillerHasContent = buckets.watch.length > 0 || (isYoungSite && radarSorted.length > 0)
+  const [tab, setTab] = useState<Tab>(() =>
+    surveillerHasContent ? 'surveiller' : buckets.moving.length > 0 ? 'mouvement' : 'tout',
+  )
+
   function renderContent() {
     if (tab === 'surveiller') {
       if (buckets.watch.length > 0) {
@@ -287,9 +297,19 @@ export function SujetsList({ subjects, siteId }: {
       return (
         <div className="space-y-4">
           <EmptyTab
-            message="Aucun signal de stagnation pour l'instant."
+            message="Aucun sujet à surveiller actuellement."
             detail={isYoungSite ? "Pas encore assez de comptes rendus comparables pour détecter une stagnation." : undefined}
           />
+          {/* Onglet vide mais le chantier vit ailleurs : on montre la sortie, sans
+              agrégat ni compteur — juste une porte vers « En mouvement ». */}
+          {!isYoungSite && buckets.moving.length > 0 && (
+            <button
+              onClick={() => setTab('mouvement')}
+              className="mx-auto block text-[13px] font-medium text-indigo-700 active:opacity-70 dark:text-indigo-400"
+            >
+              Voir les sujets en mouvement →
+            </button>
+          )}
           {isYoungSite && radarSorted.length > 0 && (
             <>
               {radarToTreat.length > 0 && (
