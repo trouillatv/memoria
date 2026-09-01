@@ -427,12 +427,33 @@ export async function getVisitCapturePreviewUrls(
     (atts ?? []).map((a) => (a as { storage_path: string | null }).storage_path).filter((p): p is string => !!p),
   )]
   if (paths.length === 0) return {}
-  const { data: signed } = await supabase.storage.from('site-reports').createSignedUrls(paths, 3600)
-  const urlByPath = new Map(
-    ((signed ?? []) as Array<{ path: string | null; signedUrl: string }>)
-      .filter((s) => s.path && s.signedUrl)
-      .map((s) => [s.path as string, s.signedUrl]),
-  )
+
+  // Le bucket se lit au PRÉFIXE du chemin — c'est l'emplacement RÉEL des octets,
+  // pas une heuristique d'intention :
+  //   • captures terrain              → bucket `site-reports` (préfixe report/site).
+  //   • images extraites de PV (import) → bucket `documents`, sous `snapshots/<documentId>/…`
+  //     (cf. extract-historical-pv.ts qui upload là). Ces captures existent en base
+  //     mais leurs octets ne sont PAS dans `site-reports`.
+  // Signer tout sur `site-reports` renvoyait « objet introuvable » pour les photos
+  // de PV → URL nulle → capture filtrée → galerie « Aucune photo » alors que les
+  // captures existent (chantiers PV-only : Photos vide à tort). On signe donc
+  // chaque chemin sur SON bucket.
+  const IMPORTED_SNAPSHOT_PREFIX = 'snapshots/'
+  const documentsPaths  = paths.filter((p) => p.startsWith(IMPORTED_SNAPSHOT_PREFIX))
+  const siteReportPaths = paths.filter((p) => !p.startsWith(IMPORTED_SNAPSHOT_PREFIX))
+
+  const urlByPath = new Map<string, string>()
+  const signInto = async (bucket: string, bucketPaths: string[]) => {
+    if (bucketPaths.length === 0) return
+    const { data: signed } = await supabase.storage.from(bucket).createSignedUrls(bucketPaths, 3600)
+    for (const s of (signed ?? []) as Array<{ path: string | null; signedUrl: string }>) {
+      if (s.path && s.signedUrl) urlByPath.set(s.path, s.signedUrl)
+    }
+  }
+  await Promise.all([
+    signInto('site-reports', siteReportPaths),
+    signInto('documents', documentsPaths),
+  ])
   const out: Record<string, { url: string; mime: string | null }> = {}
   for (const c of withAtt) {
     const a = byAttId.get(c.attachment_id as string)
