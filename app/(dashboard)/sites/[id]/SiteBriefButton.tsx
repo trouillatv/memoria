@@ -1550,23 +1550,30 @@ function BriefBody({
             )}
           </>
         )}
+        {/* Point 15 (desktop) — fraîcheur INTÉGRÉE au bloc « Depuis votre dernière
+            venue » comme contexte de confiance du briefing (« depuis quand ai-je un
+            constat »), et non plus une ligne système flottante. Seule information
+            décisionnelle rescapée de l'ancien « Ce que je dois retenir » (le reste =
+            doublon KPI de l'Aperçu, retiré desktop). Mobile : bloc complet plus bas. */}
+        {variant === 'desktop' && (freshness.at || freshness.label) && (
+          <p className="border-t pt-2 text-[11px] text-muted-foreground">
+            Historique récent :{' '}
+            {freshness.at ? (
+              <>
+                <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
+                  {freshnessKind === 'meeting' ? 'réunion' : activities[0]?.status === 'in_progress' ? 'activité terrain en cours' : 'visite consolidée'} du {formatDay(freshness.at?.slice(0, 10))}
+                </strong>
+                <span className="ml-1 text-muted-foreground/70">({freshness.label})</span>
+                {freshness.level === 'stale' ? <span className="ml-1 text-amber-700">· à reconfirmer sur site</span> : null}
+              </>
+            ) : (
+              <span className={freshness.level === 'stale' ? 'text-amber-700' : undefined}>
+                {freshness.label}{freshness.level === 'stale' ? ' — à reconfirmer sur site' : ''}
+              </span>
+            )}
+          </p>
+        )}
       </section>
-
-      {/* Point 15 (desktop) — fraîcheur remontée « près du début » sous forme
-          compacte : « depuis quand ai-je un constat » modifie la confiance qu'on
-          peut avoir dans la préparation. C'est la SEULE information décisionnelle
-          rescapée de l'ancien « Ce que je dois retenir » (le reste = doublon KPI
-          de l'Aperçu, retiré côté desktop). Mobile : bloc complet conservé plus bas. */}
-      {variant === 'desktop' && (freshness.at || freshness.label) && (
-        <p className="-mt-2 px-1 text-[11px] text-muted-foreground">
-          {freshnessKind === 'meeting' ? 'Dernière réunion' : activities[0]?.status === 'in_progress' ? 'Activité terrain en cours' : 'Dernière visite consolidée'} :{' '}
-          <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
-            {formatDay(freshness.at?.slice(0, 10)) ?? freshness.label}
-          </strong>
-          {freshness.at ? <span className="ml-1 text-muted-foreground/70">({freshness.label})</span> : null}
-          {freshness.level === 'stale' ? <span className="ml-1 text-amber-700">· à reconfirmer sur site</span> : null}
-        </p>
-      )}
 
       {/* D7 §1 — synthèse compacte, dérivée EXCLUSIVEMENT des trois blocs
           LiveDebrief ci-dessous (aucun nouveau comptage) : elle annonce ce que
