@@ -1035,6 +1035,7 @@ function LiveDebriefBlock({
   canLiftReserve,
   onDebriefChange,
   initialLimit,
+  overflowHref,
 }: {
   title: string
   icon: React.ReactNode
@@ -1044,11 +1045,17 @@ function LiveDebriefBlock({
   canLiftReserve: boolean
   onDebriefChange: () => void
   initialLimit?: number
+  /** 11A' — si fourni, le dépassement du plafond ne DÉPLIE PAS la liste dans le
+   *  Brief : il renvoie vers la surface métier (liste complète). Le Brief reste
+   *  un Brief. Sans `overflowHref`, comportement historique (dépli local, réservé
+   *  à « Traité récemment »). */
+  overflowHref?: string
 }) {
   const [expanded, setExpanded] = useState(false)
   if (items.length === 0) return null
   const capped = initialLimit != null && !expanded && items.length > initialLimit
   const visibleItems = capped ? items.slice(0, initialLimit) : items
+  const overflowCount = initialLimit != null ? items.length - initialLimit : 0
   return (
     <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
       <SectionTitle icon={icon} count={items.length}>{title}</SectionTitle>
@@ -1064,7 +1071,14 @@ function LiveDebriefBlock({
           />
         ))}
       </ul>
-      {capped && (
+      {capped && overflowHref && (
+        // 11A' : « Voir les N autres » MÈNE à la surface métier (liste complète),
+        // jamais un dépli des N dans le Brief — sinon on recrée le problème sous un clic.
+        <a href={overflowHref} className="text-xs font-medium text-sky-700 hover:underline">
+          Voir les {overflowCount} autre{overflowCount > 1 ? 's' : ''}
+        </a>
+      )}
+      {capped && !overflowHref && (
         <button
           type="button"
           onClick={() => setExpanded(true)}
@@ -1494,6 +1508,11 @@ function BriefBody({
         </p>
       )}
 
+      {/* 11A' — sélectivité DESKTOP uniquement (gate variant) : le Brief montre
+          les 5 déjà prioritaires par l'ordre actuel (aucun retri), le titre porte
+          le total (« À traiter (89) »), et « Voir les N autres » renvoie vers la
+          surface métier (liste complète), jamais un dépli dans le Brief. Aucune
+          modification mobile (initialLimit/overflowHref undefined si variant !== desktop). */}
       <LiveDebriefBlock
         title="À traiter"
         icon={<ListTodo className="h-3.5 w-3.5 text-rose-600" />}
@@ -1502,6 +1521,8 @@ function BriefBody({
         variant={variant}
         canLiftReserve={canLiftReserve}
         onDebriefChange={onDebriefChange}
+        initialLimit={variant === 'desktop' ? 5 : undefined}
+        overflowHref={variant === 'desktop' ? `/sites/${siteId}/actions` : undefined}
       />
       <LiveDebriefBlock
         title="À surveiller"
@@ -1511,6 +1532,8 @@ function BriefBody({
         variant={variant}
         canLiftReserve={canLiftReserve}
         onDebriefChange={onDebriefChange}
+        initialLimit={variant === 'desktop' ? 5 : undefined}
+        overflowHref={variant === 'desktop' ? `/sites/${siteId}/historique` : undefined}
       />
       {/* D7 §2 — bloc volontairement secondaire : peu d'éléments visibles
           d'emblée, dépli local pour le reste. Pas d'action métier ici (déjà
