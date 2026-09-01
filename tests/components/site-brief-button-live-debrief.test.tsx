@@ -169,6 +169,7 @@ function makeLiveDebrief(overrides: Partial<LiveDebrief> = {}): LiveDebrief {
     toWatch: [signalUnseen],
     recentlyHandled: [actionDoneRecent, signalSeen],
     recentActivity: [],
+    reopenedSubjectIds: [],
     ...overrides,
   }
 }

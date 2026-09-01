@@ -63,7 +63,7 @@ import {
   type VisitPreparationActivityStatus,
 } from '@/lib/knowledge/visit-preparation'
 import { buildSiteActivityReadModel, type SiteActivityReadModel } from '@/lib/knowledge/site-activity-read-model'
-import { buildLiveDebrief, type LiveDebrief } from '@/lib/knowledge/live-debrief'
+import { buildLiveDebrief, rankLiveDebriefToHandle, type LiveDebrief } from '@/lib/knowledge/live-debrief'
 
 const IdSchema = z.string().uuid()
 
@@ -352,7 +352,13 @@ export async function logBriefOpenAction(siteId: string, mode: 'visit' | 'meetin
  * Agrège la mémoire utile d'un site en un brief « À savoir avant d'y aller ».
  * Pure agrégation de helpers existants — aucun LLM, aucune requête nouvelle.
  */
-export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResult> {
+export async function getSiteBriefAction(
+  siteId: string,
+  // 14A — le classement déterministe de « À traiter » est DESKTOP uniquement.
+  // Le mobile (VisitLauncherHome, variant='mobile') passe 'mobile' ou rien →
+  // `toHandle` reste dans son ordre object-first, aucun impact mobile.
+  variant: 'mobile' | 'desktop' = 'mobile',
+): Promise<SiteBriefResult> {
   if (!IdSchema.safeParse(siteId).success) return { ok: false, error: 'Site invalide' }
   const auth = await requireOperator()
   if (!auth.ok) return auth
@@ -895,6 +901,19 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
     toReconfirm: [],
   } satisfies SiteActivityReadModel))
 
+  // 14A — classement déterministe « À traiter », DESKTOP uniquement. Le rang et
+  // la raison viennent du même calcul (`rankLiveDebriefToHandle`) ; mobile inchangé.
+  const rankedLiveDebrief: LiveDebrief =
+    variant === 'desktop'
+      ? {
+          ...liveDebrief,
+          toHandle: rankLiveDebriefToHandle(liveDebrief.toHandle, {
+            reopenedSubjectIds: liveDebrief.reopenedSubjectIds,
+            today: new Date().toISOString().slice(0, 10),
+          }),
+        }
+      : liveDebrief
+
   return {
     ok: true,
     brief: {
@@ -952,7 +971,7 @@ export async function getSiteBriefAction(siteId: string): Promise<SiteBriefResul
       unknowns,
       openActivityItems,
       activityReadModel,
-      liveDebrief,
+      liveDebrief: rankedLiveDebrief,
       canLiftReserve: auth.role === 'admin' || auth.role === 'manager',
     },
   }

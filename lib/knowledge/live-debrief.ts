@@ -27,6 +27,7 @@ import { buildSinceLastVisitDelta, getSiteRecentActivity, type SinceLastVisitDel
 import { deriveCanonicalAttentionItems, type CanonicalAttentionItem, type CanonicalSignal } from '@/lib/knowledge/canonical-attention'
 import { markAttentionSignalSeen, getAttentionSignalAcks } from '@/lib/db/attention-signal-acknowledgements'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import type { ToHandleRank } from './to-handle-ranking'
 
 const RECENT_ACTIVITY_LIMIT = 6
 
@@ -45,11 +46,18 @@ export interface LiveDebriefObjectItem {
   /** Date pertinente pour la disposition actuelle : échéance/prévu si actif, date de
    *  transition terminale fiable si `recently_handled`. Jamais `updated_at`. */
   date: string | null
+  /** Date d'ouverture de l'objet (14A) — `created_at` pour une action, `issued_on`
+   *  pour une réserve, `null` pour une échéance. Sert au classement « ancienneté »
+   *  quand aucune échéance n'existe. Jamais une date métier de PV. */
+  openedAt?: string | null
   canonicalSubjectId: string | null
   reportId: string | null
   href: string
   /** Description longue — projetée uniquement pour kind==='action' (formulaire Modifier). */
   body?: string | null
+  /** Classement déterministe « À traiter » (14A). Présent UNIQUEMENT sur les items
+   *  passés par `rankLiveDebriefToHandle` (desktop). Absent côté mobile. */
+  rank?: ToHandleRank
 }
 
 /** Un signal informationnel canonical (trajectoire PV) sans objet métier ouvert
@@ -64,9 +72,17 @@ export interface LiveDebriefInformationalItem {
   ack: DebriefSignalAck
   reasons: string[]
   href: string
+  /** Classement déterministe « À traiter » (14A). Cf. `LiveDebriefObjectItem.rank`. */
+  rank?: ToHandleRank
 }
 
 export type LiveDebriefItem = LiveDebriefObjectItem | LiveDebriefInformationalItem
+
+// Classement déterministe « À traiter » (14A) — moteur pur extrait dans
+// `to-handle-ranking.ts` (importable hors server-only). Ré-exporté ici pour
+// conserver l'API historique de ce module.
+export { rankLiveDebriefToHandle } from './to-handle-ranking'
+export type { ToHandlePriority, ToHandleRank } from './to-handle-ranking'
 
 // ── Blocs ─────────────────────────────────────────────────────────────────────
 
@@ -108,6 +124,10 @@ export interface LiveDebrief {
    *  donc apparaître deux fois. Ne pas corriger ici : source hors périmètre
    *  D3, correction à faire dans `getSiteRecentActivity` lui-même. */
   recentActivity: SiteActivityItem[]
+  /** Sujets canoniques portant un signal `pv_reopened` (14A) — dérivé des items
+   *  d'attention déjà calculés, sans requête neuve. Sert au classement desktop
+   *  « À traiter » (`rankLiveDebriefToHandle`). Le mobile l'ignore. */
+  reopenedSubjectIds: string[]
 }
 
 // ── Lecture brute des objets métier ──────────────────────────────────────────
@@ -123,6 +143,7 @@ export interface RawActionRow {
   status: 'open' | 'planned' | 'done' | 'cancelled'
   due_date: string | null
   done_at: string | null
+  created_at?: string | null
   canonical_subject_id: string | null
   report_id: string | null
   body?: string | null
@@ -157,7 +178,7 @@ async function fetchLiveObjects(siteId: string): Promise<{
   const sb = createAdminClient()
   const [actionsRes, deadlinesRes, reservesRes] = await Promise.all([
     sb.from('site_actions')
-      .select('id, title, status, due_date, done_at, canonical_subject_id, report_id, body')
+      .select('id, title, status, due_date, done_at, created_at, canonical_subject_id, report_id, body')
       .eq('site_id', siteId),
     sb.from('site_deadlines')
       .select('id, title, status, due_date, completed_at, cancelled_at, canonical_subject_id, report_id')
@@ -185,6 +206,7 @@ export function actionToItem(row: RawActionRow, today: string, siteId: string): 
     status: row.status,
     disposition: c.disposition,
     date: c.disposition === 'recently_handled' ? row.done_at : row.due_date,
+    openedAt: row.created_at ?? null,
     canonicalSubjectId: row.canonical_subject_id,
     reportId: row.report_id,
     href: `/sites/${siteId}/action/${row.id}`,
@@ -202,6 +224,9 @@ export function deadlineToItem(row: RawDeadlineRow, today: string, siteId: strin
     status: row.status,
     disposition: c.disposition,
     date: c.disposition === 'recently_handled' ? resolvedAt : row.due_date,
+    // Une échéance n'a pas de date d'ouverture distincte de son échéance — le
+    // classement « ancienneté » ne s'applique donc pas à elle (elle est datée).
+    openedAt: null,
     canonicalSubjectId: row.canonical_subject_id,
     reportId: row.report_id,
     // Pas de route par item pour une échéance (contrairement à Action/Réserve) :
@@ -219,6 +244,7 @@ export function reserveToItem(row: RawReserveRow, today: string, siteId: string)
     status: row.status,
     disposition: c.disposition,
     date: c.disposition === 'recently_handled' ? row.lifted_at : row.issued_on,
+    openedAt: row.issued_on,
     canonicalSubjectId: row.canonical_subject_id,
     reportId: row.report_id,
     href: `/sites/${siteId}/reserve/${row.id}`,
@@ -366,6 +392,14 @@ export async function buildLiveDebrief(siteId: string, userId: string | null = n
   for (const row of reserves) place(reserveToItem(row, today, siteId), toHandle, toWatch, recentlyHandled)
   for (const item of informationalItems(canonicalItems, openCanonicalSubjectIds, seenSignalKeys)) place(item, toHandle, toWatch, recentlyHandled)
 
+  // 14A — sujets rouverts (signal `pv_reopened`), dérivés des items d'attention
+  // déjà chargés : aucune requête neuve. `toHandle` reste dans l'ordre object-first
+  // ici (parité mobile) ; le classement desktop est appliqué en aval par
+  // `getSiteBriefAction` via `rankLiveDebriefToHandle`.
+  const reopenedSubjectIds = canonicalItems
+    .filter((c) => c.signals.includes('pv_reopened'))
+    .map((c) => c.canonicalSubjectId)
+
   return {
     siteId,
     confirmedToday,
@@ -374,5 +408,6 @@ export async function buildLiveDebrief(siteId: string, userId: string | null = n
     toWatch,
     recentlyHandled,
     recentActivity,
+    reopenedSubjectIds,
   }
 }

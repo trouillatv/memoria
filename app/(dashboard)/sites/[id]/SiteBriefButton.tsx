@@ -38,7 +38,7 @@ import {
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type SiteBriefFactLine, type DiscussionPoint } from './site-brief-actions'
 import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
 import { selectNarrativeHighlights } from '@/lib/knowledge/visit-preparation'
-import type { LiveDebrief, LiveDebriefItem, LiveDebriefObjectItem } from '@/lib/knowledge/live-debrief'
+import type { LiveDebrief, LiveDebriefItem, LiveDebriefObjectItem, ToHandleRank, ToHandlePriority } from '@/lib/knowledge/live-debrief'
 import { LiveDebriefVuButton } from './LiveDebriefVuButton'
 import { completeDeadlineAction, rescheduleDeadlineAction } from './views/planning/deadline-actions'
 import { closeActionAction, updateActionDetailsAction } from '@/app/(dashboard)/actions/actions'
@@ -149,7 +149,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
     if (loadedSite === sid && brief) return // déjà chargé pour ce site
     void logBriefOpenAction(sid, mode) // usage produit, best-effort
     startTransition(async () => {
-      const r = await getSiteBriefAction(sid)
+      const r = await getSiteBriefAction(sid, variant)
       if (r.ok) {
         setBrief(r.brief)
         if (mode === 'visit' && !initialMotive) {
@@ -175,7 +175,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
   function refetchBrief() {
     if (!loadedSite) return
     startTransition(async () => {
-      const r = await getSiteBriefAction(loadedSite)
+      const r = await getSiteBriefAction(loadedSite, variant)
       if (r.ok) setBrief(r.brief)
       else toast.error(r.error)
     })
@@ -586,6 +586,27 @@ function ConfirmedTodayChips({ confirmedToday }: { confirmedToday: LiveDebrief['
 // signal informationnel). « Vu » n'apparaît jamais sur un objet métier — la
 // discrimination par `kind` type-locke ça au niveau TypeScript, pas seulement
 // visuel (cf. LiveDebriefVuButton, type-locked à LiveDebriefInformationalItem).
+// 14A — restitution du classement déterministe « À traiter » (desktop). La raison
+// vient du même calcul que le rang (`rankLiveDebriefToHandle`) ; jamais un score.
+// Couleurs : rouge (retard), orange (imminence / réouverture), gris (ancienneté).
+const RANK_STYLE: Record<ToHandlePriority, { dot: string; text: string }> = {
+  retard: { dot: 'bg-rose-500', text: 'text-rose-700' },
+  imminence: { dot: 'bg-amber-500', text: 'text-amber-700' },
+  reopened: { dot: 'bg-orange-500', text: 'text-orange-700' },
+  age: { dot: 'bg-muted-foreground/40', text: 'text-muted-foreground' },
+}
+
+function RankReason({ rank }: { rank: ToHandleRank }) {
+  const s = RANK_STYLE[rank.priority]
+  return (
+    <p className={`mt-0.5 flex items-center gap-1.5 text-[11px] font-medium ${s.text}`}>
+      <span className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} aria-hidden />
+      <span>{rank.reason}</span>
+      {rank.secondary && <span className="font-normal text-muted-foreground">· {rank.secondary}</span>}
+    </p>
+  )
+}
+
 function LiveDebriefItemRow({
   item,
   siteId,
@@ -609,6 +630,7 @@ function LiveDebriefItemRow({
       <li className="flex items-start justify-between gap-3 rounded-lg border bg-background px-3 py-2">
         <div className="min-w-0">
           <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
+          {item.rank && <RankReason rank={item.rank} />}
           {item.reasons.length > 0 && <p className="mt-0.5 text-[11px] text-muted-foreground">{item.reasons.join(' · ')}</p>}
         </div>
         {item.disposition === 'to_watch' && <LiveDebriefVuButton item={item} siteId={siteId} onSeen={onDebriefChange} />}
@@ -639,6 +661,7 @@ function LiveDebriefItemRow({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
+          {item.rank && <RankReason rank={item.rank} />}
           {hasMenu ? (
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -686,7 +709,10 @@ function LiveDebriefItemRow({
             <p className="mt-0.5 text-[11px] text-muted-foreground">{kindLabel}</p>
           )}
         </div>
-        {!expanded && dateLabel && (
+        {/* 14A — pour un item classé (À traiter desktop), la date vit déjà dans la
+            raison/complément : on masque la date brute à droite pour ne pas la
+            tripler. À surveiller / Traité récemment / mobile gardent la date. */}
+        {!expanded && dateLabel && !item.rank && (
           <span className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap">{dateLabel}</span>
         )}
       </div>
