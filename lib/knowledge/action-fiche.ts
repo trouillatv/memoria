@@ -15,7 +15,7 @@ import { todayLocalIso } from '@/lib/time/local-date'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
 import {
   primaryProvenanceKind, PROVENANCE_TYPE_LABEL, PROVENANCE_LINK_LABEL,
-  reportProvenanceType, mobileSourceHref,
+  reportProvenanceType, mobileSourceHref, desktopSourceHref,
   type ActionFicheSource, type ActionFicheContext, type ProvenanceType,
 } from '@/lib/knowledge/action-provenance'
 import {
@@ -152,9 +152,10 @@ function reportSource(r: Exclude<LoadedReport, 'missing'>, reportId: string, sit
     typeLabel: PROVENANCE_TYPE_LABEL[type],
     title: r.title?.trim() || fallbackTitle,
     detail: frDate(r.date),
-    // La réunion source s'ouvre en FICHE — une seule règle de destination pour
-    // toutes les portes, y compris celles qui n'étaient pas dans le diff du Lot 4.
-    href: `/sites/${siteId}/reunion/${reportId}`,
+    // Route canonique unique (desktopSourceHref) : une visite/PV importé ouvre LA
+    // page visite (/visites/[reportId]), une réunion sa fiche (/reunion/[reportId]).
+    // Avant, tout partait vers /reunion — un PV importé y perdait sa page riche.
+    href: desktopSourceHref(type, { siteId, reportId }),
     mobileHref: mobileSourceHref(type, { siteId, reportId }),
     linkLabel: PROVENANCE_LINK_LABEL[type],
     available: true,

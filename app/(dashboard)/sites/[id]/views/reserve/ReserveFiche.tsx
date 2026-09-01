@@ -110,6 +110,17 @@ export function ReserveFicheBody({
           )}
         </section>
 
+        {/* 3bis. D'OÙ ELLE VIENT — la source documentaire (PV/visite), route
+             canonique, uniquement si `report_id` la démontre. Jamais inventée. */}
+        {r.source && (
+          <section>
+            <h4 className={H4}>D&apos;où elle vient</h4>
+            <Link href={r.source.href} scroll={false} className="mt-1 inline-block text-[13.5px] font-medium text-primary hover:underline">
+              {r.source.line} →
+            </Link>
+          </section>
+        )}
+
         {/* 4. CE QUI LA CORRIGE — le chapô nomme l'action quand il n'y en a qu'une ;
              ici on ne répète pas ce cas, on ne sert que ce qu'il ne dit pas. */}
         {r.actions.length !== 1 && (

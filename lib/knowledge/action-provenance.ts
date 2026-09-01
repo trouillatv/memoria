@@ -75,10 +75,36 @@ export function mobileSourceHref(
     // « Voir la visite/réunion » → la PAGE PRINCIPALE de la visite (l'objet), pas
     // son sous-espace d'édition (/cr) : depuis là on va au CR, aux photos, etc.
     case 'reunion': return ids.reportId ? `/m/reunion/${ids.reportId}` : null
-    case 'visite': return ids.reportId ? `/m/visite/${ids.reportId}` : null
+    // Un PV importé matérialise un `site_report` (origin='import') servi par la MÊME
+    // page visite mobile que le terrain (`/m/visite/[reportId]`, getVisit exige
+    // origin non-null → import passe). Renvoyer null ici était une anomalie UX : la
+    // cible existe et est démontrée par `report_id`. Point 7A (2026-09-01).
+    case 'visite':
+    case 'pv': return ids.reportId ? `/m/visite/${ids.reportId}` : null
     case 'reserve': return `/m/site/${ids.siteId}/reserves`
-    case 'pv': return null   // pas de vue document /m fiable → libellé seul
     case 'sujet': return null // subjects.id ≠ canonicalSubjectId : pas de route /m
+  }
+}
+
+/**
+ * Route DESKTOP canonique d'une source — UNE seule règle de destination, pour
+ * supprimer les chemins concurrents (`/reunion` ici, `/visites` ailleurs pour le
+ * même objet). Une visite terrain ET un PV importé sont servis par LA page visite
+ * canonique (`/sites/[siteId]/visites/[reportId]`, doctrine « Voir la visite
+ * source ») ; seule une réunion (origin=null) a sa fiche dédiée. `null` si la
+ * source n'est pas navigable précisément (le sujet porte un subjectId, pas un
+ * reportId : l'appelant compose sa propre route).
+ */
+export function desktopSourceHref(
+  type: ProvenanceType,
+  ids: { siteId: string; reportId: string | null },
+): string | null {
+  switch (type) {
+    case 'reunion': return ids.reportId ? `/sites/${ids.siteId}/reunion/${ids.reportId}` : null
+    case 'visite':
+    case 'pv': return ids.reportId ? `/sites/${ids.siteId}/visites/${ids.reportId}` : null
+    case 'reserve': return `/sites/${ids.siteId}/reserves`
+    case 'sujet': return null
   }
 }
 

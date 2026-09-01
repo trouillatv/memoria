@@ -48,8 +48,12 @@ describe('mobileSourceHref — jamais de route desktop', () => {
   it('réserve → liste réserves /m du chantier', () => {
     expect(mobileSourceHref('reserve', { siteId: 's1', reportId: null })).toBe('/m/site/s1/reserves')
   })
-  it('PV et sujet → pas de route /m fiable → null (libellé sans lien)', () => {
-    expect(mobileSourceHref('pv', { siteId: 's1', reportId: 'r1' })).toBeNull()
+  it('PV → page visite /m/visite/<id> (le report importé y est navigable — 7A)', () => {
+    // Corrigé le 2026-09-01 (point 7A) : un PV importé matérialise un site_report
+    // servi par /m/visite/[reportId] ; renvoyer null était une anomalie UX.
+    expect(mobileSourceHref('pv', { siteId: 's1', reportId: 'r1' })).toBe('/m/visite/r1')
+  })
+  it('sujet → pas de route /m fiable → null (subjects.id ≠ canonicalSubjectId)', () => {
     expect(mobileSourceHref('sujet', { siteId: 's1', reportId: null })).toBeNull()
   })
   it('report manquant → pas de lien', () => {

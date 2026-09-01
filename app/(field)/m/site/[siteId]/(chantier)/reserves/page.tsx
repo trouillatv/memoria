@@ -1,8 +1,9 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ClipboardCheck } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getSiteReserves, summarizeReserves, statusLabel } from '@/lib/db/site-reserve'
+import { getSiteReserves, summarizeReserves, statusLabel, resolveReserveSourceLinks } from '@/lib/db/site-reserve'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +30,9 @@ export default async function ReservesPage({
     if (a.status !== b.status) return a.status === 'open' ? -1 : 1
     return (b.issuedOn ?? b.createdAt).localeCompare(a.issuedOn ?? a.createdAt)
   })
+  // Objet → source (7A) : lien vers le PV/visite d'où la réserve est issue, quand
+  // `report_id` est renseigné. Aucune réserve sans source démontrée n'affiche de lien.
+  const sourceLinks = await resolveReserveSourceLinks(ordered, siteId)
 
   return (
     <div className="flex max-w-md flex-col gap-4 pb-16">
@@ -74,6 +78,21 @@ export default async function ReservesPage({
                   Signalée le {new Date(r.issuedOn).toLocaleDateString('fr-FR')}
                 </p>
               )}
+              {(() => {
+                const src = sourceLinks.get(r.id)
+                if (!src) return null
+                // Source précise si navigable ; sinon le libellé seul (jamais un faux lien).
+                return src.mobileHref ? (
+                  <Link
+                    href={src.mobileHref}
+                    className="mt-1 inline-block text-[11px] font-medium text-indigo-700 active:opacity-70 dark:text-indigo-400"
+                  >
+                    {src.line} →
+                  </Link>
+                ) : (
+                  <p className="mt-1 text-[11px] text-muted-foreground/80">{src.line}</p>
+                )
+              })()}
             </li>
           ))}
         </ul>

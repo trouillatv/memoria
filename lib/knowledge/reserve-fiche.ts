@@ -23,6 +23,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { actionStatusLabel } from '@/lib/knowledge/action-fiche'
+import { resolveReserveSourceLinks } from '@/lib/db/site-reserve'
 
 const DATE_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
 const frDate = (iso: string | null | undefined): string | null => (iso ? DATE_FMT.format(new Date(iso)) : null)
@@ -54,6 +55,9 @@ export interface ReserveFicheData {
   actions: ReserveAction[]
   /** Le sujet auquel elle est rattachée, s'il existe. */
   sujet: { nom: string; href: string } | null
+  /** La SOURCE dont la réserve est issue (PV/visite/réunion), quand `report_id`
+   *  est renseigné. `null` si aucune source démontrée (jamais inventée). */
+  source: { line: string; linkLabel: string; href: string } | null
   /** Une preuve photo est-elle déposée ? On le DIT, on ne l'affiche pas ici. */
   photoAvant: boolean
   photoApres: boolean
@@ -69,7 +73,7 @@ export async function getSiteReserveFiche(siteId: string, reserveId: string): Pr
     getOrgIdsOfUser(),
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     db.from('site_reserve')
-      .select('id, label, location, issued_by, issued_on, status, lifted_at, lift_note, subject_id, photo_before_path, photo_after_path')
+      .select('id, label, location, issued_by, issued_on, status, lifted_at, lift_note, subject_id, photo_before_path, photo_after_path, report_id')
       .eq('id', reserveId).eq('site_id', siteId).maybeSingle(),
     db.from('site_actions')
       .select('id, title, status').eq('reserve_id', reserveId).eq('site_id', siteId)
@@ -86,8 +90,17 @@ export async function getSiteReserveFiche(siteId: string, reserveId: string): Pr
     status: 'open' | 'lifted'; lifted_at: string | null; lift_note: string | null
     subject_id: string | null
     photo_before_path: string | null; photo_after_path: string | null
+    report_id: string | null
   } | null
   if (!r) return null
+
+  // Source (7A) — même résolveur que la liste mobile : route desktop canonique,
+  // aucune source inventée si `report_id` est absent ou le report a disparu.
+  const srcMap = await resolveReserveSourceLinks([{ id: r.id, reportId: r.report_id ?? null }], siteId)
+  const src = srcMap.get(r.id)
+  const source = src && src.desktopHref
+    ? { line: src.line, linkLabel: src.linkLabel, href: src.desktopHref }
+    : null
 
   const actions: ReserveAction[] = ((actionsRes.data ?? []) as Array<{ id: string; title: string; status: 'open' | 'planned' | 'done' | 'cancelled' }>)
     .map((a) => ({
@@ -121,6 +134,7 @@ export async function getSiteReserveFiche(siteId: string, reserveId: string): Pr
     emiseLe: frDate(r.issued_on),
     actions,
     sujet,
+    source,
     photoAvant: Boolean(r.photo_before_path),
     photoApres: Boolean(r.photo_after_path),
     gestionHref: `/sites/${siteId}/reserves`,

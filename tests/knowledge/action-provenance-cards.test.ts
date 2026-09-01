@@ -26,11 +26,13 @@ function row(over: Partial<Row> & { id: string }): Row {
 beforeEach(() => { h.tables = {} })
 
 describe('resolveActionProvenanceLines — 4 témoins + inconnu', () => {
-  it("PV importé (origin='import') → « Issue du PV du … », sans lien /m", async () => {
+  it("PV importé (origin='import') → « Issue du PV du … » + lien /m/visite (7A)", async () => {
+    // 7A (2026-09-01) : le PV importé est un site_report navigable /m/visite/[id] ;
+    // la carte le lie désormais au lieu d'un libellé mort.
     h.tables = { site_reports: [{ id: 'r1', origin: 'import', started_at: '2026-08-25T00:00:00.000Z', created_at: '2026-08-25T00:00:00.000Z' }] }
     const out = await resolveActionProvenanceLines([row({ id: 'a1', report_id: 'r1', created_from: 'report' })])
     expect(out.a1.label).toBe('Issue du PV du 25 août 2026')
-    expect(out.a1.href).toBeNull()
+    expect(out.a1.href).toBe('/m/visite/r1')
   })
 
   it('vraie visite terrain → « Issue de la visite du … » + lien /m/visite', async () => {

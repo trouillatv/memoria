@@ -11,6 +11,10 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { resolveSubjectAndAttachCanonicalBusinessObject } from '@/lib/db/canonical-business-object-attach'
+import {
+  reportProvenanceType, mobileSourceHref, desktopSourceHref, cardProvenanceLine,
+  PROVENANCE_LINK_LABEL, type ProvenanceType,
+} from '@/lib/knowledge/action-provenance'
 
 export type ReserveStatus = 'open' | 'lifted'
 
@@ -126,6 +130,67 @@ export async function getSiteReserves(siteId: string): Promise<SiteReserve[]> {
     throw error
   }
   return (data ?? []).map((r) => mapRow(r as ReserveRow))
+}
+
+// ---------------------------------------------------------------------------
+// Provenance d'une réserve — objet → source (point 7A). STRUCTUREL uniquement :
+// on lit `report_id` (déjà porté par la réserve), on résout l'origine du report
+// et on compose la route canonique. Aucune inférence : une réserve sans
+// `report_id`, ou dont le report a disparu, n'a PAS de lien (jamais fabriqué).
+// ---------------------------------------------------------------------------
+
+export interface ReserveSourceLink {
+  type: ProvenanceType
+  /** « Issue du PV du 22 juillet » — déterministe (type + date). */
+  line: string
+  /** « Voir le document » / « Voir la visite » / « Voir le compte rendu ». */
+  linkLabel: string
+  mobileHref: string | null
+  desktopHref: string | null
+}
+
+const SOURCE_DATE_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long' })
+function sourceDateLabel(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? null : SOURCE_DATE_FMT.format(d)
+}
+
+/** Résout la source (batch) des réserves qui portent un `report_id`. Clé = reserve id. */
+export async function resolveReserveSourceLinks(
+  reserves: Array<{ id: string; reportId: string | null }>,
+  siteId: string,
+): Promise<Map<string, ReserveSourceLink>> {
+  const out = new Map<string, ReserveSourceLink>()
+  const withReport = reserves.filter((r) => r.reportId)
+  if (withReport.length === 0) return out
+
+  const reportIds = [...new Set(withReport.map((r) => r.reportId as string))]
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('site_reports')
+    .select('id, origin, started_at, created_at')
+    .in('id', reportIds)
+    .eq('site_id', siteId)
+    .is('deleted_at', null)
+  const byId = new Map(
+    ((data ?? []) as Array<{ id: string; origin: string | null; started_at: string | null; created_at: string }>)
+      .map((r) => [r.id, r]),
+  )
+
+  for (const r of withReport) {
+    const rep = byId.get(r.reportId as string)
+    if (!rep) continue // source introuvable → aucun lien inventé
+    const type = reportProvenanceType(rep.origin)
+    out.set(r.id, {
+      type,
+      line: cardProvenanceLine({ kind: 'source', type, dateLabel: sourceDateLabel(rep.started_at ?? rep.created_at) }),
+      linkLabel: PROVENANCE_LINK_LABEL[type],
+      mobileHref: mobileSourceHref(type, { siteId, reportId: r.reportId ?? null }),
+      desktopHref: desktopSourceHref(type, { siteId, reportId: r.reportId ?? null }),
+    })
+  }
+  return out
 }
 
 // ---------------------------------------------------------------------------

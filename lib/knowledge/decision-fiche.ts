@@ -15,6 +15,7 @@ import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getSiteDecision } from '@/lib/db/site-decisions'
 import { STATUT_LABEL, IMPACT_LABEL, type DecisionStatut } from '@/lib/db/decision-constants'
 import { actionStatusLabel } from '@/lib/knowledge/action-fiche'
+import { desktopSourceHref, reportProvenanceType } from '@/lib/knowledge/action-provenance'
 
 /** « En vigueur » et libellé dérivés UNIQUEMENT du statut — jamais une donnée à part. */
 const VIGUEUR: Record<DecisionStatut, string> = {
@@ -127,7 +128,11 @@ export async function getSiteDecisionFiche(siteId: string, decisionId: string): 
     // maillon pointait vers `/meetings/<id>` — l'espace de travail du compte-rendu —
     // et remonter le fil FAISAIT SORTIR du panneau. C'est la dette nommée à la
     // clôture du Lot 3 ; elle est levée ici, sans que le fil change de forme.
-    meeting = { label: `${rr.title?.trim() || type}${date ? ` du ${date}` : ''}`, href: `/sites/${siteId}/reunion/${d.reportId}`, kind: rr.origin ? 'visite' : 'reunion' }
+    // Route canonique unique : visite/PV importé → /visites, réunion → /reunion
+    // (desktopSourceHref, même règle que la fiche Action). d.reportId est non-null ici.
+    // d.reportId est non-null ici (la lecture rRes n'existe que dans ce cas) →
+    // desktopSourceHref renvoie toujours une route pour reunion/visite/pv.
+    meeting = { label: `${rr.title?.trim() || type}${date ? ` du ${date}` : ''}`, href: desktopSourceHref(reportProvenanceType(rr.origin), { siteId, reportId: d.reportId })!, kind: rr.origin ? 'visite' : 'reunion' }
   }
 
   // Conséquence : l'action liée (action_id) — scopée au chantier.

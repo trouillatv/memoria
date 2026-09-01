@@ -68,8 +68,11 @@ describe('Fiche Réunion — la grammaire, appliquée et non réinventée', () =
 })
 
 describe('Dette du Lot 3 levée — remonter le fil ne sort plus du panneau', () => {
-  it('la réunion source d’une décision a une adresse DANS le chantier', () => {
-    expect(decision).toMatch(/href: `\/sites\/\$\{siteId\}\/reunion\/\$\{d\.reportId\}`/)
+  it('la réunion source d’une décision a une adresse DANS le chantier (route canonique)', () => {
+    // 7A (2026-09-01) : la route source passe par desktopSourceHref — réunion →
+    // /reunion, visite/PV importé → /visites — toujours DANS le chantier, jamais
+    // l'ancien espace /meetings/.
+    expect(decision).toContain('desktopSourceHref(reportProvenanceType(rr.origin)')
     expect(decision).not.toMatch(/meeting = \{[^}]*href: `\/meetings\//)
   })
 })
