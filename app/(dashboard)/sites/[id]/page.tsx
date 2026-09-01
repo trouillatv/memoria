@@ -516,6 +516,8 @@ async function PlanningView({ siteId, plantab }: { siteId: string; plantab: Plan
       <PlanningSubTabs active={plantab} deadlinesCount={deadlines.length} />
       {plantab === 'travaux' ? (
         <TravauxSubView
+          siteId={siteId}
+          deadlinesCount={deadlines.length}
           items={planningItems}
           sourceDocuments={await getPlanningItemSourceDocuments(
             planningItems.map((i) => i.sourceProposalId).filter((pid): pid is string => Boolean(pid)),
