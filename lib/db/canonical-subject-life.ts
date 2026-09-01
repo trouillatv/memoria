@@ -15,6 +15,7 @@ import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/li
 import { isOperationalSubject } from '@/lib/subjects/kind'
 import { isStagnationEligible, isOpenOperationalObjectStatus } from '@/lib/subjects/stagnation'
 import { computeNativeChangeMetrics } from '@/lib/knowledge/evolution-metrics'
+import { isImportedDocumentOrigin } from '@/lib/field/visit-origins'
 
 export type { HistoryTransition }
 
@@ -90,6 +91,11 @@ export interface TerrainObject {
   description: string | null
   status: string | null
   createdAt: string
+  /** Vrai si l'objet a été matérialisé depuis un PV importé (report origin='import').
+   *  Un tel objet est déjà porté par l'occurrence documentaire (mécanisme A) : il ne
+   *  constitue PAS un événement LMCA de Niveau 2 (sa `created_at` = jour d'import, pas
+   *  la date du PV). Exclu de l'avancement LMCA, mais conservé pour l'affichage. (9+10B) */
+  fromImport: boolean
 }
 
 /** Projection minimale d'un sujet prouvé ouvert — pour les contextes Copilote. */
@@ -228,37 +234,69 @@ async function fetchTerrainObjectsByCs(
   canonicalSubjectId: string,
 ): Promise<TerrainObject[]> {
   const [actRes, dlRes] = await Promise.all([
-    supabase.from('site_actions').select('id, title, body, status, created_at').eq('canonical_subject_id', canonicalSubjectId),
-    supabase.from('site_deadlines').select('id, title, constraint_text, status, created_at').eq('canonical_subject_id', canonicalSubjectId),
+    supabase.from('site_actions').select('id, title, body, status, created_at, report_id').eq('canonical_subject_id', canonicalSubjectId),
+    supabase.from('site_deadlines').select('id, title, constraint_text, status, created_at, report_id').eq('canonical_subject_id', canonicalSubjectId),
   ])
+  type AR = { id: string; title: string; body: string | null; status: string; created_at: string; report_id: string | null }
+  type DL = { id: string; title: string; constraint_text: string | null; status: string | null; created_at: string; report_id: string | null }
+  const acts = (actRes.data ?? []) as AR[]
+  const dls = (dlRes.data ?? []) as DL[]
+  // Origine des reports source → `fromImport` (9+10B) : un objet issu d'un PV importé
+  // n'est pas un événement LMCA de Niveau 2 (déjà porté par l'occurrence).
+  const originByReport = await resolveReportOrigins(supabase, [...acts.map((a) => a.report_id), ...dls.map((d) => d.report_id)])
+  const isImport = (reportId: string | null) => reportId != null && isImportedDocumentOrigin(originByReport.get(reportId) ?? null)
   const objects: TerrainObject[] = []
-  type AR = { id: string; title: string; body: string | null; status: string; created_at: string }
-  for (const r of (actRes.data ?? []) as AR[]) {
+  for (const r of acts) {
     const caDate = r.created_at?.substring(0, 10)
-    if (caDate) objects.push({ entityType: 'site_action', entityId: r.id, title: r.title, description: r.body, status: r.status, createdAt: caDate })
+    if (caDate) objects.push({ entityType: 'site_action', entityId: r.id, title: r.title, description: r.body, status: r.status, createdAt: caDate, fromImport: isImport(r.report_id) })
   }
-  type DL = { id: string; title: string; constraint_text: string | null; status: string | null; created_at: string }
-  for (const r of (dlRes.data ?? []) as DL[]) {
+  for (const r of dls) {
     const caDate = r.created_at?.substring(0, 10)
-    if (caDate) objects.push({ entityType: 'site_deadline', entityId: r.id, title: r.title, description: r.constraint_text, status: r.status, createdAt: caDate })
+    if (caDate) objects.push({ entityType: 'site_deadline', entityId: r.id, title: r.title, description: r.constraint_text, status: r.status, createdAt: caDate, fromImport: isImport(r.report_id) })
   }
   return objects
 }
 
-function applyTerrainLevel2(
+/**
+ * Niveau 2 terrain — PRIMITIVE UNIQUE (fiche Sujet + liste Suivi), 9+10B.
+ * Un objet opérationnel (`site_action`/`site_deadline`) fait avancer LMCA seulement
+ * s'il représente un événement RÉELLEMENT nouveau, hors chronologie documentaire.
+ * Les objets **matérialisés depuis un PV importé** (`fromImport`) sont EXCLUS : leur
+ * temporalité est déjà portée par l'occurrence (mécanisme A, `effectiveDate` du PV) ;
+ * leur `created_at` = jour d'import ferait un second événement LMCA fictif. On ne
+ * remplace pas non plus `created_at` par la date du PV : ce serait un doublon du
+ * mécanisme A. La sémantique « mention/insert ≠ changement » est préservée.
+ */
+export function applyTerrainLevel2(
   terrainObjects: TerrainObject[],
   firstSeenAt: string | null,
   lastMeaningfulChangeAt: string | null,
   consecutiveMentionsWithoutChange: number,
 ): { lastMeaningfulChangeAt: string | null; consecutiveMentionsWithoutChange: number } {
   if (!firstSeenAt) return { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange }
-  const dates = terrainObjects.map((o) => o.createdAt).filter((d) => d > firstSeenAt)
+  const dates = terrainObjects
+    .filter((o) => !o.fromImport)
+    .map((o) => o.createdAt)
+    .filter((d) => d > firstSeenAt)
   if (dates.length === 0) return { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange }
   const objectLmca = [...dates].sort().pop()!
   if (!lastMeaningfulChangeAt || objectLmca > lastMeaningfulChangeAt) {
     return { lastMeaningfulChangeAt: objectLmca, consecutiveMentionsWithoutChange: 0 }
   }
   return { lastMeaningfulChangeAt, consecutiveMentionsWithoutChange }
+}
+
+/** Résout `origin` d'un lot de report_id → Map (fail-safe : report absent = origin null). */
+async function resolveReportOrigins(
+  supabase: ReturnType<typeof createAdminClient>,
+  reportIds: Array<string | null>,
+): Promise<Map<string, string | null>> {
+  const ids = [...new Set(reportIds.filter((r): r is string => !!r))]
+  const map = new Map<string, string | null>()
+  if (ids.length === 0) return map
+  const { data } = await supabase.from('site_reports').select('id, origin').in('id', ids)
+  for (const r of (data ?? []) as Array<{ id: string; origin: string | null }>) map.set(r.id, r.origin)
+  return map
 }
 
 // ── Read-model ────────────────────────────────────────────────────────────────
@@ -1290,50 +1328,38 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
   // Complémentaire de 2B (materialization) et 2B-bis (subject_thread_id PV).
   // P1-4A : created_at collecté pour Level 2 LMCA (objets terrain apparus après firstSeenAt).
   // P0-B : title+status collectés pour exposer les objets terrain au Copilote desktop.
-  const csObjectDates = new Map<string, string[]>()         // canonical_subject_id → dates YYYY-MM-DD
   const csTerrainObjectsMap = new Map<string, TerrainObject[]>() // canonical_subject_id → objets terrain structurés
   {
-    const { data: csActs } = await supabase
-      .from('site_actions')
-      .select('id, canonical_subject_id, created_at, title, status')
-      .eq('site_id', siteId)
-      .not('canonical_subject_id', 'is', null)
-    for (const a of (csActs ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string; title: string; status: string | null }>) {
-      let typeMap = csEntityIds.get(a.canonical_subject_id)
-      if (!typeMap) { typeMap = new Map(); csEntityIds.set(a.canonical_subject_id, typeMap) }
-      let idSet = typeMap.get('site_action')
-      if (!idSet) { idSet = new Set(); typeMap.set('site_action', idSet) }
-      idSet.add(a.id)
-      const caDate = a.created_at?.substring(0, 10)
-      if (caDate) {
-        const dates = csObjectDates.get(a.canonical_subject_id) ?? []
-        dates.push(caDate)
-        csObjectDates.set(a.canonical_subject_id, dates)
-      }
-      const tObjs = csTerrainObjectsMap.get(a.canonical_subject_id) ?? []
-      tObjs.push({ entityType: 'site_action', entityId: a.id, title: a.title, description: null, status: a.status, createdAt: a.created_at.substring(0, 10) })
-      csTerrainObjectsMap.set(a.canonical_subject_id, tObjs)
+    const [{ data: csActs }, { data: csDls }] = await Promise.all([
+      supabase.from('site_actions').select('id, canonical_subject_id, created_at, title, status, report_id').eq('site_id', siteId).not('canonical_subject_id', 'is', null),
+      supabase.from('site_deadlines').select('id, canonical_subject_id, created_at, title, status, report_id').eq('site_id', siteId).not('canonical_subject_id', 'is', null),
+    ])
+    const actRows = (csActs ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string; title: string; status: string | null; report_id: string | null }>
+    const dlRows = (csDls ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string; title: string; status: string | null; report_id: string | null }>
+    // Origine des reports → `fromImport` (9+10B), un seul aller-retour pour tout le lot.
+    const originByReport = await resolveReportOrigins(supabase, [...actRows.map((a) => a.report_id), ...dlRows.map((d) => d.report_id)])
+    const isImport = (reportId: string | null) => reportId != null && isImportedDocumentOrigin(originByReport.get(reportId) ?? null)
+    const addEntityId = (csId: string, type: 'site_action' | 'site_deadline', id: string) => {
+      let typeMap = csEntityIds.get(csId)
+      if (!typeMap) { typeMap = new Map(); csEntityIds.set(csId, typeMap) }
+      let idSet = typeMap.get(type)
+      if (!idSet) { idSet = new Set(); typeMap.set(type, idSet) }
+      idSet.add(id)
     }
-    const { data: csDls } = await supabase
-      .from('site_deadlines')
-      .select('id, canonical_subject_id, created_at, title, status')
-      .eq('site_id', siteId)
-      .not('canonical_subject_id', 'is', null)
-    for (const d of (csDls ?? []) as Array<{ id: string; canonical_subject_id: string; created_at: string; title: string; status: string | null }>) {
-      let typeMap = csEntityIds.get(d.canonical_subject_id)
-      if (!typeMap) { typeMap = new Map(); csEntityIds.set(d.canonical_subject_id, typeMap) }
-      let idSet = typeMap.get('site_deadline')
-      if (!idSet) { idSet = new Set(); typeMap.set('site_deadline', idSet) }
-      idSet.add(d.id)
+    const pushObj = (csId: string, obj: TerrainObject) => {
+      const tObjs = csTerrainObjectsMap.get(csId) ?? []
+      tObjs.push(obj)
+      csTerrainObjectsMap.set(csId, tObjs)
+    }
+    for (const a of actRows) {
+      addEntityId(a.canonical_subject_id, 'site_action', a.id)
+      const caDate = a.created_at?.substring(0, 10)
+      if (caDate) pushObj(a.canonical_subject_id, { entityType: 'site_action', entityId: a.id, title: a.title, description: null, status: a.status, createdAt: caDate, fromImport: isImport(a.report_id) })
+    }
+    for (const d of dlRows) {
+      addEntityId(d.canonical_subject_id, 'site_deadline', d.id)
       const caDate = d.created_at?.substring(0, 10)
-      if (caDate) {
-        const dates = csObjectDates.get(d.canonical_subject_id) ?? []
-        dates.push(caDate)
-        csObjectDates.set(d.canonical_subject_id, dates)
-      }
-      const tObjs = csTerrainObjectsMap.get(d.canonical_subject_id) ?? []
-      tObjs.push({ entityType: 'site_deadline', entityId: d.id, title: d.title, description: null, status: d.status, createdAt: d.created_at.substring(0, 10) })
-      csTerrainObjectsMap.set(d.canonical_subject_id, tObjs)
+      if (caDate) pushObj(d.canonical_subject_id, { entityType: 'site_deadline', entityId: d.id, title: d.title, description: null, status: d.status, createdAt: caDate, fromImport: isImport(d.report_id) })
     }
   }
 
@@ -1550,14 +1576,12 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     const resolvedState = deriveCurrentResolvedState(lmcaOccsB.map(o => o.pvState))
     const currentTriState: PvState = resolvedState === null ? 'unknown' : (resolvedState ? 'resolved' : 'open')
 
-    // Niveau 2 terrain : objets liés par canonical_subject_id créés après firstSeenAt
-    const terrainDates = (csObjectDates.get(csId) ?? []).filter((d) => d > firstSeenAt)
-    if (terrainDates.length > 0) {
-      const objectLmca = [...terrainDates].sort().pop()!
-      if (!lastMeaningfulChangeAt || objectLmca > lastMeaningfulChangeAt) {
-        lastMeaningfulChangeAt = objectLmca
-        consecutiveMentionsWithoutChange = 0
-      }
+    // Niveau 2 terrain — MÊME primitive que la fiche Sujet (plus de logique dupliquée) :
+    // les objets matérialisés-import y sont exclus (fromImport). 9+10B.
+    {
+      const l2 = applyTerrainLevel2(csTerrainObjectsMap.get(csId) ?? [], firstSeenAt, lastMeaningfulChangeAt, consecutiveMentionsWithoutChange)
+      lastMeaningfulChangeAt = l2.lastMeaningfulChangeAt
+      consecutiveMentionsWithoutChange = l2.consecutiveMentionsWithoutChange
     }
 
     const stagnationDays = (lastMeaningfulChangeAt && lastSeenAt && lastMeaningfulChangeAt !== lastSeenAt)
