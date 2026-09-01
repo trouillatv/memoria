@@ -38,7 +38,7 @@ export const DEBRIEF_BLOCKS: DebriefBlockSpec[] = [
   { key: 'since_last_visit', label: 'Depuis votre dernière venue', sources: ['buildActivitySinceLastPv', 'pvLastDelta', 'diff to_handle/to_watch entre la clôture du dernier report et maintenant (D2)'] },
   { key: 'to_handle', label: 'À traiter', sources: ['site_actions (open)', 'site_deadlines (to_plan)', 'site_reserve (open)'] },
   { key: 'to_watch', label: 'À surveiller', sources: ['site_actions (planned)', 'site_deadlines (planned)', 'deriveCanonicalAttentionItems — signaux sans objet métier lié, non vus'] },
-  { key: 'recently_handled', label: 'Traité récemment', sources: ['objets passés en état terminal avec une date de transition fiable, dans la fenêtre de rétention', 'signaux informationnels vus (ack)'] },
+  { key: 'recently_handled', label: 'Traité récemment', sources: ['objets métier passés en état RÉALISÉ avec une date de transition fiable, dans la fenêtre de rétention (action done, réserve levée, échéance completed)'] },
   { key: 'recent_activity', label: 'Activité récente', sources: ['buildActivitySinceLastPv (existant, inchangé)'] },
 ]
 
@@ -149,7 +149,15 @@ export interface DebriefDeadlineItem {
 export function classifyDeadlineForDebrief(deadline: DebriefDeadlineInput, today: string): DebriefDeadlineItem {
   if (deadline.status === 'to_plan') return { kind: 'deadline', disposition: 'to_handle' }
   if (deadline.status === 'planned') return { kind: 'deadline', disposition: 'to_watch' }
-  return { kind: 'deadline', disposition: terminalDisposition(deadline.resolvedAt, today) }
+  // Point 17 — seule une échéance RÉALISÉE (`done`, `completed_at`) est « traitée ».
+  // `cancelled`/`superseded` sont terminales mais annulé/remplacé ≠ réalisé : elles
+  // n'entrent PAS dans « Traité récemment » (promesse = preuve positive de
+  // réalisation). Exclues dans ce lot ; dette assumée = un futur « Annulée /
+  // Remplacée récemment » les remonterait utilement (« remplacée » est une info
+  // utile), mais le bloc plat actuel ne peut pas le distinguer sans mentir sur son
+  // en-tête/compteur. Aucun `updated_at`, fenêtre 7 j inchangée.
+  if (deadline.status === 'done') return { kind: 'deadline', disposition: terminalDisposition(deadline.resolvedAt, today) }
+  return { kind: 'deadline', disposition: 'not_relevant' }
 }
 
 // ── Réserve ───────────────────────────────────────────────────────────────────
@@ -233,9 +241,14 @@ export function classifyInformationalSignalForDebrief(signal: DebriefInformation
   if (signal.hasOpenLinkedObject) {
     return { kind: 'informational_signal', disposition: 'not_relevant', ack: signal.ack }
   }
+  // Point 17 — « Vu » (acquittement de LECTURE) n'est PAS une preuve de traitement.
+  // Un signal non vu reste à surveiller ; une fois vu, il DISPARAÎT simplement du
+  // Brief (acquittement personnel) — il ne rejoint JAMAIS « Traité récemment », qui
+  // est réservé aux objets métier terminaux à preuve positive datée (action done,
+  // réserve levée, échéance réalisée). « acquitté » ≠ « résolu ».
   return {
     kind: 'informational_signal',
-    disposition: signal.ack === 'seen' ? 'recently_handled' : 'to_watch',
+    disposition: signal.ack === 'seen' ? 'not_relevant' : 'to_watch',
     ack: signal.ack,
   }
 }
@@ -246,7 +259,9 @@ export function classifyInformationalSignalForDebrief(signal: DebriefInformation
  * être passé ici, à la compilation — pas seulement par convention d'appel.
  */
 export function markSeen(item: DebriefInformationalSignalItem): DebriefInformationalSignalItem {
-  return { ...item, ack: 'seen', disposition: 'recently_handled' }
+  // Point 17 — acquitter un signal le fait DISPARAÎTRE du Brief (sort de « À
+  // surveiller »), il ne devient jamais « Traité récemment » : « Vu » ≠ « résolu ».
+  return { ...item, ack: 'seen', disposition: 'not_relevant' }
 }
 
 // ── Union et garde-fou d'exhaustivité ────────────────────────────────────────────

@@ -11,7 +11,7 @@
 //  8. Reserve open → to_handle
 //  9. Reserve lifted récent → recently_handled
 // 10. Planning item → jamais to_handle/to_watch (garde-fou structurel D1)
-// 11. Signal info unseen → to_watch + markSeen possible
+// 11. Signal info unseen → to_watch ; markSeen le rend not_relevant (Point 17)
 // 12. Signal info lié à un objet ouvert → pas de doublon
 // 13. Objet sans canonical_subject → toujours visible
 // 14. Canonical subject seul (aucun objet ouvert) → jamais to_handle
@@ -19,7 +19,7 @@
 // 16. Activité récente regroupée par visite (pass-through de getSiteRecentActivity)
 //
 // D3 — persistance "Vu" (§2/§3/§7) :
-// 17. signalKey dans seenSignalKeys → ack seen, recently_handled (sans appel markSeen)
+// 17. signalKey dans seenSignalKeys → signal acquitté EXCLU du Brief (Point 17 : « Vu » ≠ traité)
 // 18. signalKey absent (développement matériellement nouveau) → reste unseen malgré un ack antérieur sur l'ancienne clé
 // 19. markLiveDebriefSignalSeen appelle markAttentionSignalSeen(signalKey correct) puis invalidateSiteProjection
 // 20. buildLiveDebrief(siteId, userId) route les acks lus (getAttentionSignalAcks) jusqu'à informationalItems
@@ -167,6 +167,12 @@ describe('actionToItem', () => {
     expect(item.date).toBe('2026-08-29T00:00:00.000Z')
   })
 
+  it('Point 17 — done ancien (> 7 j) → not_relevant : la fenêtre s’appuie sur done_at (date de transition), jamais updated_at ; une simple ré-écriture ne fait pas remonter l’objet', () => {
+    const item = actionToItem({ id: 'a3b', title: 'Action close il y a longtemps', status: 'done', due_date: null, done_at: '2026-07-01T00:00:00.000Z', canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
+    expect(item.disposition).toBe('not_relevant')
+    expect(debriefBlockForDisposition(item.disposition)).toBeNull()
+  })
+
   it('cancelled sans date → hors actif, jamais recently_handled', () => {
     const item = actionToItem({ id: 'a4', title: 'Action annulée', status: 'cancelled', due_date: null, done_at: null, canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
     expect(item.disposition).toBe('handled_without_reliable_date')
@@ -207,6 +213,14 @@ describe('deadlineToItem', () => {
     expect(item.disposition).toBe('handled_without_reliable_date')
     expect(debriefBlockForDisposition(item.disposition)).toBeNull()
   })
+
+  it('Point 17 — cancelled / superseded avec cancelled_at récent → not_relevant : annulé/remplacé ≠ réalisé, jamais « Traité récemment »', () => {
+    for (const status of ['cancelled', 'superseded'] as const) {
+      const item = deadlineToItem({ id: `d-${status}`, title: 'Échéance close', status, due_date: '2026-08-20', completed_at: null, cancelled_at: '2026-08-30T00:00:00.000Z', canonical_subject_id: null, report_id: null }, TODAY, 'site-1')
+      expect(item.disposition).toBe('not_relevant')
+      expect(debriefBlockForDisposition(item.disposition)).toBeNull()
+    }
+  })
 })
 
 describe('reserveToItem', () => {
@@ -230,14 +244,14 @@ describe('reserveToItem', () => {
 // ── Signal informationnel (11, 12, 14) ────────────────────────────────────────
 
 describe('informationalItems', () => {
-  it('unseen sans objet lié → to_watch, et markSeen fait passer en recently_handled', () => {
+  it('unseen sans objet lié → to_watch ; markSeen le rend not_relevant (Point 17 : « Vu » le fait disparaître, jamais « Traité récemment »)', () => {
     const items = informationalItems([makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] })], new Set())
     expect(items).toHaveLength(1)
     expect(items[0].disposition).toBe('to_watch')
     expect(items[0].ack).toBe('unseen')
 
     const seen = markSeen(items[0] as DebriefInformationalSignalItem)
-    expect(seen.disposition).toBe('recently_handled')
+    expect(seen.disposition).toBe('not_relevant')
     expect(seen.ack).toBe('seen')
   })
 
@@ -273,14 +287,14 @@ describe('informationalItems', () => {
     expect(items.every((i) => i.disposition !== 'to_handle')).toBe(true)
   })
 
-  // D3 §3/§2 — persistance "Vu" lue via seenSignalKeys, sans passer par markSeen.
-  it('signalKey présent dans seenSignalKeys → ack seen, recently_handled (sans markSeen)', () => {
+  // D3 §3/§2 — persistance "Vu" lue via seenSignalKeys. Point 17 : un signal acquitté
+  // est not_relevant → informationalItems le FILTRE (il disparaît du Brief), il ne
+  // produit jamais un item « Traité récemment ».
+  it('signalKey présent dans seenSignalKeys → signal exclu (acquitté = disparaît, jamais recently_handled)', () => {
     const canonicalItem = makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] })
     const key = buildDebriefSignalKey(canonicalItem)
     const items = informationalItems([canonicalItem], new Set(), new Set([key]))
-    expect(items).toHaveLength(1)
-    expect(items[0].ack).toBe('seen')
-    expect(items[0].disposition).toBe('recently_handled')
+    expect(items).toHaveLength(0)
   })
 
   it('développement matériellement nouveau (nouvelle clé) → reste unseen malgré un ack sur l’ancienne clé', () => {
@@ -425,7 +439,7 @@ describe('buildLiveDebrief', () => {
 
   // D3 §3/§7 — la persistance "Vu" (getAttentionSignalAcks) alimente réellement
   // la classification, jusqu'au bout du read-model.
-  it('avec un userId, un signal déjà acquitté (getAttentionSignalAcks) ressort en recently_handled, pas to_watch', async () => {
+  it('Point 17 — avec un userId, un signal déjà acquitté DISPARAÎT du Brief (ni to_watch, ni recently_handled) : « Vu » ≠ traité', async () => {
     adminTables = { site_actions: [], site_deadlines: [], site_reserve: [] }
     const canonicalItem = makeCanonicalItem({ canonicalSubjectId: 'cs-1', signals: ['stagnant'] })
     canonicalItemsMock.mockResolvedValue([canonicalItem])
@@ -436,7 +450,7 @@ describe('buildLiveDebrief', () => {
 
     expect(getAttentionSignalAcksMock).toHaveBeenCalledWith('site-1', 'user-1')
     expect(result.toWatch.some((i) => i.kind === 'informational_signal')).toBe(false)
-    expect(result.recentlyHandled.some((i) => i.kind === 'informational_signal' && i.canonicalSubjectId === 'cs-1')).toBe(true)
+    expect(result.recentlyHandled.some((i) => i.kind === 'informational_signal' && i.canonicalSubjectId === 'cs-1')).toBe(false)
   })
 
   it('sans userId, getAttentionSignalAcks n’est pas appelé et le signal reste unseen/to_watch', async () => {

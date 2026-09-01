@@ -59,16 +59,21 @@ describe('Matrice de recette D1 — object × statut → bloc Débrief', () => {
     expect(debriefBlockForDisposition(item.disposition)).toBe('to_watch')
   })
 
-  it('Deadline terminale (done/cancelled/superseded) → site_deadlines n’a AUCUN timestamp de clôture aujourd’hui : toujours handled_without_reliable_date, jamais recently_handled', () => {
-    const statuses: Array<'done' | 'cancelled' | 'superseded'> = ['done', 'cancelled', 'superseded']
-    for (const status of statuses) {
-      const item = classifyDeadlineForDebrief({ status, resolvedAt: null }, TODAY)
-      expect(item.disposition).toBe('handled_without_reliable_date')
+  it('Deadline done sans timestamp → handled_without_reliable_date (jamais recently_handled, jamais de date fabriquée)', () => {
+    const item = classifyDeadlineForDebrief({ status: 'done', resolvedAt: null }, TODAY)
+    expect(item.disposition).toBe('handled_without_reliable_date')
+    expect(debriefBlockForDisposition(item.disposition)).toBeNull()
+  })
+
+  it('Point 17 — Deadline cancelled / superseded → not_relevant même avec resolvedAt récent : annulé/remplacé ≠ réalisé, jamais « Traité récemment »', () => {
+    for (const status of ['cancelled', 'superseded'] as const) {
+      const item = classifyDeadlineForDebrief({ status, resolvedAt: RECENT }, TODAY)
+      expect(item.disposition).toBe('not_relevant')
       expect(debriefBlockForDisposition(item.disposition)).toBeNull()
     }
   })
 
-  it('Deadline terminale avec resolvedAt fourni (migration future D2) → daterait correctement traité récemment — prouve que le classifieur est prêt sans changer de code', () => {
+  it('Deadline done avec resolvedAt (completed_at) récent → recently_handled : seule une échéance RÉALISÉE est « traitée »', () => {
     const item = classifyDeadlineForDebrief({ status: 'done', resolvedAt: RECENT }, TODAY)
     expect(item.disposition).toBe('recently_handled')
   })
@@ -97,10 +102,10 @@ describe('Matrice de recette D1 — object × statut → bloc Débrief', () => {
     expect(debriefBlockForDisposition(item.disposition)).toBe('to_watch')
   })
 
-  it('Signal informationnel seen → traité récemment ; aucune action supplémentaire', () => {
+  it('Point 17 — Signal informationnel seen → not_relevant : « Vu » (acquittement de lecture) fait DISPARAÎTRE le signal, il ne rejoint JAMAIS « Traité récemment »', () => {
     const item = classifyInformationalSignalForDebrief({ hasOpenLinkedObject: false, ack: 'seen' })
-    expect(item).toEqual({ kind: 'informational_signal', disposition: 'recently_handled', ack: 'seen' })
-    expect(debriefBlockForDisposition(item.disposition)).toBe('recently_handled')
+    expect(item).toEqual({ kind: 'informational_signal', disposition: 'not_relevant', ack: 'seen' })
+    expect(debriefBlockForDisposition(item.disposition)).toBeNull()
   })
 
   it('Signal informationnel avec objet métier déjà lié → not_relevant : l’objet représente l’attention, jamais les deux cartes', () => {
@@ -110,11 +115,11 @@ describe('Matrice de recette D1 — object × statut → bloc Débrief', () => {
 })
 
 describe('Verrou « Vu » — réservé aux signaux informationnels', () => {
-  it('markSeen fait passer un signal informationnel de unseen à seen', () => {
+  it('markSeen fait passer un signal informationnel de unseen à seen, et le rend not_relevant (il sort du Brief, jamais « Traité récemment »)', () => {
     const before = classifyInformationalSignalForDebrief({ hasOpenLinkedObject: false, ack: 'unseen' })
     const after = markSeen(before)
     expect(after.ack).toBe('seen')
-    expect(after.disposition).toBe('recently_handled')
+    expect(after.disposition).toBe('not_relevant')
   })
 
   it('markSeen refuse à la COMPILATION un item Action/Deadline/Reserve/Planning — pas une convention UI, une impossibilité de type', () => {
