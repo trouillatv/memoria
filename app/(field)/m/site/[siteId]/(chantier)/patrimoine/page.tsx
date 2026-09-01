@@ -64,11 +64,17 @@ export default async function SitePatrimoinePage({
     // provenance : l'écran ne décide d'aucun bouton.
     getMemoryReview(siteId).catch(() => ({ confirmed: [], toReview: [] })),
     (async (): Promise<Array<{ id: string; label: string }>> => {
+      // « Sujets du chantier » = UNIQUEMENT les sujets métier (kind='business_subject').
+      // Les intervenants (kind='actor') ont déjà leur place — « Ce que MemorIA sait »
+      // (site_intervenants) et le Suivi « Intervenants » — et n'ont pas à reparaître
+      // ici comme s'ils étaient des sujets. Sans ce filtre, le tri par created_at
+      // faisait remonter les acteurs importés en tête (audit UX 2026-09-01).
       const { data } = await supabase
         .from('canonical_subject')
         .select('id, label')
         .eq('site_id', siteId)
         .eq('status', 'active')
+        .eq('kind', 'business_subject')
         .order('created_at', { ascending: true })
         .limit(10)
       return (data ?? []) as Array<{ id: string; label: string }>
@@ -265,10 +271,10 @@ export default async function SitePatrimoinePage({
         )}
       </section>
 
-      {/* ── Bloc : Sujets suivis (canonical_subject) ── */}
+      {/* ── Bloc : Sujets du chantier (canonical_subject, business_subject seuls) ── */}
       {canonicalSubjects.length > 0 && (
         <section className="space-y-2">
-          <SectionTitle>Sujets suivis</SectionTitle>
+          <SectionTitle>Sujets du chantier</SectionTitle>
           <ul className="space-y-1.5">
             {canonicalSubjects.map((cs) => (
               <li key={cs.id}>
