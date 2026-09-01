@@ -31,7 +31,10 @@ export function SinceLastVisitCard({ delta, siteId }: { delta: SinceLastVisitDel
 
       {delta.items.length === 0 ? (
         <p className="mt-3 text-[13px] text-muted-foreground">
-          Rien de nouveau depuis votre passage du {delta.visitDateLabel}.
+          {/* Le possessif « votre » n'apparaît QUE si la visite de référence est bien
+              la vôtre (personal=true). Sinon (repli sur la dernière visite du chantier,
+              faite par un autre), formulation neutre — jamais une venue fabriquée (9+10A). */}
+          Rien de nouveau depuis {delta.personal ? 'votre passage' : 'la dernière visite'} du {delta.visitDateLabel}.
         </p>
       ) : (
         <ul className="mt-3 space-y-2.5">

@@ -945,12 +945,18 @@ export async function listRecentSitesForUser(userId: string, limit = 3): Promise
   const supabase = createAdminClient()
   const { data: reps } = await supabase
     .from('site_reports')
-    .select('site_id, created_at, started_at, ended_at')
+    .select('site_id, created_at, started_at, ended_at, origin')
     .eq('created_by', userId)
     .not('site_id', 'is', null)
     .order('created_at', { ascending: false })
     .limit(40)
-  const rows = (reps ?? []) as Array<{ site_id: string; created_at: string; started_at: string | null; ended_at: string | null }>
+  // « Récent pour MOI » = une interaction personnelle (visite terrain ou réunion que
+  // j'ai faite), jamais une ingestion documentaire. Un import (origin='import') ne
+  // rend pas un chantier « récent » : c'est l'histoire du chantier, pas la mienne
+  // (9+10A). Filtre en JS pour garder les réunions (origin NULL), qu'un `.neq` SQL
+  // exclurait par la logique tri-valuée.
+  const rows = ((reps ?? []) as Array<{ site_id: string; created_at: string; started_at: string | null; ended_at: string | null; origin: string | null }>)
+    .filter((r) => !isImportedDocumentOrigin(r.origin))
   const order: string[] = []
   const lastBySite = new Map<string, string>()
   for (const r of rows) {

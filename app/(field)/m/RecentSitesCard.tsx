@@ -3,8 +3,11 @@ import { ChevronRight, Building2 } from 'lucide-react'
 import type { RecentSiteItem } from '@/lib/db/visits'
 
 /**
- * « Chantiers récents » — les 3 derniers dossiers ouverts, pour ne pas passer par
- * « Chantiers » à chaque fois. SOBRE : une ligne, du texte, pas de grande image
+ * « Chantiers récents » — les 3 chantiers où j'ai TRAVAILLÉ en dernier (visite
+ * terrain ou réunion que j'ai créée), pour y revenir vite. PAS « consultés » :
+ * aucune ouverture/navigation n'est tracée en base ; la source est l'activité
+ * d'auteur (`created_by`), imports EXCLUS — une ingestion documentaire n'est pas
+ * une venue personnelle (9+10A). SOBRE : une ligne, du texte, pas de grande image
  * (nom · dernière activité · actions/réserves ouvertes · accès rapide au dossier).
  */
 export function RecentSitesCard({ sites }: { sites: RecentSiteItem[] }) {

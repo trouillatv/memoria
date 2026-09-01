@@ -86,8 +86,11 @@ export function WatchedSites({ sites }: WatchedSitesProps) {
                     {site.nextPassageAt
                       ? `prochain ${formatDate(site.nextPassageAt)}`
                       : site.lastActivityAt
-                        ? `dernière visite ${relDate(site.lastActivityAt)}`
-                        : 'aucune visite'}
+                        // `lastActivityAt` = max(ended_at) de TOUT report (import compris,
+                        // sites-dashboard.ts sans filtre origin) : c'est une ACTIVITÉ, pas
+                        // forcément une visite. Un PV importé n'est pas une venue (9+10A).
+                        ? `dernière activité ${relDate(site.lastActivityAt)}`
+                        : 'aucune activité'}
                   </p>
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground transition-colors" />
