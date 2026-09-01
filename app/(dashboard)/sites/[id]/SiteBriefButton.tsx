@@ -1503,16 +1503,21 @@ function BriefBody({
   return (
     <div className="space-y-5">
       <section className="rounded-xl border border-sky-200 bg-sky-50/40 p-3.5 space-y-2.5">
-        <SectionTitle icon={<CalendarClock className="h-3.5 w-3.5 text-sky-700" />}>Pourquoi je vais sur ce chantier</SectionTitle>
+        {/* Point 16 — honnêteté sémantique : ce bloc n'affiche PAS une intention
+            humaine mais un objet que MemorIA repère via selectPreparationObjective()
+            (scheduled ?? action ?? deadline ?? …), heuristique déterministe et
+            volatile. Le libellé ne doit donc plus affirmer une intention certaine :
+            « Point principal à garder en tête » / « Priorité repérée », sans
+            « Déterminé ». Moteur, candidats, ordre et comportement null inchangés. */}
+        <SectionTitle icon={<CalendarClock className="h-3.5 w-3.5 text-sky-700" />}>Point principal à garder en tête</SectionTitle>
         {objective ? (
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-medium uppercase tracking-wide text-sky-700">
-                {objective.kind === 'scheduled' ? 'Motif du passage planifié' : 'Motif opérationnel principal'}
+                {objective.kind === 'scheduled' ? 'Motif du passage planifié' : 'Priorité repérée'}
               </p>
               <p className="mt-1 text-sm font-medium">{objective.sourceHref ? <a href={objective.sourceHref} className="hover:underline">{objective.text}</a> : objective.text}</p>
             </div>
-            <span className="shrink-0 text-[10px] text-emerald-700">Déterminé</span>
           </div>
         ) : (
           <p className="text-sm italic text-muted-foreground">Aucun objectif déterminé. Une recommandation IA peut être demandée.</p>
