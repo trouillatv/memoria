@@ -33,6 +33,7 @@ import { listExtractionSuppressions, matchSuppression, DEFAULT_SUPPRESSION_THRES
 import { reconcileProposalToCanonical, ELIGIBLE_KINDS as RECONCILE_ELIGIBLE_KINDS } from '@/lib/db/canonical-subject-reconcile'
 import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import type { EntityResolution } from '@/lib/knowledge/semantic-resolution'
+import { isImportedDocumentOrigin } from '@/lib/field/visit-origins'
 
 export type ProposalKind = 'action' | 'vigilance' | 'decision' | 'knowledge' | 'stakeholder' | 'deadline'
 /**
@@ -223,10 +224,30 @@ export async function projectDebriefToProposals(params: {
   analysis: StoredDebriefAnalysis
 }): Promise<ProjectResult> {
   const { reportId, siteId, organizationId, analysis } = params
+  const supabase = createAdminClient()
+
+  // ── Garde « producteur unique » pour les imports historiques (P0 prévention) ──
+  // Un rapport issu d'un import documentaire (origin='import') a l'extraction
+  // documentaire pour UNIQUE productrice de propositions métier : le RPC
+  // materialize_historical_visit matérialise déjà ses objets. Laisser le débrief
+  // reprojeter ici recréait une SECONDE population de propositions « à confirmer »
+  // (doublons OCEF), que la déduplication lexicale ne rattrapait pas dès que le
+  // LLM reformulait un libellé. La synthèse reste calculée et stockée (le débrief
+  // s'exécute normalement en amont) ; seule sa PROJECTION métier est neutralisée.
+  // La réconciliation canonique et le reste de projectAndTrace ne sont pas touchés.
+  // Cf. audit P0 « Unicité du cycle d'import historique ».
+  const { data: reportRow } = await supabase
+    .from('site_reports')
+    .select('origin')
+    .eq('id', reportId)
+    .maybeSingle()
+  if (isImportedDocumentOrigin((reportRow as { origin: string | null } | null)?.origin)) {
+    return { inserted: 0, refreshed: 0, skipped: 0, obsolete: 0, fulfilledByLedger: 0 }
+  }
+
   const desired = buildDesiredProposals(analysis, siteId)
   if (desired.length === 0) return { inserted: 0, refreshed: 0, skipped: 0, obsolete: 0, fulfilledByLedger: 0 }
 
-  const supabase = createAdminClient()
   const version = analysis.analysis_version ?? 1
   const now = new Date().toISOString()
 
