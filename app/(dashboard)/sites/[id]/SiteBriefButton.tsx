@@ -1552,6 +1552,22 @@ function BriefBody({
         )}
       </section>
 
+      {/* Point 15 (desktop) — fraîcheur remontée « près du début » sous forme
+          compacte : « depuis quand ai-je un constat » modifie la confiance qu'on
+          peut avoir dans la préparation. C'est la SEULE information décisionnelle
+          rescapée de l'ancien « Ce que je dois retenir » (le reste = doublon KPI
+          de l'Aperçu, retiré côté desktop). Mobile : bloc complet conservé plus bas. */}
+      {variant === 'desktop' && (freshness.at || freshness.label) && (
+        <p className="-mt-2 px-1 text-[11px] text-muted-foreground">
+          {freshnessKind === 'meeting' ? 'Dernière réunion' : activities[0]?.status === 'in_progress' ? 'Activité terrain en cours' : 'Dernière visite consolidée'} :{' '}
+          <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
+            {formatDay(freshness.at?.slice(0, 10)) ?? freshness.label}
+          </strong>
+          {freshness.at ? <span className="ml-1 text-muted-foreground/70">({freshness.label})</span> : null}
+          {freshness.level === 'stale' ? <span className="ml-1 text-amber-700">· à reconfirmer sur site</span> : null}
+        </p>
+      )}
+
       {/* D7 §1 — synthèse compacte, dérivée EXCLUSIVEMENT des trois blocs
           LiveDebrief ci-dessous (aucun nouveau comptage) : elle annonce ce que
           la page contient avant de le détailler, jamais un chiffre inventé.
@@ -1605,26 +1621,33 @@ function BriefBody({
         initialLimit={3}
       />
 
-      <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
-        <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État confirmé aujourd&apos;hui</p>
-        <ConfirmedTodayChips confirmedToday={liveDebrief.confirmedToday} />
-        <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
-          <span>Indice de phase (objets ouverts) : <strong className="font-semibold text-foreground">{estimatedPhase}</strong><span className="ml-1 text-muted-foreground/70">— déduit, non confirmé sur site</span></span>
-          {/* « Mémoire : il y a 3 jours » ne disait ni de quoi il s'agissait ni depuis
-              quand. C'est le started_at de la dernière activité rapportée : on nomme
-              sa nature et sa date, le délai relatif ne reste qu'en appoint. */}
-          <span>
-            {freshnessKind === 'meeting' ? 'Dernière réunion' : activities[0]?.status === 'in_progress' ? 'Activité terrain en cours' : 'Dernière visite consolidée'} :{' '}
-            <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
-              {formatDay(freshness.at?.slice(0, 10)) ?? freshness.label}
-            </strong>
-            {freshness.at ? <span className="ml-1 text-muted-foreground/70">({freshness.label})</span> : null}
-          </span>
-        </div>
-        <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier état rapporté</p>
-        <FactLines items={rememberToday} empty="Aucun fait consolidé à retenir pour le moment." />
-      </section>
+      {/* Point 15 — « Ce que je dois retenir aujourd'hui » retiré côté DESKTOP :
+          KPI (actions/échéances/réserves) + indice de phase = doublon de l'Aperçu
+          et redondant avec « À traiter »/« À surveiller » désormais nommés et
+          priorisés. La fraîcheur (seule info décisionnelle) est remontée compacte
+          en haut. Mobile : bloc complet conservé (surface secondaire non touchée). */}
+      {variant !== 'desktop' && (
+        <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+          <SectionTitle icon={<Brain className="h-3.5 w-3.5 text-sky-600" />}>Ce que je dois retenir aujourd&apos;hui</SectionTitle>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État confirmé aujourd&apos;hui</p>
+          <ConfirmedTodayChips confirmedToday={liveDebrief.confirmedToday} />
+          <div className="flex flex-wrap gap-x-4 gap-y-1 border-t pt-2 text-[11px] text-muted-foreground">
+            <span>Indice de phase (objets ouverts) : <strong className="font-semibold text-foreground">{estimatedPhase}</strong><span className="ml-1 text-muted-foreground/70">— déduit, non confirmé sur site</span></span>
+            {/* « Mémoire : il y a 3 jours » ne disait ni de quoi il s'agissait ni depuis
+                quand. C'est le started_at de la dernière activité rapportée : on nomme
+                sa nature et sa date, le délai relatif ne reste qu'en appoint. */}
+            <span>
+              {freshnessKind === 'meeting' ? 'Dernière réunion' : activities[0]?.status === 'in_progress' ? 'Activité terrain en cours' : 'Dernière visite consolidée'} :{' '}
+              <strong className={freshness.level === 'stale' ? 'font-semibold text-amber-700' : 'font-semibold text-foreground'}>
+                {formatDay(freshness.at?.slice(0, 10)) ?? freshness.label}
+              </strong>
+              {freshness.at ? <span className="ml-1 text-muted-foreground/70">({freshness.label})</span> : null}
+            </span>
+          </div>
+          <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Dernier état rapporté</p>
+          <FactLines items={rememberToday} empty="Aucun fait consolidé à retenir pour le moment." />
+        </section>
+      )}
 
       {/* D10 — Modèle B : activités parallèles constatées. Jamais une phase unique.
           Ne s'affiche que si le read-model a détecté une intervention ou des activités.
@@ -1718,7 +1741,19 @@ function BriefBody({
         </section>
       )}
 
-      {proofs.length > 0 && (
+      {/* Point 15 (desktop) — « Preuves et sources » réduit à une entrée de
+          navigation : le Brief n'a pas vocation à être un explorateur documentaire,
+          l'onglet Documents & preuves est la surface native (déjà pointée par les
+          liens « Ouvrir »). Mobile : liste conservée (surface secondaire non touchée). */}
+      {variant === 'desktop' ? (
+        <a
+          href={`/sites/${siteId}?tab=documents-preuves`}
+          className="flex items-center justify-between gap-2 rounded-xl border bg-background px-3.5 py-3 text-sm font-medium text-sky-700 hover:bg-muted/30"
+        >
+          <span className="inline-flex items-center gap-1.5"><Camera className="h-3.5 w-3.5 text-violet-600" /> Voir les documents et preuves</span>
+          <ChevronRight className="h-4 w-4" />
+        </a>
+      ) : proofs.length > 0 && (
         <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
           <SectionTitle icon={<Camera className="h-3.5 w-3.5 text-violet-600" />}>Preuves et sources</SectionTitle>
           <ul className="space-y-1.5">
@@ -1738,6 +1773,19 @@ function BriefBody({
       )}
 
 
+      {/* Point 15 (desktop) — le contenu « toutes les données » (doublons de À traiter
+          + KPI + tiers Missions/Équipes/Réunions/Anomalies/… qui ont chacun leur onglet)
+          est retiré du Brief : une seule navigation vers la fiche suffit. Mobile :
+          panneau repliable conservé (surface secondaire non touchée). */}
+      {variant === 'desktop' ? (
+        <a
+          href={`/sites/${siteId}`}
+          className="flex items-center justify-between gap-2 rounded-xl border bg-background px-3.5 py-3 text-sm font-medium text-sky-700 hover:bg-muted/30"
+        >
+          <span className="inline-flex items-center gap-1.5"><Layers className="h-3.5 w-3.5 text-sky-600" /> Voir la fiche complète du chantier</span>
+          <ChevronRight className="h-4 w-4" />
+        </a>
+      ) : (
       <details className="rounded-xl border bg-background">
         <summary className="cursor-pointer list-none px-3.5 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Voir toutes les données du chantier</summary>
         <div className="space-y-5 border-t px-3.5 py-3.5">
@@ -1843,6 +1891,7 @@ function BriefBody({
       )}
         </div>
       </details>
+      )}
     </div>
   )
 }
