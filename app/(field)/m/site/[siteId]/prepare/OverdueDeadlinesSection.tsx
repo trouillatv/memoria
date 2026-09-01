@@ -59,13 +59,22 @@ export async function OverdueDeadlinesSection({ siteId }: { siteId: string }) {
   }))
   const evidenceMap = await getDeadlineFieldEvidenceBatch(linked).catch(() => new Map<string, DeadlineFieldEvidence>())
 
+  // 11A'' — plafond de densité : on montre au plus 5 échéances dépassées, dans
+  // l'ordre EXISTANT (slice, aucun retri). Le total reste au titre. Il n'existe
+  // pas de surface mobile « liste des échéances du chantier » → conformément à
+  // « ne pas inventer de route », le dépassement est un indicateur de compte (pas
+  // un faux lien). À réévaluer si une surface échéances mobile est créée.
+  const MAX = 5
+  const shown = overdue.slice(0, MAX)
+  const rest = overdue.length - shown.length
+
   return (
     <section className="rounded-2xl border border-amber-200 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 px-4 py-3 space-y-3">
       <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-400">
         Échéances dépassées ({overdue.length})
       </p>
       <ul className="space-y-2.5">
-        {overdue.map((d) => {
+        {shown.map((d) => {
           const evidence = evidenceMap.get(d.id)
           return (
             <li key={d.id} className="space-y-0.5">
@@ -78,6 +87,11 @@ export async function OverdueDeadlinesSection({ siteId }: { siteId: string }) {
           )
         })}
       </ul>
+      {rest > 0 && (
+        <p className="text-[11px] text-amber-800/80 dark:text-amber-400/80">
+          +{rest} autre{rest > 1 ? 's' : ''} échéance{rest > 1 ? 's' : ''} dépassée{rest > 1 ? 's' : ''}
+        </p>
+      )}
     </section>
   )
 }

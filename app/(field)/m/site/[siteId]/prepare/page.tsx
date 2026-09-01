@@ -10,7 +10,7 @@ import { listActivePreparationItems } from '@/lib/db/visit-preparation'
 import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { SiteStatusCard } from '../SiteStatusCard'
 import { VisitLauncher } from '../VisitLauncher'
-import { DeltaBlock, VisitBriefClient } from './VisitBriefClient'
+import { VisitBriefClient } from './VisitBriefClient'
 import type { PrepItemSeed } from './VisitBriefClient'
 import { CopilotMobileSheet } from '../CopilotMobileSheet'
 import { VisitBriefingBlock } from './VisitBriefingBlock'
@@ -18,12 +18,13 @@ import { OverdueDeadlinesSection } from './OverdueDeadlinesSection'
 
 /**
  * « Préparer ma visite » — le brief décisionnel avant d'aller sur le chantier.
- * Structure cible :
- *   État rapide → Depuis le dernier PV → Priorités proposées → Sujets à garder
- *   → Mon plan → Démarrer la visite · N points
+ * Structure : Depuis votre dernière visite (VisitBriefingBlock, SEUL delta) →
+ *   Échéances dépassées (plafond 5) → État rapide → Priorités / Sujets / Mon plan
+ *   (VisitBriefClient, mécanique P1-A) → Démarrer la visite.
  *
- * Les blocs pvAttention / pvLastDelta / pvToVerify viennent de getSiteOverview()
- * (déjà calculé) — aucun fetch supplémentaire.
+ * 11A'' : le delta documentaire PV↔PV a été retiré de cette surface (il vit dans
+ * Aperçu/Histoire). Les blocs pvAttention / pvToVerify de « Mon plan » viennent de
+ * getSiteOverview() (déjà calculé) — aucun fetch supplémentaire.
  */
 export default async function PrepareVisitPage({
   params,
@@ -94,10 +95,13 @@ export default async function PrepareVisitPage({
       {/* 2 — État rapide du chantier */}
       <SiteStatusCard cells={status} />
 
-      {/* 3 — Depuis le dernier PV */}
-      {overview.pvLastDelta && (
-        <DeltaBlock delta={overview.pvLastDelta} />
-      )}
+      {/* 11A'' — le delta PV↔PV (« Du PV du X au PV du Y ») est RETIRÉ de ce Brief :
+          le seul delta reste « Depuis votre dernière visite » (VisitBriefingBlock,
+          référentiel personnel/terrain, ci-dessus). L'évolution documentaire vit dans
+          Aperçu/Histoire/Chronologie — pas empilée ici. Aucun fallback : un chantier
+          sans visite terrain assume l'absence de delta personnel plutôt que de changer
+          de référentiel. Le read-model documentaire et ses autres consommateurs ne
+          sont pas touchés. */}
 
       {/* Copilote — poser une question avant d'arriver sur le chantier */}
       <CopilotMobileSheet siteId={siteId} siteName={site.name} />
