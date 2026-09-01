@@ -34,6 +34,7 @@ import {
   Layers,
   ChevronRight,
   Pencil,
+  MoreHorizontal,
 } from 'lucide-react'
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type SiteBriefFactLine, type DiscussionPoint } from './site-brief-actions'
 import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
@@ -656,13 +657,52 @@ function LiveDebriefItemRow({
     })
   }
 
+  // Contenu du menu de gestes — identique quel que soit le déclencheur.
+  const menuContent = (
+    <DropdownMenuContent align="start">
+      {canReplan && (
+        <DropdownMenuItem onClick={markDeadlineDone} disabled={completing}>
+          <CheckCircle2 className="h-3.5 w-3.5" /> Marquer réalisée
+        </DropdownMenuItem>
+      )}
+      {(canPlan || canReplan) && (
+        <DropdownMenuItem onClick={() => setPlanningDeadline(true)}>
+          <CalendarClock className="h-3.5 w-3.5" /> {canReplan ? 'Replanifier' : 'Planifier'}
+        </DropdownMenuItem>
+      )}
+      {canClose && (
+        <DropdownMenuItem onClick={() => setActionClosing(true)}>
+          <CheckCircle2 className="h-3.5 w-3.5" /> Clôturer
+        </DropdownMenuItem>
+      )}
+      {canLift && (
+        <DropdownMenuItem onClick={() => setReserveLifting(true)}>
+          <CheckCircle2 className="h-3.5 w-3.5" /> Lever la réserve
+        </DropdownMenuItem>
+      )}
+      {canModify && (
+        <DropdownMenuItem onClick={() => setModifying(true)}>
+          <Pencil className="h-3.5 w-3.5" /> Modifier
+        </DropdownMenuItem>
+      )}
+      <DropdownMenuItem onClick={() => { window.location.href = item.href }}>
+        <ChevronRight className="h-3.5 w-3.5" /> Ouvrir la fiche
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  )
+
   return (
     <li className="rounded-lg border bg-background px-3 py-2 space-y-2">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
           {item.rank && <RankReason rank={item.rank} />}
-          {hasMenu ? (
+          {/* Point 14 finition — la 3ᵉ ligne « Échéance › / Réserve › / Action › »
+              est retirée pour les items CLASSÉS (À traiter desktop) : elle faisait
+              doublon avec la raison. Les gestes ne disparaissent pas — ils passent
+              sur un déclencheur discret « ⋯ » à droite (ci-dessous). Les autres
+              blocs (À surveiller / Traité récemment / mobile) gardent la ligne. */}
+          {!item.rank && (hasMenu ? (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -674,41 +714,30 @@ function LiveDebriefItemRow({
               >
                 {kindLabel} <span aria-hidden>›</span>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                {canReplan && (
-                  <DropdownMenuItem onClick={markDeadlineDone} disabled={completing}>
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Marquer réalisée
-                  </DropdownMenuItem>
-                )}
-                {(canPlan || canReplan) && (
-                  <DropdownMenuItem onClick={() => setPlanningDeadline(true)}>
-                    <CalendarClock className="h-3.5 w-3.5" /> {canReplan ? 'Replanifier' : 'Planifier'}
-                  </DropdownMenuItem>
-                )}
-                {canClose && (
-                  <DropdownMenuItem onClick={() => setActionClosing(true)}>
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Clôturer
-                  </DropdownMenuItem>
-                )}
-                {canLift && (
-                  <DropdownMenuItem onClick={() => setReserveLifting(true)}>
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Lever la réserve
-                  </DropdownMenuItem>
-                )}
-                {canModify && (
-                  <DropdownMenuItem onClick={() => setModifying(true)}>
-                    <Pencil className="h-3.5 w-3.5" /> Modifier
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={() => { window.location.href = item.href }}>
-                  <ChevronRight className="h-3.5 w-3.5" /> Ouvrir la fiche
-                </DropdownMenuItem>
-              </DropdownMenuContent>
+              {menuContent}
             </DropdownMenu>
           ) : (
             <p className="mt-0.5 text-[11px] text-muted-foreground">{kindLabel}</p>
-          )}
+          ))}
         </div>
+        {/* Item classé + gestes disponibles → menu « ⋯ » discret à droite (remplace
+            la 3ᵉ ligne). La manipulabilité D5 depuis le Brief est préservée. */}
+        {item.rank && hasMenu && !expanded && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  aria-label={`Actions ${kindLabel}`}
+                  className="shrink-0 -mr-1 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                />
+              }
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            {menuContent}
+          </DropdownMenu>
+        )}
         {/* 14A — pour un item classé (À traiter desktop), la date vit déjà dans la
             raison/complément : on masque la date brute à droite pour ne pas la
             tripler. À surveiller / Traité récemment / mobile gardent la date. */}

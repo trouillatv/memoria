@@ -95,6 +95,26 @@ describe('rankLiveDebriefToHandle — tie-breaks déterministes', () => {
     ]
     expect(rankMap(items).map((o) => o.id)).toEqual(['x', 'y'])
   })
+
+  it('classement indépendant de l’ordre d’entrée (aucun ordre SQL implicite)', () => {
+    // Groupes d'égalités volontaires : deux retards à même échéance, deux
+    // anciennetés à même ouverture. Seul l'id doit départager, quel que soit
+    // l'ordre dans lequel les objets arrivent (fetch SQL non ordonné).
+    const base = [
+      action({ id: 'ret-b', date: '2026-07-10' }),
+      action({ id: 'ret-a', date: '2026-07-10' }),
+      action({ id: 'ret-early', date: '2026-06-01' }),
+      action({ id: 'age-b', openedAt: '2026-08-01' }),
+      action({ id: 'age-a', openedAt: '2026-08-01' }),
+    ]
+    const expected = ['ret-early', 'ret-a', 'ret-b', 'age-a', 'age-b']
+    const forward = rankMap(base).map((o) => o.id)
+    const reversed = rankMap([...base].reverse()).map((o) => o.id)
+    const rotated = rankMap([base[3], base[0], base[4], base[2], base[1]]).map((o) => o.id)
+    expect(forward).toEqual(expected)
+    expect(reversed).toEqual(expected)
+    expect(rotated).toEqual(expected)
+  })
 })
 
 describe('rankLiveDebriefToHandle — dégradation gracieuse (données pauvres)', () => {
