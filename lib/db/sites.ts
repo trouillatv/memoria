@@ -264,6 +264,8 @@ export interface SiteWithStats extends DbSite {
   /** Nom du client (CHT, OPT…) pour le regroupement dans la liste. */
   client_display_name: string | null
   client_logo_url: string | null
+  /** Image PROPRE au chantier (sites.logo_path), distincte du logo client. */
+  site_logo_url: string | null
   last_intervention_at: string | null
   missions_count: number
   interventions_count: number
@@ -300,6 +302,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
   if (error) throw error
   const rows = (sites ?? []) as Array<
     DbSite & {
+      logo_path: string | null
       contract: { name: string; status: string } | { name: string; status: string }[] | null
       client: { name: string; logo_path: string | null } | { name: string; logo_path: string | null }[] | null
     }
@@ -309,7 +312,10 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
   const clientLogoPaths = rows
     .map((row) => Array.isArray(row.client) ? row.client[0]?.logo_path : row.client?.logo_path)
     .filter((path): path is string => Boolean(path))
-  const signedClientLogos = await getSignedLogoUrls(clientLogoPaths)
+  // Chantier + client signés en un seul appel (même bucket entity-logos).
+  const siteLogoPaths = rows.map((row) => row.logo_path).filter((p): p is string => Boolean(p))
+  const signedLogos = await getSignedLogoUrls([...clientLogoPaths, ...siteLogoPaths])
+  const signedClientLogos = signedLogos
   const siteIds = rows.map((s) => s.id)
 
   // Charge en parallèle : missions par site (1 query), interventions exécutées
@@ -452,6 +458,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       client_logo_url: (Array.isArray(s.client) ? s.client[0]?.logo_path : s.client?.logo_path)
         ? signedClientLogos[(Array.isArray(s.client) ? s.client[0]?.logo_path : s.client?.logo_path)!] ?? null
         : null,
+      site_logo_url: s.logo_path ? signedLogos[s.logo_path] ?? null : null,
       last_intervention_at: lastBySite.get(s.id) ?? null,
       missions_count: missionsBySite.get(s.id)?.length ?? 0,
       interventions_count: interventionsBySite.get(s.id) ?? 0,

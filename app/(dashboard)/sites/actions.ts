@@ -12,7 +12,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { requireOrganizationMembership, getOrgIdsOfUser } from '@/lib/auth/memberships'
-import { uploadClientLogo } from '@/lib/storage/entity-logos'
+import { uploadClientLogo, uploadSiteLogo } from '@/lib/storage/entity-logos'
 import {
   updateSite,
   softDeleteSite,
@@ -103,6 +103,26 @@ export async function updateSiteGlobalAction(formData: FormData) {
       if (error) return { error: 'Logo client impossible à enregistrer' }
     } catch (error) {
       return { error: error instanceof Error ? error.message : 'Logo client invalide' }
+    }
+  }
+
+  // Image PROPRE au chantier (distincte du logo client) — pas de client requis.
+  const siteLogoFile = formData.get('site_logo')
+  if (siteLogoFile instanceof File && siteLogoFile.size > 0) {
+    try {
+      const logoPath = await uploadSiteLogo(
+        siteRow.organization_id,
+        parsed.data.site_id,
+        Buffer.from(await siteLogoFile.arrayBuffer()),
+        siteLogoFile.type,
+      )
+      const { error } = await supabase
+        .from('sites')
+        .update({ logo_path: logoPath, logo_updated_at: new Date().toISOString() })
+        .eq('id', parsed.data.site_id)
+      if (error) return { error: 'Image du chantier impossible à enregistrer' }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Image du chantier invalide' }
     }
   }
 
@@ -383,6 +403,26 @@ export async function createSiteGlobalAction(
     access_instructions: rest.access_instructions ?? null,
     organization_id: organizationId,
   })
+
+  // Image propre au chantier — après createSite (siteId requis). Best-effort :
+  // une image ratée ne perd pas la création du chantier.
+  const siteLogoFile = formData.get('site_logo')
+  if (siteLogoFile instanceof File && siteLogoFile.size > 0) {
+    try {
+      const logoPath = await uploadSiteLogo(
+        organizationId,
+        siteId,
+        Buffer.from(await siteLogoFile.arrayBuffer()),
+        siteLogoFile.type,
+      )
+      await supabase
+        .from('sites')
+        .update({ logo_path: logoPath, logo_updated_at: new Date().toISOString() })
+        .eq('id', siteId)
+    } catch {
+      // silencieux : le chantier est créé ; l'image se reposera depuis l'édition.
+    }
+  }
 
   revalidatePath('/sites')
   // Doctrine (audit/09) : un client peut être créé inline ici (« + Nouveau

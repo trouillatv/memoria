@@ -41,6 +41,7 @@ export function SiteGlobalRow({ site, inactive }: Props) {
   const [address, setAddress] = useState(site.address ?? '')
   const [notes, setNotes] = useState(site.notes ?? '')
   const [clientLogo, setClientLogo] = useState<File | null>(null)
+  const [siteLogo, setSiteLogo] = useState<File | null>(null)
   const [extended, setExtended] = useState(siteExtendedFromDb(site))
 
   function cancel() {
@@ -48,6 +49,7 @@ export function SiteGlobalRow({ site, inactive }: Props) {
     setAddress(site.address ?? '')
     setNotes(site.notes ?? '')
     setClientLogo(null)
+    setSiteLogo(null)
     setExtended(siteExtendedFromDb(site))
     setEditing(false)
   }
@@ -63,6 +65,7 @@ export function SiteGlobalRow({ site, inactive }: Props) {
     if (address.trim()) fd.set('address', address.trim())
     if (notes.trim()) fd.set('notes', notes.trim())
     if (clientLogo) fd.set('client_logo', clientLogo)
+    if (siteLogo) fd.set('site_logo', siteLogo)
     applySiteExtendedToFormData(fd, extended)
     startTransition(async () => {
       const r = await updateSiteGlobalAction(fd)
@@ -178,8 +181,20 @@ export function SiteGlobalRow({ site, inactive }: Props) {
               className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs"
               disabled={pending}
             />
+            <p className="text-[10px] text-muted-foreground/70">Partagé par tous les chantiers de ce client.</p>
           </div>
         )}
+        <div className="space-y-2">
+          <label className="text-xs text-muted-foreground">Image du chantier</label>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => setSiteLogo(e.target.files?.[0] ?? null)}
+            className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs"
+            disabled={pending}
+          />
+          <p className="text-[10px] text-muted-foreground/70">Propre à ce chantier (indépendante du logo client).</p>
+        </div>
         <SiteExtendedFields
           state={extended}
           onChange={(patch) => setExtended((s) => ({ ...s, ...patch }))}
@@ -240,8 +255,17 @@ export function SiteGlobalRow({ site, inactive }: Props) {
       <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2 flex-wrap">
-            {site.client_display_name && (
-              <EntityLogo src={site.client_logo_url} label={site.client_display_name} size="xl" variant="rounded" fallbackColor="#dbeafe" alt={site.client_display_name} />
+            {/* Un seul visuel : l'image PROPRE au chantier en priorité, le logo
+                client en repli si le chantier n'en a pas (puis initiales client). */}
+            {(site.site_logo_url || site.client_display_name) && (
+              <EntityLogo
+                src={site.site_logo_url ?? site.client_logo_url}
+                label={site.site_logo_url ? site.name : (site.client_display_name ?? site.name)}
+                size="xl"
+                variant="rounded"
+                fallbackColor={site.site_logo_url ? '#dcfce7' : '#dbeafe'}
+                alt={site.site_logo_url ? site.name : (site.client_display_name ?? site.name)}
+              />
             )}
             <Link
               href={`/sites/${site.id}`}

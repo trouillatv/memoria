@@ -78,6 +78,7 @@ export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) 
   const [address, setAddress] = useState('')
   const [notes, setNotes] = useState('')
   const [clientLogo, setClientLogo] = useState<File | null>(null)
+  const [siteLogo, setSiteLogo] = useState<File | null>(null)
   const [extended, setExtended] = useState(emptySiteExtendedState())
 
   // Similarité live
@@ -91,6 +92,7 @@ export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) 
     setName(''); setClientId(''); setClientNameNew(''); setShowNewClient(false); setNoClient(false)
     setContractId(''); setAddress(''); setNotes('')
     setClientLogo(null)
+    setSiteLogo(null)
     setExtended(emptySiteExtendedState())
     setLiveSimilar([]); setServerSimilar([])
     setSelectedOrgId(orgs?.[0]?.id ?? '')
@@ -128,6 +130,7 @@ export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) 
     if (address.trim()) fd.set('address', address.trim())
     if (notes.trim()) fd.set('notes', notes.trim())
     if (clientLogo) fd.set('client_logo', clientLogo)
+    if (siteLogo) fd.set('site_logo', siteLogo)
     fd.set('force', force ? 'true' : 'false')
     if (selectedOrgId) fd.set('organization_id', selectedOrgId)
     applySiteExtendedToFormData(fd, extended)
@@ -336,6 +339,16 @@ export function CreateSiteDialog({ clients, contracts, allSites, orgs }: Props) 
                   />
                 </div>
               )}
+              <div className="space-y-1">
+                <label className="text-[11px] text-muted-foreground">Image du chantier (optionnel, PNG, JPEG ou WebP, 2 Mo max)</label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(e) => setSiteLogo(e.target.files?.[0] ?? null)}
+                  className="w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs"
+                  disabled={pending}
+                />
+              </div>
             </div>
 
             {/* Contrat (optionnel) */}

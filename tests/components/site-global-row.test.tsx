@@ -21,6 +21,7 @@ function makeSite(over: Partial<SiteWithStats> = {}): SiteWithStats {
     phase: 'actif', access_code: null, alarm_code: null, contact_name: null, contact_phone: null,
     access_hours: null, access_instructions: null, created_at: '2026-01-01T00:00:00Z', deleted_at: null,
     contract_name: null, contract_status: null, client_display_name: null, client_logo_url: null,
+    site_logo_url: null,
     last_intervention_at: null, missions_count: 0, interventions_count: 0, site_notes_count: 0,
     visites_count: 0, last_visit_at: null, actions_count: 0, pv_imported_count: 0,
     ...over,

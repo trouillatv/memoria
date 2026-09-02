@@ -88,6 +88,31 @@ export async function uploadClientLogo(
   return path
 }
 
+/** Upload de l'image PROPRE à un chantier, isolée par organisation et site.
+ *  Distincte du logo client (uploadClientLogo) : chaque chantier a la sienne. */
+export async function uploadSiteLogo(
+  organizationId: string,
+  siteId: string,
+  data: Buffer,
+  mime: string,
+): Promise<string> {
+  const ext = ALLOWED_MIME[mime]
+  if (!ext) throw new Error('Format non autorisé (PNG, JPEG ou WebP uniquement)')
+  if (data.length > MAX_BYTES) throw new Error('Fichier trop volumineux (max 2 Mo)')
+  if (!checkMagicBytes(data, mime)) throw new Error('Le contenu du fichier ne correspond pas au type déclaré')
+
+  const path = `sites/${organizationId}/${siteId}/logo.${ext}`
+  const supabase = createAdminClient()
+  await supabase.storage.from(BUCKET).remove(
+    Object.values(ALLOWED_MIME).map((e) => `sites/${organizationId}/${siteId}/logo.${e}`),
+  )
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, data, { contentType: mime, upsert: true })
+  if (error) throw new Error(`Upload échoué : ${error.message}`)
+  return path
+}
+
 /** Supprime un fichier logo du bucket. Silencieux si absent. */
 export async function deleteLogoFile(path: string): Promise<void> {
   await createAdminClient().storage.from(BUCKET).remove([path])
