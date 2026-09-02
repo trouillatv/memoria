@@ -224,7 +224,8 @@ export function mapMeetingToCrBecib(input: MeetingInput): CrBecib {
       email: c?.email ?? null,
       // Colonnes BECIB indépendantes : Invité (I), statut P/AE/AN, Diffusion (D).
       invite: p.invite ?? true,
-      presence: p.presence ?? 'P',
+      // F2 : présence absente → null (jamais 'P'). Le CR n'invente pas une présence.
+      presence: p.presence ?? null,
       diffusion: p.diffusion ?? false,
     }
   })

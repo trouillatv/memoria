@@ -248,10 +248,13 @@ export async function detectRepeatedAbsences(siteId: string, threshold = 3, wind
   const broken = new Set<string>()
   for (const rep of reports) {
     const parts = (rep.participants ?? []) as { role?: string | null; presence?: string | null }[]
-    const seen = new Map<string, string>()
+    const seen = new Map<string, string | null>()
     for (const p of parts) {
       const org = (p.role ?? '').trim()
-      if (org) seen.set(org, p.presence ?? 'P')
+      // F2 : présence inconnue → null (jamais 'P' présumé). Un statut non-'AN'
+      // (dont null) rompt la série d'absences ; on ne PROUVE une absence chronique
+      // que sur des 'AN' explicites, jamais sur une présence supposée.
+      if (org) seen.set(org, p.presence ?? null)
     }
     for (const [org, pres] of seen) {
       if (broken.has(org)) continue

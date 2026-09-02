@@ -41,7 +41,10 @@ const intervenantSchema = z.object({
   mob: z.string().nullable().catch(null),
   email: z.string().nullable().catch(null),
   invite: z.boolean().catch(false), // colonne I (convié) — PAR PERSONNE, piloté par la donnée
-  presence: z.enum(PRESENCES).catch('P'), // statut P/AE/AN au niveau organisme
+  // F2 — présence NULLABLE, défaut null (jamais 'P') : « champ manquant = vide,
+  // JAMAIS inventé » (cf. en-tête). Un CR ne doit pas affirmer « Présent » quand
+  // la présence est absente/indéterminée. Le rendu (=== 'P') ne coche alors rien.
+  presence: z.enum(PRESENCES).nullable().catch(null),
   diffusion: z.boolean().catch(false), // colonne D (CR diffusé) — PAR PERSONNE
 })
 
