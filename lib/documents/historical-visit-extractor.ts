@@ -294,7 +294,7 @@ irréversible.
 
   **Consolidation des tableaux et listes répétitifs** : Lorsqu'un tableau ou une liste contient plusieurs lignes partageant (a) le même verdict/état, (b) le même type d'objet métier, (c) la même localisation, et dont aucune ne porte d'anomalie, de mesure signifiante, d'acteur, de date, d'échéance ou de conséquence propre → produire **un seul knowledge_fact de synthèse** (label : résumé du constat commun + nombre de lignes) et préserver toutes les lignes sources dans sourceExcerpt (verbatim, séparées par " · "). **Ne jamais consolider** des lignes qui diffèrent par : verdict ou polarité (une ligne anomalie/NC/hors-seuil n'est jamais fusionnée avec des lignes RAS/conforme), objet métier distinct, localisation métier structurante, acteur/responsable, date/échéance, valeur ou mesure porteuse de sens, ou conséquence/action associée. En cas de verdict commun mais localisations ou raisons distinctes → regrouper **par localisation ou par raison** (N knowledge_facts, N étant nettement inférieur au nombre de lignes). La simple répétition de "RAS / conforme / non examiné" ou d'un numéro de repère technique ne justifie jamais N knowledge_facts distincts.
 
-- **person** : personne physique identifiable (prénom + nom) mentionnée dans le cartouche ou la liste de présence. Renseigner dans description : "Fonction — Entreprise [— email / tel]". Dans sourcePayload, renseigner statusAtDocumentDate avec le statut de présence ("présent" / "invité" / "absent excusé" / "absent non excusé" / "diffusion uniquement" / "inconnu").
+- **person** : personne physique identifiable (prénom + nom) mentionnée dans le cartouche ou la liste de présence. Renseigner dans description : "Fonction — Entreprise [— email / tel]". Dans sourcePayload, renseigner statusAtDocumentDate avec le statut de présence — **doctrine PREUVE-FIRST : la présence ne s'INFÈRE JAMAIS d'une simple mention, d'un rôle (RUS, MOE, AMO, maître d'ouvrage, titulaire), d'un statut d'« interlocuteur », de « contact », de « client », d'une appartenance à une entreprise ni d'une présence au cartouche/en-tête.** N'émettre "présent" que sur PREUVE EXPLICITE (cf. section « Statut de présence »). À défaut de preuve → "inconnu". Valeurs autorisées : "présent" / "invité" / "absent excusé" / "absent non excusé" / "diffusion uniquement" / "inconnu".
 - **company** : entreprise ou organisme cité avec un rôle sur ce chantier. Renseigner dans description : "Rôle chantier [— contact nommé]". Dans sourcePayload, renseigner **companyRole** (champ obligatoire) avec le rôle exact de l'entreprise. Une entreprise uniquement destinataire d'un document → "diffusion uniquement".
 
 ---
@@ -309,12 +309,35 @@ Pour chaque **personne physique identifiable** (prénom + nom) mentionnée dans 
 - créer une proposition **person** ;
 - label = "Prénom NOM" ;
 - description = "Fonction — Entreprise [— email / téléphone]" selon disponibilité ;
-- sourcePayload.statusAtDocumentDate = statut de présence parmi : "présent", "invité", "absent excusé", "absent non excusé", "diffusion uniquement", "inconnu" ;
+- sourcePayload.statusAtDocumentDate = statut de présence (cf. section « Statut de présence — PREUVE-FIRST » ci-dessous) ;
 - sourcePayload.linkedCompanyName = nom exact de l'entreprise à laquelle appartient cette personne, si identifiable dans le document (ex : "BatiSud") ;
 - sourcePayload.emailAddress = adresse email de la personne si présente dans le document ;
 - sourcePayload.phoneNumber = numéro de téléphone (mobile ou fixe) de la personne si présent dans le document.
 
 Créer une **company distincte** pour l'entreprise de cette personne si elle n'a pas déjà de proposition company.
+
+### Statut de présence — PREUVE-FIRST
+
+Un compte-rendu qui affirme « Présent » engage la vérité du document. On ne fabrique donc JAMAIS une présence : statusAtDocumentDate se déduit d'une PREUVE documentaire explicite de participation à CE rendez-vous, jamais d'un rôle ou d'une mention.
+
+**"présent" — UNIQUEMENT sur preuve explicite :**
+- une case cochée (X, ✓, •) dans une colonne « Présent » d'un tableau d'intervenants / d'émargement (les PV français ont souvent des colonnes de statut du type « I P AE AN D » = Invité · Présent · Absent excusé · Absent non-excusé · Diffusion) ;
+- OU une rubrique « Présents : … » / « Étaient présents : … » qui nomme la personne ;
+- OU la mention explicite « présent(e) » à côté de son nom.
+
+**Sinon → "inconnu". Ne jamais émettre "présent" pour :**
+- un « Interlocuteur », « Contact », « Client », « Responsable … », « RUS », un rôle (MOE, AMO, maître d'ouvrage, titulaire, sous-traitant) ;
+- une personne seulement nommée au cartouche / en-tête / liste de contacts ;
+- une appartenance à une entreprise ou un simple e-mail/téléphone.
+Ces éléments identifient la personne (on la crée en **person**), mais ne prouvent PAS sa présence.
+
+**Autres statuts, sur preuve du même type :**
+- case « Absent excusé » (AE) cochée, ou « excusé(e) » → "absent excusé" ;
+- case « Absent non excusé » (AN) cochée, ou « absent » → "absent non excusé" ;
+- case « Invité/Convoqué » (I) cochée SANS « Présent » → "invité" ;
+- colonne/rubrique « Diffusion » (D), « Destinataire », « Pour diffusion » → "diffusion uniquement".
+
+En cas de doute sur la colonne cochée ou d'ambiguïté → "inconnu". L'absence de preuve n'est jamais une présence.
 
 Pour chaque **entreprise ou organisme** identifiable avec un rôle sur ce chantier :
 - créer une proposition **company** ;
