@@ -2,16 +2,22 @@
  * CLI d'administration — import historique par lot, piloté chantier par chantier.
  *
  * Réutilise UNIQUEMENT la logique métier existante :
- *   lib/batch/historical-import-inventory.ts  (BATCH-1 : inventaire, lecture seule)
- *   lib/batch/historical-import-batch.ts      (BATCH-0 : exécution, mêmes primitives que l'UI)
+ *   lib/batch/historical-import-inventory.ts      (BATCH-1 : inventaire, lecture seule)
+ *   lib/batch/historical-import-registration.ts   (BATCH-2 : enregistrement des PDF absents)
+ *   lib/batch/historical-import-batch.ts           (BATCH-0 : exécution, mêmes primitives que l'UI)
  * Aucun appel HTTP/curl, aucune Server Action, aucune mutation DB dupliquée ici.
  *
  * Usage :
  *   npx tsx scripts/run-historical-import-batch.ts --folder <dossier> --site <siteId> --inventory-only
+ *   npx tsx scripts/run-historical-import-batch.ts --folder <dossier> --site <siteId> --user <userId> --register-missing
  *   npx tsx scripts/run-historical-import-batch.ts --folder <dossier> --site <siteId> --user <userId> --execute
  *
  * --inventory-only (défaut si aucun mode n'est passé) : scanne, compare à la base,
  *   trie chronologiquement, classe chaque PDF. AUCUNE écriture, AUCUN appel LLM.
+ * --register-missing : n'agit QUE sur les documents classés MISSING_DOCUMENT_REGISTRATION
+ *   (upload + ligne `documents` + lien chantier, idempotent par hash). Ne matérialise
+ *   jamais de visite, ne touche jamais un QUARANTINE_*. Une fois enregistrés, ces
+ *   documents redeviennent des PDF ordinaires pour un futur --inventory-only/--execute.
  * --execute : ne traite QUE les documents déjà en base et déjà classés IMPORT ou
  *   RESUME_* (jamais QUARANTINE_*, jamais MISSING_DOCUMENT_REGISTRATION — ces
  *   derniers ne créent aucune ligne `documents` ici, cf. doctrine BATCH-1).
@@ -40,6 +46,7 @@ import {
   buildHistoricalCorpusInventory,
   type HistoricalInventoryEntry,
 } from '@/lib/batch/historical-import-inventory'
+import { registerMissingHistoricalDocument } from '@/lib/batch/historical-import-registration'
 import { runHistoricalImportBatch } from '@/lib/batch/historical-import-batch'
 
 function argValue(flag: string): string | null {
@@ -51,13 +58,18 @@ const folder = argValue('--folder')
 const siteId = argValue('--site')
 const userId = argValue('--user')
 const execute = process.argv.includes('--execute')
+const registerMissing = process.argv.includes('--register-missing')
 
 if (!folder || !siteId) {
-  console.error('Usage : npx tsx scripts/run-historical-import-batch.ts --folder <dossier> --site <siteId> [--user <userId>] [--inventory-only|--execute]')
+  console.error('Usage : npx tsx scripts/run-historical-import-batch.ts --folder <dossier> --site <siteId> [--user <userId>] [--inventory-only|--register-missing|--execute]')
   process.exit(1)
 }
 if (execute && !userId) {
   console.error('--execute requiert --user <userId> (created_by/reviewed_by tracé sur les objets créés).')
+  process.exit(1)
+}
+if (registerMissing && !userId) {
+  console.error('--register-missing requiert --user <userId> (created_by tracé sur les documents créés).')
   process.exit(1)
 }
 
@@ -143,6 +155,26 @@ async function main() {
   printInventoryTable(entries)
   printIdempotenceSection(entries)
   printFinalReport(entries)
+
+  if (registerMissing) {
+    const missing = entries.filter((e) => e.klass === 'MISSING_DOCUMENT_REGISTRATION')
+    console.log(`\n=== --register-missing === ${missing.length} document(s) à enregistrer (upload + \`documents\` + lien chantier, aucune matérialisation).`)
+    for (const e of missing) {
+      try {
+        const result = await registerMissingHistoricalDocument({
+          filePath: e.filePath,
+          siteId: siteId as string,
+          createdBy: userId as string,
+          effectiveDate: e.ambiguousDate ? null : e.detectedDate,
+        })
+        console.log(`  - ${e.fileName} → ${result.documentId} (${result.status})`)
+      } catch (err) {
+        console.error(`  - ${e.fileName} → ÉCHEC : ${err instanceof Error ? err.message : err}`)
+      }
+    }
+    console.log('\nTerminé. Relancer --inventory-only pour confirmer la nouvelle classification.')
+    return
+  }
 
   if (!execute) return
 
