@@ -361,10 +361,18 @@ export async function resolveSubjectAndAttachCanonicalBusinessObject(params: {
   entityId: string
   label: string
   date: string | null
+  /** Point 7B-2 — identité canonique EXPLICITE déjà connue (ex. proposition promue
+   *  qui porte `canonical_subject_id`). Fournie : on la pose TELLE QUELLE, sans
+   *  jamais re-résoudre par libellé (aucun matching lexical ne peut la remplacer).
+   *  Omise/`null` : comportement inchangé (résolution par libellé + bootstrap). On
+   *  n'invente jamais une identité absente. */
+  knownCanonicalSubjectId?: string | null
 }): Promise<void> {
   const { siteId, entityType, entityId, label, date } = params
   try {
-    const canonicalSubjectId = await resolveManualObjectCanonicalSubjectId(siteId, entityType, entityId, label)
+    const canonicalSubjectId = params.knownCanonicalSubjectId
+      ? params.knownCanonicalSubjectId
+      : await resolveManualObjectCanonicalSubjectId(siteId, entityType, entityId, label)
     if (!canonicalSubjectId) return
 
     const sb = createAdminClient()

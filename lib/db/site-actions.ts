@@ -44,6 +44,10 @@ export async function createSiteAction(input: {
   kind?: 'one_shot' | 'deadline' | 'recurring_until_done'
   /** Capture d'origine (mig 183) — traçabilité « d'où vient cette action ? ». */
   source_capture_id?: string | null
+  /** Point 7B-2 — identité canonique EXPLICITE (proposition promue portant déjà
+   *  `canonical_subject_id`). Fournie : posée telle quelle, jamais re-résolue par
+   *  libellé. Omise : résolution par libellé inchangée. Jamais inventée. */
+  canonicalSubjectId?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -61,6 +65,9 @@ export async function createSiteAction(input: {
       due_date_status: input.due_date_status ?? null,
       reserve_id: input.reserve_id ?? null,
       subject_id: input.subject_id ?? null,
+      // 7B-2 : l'identité explicite est posée atomiquement à la création (jamais
+      // écrasable ensuite par une devinette de libellé).
+      canonical_subject_id: input.canonicalSubjectId ?? null,
       created_by: input.created_by,
       created_from: input.created_from ?? null,
       kind: input.kind ?? 'one_shot',
@@ -75,12 +82,14 @@ export async function createSiteAction(input: {
   // quel que soit l'appelant, rafraîchit automatiquement toutes les vues du chantier.
   invalidateSiteProjection(input.site_id)
   // P1-C2B.2 : rattachement sujet canonique + canonical_business_object, best-effort/non bloquant.
+  // 7B-2 : si l'identité est déjà connue (proposition), on la propage sans libellé.
   void resolveSubjectAndAttachCanonicalBusinessObject({
     siteId: input.site_id,
     entityType: 'site_action',
     entityId: actionId,
     label: input.title,
     date: input.due_date ?? null,
+    knownCanonicalSubjectId: input.canonicalSubjectId ?? null,
   })
   return actionId
 }

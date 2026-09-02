@@ -857,6 +857,10 @@ export async function promoteProposal(params: {
       assigned_to: payload.owner || null,
       created_by: params.userId,
       created_from: 'visit_debrief_ai',
+      // 7B-2 : l'identité canonique déjà résolue sur la proposition est propagée
+      // telle quelle — jamais re-devinée par libellé. `null` si la proposition
+      // n'en a pas (on n'invente rien).
+      canonicalSubjectId: p.canonical_subject_id ?? null,
     })
     result = { objectType: 'site_action', objectId: id }
   } else if (p.kind === 'deadline') {
@@ -877,6 +881,8 @@ export async function promoteProposal(params: {
       due_date: due,
       created_by: params.userId,
       created_from: 'visit_debrief_ai',
+      // 7B-2 : identité canonique de la proposition propagée telle quelle (jamais libellé).
+      canonicalSubjectId: p.canonical_subject_id ?? null,
     })
     result = { objectType: 'site_deadline', objectId: id }
   } else if (p.kind === 'decision') {

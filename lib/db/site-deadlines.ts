@@ -73,6 +73,10 @@ export async function createSiteDeadline(input: {
   created_from?: string | null
   /** Clé d'idempotence Copilote (P4-E2) — même mécanique que site_watchpoints.copilot_proposal_id, mig 332. */
   copilot_proposal_id?: string | null
+  /** Point 7B-2 — identité canonique EXPLICITE (proposition promue). Posée telle
+   *  quelle, jamais re-résolue par libellé. Omise : comportement inchangé (pour une
+   *  échéance, pas de bootstrap de sujet). Jamais inventée. */
+  canonicalSubjectId?: string | null
 }): Promise<string> {
   // La date décide de l'état : datée → elle vit dans le planning ; sinon elle
   // attend une décision. Aucun autre chemin — l'état ne se contredit pas avec la donnée.
@@ -87,6 +91,8 @@ export async function createSiteDeadline(input: {
       constraint_text: input.constraint_text?.trim() || null,
       due_date: input.due_date ?? null,
       status,
+      // 7B-2 : identité explicite posée atomiquement (jamais écrasée par un libellé).
+      canonical_subject_id: input.canonicalSubjectId ?? null,
       created_by: input.created_by ?? null,
       created_from: input.created_from ?? 'manual',
       copilot_proposal_id: input.copilot_proposal_id ?? null,
@@ -98,12 +104,14 @@ export async function createSiteDeadline(input: {
   invalidateSiteProjection(input.site_id)
   // P1-C2B.2 : rattachement sujet canonique + canonical_business_object, best-effort/non bloquant
   // (mig 346, comble l'absence de résolution qui n'existait auparavant que dans confirmSiteDeadline).
+  // 7B-2 : si l'identité est déjà connue (proposition), on la propage sans libellé.
   void resolveSubjectAndAttachCanonicalBusinessObject({
     siteId: input.site_id,
     entityType: 'site_deadline',
     entityId: deadlineId,
     label: input.title,
     date: input.due_date ?? null,
+    knownCanonicalSubjectId: input.canonicalSubjectId ?? null,
   })
   return deadlineId
 }
