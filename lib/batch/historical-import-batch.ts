@@ -69,7 +69,7 @@ export interface HistoricalBatchOptions {
   postProcessingBackoffMs?: number
 }
 
-const READY_STATUSES = new Set(['ready_for_review', 'partially_materialized', 'materialized'])
+export const READY_STATUSES = new Set(['ready_for_review', 'partially_materialized', 'materialized'])
 
 /**
  * Traite une liste de documents DANS L'ORDRE fourni par l'appelant (chronologique).
