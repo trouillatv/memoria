@@ -110,10 +110,53 @@ export type StateStatusReason = 'univocal' | 'missing' | 'conflict'
 export function deriveOccurrenceStateStatus(
   statuses: (string | null)[],
 ): { status: PvState; reason: StateStatusReason } {
+  return deriveOccurrenceFromPvStates(statuses.map(documentStatusToPvState))
+}
+
+/**
+ * E2 — projection d'un VERDICT NORMALISÉ (couche E1, `source_payload.verdict`)
+ * vers le tri-state longitudinal. Ne projette QUE ce qui constitue une PREUVE
+ * D'ÉTAT exploitable ; tout le reste reste `unknown` (le carry-forward du moteur
+ * longitudinal protège alors le dernier état prouvé).
+ *
+ * Doctrine (Vincent, E2) :
+ *   lifecycle_done                                   → resolved (clôture prouvée)
+ *   lifecycle_open | in_progress | planned           → open (tâche non soldée)
+ *   compliant_negative (NC)                          → open (problème prouvé actif)
+ *   unverified | not_applicable | pending_control    → unknown (aucune preuve exploitable)
+ *   compliant_positive (« conforme »)                → unknown — STRICT : une conformité
+ *     positive datée n'est PAS une preuve de tâche terminée ; ne jamais recréer le
+ *     raccourci « conforme = résolu » (question renvoyée à E4). Évite aussi un faux
+ *     resolved→open si le sujet redevient NC plus tard.
+ *   null / valeur non reconnue                       → unknown
+ */
+export function verdictNormalizedToPvState(normalized: string | null | undefined): PvState {
+  switch (normalized) {
+    case 'lifecycle_done':
+      return 'resolved'
+    case 'lifecycle_open':
+    case 'lifecycle_in_progress':
+    case 'lifecycle_planned':
+    case 'compliant_negative':
+      return 'open'
+    // unverified | not_applicable | pending_control | compliant_positive | null → unknown
+    default:
+      return 'unknown'
+  }
+}
+
+/**
+ * Cœur d'agrégation conflit-aware d'une occurrence, sur des PvState déjà résolus.
+ * Même doctrine que `deriveOccurrenceStateStatus` (resolved ET open → unknown
+ * conflict, jamais masqué), mais indépendante de la SOURCE du PvState (verdict
+ * normalisé E2 ou document_status legacy).
+ */
+export function deriveOccurrenceFromPvStates(
+  pvStates: PvState[],
+): { status: PvState; reason: StateStatusReason } {
   let hasResolved = false
   let hasOpen = false
-  for (const s of statuses) {
-    const st = documentStatusToPvState(s)
+  for (const st of pvStates) {
     if (st === 'resolved') hasResolved = true
     else if (st === 'open') hasOpen = true
   }

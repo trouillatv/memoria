@@ -19,7 +19,7 @@ import { makeWinnerResolver, type SubjectRow } from '@/lib/db/canonical-subject-
 import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
 import { deriveStateKey, deriveGroupThematicCategory } from '@/lib/db/occurrence-state-key'
 import { extractEventDate } from '@/lib/documents/event-date'
-import { deriveOccurrenceStateStatus } from '@/lib/documents/subject-state'
+import { deriveOccurrenceFromPvStates, verdictNormalizedToPvState, documentStatusToPvState, type PvState } from '@/lib/documents/subject-state'
 
 // Familles qui portent PAR NATURE un état/événement daté d'un sujet durable (toujours éligibles).
 // (vigilance/reservation conservés par compatibilité — ce sont des noms de kind jamais émis comme
@@ -90,6 +90,20 @@ interface ProposalRow {
   document_status: string | null
   source_page: number | null
   thematic_category: string | null
+  // E2 : verdict normalisé E1 (source_payload.verdict) — préféré à document_status
+  // pour la projection d'état quand il est présent (nouvelles extractions).
+  source_payload: { verdict?: { normalized?: string | null } | null } | null
+}
+
+/**
+ * E2 — PvState d'UNE proposition. Préfère le verdict normalisé E1
+ * (`source_payload.verdict`) dès qu'il est présent ; à défaut (lignes d'avant E1,
+ * jamais rejouées ici — le backfill est E3) retombe sur `document_status`.
+ */
+function proposalPvState(p: ProposalRow): PvState {
+  const v = p.source_payload?.verdict
+  if (v && typeof v === 'object') return verdictNormalizedToPvState(v.normalized ?? null)
+  return documentStatusToPvState(p.document_status)
 }
 
 interface OccurrenceToCreate {
@@ -121,7 +135,7 @@ export async function ensureHistoricalPdfOccurrences(params: {
   // 1. Charger les propositions éligibles du run avec leur subject_thread_id
   const { data: proposals, error: propErr } = await supabase
     .from('document_extraction_proposal')
-    .select('id, proposal_family, label, description, source_excerpt, subject_thread_id, document_status, source_page, thematic_category')
+    .select('id, proposal_family, label, description, source_excerpt, subject_thread_id, document_status, source_page, thematic_category, source_payload')
     .eq('extraction_run_id', runId)
     // P3-B1 : on récupère aussi les observations ; le garde de signification tranche ensuite.
     .in('proposal_family', [...STATE_BEARING_FAMILIES, 'observation'])
@@ -259,13 +273,14 @@ export async function ensureHistoricalPdfOccurrences(params: {
       ? null
       : extractEventDate(group.proposals.flatMap((p) => [p.label, p.description, p.source_excerpt])).iso
 
-    // R-1 : tri-state longitudinal établi AU NIVEAU DU GROUPE state_key (pas du PV). Conflit interne
+    // R-1 + E2 : tri-state longitudinal établi AU NIVEAU DU GROUPE state_key (pas du PV), à partir du
+    // VERDICT NORMALISÉ E1 (fallback document_status pour les lignes d'avant E1). Conflit interne
     // (resolved ET open) → 'unknown', jamais masqué. On instrumente les conflits pour diagnostic.
     const { status: stateStatus, reason: stateReason } =
-      deriveOccurrenceStateStatus(group.proposals.map((p) => p.document_status))
+      deriveOccurrenceFromPvStates(group.proposals.map(proposalPvState))
     if (stateReason === 'conflict') {
       console.warn(`[historical-occ] CONFLIT statut → unknown | run=${runId} cs=${group.canonical_subject_id} `
-        + `state_key=${group.state_key} statuts=[${group.proposals.map((p) => p.document_status ?? 'null').join(',')}]`)
+        + `state_key=${group.state_key} pvStates=[${group.proposals.map((p) => proposalPvState(p)).join(',')}]`)
     }
 
     // R-1 : thematic_category classe le FAIT (instable au niveau sujet) → portée par l'occurrence.
