@@ -12,6 +12,7 @@ import {
   linkProposalEvidence,
 } from '@/lib/db/document-extractions'
 import { mapDocumentStatus, reconcileSubjectThreads } from './subject-reconciliation'
+import { normalizeDocumentVerdict } from './verdict-normalization'
 import { resolveOrphansSemantically } from './semantic-subject-resolution'
 import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
 import { embedDocumentChunks } from '@/lib/ai/embed-knowledge-chunks'
@@ -428,6 +429,14 @@ export async function extractHistoricalPv(
     // 8. Persister les propositions
     const proposalInputs = llmResult.proposals.map((p) => {
       const payload = p.sourcePayload as { thematic_category?: string; statusAtDocumentDate?: string } | null | undefined
+      // E1 — capture ADDITIVE du verdict documentaire, séparé par axe et sans
+      // perte du brut. Purement métadonnée : ne touche NI document_status NI la
+      // projection d'état (state_status). Consommée plus tard par E2.
+      const verdict = normalizeDocumentVerdict(payload?.statusAtDocumentDate, {
+        family: p.family,
+        thematicCategory: payload?.thematic_category ?? null,
+        documentType: d.document_type,
+      })
       return {
         organization_id: d.organization_id,
         document_id: documentId,
@@ -437,8 +446,9 @@ export async function extractHistoricalPv(
         description: p.description ?? null,
         source_page: p.sourcePage ?? null,
         source_excerpt: p.sourceExcerpt ?? null,
-        source_payload: (payload as Record<string, unknown> | null | undefined) ?? null,
+        source_payload: { ...(payload ?? {}), verdict } as Record<string, unknown>,
         thematic_category: payload?.thematic_category ?? null,
+        // INCHANGÉ (E1 ne projette pas) — la refonte de projection est E2.
         document_status: mapDocumentStatus(payload?.statusAtDocumentDate, p.family),
       }
     })
