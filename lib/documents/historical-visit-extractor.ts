@@ -173,6 +173,8 @@ Ne jamais créer de proposition pour :
 - Procédures de réunion : convocation, ordre du jour, tour de table, date de la prochaine réunion sauf si décision critique
 - Titres de plans ou documents sans état
 
+**Exception — clause normative de contexte** : une clause réglementaire ou chiffrée générique (distance maximale, largeur ERP, valeur RVRAT…) directement nécessaire pour comprendre un constat ou une prescription retenue peut être **conservée dans le sourceExcerpt de cette proposition**, comme preuve contextuelle. Elle ne devient JAMAIS un objet métier autonome (pas de knowledge_fact/observation séparé pour la règle elle-même), et ne justifie pas de fusionner deux sujets métier distincts qui se trouvent proches de cette clause dans le texte. **INVARIANT — la norme ne remplace jamais le concret** : lorsqu'une clause normative est citée EN MÊME TEMPS qu'un constat ou une action opérationnelle appliqués à ce chantier (ex. « la norme impose 2 m ; l'espace mesuré est de 1,20 m, reprendre le passage »), le constat/l'action concret reste **obligatoirement** extrait comme **observation**/**action**/**reservation** selon sa nature — la clause ne fait qu'enrichir son sourceExcerpt ou sa description. Ne transforme JAMAIS un tel passage en un knowledge_fact isolé portant uniquement la règle générique : si un knowledge_fact est créé pour capter la règle comme connaissance utile, il s'ajoute au constat/à l'action concrets, il ne s'y substitue jamais. Seule une clause normative citée SANS aucune application ou constat concret à ce chantier reste soumise au filtrage habituel (Exclusions absolues ci-dessus).
+
 ---
 
 ## DEUXIÈME ÉTAPE — Doctrine d'extraction
@@ -182,8 +184,10 @@ Pour chaque information retenue après la sélection :
 1. Ne jamais inventer des données absentes du texte — extraction pure, zéro inférence.
 2. La FAMILLE se décide sur la NATURE de l'énoncé, JAMAIS sur la présence d'un responsable ou d'une date : un ÉTAT constaté → **observation** ; une CHOSE À FAIRE explicitement demandée (prescription, consigne, préconisation, verbe d'action à réaliser : vérifier, transmettre, mettre en place, reprendre, organiser, modifier, récupérer, installer, déplacer, évacuer, sécuriser, former…) → **action**, même sans responsable ni date. Ne jamais fabriquer une action à partir d'un simple constat, ni ranger une prescription explicite en observation.
 3. Conserver les formulations incertaines (« à vérifier », « à confirmer », « semble ») dans le label ou la description.
+3c. Une prescription assortie d'une CONDITION ou d'une MODALITÉ explicite (« si… », « non obligatoire », « le cas échéant », « à envisager », « option », « recommandé sans obligation », « décision à prendre ») doit conserver cette nuance jusque dans le **label** lui-même, pas seulement dans la description — ne jamais reformuler une prescription conditionnelle ou optionnelle en obligation ferme (ex. ne pas transformer « Prévoir un désenfumage naturel si la DM n'excède pas 30 m (non obligatoire) » en « Prévoir un désenfumage naturel » sans la réserve). Si le document présente explicitement un choix ou une décision à prendre plutôt qu'une prescription déjà tranchée → utiliser la famille **decision** existante plutôt qu'une action ferme ; ne jamais créer de nouvelle famille pour cela.
 3b. Lorsque le texte source semble corrompu ou ambigu (coquille, OCR dégradé, formulation incohérente), ne pas affirmer plus que ce que le document permet. Formuler avec prudence : "Accès plateforme — indiqué comme réalisé dans le PV" plutôt que "Accès plateforme réalisé".
 4. Distinguer les points ouverts et les points résolus : un travail décrit au passé ou comme terminé (« déblais terminés », « purge exécutée ») → **knowledge_fact** avec statusAtDocumentDate='réalisé', jamais une action ou observation.
+4b. Une valeur lue dans une colonne intitulée « Levées », « Suite à donner », « État » ou similaire ne prouve JAMAIS à elle seule la clôture d'une réserve ou d'une action — raisonne sur le SENS de la cellule, jamais sur le nom de la colonne. Une cellule de la colonne « Levées » peut tout aussi bien indiquer qu'une réserve reste À LEVER, est partiellement levée, ou reste ouverte : dans ce cas, la réserve/action reste ouverte et ne devient pas "réalisé"/"levé".
 5. Citer la page exacte (sourcePage) — utilise les marqueurs [[page N]].
 6. Ne pas déduire des intentions — se limiter aux faits et décisions explicitement mentionnés.
 7. Pour une réservation : conserver le libellé exact du PV, préciser l'état si mentionné (ouvert/levé/en cours).
@@ -272,11 +276,19 @@ opposés conforme / non conforme) restent DEUX propositions. En cas de DOUTE, **
 conserver deux candidats incertains est récupérable, fusionner deux vrais sujets distincts est
 irréversible.
 
+**État terminal intra-document** : si le MÊME sujet métier apparaît d'abord comme ouvert (constat,
+action à faire, réserve) PUIS, plus loin dans le MÊME document, comme explicitement résolu (réalisé,
+fait, OK, RAS, abandonné, non-retenu) — l'état terminal l'emporte pour la proposition consolidée :
+statusAtDocumentDate reflète la résolution, avec les preuves des deux mentions. Cette consolidation
+reste CONSERVATRICE : ne l'applique que si les deux mentions désignent sans ambiguïté le même sujet
+suivable ; ne fusionne jamais deux sous-items différents au seul motif qu'ils partagent la même
+cellule de tableau ou le même thème.
+
 ---
 
 ## Familles de propositions
 
-- **reservation** : réserve de chantier (défaut, malfaçon, non-conformité) — ouverture, suivi ou levée. Lorsque l'entreprise chargée de lever la réserve est explicitement nommée et correspond à une proposition 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom.
+- **reservation** : réserve de chantier (défaut, malfaçon, non-conformité) — ouverture, suivi ou levée. Une proposition relève de **reservation** uniquement si le document l'identifie EXPLICITEMENT comme telle : le mot « réserve »/« réservation » est employé, OU l'élément provient d'un rapport de contrôle/organisme agréé (contrôle technique, vérification réglementaire), OU le texte la qualifie explicitement « à lever »/« levée ». **La répétition d'une même non-conformité sur plusieurs visites n'est JAMAIS, à elle seule, un critère de classement en reservation** : un rappel qui revient (« rappel 1 », « rappel 2 »…) sans être qualifié de réserve reste une **observation** (le constat qui persiste) ou une **action** (la prescription reformulée), selon sa nature — la récurrence renforce éventuellement relevanceScore, elle ne change jamais la famille. Lorsque l'entreprise chargée de lever la réserve est explicitement nommée et correspond à une proposition 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom.
 - **action** : une CHOSE À FAIRE explicitement demandée par le document — prescription, consigne, préconisation, item d'une liste « actions à réaliser / à prioriser », verbe d'action à l'infinitif ou à l'impératif (vérifier, transmettre, mettre en place, reprendre, organiser, modifier, récupérer, installer, déplacer, évacuer, sécuriser, former…). Une action reste une action **même sans responsable ni date**, et **quelle que soit la colonne ou la section** où elle figure (« Préconisations », « Remarques », « Conclusions », ou une phrase descriptive). Le responsable et la date sont des enrichissements facultatifs (cf. doctrine §8), jamais une condition d'existence. Lorsque le responsable nommé correspond à une proposition 'person' ou 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom : soit la clé existe dans les propositions du run, soit le champ est absent. Pour la famille action : renseigner sourcePayload.statusAtDocumentDate uniquement si l'état de la tâche est explicitement établi par le document. Utiliser le vocabulaire canonique : "en cours" pour une action déclarée en progression, "ouvert" pour une action non soldée. Ne jamais émettre "à faire" comme valeur. N'émettre un état terminal tel que "réalisé" que si la tâche est entièrement soldée, sans réserve, attente ou reprise associée. "réalisé … non conforme", "réalisé … reprise à faire" ou "réalisé … en attente" ne prouvent jamais la résolution — laisser absent. Un VISA ou visa de plan ne prouve jamais à lui seul l'achèvement de la tâche physique.
 - **decision** : décision structurante prise lors de la visite. Lorsque le décisionnaire nommé correspond à une proposition 'person' ou 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom : soit la clé existe dans les propositions du run, soit le champ est absent.
 - **observation** : un ÉTAT constaté, une alerte ou un signal spécifique à ce chantier — ce que le document DÉCRIT, pas ce qu'il demande de faire. Ex. « CTA non relié au SSI », « Extincteur manquant », « Ventilation non testée », « Porte CF bloquée ouverte ». Inclut les formulations d'alerte « Attention à [X] », « Risque de [Y] » sans prescription associée. Si le passage DEMANDE en outre quelque chose (« … à vérifier », « reprendre … »), produire EN PLUS une proposition **action** (cf. « Constat + action dans un même passage ») — ne jamais ranger la prescription en observation.
@@ -293,6 +305,8 @@ irréversible.
   - "general_knowledge" — autre information factuelle ne rentrant dans aucune catégorie ci-dessus
 
   **Consolidation des tableaux et listes répétitifs** : Lorsqu'un tableau ou une liste contient plusieurs lignes partageant (a) le même verdict/état, (b) le même type d'objet métier, (c) la même localisation, et dont aucune ne porte d'anomalie, de mesure signifiante, d'acteur, de date, d'échéance ou de conséquence propre → produire **un seul knowledge_fact de synthèse** (label : résumé du constat commun + nombre de lignes) et préserver toutes les lignes sources dans sourceExcerpt (verbatim, séparées par " · "). **Ne jamais consolider** des lignes qui diffèrent par : verdict ou polarité (une ligne anomalie/NC/hors-seuil n'est jamais fusionnée avec des lignes RAS/conforme), objet métier distinct, localisation métier structurante, acteur/responsable, date/échéance, valeur ou mesure porteuse de sens, ou conséquence/action associée. En cas de verdict commun mais localisations ou raisons distinctes → regrouper **par localisation ou par raison** (N knowledge_facts, N étant nettement inférieur au nombre de lignes). La simple répétition de "RAS / conforme / non examiné" ou d'un numéro de repère technique ne justifie jamais N knowledge_facts distincts.
+
+  **Ne jamais perdre un verdict documentaire structuré** : une ligne de tableau qui associe un **thème métier identifiable** (ex. "SSI", "Sprinkler", "Désenfumage", un repère technique nommé) à un **verdict** (C / NC / conforme / non conforme / RAS…) est une information réelle, même sans commentaire additionnel — sa brièveté ou son caractère générique en apparence ne justifie JAMAIS de l'omettre purement et simplement. Pour chaque ligne thème+verdict distincte : (1) si un autre objet du **même sujet** (même thème métier, même localisation) existe déjà parmi les propositions de ce document — observation, action, reservation ou knowledge_fact — n'en recrée pas un second : rattache la ligne comme evidenceKey supplémentaire ou intègre le verdict dans sa description/sourceExcerpt ; (2) sinon, crée une proposition dédiée (observation si l'état est simplement constaté, reservation si le document la qualifie explicitement de réserve) portant ce thème et ce verdict. **Distinction avec un libellé de colonne isolé** : un en-tête de colonne seul ("NC", "État", "C") sans thème métier associé n'est pas une information et ne devient jamais une proposition ni une evidenceKey — seule la paire thème+verdict compte comme constat.
 
 - **person** : personne physique identifiable (prénom + nom) mentionnée dans le cartouche ou la liste de présence. Renseigner dans description : "Fonction — Entreprise [— email / tel]". Dans sourcePayload, renseigner statusAtDocumentDate avec le statut de présence — **doctrine PREUVE-FIRST : la présence ne s'INFÈRE JAMAIS d'une simple mention, d'un rôle (RUS, MOE, AMO, maître d'ouvrage, titulaire), d'un statut d'« interlocuteur », de « contact », de « client », d'une appartenance à une entreprise ni d'une présence au cartouche/en-tête.** N'émettre "présent" que sur PREUVE EXPLICITE (cf. section « Statut de présence »). À défaut de preuve → "inconnu". Valeurs autorisées : "présent" / "invité" / "absent excusé" / "absent non excusé" / "diffusion uniquement" / "inconnu".
 - **company** : entreprise ou organisme cité avec un rôle sur ce chantier. Renseigner dans description : "Rôle chantier [— contact nommé]". Dans sourcePayload, renseigner **companyRole** (champ obligatoire) avec le rôle exact de l'entreprise. Une entreprise uniquement destinataire d'un document → "diffusion uniquement".
@@ -315,6 +329,29 @@ Pour chaque **personne physique identifiable** (prénom + nom) mentionnée dans 
 - sourcePayload.phoneNumber = numéro de téléphone (mobile ou fixe) de la personne si présent dans le document.
 
 Créer une **company distincte** pour l'entreprise de cette personne si elle n'a pas déjà de proposition company.
+
+### Fonction/rôle nommé (RUS, MOE, AMO, titulaire…) — PREUVE DIRECTE
+
+**INVARIANT** : un rôle explicite (RUS, MOE, AMO, maître d'ouvrage, titulaire, coordonnateur SPS…) ne peut
+apparaître dans la description ("Fonction") d'une personne que si la source relie **directement** ce
+rôle à **cette identité précise** — même ligne de tableau, même bloc de signature, ou une formulation
+explicite du type « [Nom], RUS » / « RUS : [Nom] ». Le nom, la présence au cartouche et la mention du
+rôle **ailleurs** dans le document (dans une autre ligne, un autre paragraphe, une autre visite) ne
+suffisent JAMAIS à attribuer ce rôle à cette personne.
+
+- **Jamais par déduction de liste** : si un document nomme plusieurs interlocuteurs et mentionne un rôle
+  une seule fois (ex. « RUS » cité une fois dans l'en-tête), n'attribue ce rôle qu'à la personne
+  explicitement associée dans la structure du document — ne le duplique jamais sur plusieurs personnes
+  au seul motif qu'elles apparaissent dans la même liste ou le même cartouche.
+- **Jamais par récurrence inter-documents** : le rôle tenu par une personne dans un document antérieur
+  ne se reporte pas automatiquement dans ce document si le lien n'y est pas explicite.
+- **En cas de doute ou de lien non direct** : soit conserve une fonction plus générique réellement
+  démontrée par le texte (ex. « Intervenant », « Représentant [Entreprise] »), soit laisse la fonction
+  absente — ne force jamais un rôle non prouvé. La personne reste créée (nom + entreprise si connus) ;
+  seule l'étiquette de rôle est omise.
+- Ceci est indépendant du statut de présence : un rôle mal attribué n'est PAS un problème de présence
+  (cf. section suivante, qui reste inchangée) — une personne peut avoir un rôle indéterminé tout en
+  ayant un statut de présence "présent" prouvé par ailleurs, et inversement.
 
 ### Statut de présence — PREUVE-FIRST
 
@@ -358,6 +395,20 @@ Destinataire d'un document uniquement, sans présence → "diffusion uniquement"
 
 Ne pas extraire : rôles génériques sans nom ("le maître d'ouvrage"), initiales seules, noms de famille sans prénom.
 
+### Ancrage documentaire obligatoire (company)
+
+**INVARIANT** : aucune proposition **company** ne peut être créée à partir d'une connaissance générale
+ou d'une inférence libre du modèle (ex. « ce type de chantier fait généralement intervenir tel
+organisme de contrôle », ou compléter un nom d'entreprise partiel par un nom connu du monde réel). Le
+nom retenu doit être **retrouvable explicitement dans le document** — soit littéralement, soit via une
+normalisation sûre et non ambiguë (casse, apostrophe/accent, espace, sigle explicité une fois dans le
+même document, ex. « UXELLO » = « Uxello »). N'applique **jamais** de rapprochement approximatif
+(fuzzy matching) entre un nom source imparfait et un nom d'entreprise que le modèle « sait » exister —
+si le texte source est tronqué, mal océrisé ou ambigu au point de ne pas identifier un nom précis, ne
+crée pas de proposition company plutôt que de deviner. Ceci s'applique à **chaque** document
+individuellement : ne réutilise jamais un nom d'entreprise vu dans un autre document ou une autre
+visite pour compléter un nom incomplet de celui-ci.
+
 ---
 
 ## Score de pertinence (champ relevanceScore dans sourcePayload — obligatoire)
@@ -394,6 +445,50 @@ Pour chaque page comportant une ou plusieurs photos :
    - Si la photo est générale (vue de chantier, engins, terrain) sans lien direct et spécifique à une proposition précise, ne l'associe à aucune proposition.
 
 3. Si aucune proposition existante ne correspond clairement à cette photo, crée la preuve seule (sans proposition liée). Ne crée pas de proposition pour décrire la photo.
+
+---
+
+## Rattachement des preuves — invariant obligatoire
+
+**INVARIANT** : toute preuve (evidenceKey ou sourceExcerpt) attachée à une proposition doit, **prise
+isolément**, **supporter directement cette proposition précise**. Ce n'est PAS un test lexical
+(présence d'un mot commun) : c'est un test de support sémantique direct — un lecteur qui ne verrait
+QUE cette preuve doit pouvoir reconnaître le sujet de la proposition.
+
+- **Jamais par position** : ne rattache jamais une preuve à une proposition parce qu'elle occupe le
+  même rang dans une liste numérotée ou un tableau — vérifie que le contenu de la preuve correspond
+  réellement au sujet, pas seulement son emplacement.
+- **Jamais hors-sujet** : une preuve qui ne mentionne ni le sujet ni son contexte immédiat n'est
+  rattachée à aucune proposition — laisse-la orpheline plutôt que de forcer un lien.
+- **Formule de clôture réutilisée** : une phrase récurrente de fin de visite ou de synthèse générale
+  (ex. « Merci de traiter ces points rapidement », rappel de procédure standard) ne devient une
+  evidenceKey d'une proposition précise que si son texte **cite explicitement le sujet** de cette
+  proposition — sinon elle n'est preuve d'aucune proposition individuelle.
+- **Citation complète et autonome** : un sourceExcerpt ou un text_excerpt doit rester compréhensible
+  seul, sans troncature qui lui ferait perdre l'information qui justifie la proposition — préfère une
+  citation légèrement plus longue mais complète à une coupure qui rend le sens ambigu. **Interdit** :
+  un extrait qui commence ou se termine par un renvoi non résolu (« voir ci-dessus », « cf. supra »,
+  « idem »), un connecteur orphelin (« + », « => », « et… »), ou un fragment coupé en milieu de phrase
+  qui ne se comprend pas hors contexte. N'invente rien et ne paraphrase pas : si le passage source est
+  elliptique, **étends la citation** aux mots qui précèdent ou suivent dans le document jusqu'à ce
+  qu'elle soit compréhensible seule, plutôt que de citer le fragment tel quel.
+- **Assertion atomique plutôt que paragraphe entier** : cite la ou les phrases qui portent
+  spécifiquement le sujet de la proposition, pas un paragraphe entier englobant plusieurs sujets —
+  un rattachement trop large dilue le support direct exigé par l'invariant ci-dessus.
+- **Fragments de tableau** : lorsque tu cites une ligne de tableau, n'inclus pas les libellés de
+  colonnes (« Thème : », « État : »…) dans le texte cité — cite le contenu de la cellule, pas son
+  en-tête.
+- **Une preuve peut soutenir plusieurs propositions** : ce n'est PAS interdit. Une même phrase peut
+  légitimement contenir à la fois un constat et une action corrective, et donc être une evidenceKey
+  valide pour une proposition \`observation\` ET une proposition \`action\` distinctes. La seule règle
+  est celle de l'invariant ci-dessus : le rattachement multiple n'est permis que si la preuve, prise
+  isolément, supporte réellement **chacune** des propositions auxquelles elle est liée — jamais par
+  commodité ou parce que les deux propositions se trouvent au même endroit du document.
+- **Provenance textuelle des familles decision / deadline / knowledge_fact** : lorsque le document
+  contient un passage textuel qui motive ces propositions (et pas seulement une photo ou un
+  page_snapshot), rattache au moins un **text_excerpt** en evidenceKey — la restriction du point
+  « Traitement des pages photographiques » ne concerne que les preuves visuelles (page_snapshot),
+  jamais les extraits de texte disponibles.
 
 ---
 

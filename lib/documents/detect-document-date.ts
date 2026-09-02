@@ -88,6 +88,20 @@ function extractRawHits(text: string): RawHit[] {
     const iso = toIso(Number(m[1]), Number(m[2]), Number(m[3]))
     if (iso) hits.push({ raw: m[0], iso, index: m.index })
   }
+  // « JJ et JJ/MM/AAAA » / « JJ, JJ/MM/AAAA » : énumération compacte de deux dates
+  // partageant le même mois/année (ex. « visite du 27 et 31/03/2025 »). Sans ce motif,
+  // seule la date complète (31/03/2025) serait candidate et « visite du » la classerait
+  // seule comme confirmée, alors que le document désigne deux dates distinctes.
+  const enumPair = /\b(\d{1,2})\s*(?:et|,)\s*((\d{1,2})[/.](\d{1,2})[/.](\d{2,4}))\b/g
+  for (let m; (m = enumPair.exec(text)); ) {
+    const month = Number(m[4])
+    const year = Number(m[5])
+    const iso1 = toIso(Number(m[1]), month, year)
+    const iso2 = toIso(Number(m[3]), month, year)
+    const offset2 = m.index + m[0].indexOf(m[2])
+    if (iso1) hits.push({ raw: m[1], iso: iso1, index: m.index })
+    if (iso2) hits.push({ raw: m[2], iso: iso2, index: offset2 })
+  }
   return hits.sort((a, b) => a.index - b.index)
 }
 
@@ -205,4 +219,31 @@ export function detectDocumentDate(text: string): DocumentDateDetection {
   if (neutral.length === 1) return { candidates, best: neutral[0], ambiguous: false }
   if (neutral.length > 1) return { candidates, best: null, ambiguous: true }
   return { candidates, best: null, ambiguous: false }
+}
+
+// ─── Signal « pas de visite terrain » ────────────────────────────────────────
+// Finding #1 (chantier fermeture extraction historique) : un document peut porter une
+// date crédible sans qu'aucune visite de site n'ait eu lieu ce jour-là (ex. point de
+// suivi en bureau). detectDocumentDate() ne juge jamais CE point — il détecte des dates,
+// pas des événements. Cette fonction est un signal SÉPARÉ et volontairement étroit :
+// STRICTEMENT GÉNÉRIQUE (aucun mot-clé de chantier précis), elle ne sert qu'à déclencher
+// un avertissement + une confirmation humaine avant matérialisation ; elle ne bloque rien
+// silencieusement et ne redéfinit jamais `origin` (invariant gelé, cf. lib/field/visit-origins.ts).
+
+export interface NonVisitSignal {
+  detected: boolean
+  evidence: string | null
+  page: number | null
+}
+
+export function detectNonVisitSignal(text: string): NonVisitSignal {
+  if (!text || !text.trim()) return { detected: false, evidence: null, page: null }
+  const re = /\b(?:pas|aucune|sans)\s+(?:de\s+|d')?visite\b(?:\s+(?:de\s+|du\s+)?(?:site|terrain|chantier))?/gi
+  const m = re.exec(text)
+  if (!m) return { detected: false, evidence: null, page: null }
+  const evidence = text
+    .slice(Math.max(0, m.index - 20), m.index + m[0].length + 60)
+    .replace(/\s+/g, ' ')
+    .trim()
+  return { detected: true, evidence, page: pageAt(text, m.index) }
 }

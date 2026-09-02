@@ -45,6 +45,22 @@ const MAX_CAPTIONS = 20
 // Concurrence des appels Gemini pour les légendes (I/O bound, pas CPU).
 const CAPTION_CONCURRENCY = 5
 
+// Familles visuellement observables : seules elles reçoivent un lien photo automatique.
+// Une photo générale n'est jamais une preuve de mémoire, d'échéance ou de décision.
+const PHOTO_LINKABLE_FAMILIES = new Set(['reservation', 'observation', 'action'])
+
+// Rattachement automatique preuve ↔ proposition — dépend du TYPE de preuve, pas de la famille :
+// - text_excerpt : toute famille peut recevoir une preuve textuelle proposée par le LLM
+//   (decision/deadline/knowledge_fact incluent une provenance textuelle explicite, cf. prompt).
+// - page_snapshot (photo) : restreint aux familles visuellement observables.
+export function shouldAutoLinkEvidence(
+  proposalFamily: string,
+  evidenceType: DocumentEvidenceType | undefined,
+): boolean {
+  if (evidenceType === 'page_snapshot') return PHOTO_LINKABLE_FAMILIES.has(proposalFamily)
+  return true
+}
+
 function log(event: string, documentId: string, extra?: Record<string, unknown>) {
   console.error(
     JSON.stringify({ service: 'extractHistoricalPv', event, documentId, ...extra, ts: new Date().toISOString() }),
@@ -460,16 +476,15 @@ export async function extractHistoricalPv(
     })
 
     // 9. Lier preuves ↔ propositions
-    // Seules les familles visuellement observables peuvent recevoir un lien photo automatique.
-    // knowledge_fact, deadline, decision, person, company → jamais de lien supports automatique.
-    const PHOTO_LINKABLE_FAMILIES = new Set(['reservation', 'observation', 'action'])
+    const evidenceTypeByKey = new Map(llmResult.evidence.map((ev) => [ev.temporaryKey, ev.evidenceType]))
     for (const proposal of llmResult.proposals) {
-      if (!PHOTO_LINKABLE_FAMILIES.has(proposal.family)) continue
       const proposalId = proposalKeyToId.get(proposal.temporaryKey)
       if (!proposalId) continue
       for (const evidenceKey of proposal.evidenceKeys) {
         const evidenceId = evidenceKeyToId.get(evidenceKey)
         if (!evidenceId) continue
+        const evType = evidenceTypeByKey.get(evidenceKey)
+        if (!shouldAutoLinkEvidence(proposal.family, evType)) continue
         await linkProposalEvidence(proposalId, evidenceId, 'supports' as DocumentEvidenceRelationType)
       }
     }

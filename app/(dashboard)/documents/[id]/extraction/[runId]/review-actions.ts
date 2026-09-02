@@ -11,6 +11,7 @@ import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materializ
 import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-import-post-processing'
 import { mergeReportAnalysis } from '@/lib/db/site-reports'
 import { projectHistoricalParticipants } from '@/lib/documents/historical-participant-eligibility'
+import { detectNonVisitSignal } from '@/lib/documents/detect-document-date'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -494,7 +495,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
 
   const { data: doc } = await admin
     .from('documents')
-    .select('effective_date')
+    .select('effective_date, extracted_text')
     .eq('id', documentId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -503,6 +504,15 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   const visitDate = (doc as { effective_date: string | null }).effective_date
   if (!visitDate) {
     return { ok: false, error: "La date du PV est requise. Modifiez le document pour renseigner la date d'effet." }
+  }
+
+  // Finding #1 — un document daté ne prouve pas une visite terrain. Si le texte du
+  // document indique explicitement l'absence de visite de site, exiger une confirmation
+  // humaine explicite (cf. CreateVisitBlock) avant de matérialiser cet objet comme visite.
+  const extractedText = (doc as { extracted_text: string | null }).extracted_text ?? ''
+  const nonVisitSignal = detectNonVisitSignal(extractedText)
+  if (nonVisitSignal.detected && fd.get('non_visit_acknowledged')?.toString() !== 'true') {
+    return { ok: false, error: "Ce document indique explicitement l'absence de visite de site — confirmez avant de créer la visite." }
   }
 
   let siteReportId: string
@@ -526,7 +536,7 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
   try {
     const { data: site } = await admin
       .from('sites')
-      .select('organization_id')
+      .select('organization_id, name, normalized_name')
       .eq('id', siteId)
       .maybeSingle()
     const orgId = (site as { organization_id: string } | null)?.organization_id
@@ -607,9 +617,28 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
       const stableKeyToCompanyId = new Map<string, string>()
       const stableKeyToContactId = new Map<string, string>()
 
+      // Finding #9 — l'établissement/le site lui-même ne doit jamais devenir une
+      // company/site_intervenant (rôle inventé « Établissement »/« Client »). Même garde
+      // que l'auto-link des acteurs orphelins (extract-historical-pv.ts), appliquée ici
+      // sur le chemin réel de matérialisation.
+      const { isSiteEstablishmentLabel } = await import('@/lib/db/site-identity-guard')
+      const siteAliases = [
+        (site as { name?: string | null } | null)?.name,
+        (site as { normalized_name?: string | null } | null)?.normalized_name,
+      ]
+
       for (const rawProp of companyPropsRaw ?? []) {
         const prop = rawProp as { id: string; label: string; reviewed_label: string | null; source_payload: SPCompany | null; stable_key: string | null }
         const companyName = prop.reviewed_label ?? prop.label
+
+        if (isSiteEstablishmentLabel(companyName, siteAliases)) {
+          await admin
+            .from('document_extraction_proposal')
+            .update({ review_status: 'rejected', reviewed_at: new Date().toISOString() })
+            .eq('id', prop.id)
+          continue
+        }
+
         const role = prop.source_payload?.companyRole ?? prop.source_payload?.statusAtDocumentDate ?? 'partenaire'
 
         const { data: existingCo } = await admin

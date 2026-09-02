@@ -1,8 +1,9 @@
 // Sprint 4B.1 — tests extraction structurée PV historiques
 //
-// 18 tests couvrant :
+// Tests couvrant :
 //   Section 1 (1-9) : validation Zod des schémas de sortie LLM
-//   Section 2 (10-18) : orchestrateur extractHistoricalPv (mocks complets)
+//   shouldAutoLinkEvidence : rattachement preuve ↔ proposition par type (GO point 1)
+//   Section 3 (10-20) : orchestrateur extractHistoricalPv (mocks complets)
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   extractHistoricalPvProposals: vi.fn(),
   createExtractionRun: vi.fn(),
   updateExtractionRunStatus: vi.fn(),
+  updateExtractionStage: vi.fn(),
   insertExtractionProposals: vi.fn(),
   insertExtractionEvidence: vi.fn(),
   linkProposalEvidence: vi.fn(),
@@ -30,16 +32,21 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          is: () => ({
-            maybySingle: mocks.maybySingle,
-            maybeSingle: mocks.maybySingle,
-          }),
-        }),
-      }),
-    }),
+    from: () => {
+      // Chaîne générique : select/eq/is/update se renvoient eux-mêmes. maybeSingle()
+      // résout via le mock partagé (documents / document_links). Le chaînage est aussi
+      // thenable pour supporter un `await ...update(...).eq(...)` sans terminal explicite
+      // (persistance extracted_text, promotion is_canonical) sans dupliquer le mock par table.
+      const chain: Record<string, unknown> = {}
+      chain.select = () => chain
+      chain.eq = () => chain
+      chain.is = () => chain
+      chain.update = () => chain
+      chain.maybySingle = mocks.maybySingle
+      chain.maybeSingle = mocks.maybySingle
+      chain.then = (resolve: (v: { data: null; error: null }) => void) => resolve({ data: null, error: null })
+      return chain
+    },
     storage: {
       from: () => ({
         download: mocks.storageDownload,
@@ -69,6 +76,7 @@ vi.mock('../../lib/documents/historical-visit-extractor', async (importActual) =
 vi.mock('@/lib/db/document-extractions', () => ({
   createExtractionRun: mocks.createExtractionRun,
   updateExtractionRunStatus: mocks.updateExtractionRunStatus,
+  updateExtractionStage: mocks.updateExtractionStage,
   insertExtractionProposals: mocks.insertExtractionProposals,
   insertExtractionEvidence: mocks.insertExtractionEvidence,
   linkProposalEvidence: mocks.linkProposalEvidence,
@@ -206,7 +214,37 @@ describe('LlmProposalSchema — cas métier', () => {
 
 // ─── Section 3 : Orchestrateur extractHistoricalPv ───────────────────────────
 
-const { extractHistoricalPv } = await import('../../lib/documents/extract-historical-pv')
+const { extractHistoricalPv, shouldAutoLinkEvidence } = await import('../../lib/documents/extract-historical-pv')
+
+// ─── GO point 1 : rattachement preuve ↔ proposition dépend du TYPE de preuve ─
+
+describe('shouldAutoLinkEvidence — GO point 1 (evidence formelle pour toutes les familles)', () => {
+  it('text_excerpt est toujours rattachable, quelle que soit la famille (decision/deadline/knowledge_fact inclus)', () => {
+    expect(shouldAutoLinkEvidence('decision', 'text_excerpt')).toBe(true)
+    expect(shouldAutoLinkEvidence('deadline', 'text_excerpt')).toBe(true)
+    expect(shouldAutoLinkEvidence('knowledge_fact', 'text_excerpt')).toBe(true)
+    expect(shouldAutoLinkEvidence('person', 'text_excerpt')).toBe(true)
+    expect(shouldAutoLinkEvidence('company', 'text_excerpt')).toBe(true)
+    expect(shouldAutoLinkEvidence('action', 'text_excerpt')).toBe(true)
+    expect(shouldAutoLinkEvidence('observation', 'text_excerpt')).toBe(true)
+    expect(shouldAutoLinkEvidence('reservation', 'text_excerpt')).toBe(true)
+  })
+
+  it('page_snapshot reste restreint aux familles visuellement observables', () => {
+    expect(shouldAutoLinkEvidence('reservation', 'page_snapshot')).toBe(true)
+    expect(shouldAutoLinkEvidence('observation', 'page_snapshot')).toBe(true)
+    expect(shouldAutoLinkEvidence('action', 'page_snapshot')).toBe(true)
+    expect(shouldAutoLinkEvidence('decision', 'page_snapshot')).toBe(false)
+    expect(shouldAutoLinkEvidence('deadline', 'page_snapshot')).toBe(false)
+    expect(shouldAutoLinkEvidence('knowledge_fact', 'page_snapshot')).toBe(false)
+    expect(shouldAutoLinkEvidence('person', 'page_snapshot')).toBe(false)
+    expect(shouldAutoLinkEvidence('company', 'page_snapshot')).toBe(false)
+  })
+
+  it('un evidenceType indéfini est traité comme rattachable par défaut (ne bloque pas silencieusement)', () => {
+    expect(shouldAutoLinkEvidence('decision', undefined)).toBe(true)
+  })
+})
 
 const FAKE_DOC_ID = 'doc-uuid-1234'
 const FAKE_ORG_ID = 'org-uuid-5678'
@@ -436,5 +474,83 @@ describe('extractHistoricalPv — orchestrateur', () => {
       'ev-id-1',
       'supports',
     )
+  })
+
+  it('19. [GO point 1] decision/deadline/knowledge_fact avec preuve texte → evidence réellement liée (régression corrigée)', async () => {
+    mocks.extractHistoricalPvProposals.mockResolvedValue({
+      proposals: [
+        {
+          temporaryKey: 'dec-1',
+          family: 'decision',
+          label: 'Décision de reprise des travaux',
+          sourcePage: 2,
+          sourceExcerpt: 'le maître d\'ouvrage décide la reprise des travaux le 15/05',
+          evidenceKeys: ['ev-text-1'],
+        },
+        {
+          temporaryKey: 'dl-1',
+          family: 'deadline',
+          label: 'Échéance de livraison des plans',
+          sourcePage: 3,
+          sourceExcerpt: 'les plans corrigés sont attendus avant le 30/06',
+          evidenceKeys: ['ev-text-2'],
+        },
+        {
+          temporaryKey: 'kf-1',
+          family: 'knowledge_fact',
+          label: 'Norme applicable au désenfumage',
+          sourcePage: 4,
+          sourceExcerpt: 'la norme impose un désenfumage naturel en cage d\'escalier',
+          evidenceKeys: ['ev-text-3', 'ev-snap-1'],
+        },
+      ],
+      evidence: [
+        { temporaryKey: 'ev-text-1', evidenceType: 'text_excerpt', sourcePage: 2, text: 'le maître d\'ouvrage décide la reprise des travaux le 15/05' },
+        { temporaryKey: 'ev-text-2', evidenceType: 'text_excerpt', sourcePage: 3, text: 'les plans corrigés sont attendus avant le 30/06' },
+        { temporaryKey: 'ev-text-3', evidenceType: 'text_excerpt', sourcePage: 4, text: 'la norme impose un désenfumage naturel en cage d\'escalier' },
+        { temporaryKey: 'ev-snap-1', evidenceType: 'page_snapshot', sourcePage: 4, caption: 'Photo de la cage d\'escalier' },
+      ],
+    })
+    mocks.insertExtractionProposals.mockResolvedValue(['prop-dec-1', 'prop-dl-1', 'prop-kf-1'])
+    mocks.insertExtractionEvidence.mockResolvedValue([
+      { id: 'ev-id-dec', storage_path: null },
+      { id: 'ev-id-dl', storage_path: null },
+      { id: 'ev-id-kf', storage_path: null },
+      { id: 'ev-id-snap', storage_path: null },
+    ])
+
+    await extractHistoricalPv(FAKE_DOC_ID)
+
+    expect(mocks.linkProposalEvidence).toHaveBeenCalledWith('prop-dec-1', 'ev-id-dec', 'supports')
+    expect(mocks.linkProposalEvidence).toHaveBeenCalledWith('prop-dl-1', 'ev-id-dl', 'supports')
+    expect(mocks.linkProposalEvidence).toHaveBeenCalledWith('prop-kf-1', 'ev-id-kf', 'supports')
+  })
+
+  it('20. [GO point 1] page_snapshot reste exclu pour knowledge_fact — aucune duplication artificielle d\'evidence', async () => {
+    mocks.extractHistoricalPvProposals.mockResolvedValue({
+      proposals: [{
+        temporaryKey: 'kf-1',
+        family: 'knowledge_fact',
+        label: 'Norme applicable au désenfumage',
+        sourcePage: 4,
+        sourceExcerpt: 'la norme impose un désenfumage naturel en cage d\'escalier',
+        evidenceKeys: ['ev-text-3', 'ev-snap-1'],
+      }],
+      evidence: [
+        { temporaryKey: 'ev-text-3', evidenceType: 'text_excerpt', sourcePage: 4, text: 'la norme impose un désenfumage naturel en cage d\'escalier' },
+        { temporaryKey: 'ev-snap-1', evidenceType: 'page_snapshot', sourcePage: 4, caption: 'Photo de la cage d\'escalier' },
+      ],
+    })
+    mocks.insertExtractionProposals.mockResolvedValue(['prop-kf-1'])
+    mocks.insertExtractionEvidence.mockResolvedValue([
+      { id: 'ev-id-kf', storage_path: null },
+      { id: 'ev-id-snap', storage_path: null },
+    ])
+
+    await extractHistoricalPv(FAKE_DOC_ID)
+
+    expect(mocks.linkProposalEvidence).toHaveBeenCalledTimes(1)
+    expect(mocks.linkProposalEvidence).toHaveBeenCalledWith('prop-kf-1', 'ev-id-kf', 'supports')
+    expect(mocks.linkProposalEvidence).not.toHaveBeenCalledWith('prop-kf-1', 'ev-id-snap', expect.anything())
   })
 })

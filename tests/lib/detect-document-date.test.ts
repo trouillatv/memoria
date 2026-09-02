@@ -4,7 +4,7 @@
 // au numéro de page ni à un template CAPSE/Bella Napoli.
 
 import { describe, it, expect } from 'vitest'
-import { detectDocumentDate } from '@/lib/documents/detect-document-date'
+import { detectDocumentDate, detectNonVisitSignal } from '@/lib/documents/detect-document-date'
 
 describe('detectDocumentDate — recette réelle Bella Napoli', () => {
   it('2024 : retient 19/07/2024 comme date de visite, pas une date interne', () => {
@@ -125,5 +125,64 @@ describe('detectDocumentDate — FORMAT-AGNOSTIQUE (aucune exception codée pour
     // La preuve de page est un bonus quand elle existe, jamais une condition.
     expect(detectDocumentDate(withPages).best?.page).toBe(1)
     expect(detectDocumentDate(withoutPages).best?.page).toBeNull()
+  })
+})
+
+// Finding #10 (chantier fermeture extraction historique) : « 27 et 31/03/2025 » ne doit pas
+// être réduit à la seule date complète (31/03) classée seule comme confirmée — les deux jours
+// désignent des visites distinctes partageant le même mois/année.
+describe('detectDocumentDate — énumération compacte « JJ et JJ/MM/AAAA » (finding #10)', () => {
+  it('« visite du 27 et 31/03/2025 » produit deux candidats distincts, tous deux visit_date', () => {
+    const r = detectDocumentDate('Visite du 27 et 31/03/2025 sur le chantier.')
+    const iso27 = r.candidates.find((c) => c.iso === '2025-03-27')
+    const iso31 = r.candidates.find((c) => c.iso === '2025-03-31')
+    expect(iso27).toBeDefined()
+    expect(iso31).toBeDefined()
+    expect(r.ambiguous).toBe(true)
+  })
+
+  it('supporte la virgule comme séparateur : « 27, 31/03/2025 »', () => {
+    const r = detectDocumentDate('Visite du 27, 31/03/2025.')
+    expect(r.candidates.some((c) => c.iso === '2025-03-27')).toBe(true)
+    expect(r.candidates.some((c) => c.iso === '2025-03-31')).toBe(true)
+  })
+
+  it('ne casse pas la détection d\'une date isolée classique', () => {
+    const r = detectDocumentDate('Visite du 31/03/2025.')
+    expect(r.best?.iso).toBe('2025-03-31')
+    expect(r.ambiguous).toBe(false)
+  })
+})
+
+// Finding #1 (chantier fermeture extraction historique) : un document daté ne prouve pas une
+// visite terrain — signal générique, STRICTEMENT séparé de detectDocumentDate, jamais un
+// blocage silencieux (l'humain confirme, cf. review-actions.ts createHistoricalVisitAction).
+describe('detectNonVisitSignal — finding #1', () => {
+  it('détecte « pas de visite de site » et fournit une preuve textuelle', () => {
+    const r = detectNonVisitSignal("Point de suivi en bureau, pas de visite de site ce jour.")
+    expect(r.detected).toBe(true)
+    expect(r.evidence).toContain('visite')
+  })
+
+  it('détecte les variantes « aucune visite » et « sans visite »', () => {
+    expect(detectNonVisitSignal('Aucune visite terrain effectuée.').detected).toBe(true)
+    expect(detectNonVisitSignal('Réunion tenue sans visite de chantier.').detected).toBe(true)
+  })
+
+  it('ne détecte rien sur un CR de visite terrain classique', () => {
+    const r = detectNonVisitSignal('Visite du 03/04/2026. Contrôle des installations électriques.')
+    expect(r.detected).toBe(false)
+    expect(r.evidence).toBeNull()
+  })
+
+  it('texte vide → aucun signal', () => {
+    expect(detectNonVisitSignal('').detected).toBe(false)
+    expect(detectNonVisitSignal('   ').detected).toBe(false)
+  })
+
+  it('remonte le numéro de page du signal quand des marqueurs existent', () => {
+    const r = detectNonVisitSignal('[[page 1]] En-tête.\n[[page 2]] Pas de visite de site aujourd\'hui.')
+    expect(r.detected).toBe(true)
+    expect(r.page).toBe(2)
   })
 })

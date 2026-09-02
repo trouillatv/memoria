@@ -1,10 +1,11 @@
 // Sprint 4C.1 — tests interface de revue des extractions historiques
 //
-// 18 tests :
+// 20 tests :
 //   Section 1 (1-5)  : requêtes de données et cas d'affichage
 //   Section 2 (6-10) : actions de revue (service reviewProposal)
 //   Section 3 (11-13): contrôle d'accès (Server Actions)
 //   Section 4 (14-18): getEffectiveProposal + computeReviewSummary
+//   Section 5 (19-20): GO point 11 — matérialisation, garde établissement
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getEffectiveProposal, computeReviewSummary } from '../../lib/documents/effective-proposal'
@@ -24,6 +25,12 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   getUserRoleById: vi.fn(),
   getOrgIdsOfUser: vi.fn(),
+  after: vi.fn(),
+  materializeHistoricalVisit: vi.fn(),
+  detectNonVisitSignal: vi.fn(),
+  proposalUpdate: vi.fn(),
+  companiesInsert: vi.fn(),
+  siteIntervenantsInsert: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -44,6 +51,23 @@ vi.mock('@/lib/db/users', () => ({
 
 vi.mock('@/lib/auth/memberships', () => ({
   getOrgIdsOfUser: mocks.getOrgIdsOfUser,
+}))
+
+// `after()` réel ne s'exécute qu'en contexte de requête Next.js — hors de ce
+// contexte (comme en test), il lève. On le neutralise : createHistoricalVisitAction
+// ne doit jamais dépendre de son exécution pour retourner son résultat au client.
+vi.mock('next/server', () => ({
+  after: mocks.after,
+}))
+
+// GO point 11 — ne jamais matérialiser une vraie visite pour tester le chemin
+// de création. Le RPC/la persistance réelle sont hors périmètre de ce test.
+vi.mock('@/lib/db/historical-visit-materialization', () => ({
+  materializeHistoricalVisit: mocks.materializeHistoricalVisit,
+}))
+
+vi.mock('@/lib/documents/detect-document-date', () => ({
+  detectNonVisitSignal: mocks.detectNonVisitSignal,
 }))
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -280,6 +304,7 @@ import {
   acceptProposalAction,
   verifyReviewAccess,
   verifyProposalOwnership,
+  createHistoricalVisitAction,
 } from '../../app/(dashboard)/documents/[id]/extraction/[runId]/review-actions'
 
 describe('Section 3 — Contrôle d\'accès', () => {
@@ -382,5 +407,172 @@ describe('Section 4 — getEffectiveProposal', () => {
     expect(summary.edited).toBe(1)
     expect(summary.rejected).toBe(1)
     expect(summary.materialized).toBe(1)
+  })
+})
+
+// ─── Section 5 : GO point 11 — matérialisation & garde établissement ─────────
+//
+// Chemin réel de createHistoricalVisitAction. La visite n'est jamais réellement
+// matérialisée (materializeHistoricalVisit est mocké) : on prouve seulement que le
+// label du site courant, proposé comme company, n'entraîne aucune création
+// companies/site_intervenants — et, en contrôle positif, qu'une vraie entreprise
+// distincte du site suit bien le chemin de création normal.
+
+type FakeProposalTableRow = {
+  id: string
+  label: string
+  reviewed_label: string | null
+  description?: string | null
+  source_payload: unknown
+  stable_key: string | null
+}
+
+function buildChainWithThen(resolve: () => { data: unknown; error: unknown }) {
+  const chain: Record<string, unknown> = {}
+  const methods = ['select', 'eq', 'in', 'is', 'ilike', 'order', 'limit']
+  for (const m of methods) chain[m] = vi.fn().mockReturnValue(chain)
+  chain.update = vi.fn().mockReturnValue(chain)
+  chain.upsert = vi.fn().mockReturnValue(chain)
+  chain.maybeSingle = vi.fn().mockResolvedValue(resolve())
+  chain.single = vi.fn().mockResolvedValue(resolve())
+  chain.then = (onResolve: (v: { data: unknown; error: unknown }) => void) => onResolve(resolve())
+  return chain
+}
+
+function buildHistoricalVisitAdminMock(config: {
+  site: { organization_id: string; name: string; normalized_name: string }
+  companyProposals: FakeProposalTableRow[]
+}) {
+  return (table: string) => {
+    if (table === 'document_extraction_run') {
+      return buildChainWithThen(() => ({
+        data: { target_site_id: 'site-1', document_id: 'doc-1' },
+        error: null,
+      }))
+    }
+    if (table === 'documents') {
+      return buildChainWithThen(() => ({
+        data: { effective_date: '2025-03-27', extracted_text: 'Compte-rendu de visite du chantier.' },
+        error: null,
+      }))
+    }
+    if (table === 'sites') {
+      return buildChainWithThen(() => ({ data: config.site, error: null }))
+    }
+    if (table === 'document_extraction_proposal') {
+      const chain: Record<string, unknown> = {}
+      let family: string | null = null
+      chain.select = vi.fn().mockReturnValue(chain)
+      chain.in = vi.fn().mockReturnValue(chain)
+      chain.eq = vi.fn((field: string, value: string) => {
+        if (field === 'proposal_family') family = value
+        return chain
+      })
+      chain.update = vi.fn((patch: unknown) => {
+        mocks.proposalUpdate(patch)
+        return chain
+      })
+      chain.then = (onResolve: (v: { data: unknown; error: unknown }) => void) => {
+        if (family === 'company') return onResolve({ data: config.companyProposals, error: null })
+        return onResolve({ data: [], error: null })
+      }
+      return chain
+    }
+    if (table === 'companies') {
+      const chain: Record<string, unknown> = {}
+      const methods = ['select', 'eq', 'ilike', 'is']
+      for (const m of methods) chain[m] = vi.fn().mockReturnValue(chain)
+      chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+      chain.insert = vi.fn((row: unknown) => {
+        mocks.companiesInsert(row)
+        return {
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: { id: 'company-new-1' }, error: null }),
+          }),
+        }
+      })
+      return chain
+    }
+    if (table === 'site_intervenants') {
+      const chain: Record<string, unknown> = {}
+      const methods = ['select', 'eq', 'is']
+      for (const m of methods) chain[m] = vi.fn().mockReturnValue(chain)
+      chain.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+      chain.insert = vi.fn((row: unknown) => {
+        mocks.siteIntervenantsInsert(row)
+        return {
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({ data: { id: 'si-new-1' }, error: null }),
+          }),
+        }
+      })
+      return chain
+    }
+    // Tables hors périmètre du test #11 (F3-2 participants, resolveLinkedActors,
+    // mergeReportAnalysis, document_proposal_materialization...) : réponses neutres,
+    // couvertes par le try/catch englobant de createHistoricalVisitAction.
+    return buildChainWithThen(() => ({ data: [], error: null }))
+  }
+}
+
+describe('Section 5 — createHistoricalVisitAction (GO point 11)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-admin' } } })
+    mocks.getUserRoleById.mockResolvedValue('admin')
+    mocks.detectNonVisitSignal.mockReturnValue({ detected: false })
+    mocks.materializeHistoricalVisit.mockResolvedValue('report-1')
+  })
+
+  function buildForm() {
+    const fd = new FormData()
+    fd.set('run_id', 'run-1')
+    fd.set('document_id', 'doc-1')
+    return fd
+  }
+
+  it('19. le label du site courant proposé comme company n\'entraîne aucune création companies/site_intervenants', async () => {
+    mocks.from.mockImplementation(buildHistoricalVisitAdminMock({
+      site: { organization_id: 'org-1', name: 'BELLA NAPOLI', normalized_name: 'bella napoli' },
+      companyProposals: [
+        { id: 'prop-co-1', label: 'Bella Napoli', reviewed_label: null, source_payload: null, stable_key: null },
+      ],
+    }))
+
+    const result = await createHistoricalVisitAction(buildForm())
+
+    expect(result.ok).toBe(true)
+    expect(result.siteReportId).toBe('report-1')
+    // La visite n'est jamais réellement matérialisée dans ce test — seul le mock répond.
+    expect(mocks.materializeHistoricalVisit).toHaveBeenCalledTimes(1)
+    // Garde établissement : la proposition company est rejetée, jamais matérialisée.
+    expect(mocks.proposalUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ review_status: 'rejected' }),
+    )
+    expect(mocks.companiesInsert).not.toHaveBeenCalled()
+    expect(mocks.siteIntervenantsInsert).not.toHaveBeenCalled()
+  })
+
+  it('20. contrôle positif — une entreprise distincte du site suit le chemin de création normal', async () => {
+    mocks.from.mockImplementation(buildHistoricalVisitAdminMock({
+      site: { organization_id: 'org-1', name: 'BELLA NAPOLI', normalized_name: 'bella napoli' },
+      companyProposals: [
+        {
+          id: 'prop-co-2',
+          label: "Clim'Expair",
+          reviewed_label: null,
+          source_payload: { companyRole: 'CVC' },
+          stable_key: 'sk-clim',
+        },
+      ],
+    }))
+
+    const result = await createHistoricalVisitAction(buildForm())
+
+    expect(result.ok).toBe(true)
+    expect(mocks.companiesInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ organization_id: 'org-1', name: "Clim'Expair" }),
+    )
+    expect(mocks.siteIntervenantsInsert).toHaveBeenCalledTimes(1)
   })
 })

@@ -12,7 +12,7 @@ import { getExistingMaterializedVisit } from '@/lib/db/historical-visit-material
 import { listSuggestionsForReview } from '@/lib/db/subject-suggestions'
 import { ExtractionReviewClient } from './ExtractionReviewClient'
 import { ImportDateBanner } from './ImportDateBanner'
-import { detectDocumentDate } from '@/lib/documents/detect-document-date'
+import { detectDocumentDate, detectNonVisitSignal } from '@/lib/documents/detect-document-date'
 
 const SIGNED_URL_TTL = 300
 
@@ -171,7 +171,15 @@ export default async function ExtractionReviewPage({
   // P0-B — détection générique de la date du document depuis le texte extrait, pour
   // la comparer à la date saisie à l'upload (jamais de substitution silencieuse).
   const { data: docText } = await admin.from('documents').select('extracted_text').eq('id', documentId).maybeSingle()
-  const dateDetection = detectDocumentDate((docText as { extracted_text: string | null } | null)?.extracted_text ?? '')
+  const extractedText = (docText as { extracted_text: string | null } | null)?.extracted_text ?? ''
+  const dateDetection = detectDocumentDate(extractedText)
+  // Finding #1 — un document daté ne prouve pas une visite terrain. Signal générique,
+  // jamais un blocage silencieux : l'humain confirme avant matérialisation (cf. CreateVisitBlock).
+  const nonVisitSignal = detectNonVisitSignal(extractedText)
+  // Finding #15 — la date de « dernière visite » du cartouche est déjà détectée par
+  // detectDocumentDate (semantics='previous_visit_date') mais jamais affichée : simple
+  // métadonnée de contexte, jamais une proposition métier autonome.
+  const previousVisitCandidate = dateDetection.candidates.find((c) => c.semantics === 'previous_visit_date') ?? null
 
   return (
     <div className="space-y-6 w-full">
@@ -206,6 +214,13 @@ export default async function ExtractionReviewPage({
         />
       ) : null}
 
+      {/* Finding #15 — métadonnée « dernière visite » du cartouche, jamais une proposition. */}
+      {previousVisitCandidate && (
+        <p className="text-xs text-muted-foreground">
+          Mention d'une visite précédente dans le document : {frDate(previousVisitCandidate.iso)} — information contextuelle du cartouche.
+        </p>
+      )}
+
       {/* Corps */}
       <ExtractionReviewClient
         proposals={proposalsWithEvidence}
@@ -223,6 +238,7 @@ export default async function ExtractionReviewPage({
         initialType={sp.type ?? null}
         subjectSuggestions={subjectSuggestions}
         siteSubjects={siteSubjects}
+        nonVisitSignal={nonVisitSignal.detected ? { evidence: nonVisitSignal.evidence } : null}
       />
     </div>
   )

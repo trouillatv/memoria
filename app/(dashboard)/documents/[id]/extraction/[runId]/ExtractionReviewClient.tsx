@@ -238,7 +238,7 @@ function OrphanEvidenceItem({
 function CreateVisitBlock({
   runId, documentId, targetSiteId, effectiveDate, alreadySiteReportId,
   summary, personCount, companyCount, pinnedCount, snapshotCount,
-  isPending, createError, onSubmit,
+  isPending, createError, onSubmit, nonVisitSignal,
 }: {
   runId: string
   documentId: string
@@ -253,9 +253,15 @@ function CreateVisitBlock({
   isPending: boolean
   createError: string | null
   onSubmit: (e: React.FormEvent<HTMLFormElement>) => void
+  nonVisitSignal: { evidence: string | null } | null
 }) {
   const confirmedCount = summary.accepted + summary.edited + summary.materialized
   const noPhoWarn = snapshotCount > 0 && pinnedCount === 0
+  // Finding #1 — le document indique explicitement l'absence de visite terrain. On
+  // n'invente pas de nouveau type d'événement (pas de migration cosmétique) : on exige
+  // une confirmation humaine explicite avant de matérialiser cet objet comme visite.
+  const [nonVisitAck, setNonVisitAck] = useState(false)
+  const nonVisitBlocked = !!nonVisitSignal && !nonVisitAck
 
   if (alreadySiteReportId && targetSiteId) {
     return (
@@ -330,9 +336,24 @@ function CreateVisitBlock({
           ⚠ Aucune page photographique sélectionnée — la visite sera créée sans photos.
         </p>
       )}
+      {nonVisitSignal && (
+        <div className="rounded border border-red-300 bg-red-50 px-2.5 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300 space-y-1.5">
+          <p className="font-medium">⚠ Ce document mentionne explicitement l'absence de visite de site.</p>
+          {nonVisitSignal.evidence && <p className="italic">« …{nonVisitSignal.evidence}… »</p>}
+          <label className="flex items-center gap-1.5 font-normal">
+            <input
+              type="checkbox"
+              checked={nonVisitAck}
+              onChange={(e) => setNonVisitAck(e.target.checked)}
+            />
+            Je confirme qu'il s'agit bien d'une visite terrain malgré cette mention.
+          </label>
+        </div>
+      )}
       <form onSubmit={onSubmit} className="space-y-3">
         <input type="hidden" name="run_id" value={runId} />
         <input type="hidden" name="document_id" value={documentId} />
+        {nonVisitSignal && <input type="hidden" name="non_visit_acknowledged" value={nonVisitAck ? 'true' : 'false'} />}
         {summary.pending > 0 && (
           <p className="text-xs text-muted-foreground">
             {summary.pending} proposition{summary.pending > 1 ? 's' : ''} non examinée{summary.pending > 1 ? 's' : ''} — vous pouvez quand même créer la visite.
@@ -353,7 +374,7 @@ function CreateVisitBlock({
         )}
         <button
           type="submit"
-          disabled={isPending}
+          disabled={isPending || nonVisitBlocked}
           className="inline-flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
           {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -382,6 +403,7 @@ export function ExtractionReviewClient({
   initialType,
   subjectSuggestions,
   siteSubjects,
+  nonVisitSignal,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
@@ -398,6 +420,7 @@ export function ExtractionReviewClient({
   initialType?: string | null
   subjectSuggestions?: SubjectSuggestionRow[]
   siteSubjects?: Array<{ id: string; name: string }>
+  nonVisitSignal?: { evidence: string | null } | null
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -676,6 +699,7 @@ export function ExtractionReviewClient({
         isPending={isPending}
         createError={createError}
         onSubmit={handleCreateVisit}
+        nonVisitSignal={nonVisitSignal ?? null}
       />
 
       {/* Rapprochements sémantiques */}
