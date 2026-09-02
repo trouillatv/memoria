@@ -300,6 +300,35 @@ export async function reviewProposal(
   if (error) throw new Error(error.message)
 }
 
+// BATCH-0 — primitive partagée UI/batch : accepter en masse toutes les
+// propositions `pending` d'un run. Extraite de acceptAllPendingAction
+// (review-actions.ts) pour éviter que le futur orchestrateur batch ne
+// reproduise cette UPDATE dans un script séparé.
+export async function acceptAllPendingForRun(input: {
+  runId: string
+  userId: string
+}): Promise<{ ok: boolean; count?: number; error?: string }> {
+  const { runId, userId } = input
+  const supabase = createAdminClient()
+
+  const { data: pending } = await supabase
+    .from('document_extraction_proposal')
+    .select('id')
+    .eq('extraction_run_id', runId)
+    .eq('review_status', 'pending')
+
+  if (!pending?.length) return { ok: true, count: 0 }
+
+  const { error } = await supabase
+    .from('document_extraction_proposal')
+    .update({ review_status: 'accepted', reviewed_by: userId, reviewed_at: new Date().toISOString() })
+    .eq('extraction_run_id', runId)
+    .eq('review_status', 'pending')
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true, count: pending.length }
+}
+
 // ── Matérialisation (registre idempotent) ────────────────────────────────────
 
 export async function recordMaterialization(input: {
