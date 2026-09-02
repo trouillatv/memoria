@@ -22,6 +22,11 @@ import {
   getExtractionRun,
   getLatestExtractionRunForDocument,
   acceptAllPendingForRun,
+  pinAllSnapshotsForRun,
+  getProposalMaterializationReport,
+  getPhotoMaterializationReport,
+  type ProposalMaterializationReport,
+  type PhotoMaterializationReport,
 } from '@/lib/db/document-extractions'
 import { extractHistoricalPv } from '@/lib/documents/extract-historical-pv'
 import { materializeHistoricalRun } from '@/lib/documents/materialize-historical-run'
@@ -56,6 +61,10 @@ export interface HistoricalBatchDocumentResult {
   quarantineReason?: BatchQuarantineReason
   detail?: string
   postProcessingOutcome?: HistoricalImportPostProcessingOutcome
+  /** Bilan de complétude propositions — présent dès qu'un run existe (même en échec). */
+  proposalsReport?: ProposalMaterializationReport
+  /** Bilan de complétude photos — présent dès qu'un run existe (même en échec). */
+  photosReport?: PhotoMaterializationReport
 }
 
 export interface HistoricalBatchOptions {
@@ -107,6 +116,7 @@ export async function processHistoricalBatchDocument(
     return {
       documentId, runId, status: 'quarantined', quarantineReason: 'EXTRACTION_FAILED',
       detail: run?.error_message ?? 'Run introuvable après extraction',
+      ...(await attachReports(runId, null)),
     }
   }
 
@@ -125,14 +135,20 @@ export async function processHistoricalBatchDocument(
       .maybeSingle()
     const effectiveDate = (docRow as { effective_date: string | null } | null)?.effective_date
     if (!effectiveDate) {
-      return { documentId, runId, siteReportId: existingSiteReportId, status: 'quarantined', quarantineReason: 'MISSING_DATE' }
+      return {
+        documentId, runId, siteReportId: existingSiteReportId, status: 'quarantined', quarantineReason: 'MISSING_DATE',
+        ...(await attachReports(runId, existingSiteReportId)),
+      }
     }
     siteReportId = existingSiteReportId
     visitDate = effectiveDate
   } else {
     const acceptResult = await acceptAllPendingForRun({ runId, userId })
     if (!acceptResult.ok) {
-      return { documentId, runId, status: 'quarantined', quarantineReason: 'UNKNOWN_ERROR', detail: acceptResult.error }
+      return {
+        documentId, runId, status: 'quarantined', quarantineReason: 'UNKNOWN_ERROR', detail: acceptResult.error,
+        ...(await attachReports(runId, null)),
+      }
     }
 
     // Garde non-visite : nonVisitAcknowledged reste TOUJOURS false ici. Le batch
@@ -150,12 +166,19 @@ export async function processHistoricalBatchDocument(
         documentId, runId, status: 'quarantined',
         quarantineReason: mapMaterializeErrorCode(materializeResult.errorCode),
         detail: materializeResult.error,
+        ...(await attachReports(runId, null)),
       }
     }
 
     siteReportId = materializeResult.siteReportId
     visitDate = materializeResult.visitDate
   }
+
+  // Politique photo batch : épingler automatiquement tous les visuels pertinents
+  // (même règle que pinAllSnapshotsAction/pinAllSnapshotsForRun — image native
+  // prioritaire, snapshot en fallback). Ne confirme JAMAIS une association
+  // candidate en illustrates : ce geste reste réservé à la revue humaine.
+  await pinAllSnapshotsForRun(runId)
 
   const postProcessingOutcome = await awaitPostProcessingWithRetry(
     { runId, siteId, siteReportId, visitDate },
@@ -169,6 +192,7 @@ export async function processHistoricalBatchDocument(
       quarantineReason: postProcessingOutcome === 'failed' ? 'MATERIALIZATION_FAILED' : 'POST_PROCESSING_STUCK',
       detail: `Post-traitement non terminé (dernier statut : ${postProcessingOutcome})`,
       postProcessingOutcome,
+      ...(await attachReports(runId, siteReportId)),
     }
   }
 
@@ -176,7 +200,20 @@ export async function processHistoricalBatchDocument(
     documentId, runId, siteReportId,
     status: existingSiteReportId ? 'already_materialized' : 'materialized',
     postProcessingOutcome,
+    ...(await attachReports(runId, siteReportId)),
   }
+}
+
+/** Rassemble les deux bilans de complétude (propositions + photos) pour un run. */
+async function attachReports(
+  runId: string,
+  siteReportId: string | null,
+): Promise<{ proposalsReport: ProposalMaterializationReport; photosReport: PhotoMaterializationReport }> {
+  const [proposalsReport, photosReport] = await Promise.all([
+    getProposalMaterializationReport(runId),
+    getPhotoMaterializationReport(runId, siteReportId),
+  ])
+  return { proposalsReport, photosReport }
 }
 
 function mapMaterializeErrorCode(

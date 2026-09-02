@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
-import { reviewProposal, linkProposalEvidence, acceptAllPendingForRun } from '@/lib/db/document-extractions'
+import { reviewProposal, linkProposalEvidence, acceptAllPendingForRun, pinAllSnapshotsForRun } from '@/lib/db/document-extractions'
 import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-import-post-processing'
 import { materializeHistoricalRun } from '@/lib/documents/materialize-historical-run'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
@@ -300,55 +300,12 @@ export async function pinAllSnapshotsAction(fd: FormData): Promise<ActionResult>
     return error ? { ok: false, error: error.message } : { ok: true }
   }
 
-  // Règle de priorité : si une page a des images natives, le snapshot de cette page
-  // ne doit pas être épinglé — il ne sert que de fallback pour les pages sans images.
-  const { data: allVisual } = await admin
-    .from('document_extraction_evidence')
-    .select('id, source_page, evidence_type')
-    .eq('extraction_run_id', runId)
-    .in('evidence_type', ['page_snapshot', 'image'])
-
-  if (!allVisual?.length) return { ok: true }
-
-  const pagesWithImages = new Set(
-    allVisual.filter((e) => e.evidence_type === 'image').map((e) => e.source_page),
-  )
-  const toPin   = allVisual.filter((e) => e.evidence_type === 'image' || !pagesWithImages.has(e.source_page)).map((e) => e.id)
-  const toUnpin = allVisual.filter((e) => e.evidence_type === 'page_snapshot' && pagesWithImages.has(e.source_page)).map((e) => e.id)
-
-  if (toPin.length > 0) {
-    const { error } = await admin.from('document_extraction_evidence').update({ pinned_for_visit: true  }).in('id', toPin)
-    if (error) return { ok: false, error: error.message }
+  try {
+    await pinAllSnapshotsForRun(runId)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Erreur inconnue' }
   }
-  if (toUnpin.length > 0) {
-    const { error } = await admin.from('document_extraction_evidence').update({ pinned_for_visit: false }).in('id', toUnpin)
-    if (error) return { ok: false, error: error.message }
-  }
-
-  // Re-lier la visite existante au run courant pour que revue et fiche partagent
-  // le même extraction_run_id (une ré-extraction crée un nouveau run mais la visite
-  // stocke toujours l'ancien).
-  const { data: run } = await admin
-    .from('document_extraction_run')
-    .select('target_site_id')
-    .eq('id', runId)
-    .maybeSingle()
-  if (run?.target_site_id) {
-    const { data: allDocRuns } = await admin
-      .from('document_extraction_run')
-      .select('id')
-      .eq('document_id', documentId)
-    const docRunIds = (allDocRuns ?? []).map((r: { id: string }) => r.id)
-    if (docRunIds.length > 0) {
-      await admin
-        .from('site_reports')
-        .update({ extraction_run_id: runId })
-        .eq('site_id', run.target_site_id)
-        .in('extraction_run_id', docRunIds)
-    }
-  }
-
-  return { ok: true }
 }
 
 // ─── Association photo ↔ proposition ─────────────────────────────────────────

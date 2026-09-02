@@ -47,7 +47,7 @@ import {
   type HistoricalInventoryEntry,
 } from '@/lib/batch/historical-import-inventory'
 import { registerMissingHistoricalDocument } from '@/lib/batch/historical-import-registration'
-import { runHistoricalImportBatch } from '@/lib/batch/historical-import-batch'
+import { runHistoricalImportBatch, type HistoricalBatchDocumentResult } from '@/lib/batch/historical-import-batch'
 
 function argValue(flag: string): string | null {
   const i = process.argv.indexOf(flag)
@@ -188,10 +188,35 @@ async function main() {
   )
 
   for (const r of results) {
-    console.log(`  - ${r.documentId} → ${r.status}${r.quarantineReason ? ` (${r.quarantineReason}: ${r.detail ?? ''})` : ''}`)
+    const entry = runnable.find((e) => e.documentId === r.documentId)
+    console.log(`\n${entry?.fileName ?? r.documentId} → ${r.status}${r.quarantineReason ? ` (${r.quarantineReason}: ${r.detail ?? ''})` : ''}`)
+    printCompletenessBilan(r)
   }
   const failed = results.filter((r) => r.status === 'quarantined')
   console.log(`\nTerminé : ${results.length - failed.length} traité(s), ${failed.length} en quarantaine.`)
+}
+
+function printCompletenessBilan(r: HistoricalBatchDocumentResult) {
+  if (r.proposalsReport) {
+    const p = r.proposalsReport
+    console.log('  Propositions')
+    console.log(`    ${p.totalExtracted} extraites`)
+    console.log(`    ${p.materialized} matérialisées / ${p.totalExtracted}`)
+    console.log(`    ${p.rejectedByGuard} rejetée(s) par garde`)
+    const ignoredSilently = p.autoAccepted - p.rejectedByGuard - p.materialized
+    console.log(`    ${ignoredSilently} ignorée(s) silencieusement`)
+  }
+  if (r.photosReport) {
+    const ph = r.photosReport
+    console.log('  Photos')
+    console.log(`    ${ph.detected} visuels détectés`)
+    console.log(`    ${ph.nativeRetained} images natives retenues`)
+    console.log(`    ${ph.snapshotFallbackRetained} snapshots fallback retenus`)
+    console.log(`    ${ph.integratedToVisit}/${ph.detected} intégrés à la visite`)
+    console.log(`    ${ph.illustratesConfirmed} association(s) photo ↔ objet confirmée(s)`)
+    console.log(`    ${ph.candidatesRemaining} candidate(s) non confirmée(s)`)
+    console.log(`    ${ph.lostSilently} photo(s) perdue(s) silencieusement`)
+  }
 }
 
 main().catch((e) => {

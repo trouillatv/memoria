@@ -163,6 +163,77 @@ export async function insertExtractionEvidence(
   return (data ?? []) as Array<{ id: string; storage_path: string | null }>
 }
 
+// BATCH-3 — primitive partagée UI/batch : épingler automatiquement tous les
+// visuels pertinents d'un run pour la fiche visite, avec la même règle de
+// priorité que pinAllSnapshotsAction (review-actions.ts) : image native
+// retenue systématiquement, snapshot de page retenu SEULEMENT en fallback
+// pour une page sans image native. Extraite pour que le batch réutilise
+// exactement cette règle sans la dupliquer. Ne touche jamais aux relations
+// document_proposal_evidence (candidate/illustrates) — épingler ≠ confirmer
+// qu'une photo illustre un objet précis.
+export async function pinAllSnapshotsForRun(
+  runId: string,
+): Promise<{ pinnedNative: number; pinnedFallback: number }> {
+  const supabase = createAdminClient()
+
+  const { data: run } = await supabase
+    .from('document_extraction_run')
+    .select('document_id, target_site_id')
+    .eq('id', runId)
+    .maybeSingle()
+  if (!run) return { pinnedNative: 0, pinnedFallback: 0 }
+  const { document_id: documentId, target_site_id: targetSiteId } = run as {
+    document_id: string
+    target_site_id: string | null
+  }
+
+  const { data: allVisual } = await supabase
+    .from('document_extraction_evidence')
+    .select('id, source_page, evidence_type')
+    .eq('extraction_run_id', runId)
+    .in('evidence_type', ['page_snapshot', 'image'])
+
+  if (!allVisual?.length) return { pinnedNative: 0, pinnedFallback: 0 }
+
+  const pagesWithImages = new Set(
+    allVisual.filter((e) => e.evidence_type === 'image').map((e) => e.source_page),
+  )
+  const nativeToPin = allVisual.filter((e) => e.evidence_type === 'image')
+  const fallbackToPin = allVisual.filter((e) => e.evidence_type === 'page_snapshot' && !pagesWithImages.has(e.source_page))
+  const toUnpin = allVisual.filter((e) => e.evidence_type === 'page_snapshot' && pagesWithImages.has(e.source_page))
+
+  const toPinIds = [...nativeToPin, ...fallbackToPin].map((e) => e.id)
+  if (toPinIds.length > 0) {
+    const { error } = await supabase.from('document_extraction_evidence').update({ pinned_for_visit: true }).in('id', toPinIds)
+    if (error) throw new Error(error.message)
+  }
+  if (toUnpin.length > 0) {
+    const { error } = await supabase.from('document_extraction_evidence').update({ pinned_for_visit: false }).in('id', toUnpin.map((e) => e.id))
+    if (error) throw new Error(error.message)
+  }
+
+  // Re-lier la visite existante au run courant pour que revue et fiche partagent
+  // le même extraction_run_id (une ré-extraction crée un nouveau run mais la visite
+  // stocke toujours l'ancien).
+  if (targetSiteId) {
+    const { data: allDocRuns } = await supabase
+      .from('document_extraction_run')
+      .select('id')
+      .eq('document_id', documentId)
+    const docRunIds = (allDocRuns ?? []).map((r: { id: string }) => r.id)
+    if (docRunIds.length > 0) {
+      const { error } = await supabase
+        .from('site_reports')
+        .update({ extraction_run_id: runId })
+        .eq('site_id', targetSiteId)
+        .in('extraction_run_id', docRunIds)
+      if (error) throw new Error(error.message)
+    }
+  }
+
+  return { pinnedNative: nativeToPin.length, pinnedFallback: fallbackToPin.length }
+}
+
 // ── Relations M-M (idempotentes) ─────────────────────────────────────────────
 
 export async function linkProposalEvidence(
@@ -584,4 +655,124 @@ export async function getLatestRunsForSite(
     created_at: r.created_at,
     documentEffectiveDate: (Array.isArray(r.documents) ? r.documents[0] : r.documents)?.effective_date ?? null,
   }))
+}
+
+// ── Bilan de complétude (batch) ───────────────────────────────────────────────
+
+export interface ProposalMaterializationReport {
+  totalExtracted: number
+  autoAccepted: number
+  rejectedByGuard: number
+  materialized: number
+}
+
+/**
+ * Compte APRÈS matérialisation : une garde déterministe (ex. isSiteEstablishmentLabel
+ * dans materializeHistoricalRun, famille 'company') peut encore rejeter une proposition
+ * déjà acceptée par acceptAllPendingForRun. Dans le flux batch, aucun rejet humain
+ * (rejectProposalAction) n'intervient jamais — un review_status='rejected' à ce stade
+ * reflète donc toujours cette garde, jamais une revue manuelle.
+ */
+export async function getProposalMaterializationReport(
+  runId: string,
+): Promise<ProposalMaterializationReport> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_extraction_proposal')
+    .select('review_status')
+    .eq('extraction_run_id', runId)
+  if (error) throw new Error(error.message)
+
+  const rows = (data ?? []) as Array<{ review_status: DocumentProposalReviewStatus }>
+  return {
+    totalExtracted: rows.length,
+    autoAccepted: rows.filter((r) => r.review_status !== 'pending').length,
+    rejectedByGuard: rows.filter((r) => r.review_status === 'rejected').length,
+    materialized: rows.filter((r) => r.review_status === 'materialized').length,
+  }
+}
+
+export interface PhotoMaterializationReport {
+  detected: number
+  nativeRetained: number
+  snapshotFallbackRetained: number
+  integratedToVisit: number
+  illustratesConfirmed: number
+  candidatesRemaining: number
+  dismissed: number
+  lostSilently: number
+}
+
+/**
+ * Épinglage (pinned_for_visit) et confirmation d'association (illustrates) sont deux
+ * gestes distincts (doctrine batch) : ce rapport ne doit jamais laisser croire que
+ * l'un implique l'autre. `integratedToVisit` vient de visit_capture (matérialisation
+ * RPC, indépendante du pin/candidate) ; `illustratesConfirmed`/`candidatesRemaining`/
+ * `dismissed` viennent de document_proposal_evidence (PK binaire proposal_id/evidence_id
+ * depuis la migration 265 — un couple ne peut porter qu'un seul relation_type à la fois).
+ */
+export async function getPhotoMaterializationReport(
+  runId: string,
+  siteReportId: string | null,
+): Promise<PhotoMaterializationReport> {
+  const supabase = createAdminClient()
+
+  const { data: evidenceRows, error: evErr } = await supabase
+    .from('document_extraction_evidence')
+    .select('id, evidence_type, pinned_for_visit, storage_path')
+    .eq('extraction_run_id', runId)
+    .in('evidence_type', ['image', 'page_snapshot'])
+  if (evErr) throw new Error(evErr.message)
+
+  const evidence = (evidenceRows ?? []) as Array<{
+    id: string
+    evidence_type: DocumentEvidenceType
+    pinned_for_visit: boolean
+    storage_path: string | null
+  }>
+
+  const detected = evidence.length
+  const nativeRetained = evidence.filter((e) => e.evidence_type === 'image' && e.pinned_for_visit).length
+  const snapshotFallbackRetained = evidence.filter((e) => e.evidence_type === 'page_snapshot' && e.pinned_for_visit).length
+  const lostSilently = evidence.filter((e) => e.storage_path === null).length
+
+  let integratedToVisit = 0
+  if (siteReportId) {
+    const { count, error: vcErr } = await supabase
+      .from('visit_capture')
+      .select('id', { count: 'exact', head: true })
+      .eq('report_id', siteReportId)
+      .eq('source', 'historical_import')
+      .eq('kind', 'photo')
+    if (vcErr) throw new Error(vcErr.message)
+    integratedToVisit = count ?? 0
+  }
+
+  let illustratesConfirmed = 0
+  let candidatesRemaining = 0
+  let dismissed = 0
+  const evidenceIds = evidence.map((e) => e.id)
+  if (evidenceIds.length > 0) {
+    const { data: relRows, error: relErr } = await supabase
+      .from('document_proposal_evidence')
+      .select('relation_type')
+      .in('evidence_id', evidenceIds)
+      .in('relation_type', ['illustrates', 'candidate', 'dismissed'])
+    if (relErr) throw new Error(relErr.message)
+    const rels = (relRows ?? []) as Array<{ relation_type: DocumentEvidenceRelationType }>
+    illustratesConfirmed = rels.filter((r) => r.relation_type === 'illustrates').length
+    candidatesRemaining = rels.filter((r) => r.relation_type === 'candidate').length
+    dismissed = rels.filter((r) => r.relation_type === 'dismissed').length
+  }
+
+  return {
+    detected,
+    nativeRetained,
+    snapshotFallbackRetained,
+    integratedToVisit,
+    illustratesConfirmed,
+    candidatesRemaining,
+    dismissed,
+    lostSilently,
+  }
 }
