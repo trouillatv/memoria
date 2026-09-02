@@ -180,14 +180,14 @@ Ne jamais créer de proposition pour :
 Pour chaque information retenue après la sélection :
 
 1. Ne jamais inventer des données absentes du texte — extraction pure, zéro inférence.
-2. Ne pas transformer une observation en action implicite : une constatation reste une observation.
+2. La FAMILLE se décide sur la NATURE de l'énoncé, JAMAIS sur la présence d'un responsable ou d'une date : un ÉTAT constaté → **observation** ; une CHOSE À FAIRE explicitement demandée (prescription, consigne, préconisation, verbe d'action à réaliser : vérifier, transmettre, mettre en place, reprendre, organiser, modifier, récupérer, installer, déplacer, évacuer, sécuriser, former…) → **action**, même sans responsable ni date. Ne jamais fabriquer une action à partir d'un simple constat, ni ranger une prescription explicite en observation.
 3. Conserver les formulations incertaines (« à vérifier », « à confirmer », « semble ») dans le label ou la description.
 3b. Lorsque le texte source semble corrompu ou ambigu (coquille, OCR dégradé, formulation incohérente), ne pas affirmer plus que ce que le document permet. Formuler avec prudence : "Accès plateforme — indiqué comme réalisé dans le PV" plutôt que "Accès plateforme réalisé".
 4. Distinguer les points ouverts et les points résolus : un travail décrit au passé ou comme terminé (« déblais terminés », « purge exécutée ») → **knowledge_fact** avec statusAtDocumentDate='réalisé', jamais une action ou observation.
 5. Citer la page exacte (sourcePage) — utilise les marqueurs [[page N]].
 6. Ne pas déduire des intentions — se limiter aux faits et décisions explicitement mentionnés.
 7. Pour une réservation : conserver le libellé exact du PV, préciser l'état si mentionné (ouvert/levé/en cours).
-8. Pour une action : ne citer que les actions explicitement attribuées (responsable nommé ou délai mentionné).
+8. Pour une action : le responsable (responsibleParty) et la date (dueDate) sont des ENRICHISSEMENTS facultatifs — renseigne-les s'ils sont explicites dans le texte, laisse-les absents sinon. Leur absence NE transforme JAMAIS une prescription en observation. Ne jamais inventer un responsable ni une date.
 9. Une photo sans description textuelle adjacente → evidence uniquement (page_snapshot), pas de proposition.
 10. Un chiffre ou mesure sans contexte clair → observation, pas action.
 
@@ -231,12 +231,55 @@ un sur-découpage fragmente la mémoire de façon irréversible.
 
 ---
 
+## Constat + action dans un même passage
+
+Un même passage peut contenir À LA FOIS un état constaté ET une prescription. Dans ce cas,
+produis DEUX propositions — une **observation** (l'état) et une **action** (la chose à faire) —
+partageant le MÊME sujet, la MÊME page (sourcePage) et les MÊMES preuves (evidenceKeys). Ne
+jamais écraser l'une dans l'autre : ce sont deux natures différentes du même sujet. Exemples :
+- « Coupure d'arrêt d'urgence non présente + personnel non formé. Vérifier les arrêts d'urgence
+  et former le personnel. » → **observation** (absence constatée) + **action** (vérifier / former).
+- « Extincteur manquant près des caisses » seul → **observation** ; si le texte ajoute « à
+  compléter / à installer » → ajouter l'**action** correspondante.
+Ne produis l'action que si la prescription est RÉELLEMENT présente dans le texte — ne jamais
+l'inventer à partir d'un simple constat.
+
+---
+
+## Consolidation intra-document — un sujet répété = UNE proposition à preuves multiples
+
+Un même sujet métier est souvent mentionné PLUSIEURS FOIS dans le document : dans un tableau de
+détail, puis dans une section « Prioriser les actions » / « Préconisations », parfois une
+troisième fois dans la conclusion ou la synthèse. Ce ne sont PAS plusieurs objets. Produis
+**UNE SEULE proposition** par sujet, et rattache-lui **TOUTES** ses preuves : cumule les
+\`evidenceKeys\` de chaque mention et concatène les extraits dans \`sourceExcerpt\` (séparés par
+" · "), en citant la page de chaque mention. S'applique à TOUTES les familles (action,
+observation, reservation, deadline, knowledge_fact, decision), pas seulement aux tableaux.
+
+**Une phrase de synthèse ou de conclusion qui REPREND des sujets DÉJÀ détectés** (ex. « Urgence :
+vérifier les arrêts d'urgence + mettre en place un SSIAP 2 + tester le SSI » alors que ces trois
+sujets existent déjà) ne crée AUCUN nouvel objet — et surtout aucun objet COMPOSITE agrégeant
+plusieurs sujets. Elle sert de **preuve supplémentaire** et, si elle exprime une urgence/priorité,
+relève le relevanceScore des sujets concernés.
+
+**Distinguer consolidation et éclatement** : l'éclatement sépare une phrase portant sur PLUSIEURS
+sujets à évolution indépendante ; la consolidation regroupe PLUSIEURS mentions d'UN MÊME sujet.
+Les deux coexistent sans se contredire.
+
+**Rester CONSERVATEUR** : ne fusionne que si c'est le MÊME sujet métier suivable. Deux sujets
+proches mais réellement distincts (localisations différentes, objets métier différents, verdicts
+opposés conforme / non conforme) restent DEUX propositions. En cas de DOUTE, **ne pas fusionner** :
+conserver deux candidats incertains est récupérable, fusionner deux vrais sujets distincts est
+irréversible.
+
+---
+
 ## Familles de propositions
 
 - **reservation** : réserve de chantier (défaut, malfaçon, non-conformité) — ouverture, suivi ou levée. Lorsque l'entreprise chargée de lever la réserve est explicitement nommée et correspond à une proposition 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom.
-- **action** : tâche à réaliser. Créer une action UNIQUEMENT si un responsable est explicitement nommé (entreprise ou personne) OU si un délai précis est mentionné. Sans ces deux conditions → **observation**. Lorsque le responsable nommé correspond à une proposition 'person' ou 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom : soit la clé existe dans les propositions du run, soit le champ est absent. Pour la famille action : renseigner sourcePayload.statusAtDocumentDate uniquement si l'état de la tâche est explicitement établi par le document. Utiliser le vocabulaire canonique : "en cours" pour une action déclarée en progression, "ouvert" pour une action non soldée. Ne jamais émettre "à faire" comme valeur. N'émettre un état terminal tel que "réalisé" que si la tâche est entièrement soldée, sans réserve, attente ou reprise associée. "réalisé … non conforme", "réalisé … reprise à faire" ou "réalisé … en attente" ne prouvent jamais la résolution — laisser absent. Un VISA ou visa de plan ne prouve jamais à lui seul l'achèvement de la tâche physique.
+- **action** : une CHOSE À FAIRE explicitement demandée par le document — prescription, consigne, préconisation, item d'une liste « actions à réaliser / à prioriser », verbe d'action à l'infinitif ou à l'impératif (vérifier, transmettre, mettre en place, reprendre, organiser, modifier, récupérer, installer, déplacer, évacuer, sécuriser, former…). Une action reste une action **même sans responsable ni date**, et **quelle que soit la colonne ou la section** où elle figure (« Préconisations », « Remarques », « Conclusions », ou une phrase descriptive). Le responsable et la date sont des enrichissements facultatifs (cf. doctrine §8), jamais une condition d'existence. Lorsque le responsable nommé correspond à une proposition 'person' ou 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom : soit la clé existe dans les propositions du run, soit le champ est absent. Pour la famille action : renseigner sourcePayload.statusAtDocumentDate uniquement si l'état de la tâche est explicitement établi par le document. Utiliser le vocabulaire canonique : "en cours" pour une action déclarée en progression, "ouvert" pour une action non soldée. Ne jamais émettre "à faire" comme valeur. N'émettre un état terminal tel que "réalisé" que si la tâche est entièrement soldée, sans réserve, attente ou reprise associée. "réalisé … non conforme", "réalisé … reprise à faire" ou "réalisé … en attente" ne prouvent jamais la résolution — laisser absent. Un VISA ou visa de plan ne prouve jamais à lui seul l'achèvement de la tâche physique.
 - **decision** : décision structurante prise lors de la visite. Lorsque le décisionnaire nommé correspond à une proposition 'person' ou 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom : soit la clé existe dans les propositions du run, soit le champ est absent.
-- **observation** : constatation factuelle, alerte ou signal spécifique à ce chantier, sans responsable nommé ni délai explicite. Inclut obligatoirement les formulations du type "Attention à [X]", "Risque de [Y]", "Veiller à [Z]" sans attribution.
+- **observation** : un ÉTAT constaté, une alerte ou un signal spécifique à ce chantier — ce que le document DÉCRIT, pas ce qu'il demande de faire. Ex. « CTA non relié au SSI », « Extincteur manquant », « Ventilation non testée », « Porte CF bloquée ouverte ». Inclut les formulations d'alerte « Attention à [X] », « Risque de [Y] » sans prescription associée. Si le passage DEMANDE en outre quelque chose (« … à vérifier », « reprendre … »), produire EN PLUS une proposition **action** (cf. « Constat + action dans un même passage ») — ne jamais ranger la prescription en observation.
 - **deadline** : échéance chiffrée ou datée, spécifique à ce chantier — y compris un jalon de planning (« semaine X », date de reprise, date de prochaine réunion) même situé dans une section "PRÉVISIONS" ou "PROGRAMME" : toute date ou échéance précise l'emporte toujours sur un classement en knowledge_fact.forecast. Lorsque le responsable de cette échéance correspond à une proposition 'person' ou 'company' du même document, renseigner sourcePayload.linkedActorTemporaryKey avec la temporaryKey exacte de cette proposition. Utiliser uniquement une temporaryKey réelle produite dans ce même run. Ne jamais inventer une clé, ne jamais relier par proximité de page ou de nom.
 - **knowledge_fact** : information factuelle durable sur le site. Inclut : l'avancement constaté lors de la visite (travaux exécutés ou en cours) avec statusAtDocumentDate = "réalisé" / "en cours" / "non démarré" ; l'état de plans techniques (VISA émis / en cours / refusé / à émettre) ; une contrainte technique permanente (nature du sol, cote NGF) ; l'état d'un ouvrage ou d'un matériau. Pour chaque knowledge_fact, renseigner **sourcePayload.thematic_category** avec la catégorie thématique correspondante :
   - "progress" — avancement des travaux constatés (réalisés ou en cours) : terrassement, maçonnerie, finitions, installations
