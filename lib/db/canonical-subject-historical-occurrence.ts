@@ -20,6 +20,31 @@ import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation
 import { deriveStateKey, deriveGroupThematicCategory } from '@/lib/db/occurrence-state-key'
 import { extractEventDate } from '@/lib/documents/event-date'
 import { deriveOccurrenceFromPvStates, verdictNormalizedToPvState, documentStatusToPvState, type PvState } from '@/lib/documents/subject-state'
+import { normalizeDocumentVerdict } from '@/lib/documents/verdict-normalization'
+
+/** E3 dry-run — trace de dérivation d'une proposition (aucune écriture). */
+export interface DryRunProposalTrail {
+  raw: string | null
+  family: string
+  document_status: string | null
+  thematic_category: string | null
+  e1_normalized: string | null
+  e2_pv: PvState
+}
+/** E3 dry-run — ce que le vrai dérivateur produirait pour UN groupe (occurrence),
+ *  sans écrire. `production_state_status` = ce que le chemin courant (E2,
+ *  verdict-ou-fallback) calcule ; `e3_new_state_status` = ce qu'un backfill
+ *  (re-normalisation depuis le verdict BRUT) produirait. */
+export interface DryRunOccurrence {
+  canonical_subject_id: string
+  source_ref_id: string
+  state_key: string
+  effective_date: string
+  event_date: string | null
+  production_state_status: PvState
+  e3_new_state_status: PvState
+  proposals: DryRunProposalTrail[]
+}
 
 // Familles qui portent PAR NATURE un état/événement daté d'un sujet durable (toujours éligibles).
 // (vigilance/reservation conservés par compatibilité — ce sont des noms de kind jamais émis comme
@@ -92,7 +117,8 @@ interface ProposalRow {
   thematic_category: string | null
   // E2 : verdict normalisé E1 (source_payload.verdict) — préféré à document_status
   // pour la projection d'état quand il est présent (nouvelles extractions).
-  source_payload: { verdict?: { normalized?: string | null } | null } | null
+  // E3 dry-run : `statusAtDocumentDate` = verdict BRUT, re-normalisé pour la mesure.
+  source_payload: { verdict?: { normalized?: string | null } | null; statusAtDocumentDate?: string | null } | null
 }
 
 /**
@@ -128,8 +154,13 @@ export async function ensureHistoricalPdfOccurrences(params: {
   siteId: string
   siteReportId: string  // site_reports.id créé par materializeHistoricalVisit
   visitDate: string     // YYYY-MM-DD
+}, opts?: {
+  /** E3 dry-run : si fourni, AUCUNE écriture n'est faite ; chaque groupe dérivé
+   *  est poussé ici. Le chemin d'écriture réel est inchangé quand absent. */
+  dryRunSink?: DryRunOccurrence[]
 }): Promise<{ created: number; skipped: number; errors: number }> {
   const { runId, siteId, siteReportId, visitDate } = params
+  const dryRunSink = opts?.dryRunSink
   const supabase = createAdminClient()
 
   // 1. Charger les propositions éligibles du run avec leur subject_thread_id
@@ -316,6 +347,30 @@ export async function ensureHistoricalPdfOccurrences(params: {
       created_by: null,
       validation_status: 'observed' as const,
       entity_ids: [],
+    }
+
+    // E3 DRY-RUN — substitue l'étape d'ÉCRITURE par une collecte. Réutilise TOUTE
+    // la dérivation ci-dessus (éligibilité, winner, grouping, event_date,
+    // thematic, stateStatus production). `e3_new` = re-normalisation depuis le
+    // verdict BRUT (ce qu'un backfill produirait), distincte de `stateStatus`
+    // (chemin courant, verdict-ou-fallback document_status). AUCUN INSERT/UPSERT.
+    if (dryRunSink) {
+      const trail: DryRunProposalTrail[] = group.proposals.map((p) => {
+        const raw = p.source_payload?.statusAtDocumentDate ?? null
+        const v = normalizeDocumentVerdict(raw, { family: p.proposal_family, thematicCategory: p.thematic_category })
+        return { raw, family: p.proposal_family, document_status: p.document_status, thematic_category: p.thematic_category, e1_normalized: v.normalized, e2_pv: verdictNormalizedToPvState(v.normalized) }
+      })
+      dryRunSink.push({
+        canonical_subject_id: group.canonical_subject_id,
+        source_ref_id: group.source_ref_id,
+        state_key: group.state_key,
+        effective_date: group.effective_date,
+        event_date: eventDate,
+        production_state_status: stateStatus,
+        e3_new_state_status: deriveOccurrenceFromPvStates(trail.map((t) => t.e2_pv)).status,
+        proposals: trail,
+      })
+      continue
     }
 
     // INSERT ... ON CONFLICT DO NOTHING : l'index cso_historical_pdf_uniq gère l'idempotence.
