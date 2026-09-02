@@ -206,6 +206,12 @@ export async function createSiteReserve(input: {
   userId: string | null
   /** Capture d'origine (mig 183) — traçabilité de la réserve née d'une visite. */
   sourceCaptureId?: string | null
+  /** Point 7B-1b — rapport source (visite/réunion/PV) quand il est DÉJÀ connu par
+   *  l'appelant (débrief mobile, promotion watchlist). Omis/`null` pour une réserve
+   *  réellement manuelle (réception MOE) ou copilote sans source : on n'invente
+   *  jamais un report par date/libellé. Alimente `site_reserve.report_id`,
+   *  symétrique de `site_actions.report_id` (provenance objet→source, 7A). */
+  reportId?: string | null
   /**
    * Fourni par un appelant qui a DÉJÀ vérifié le droit d'écriture (ex.
    * copilot-write-action.ts via requireSiteWriteAccess) — saute la vérification
@@ -238,6 +244,7 @@ export async function createSiteReserve(input: {
       status: 'open',
       created_by: input.userId,
       source_capture_id: input.sourceCaptureId ?? null,
+      report_id: input.reportId ?? null,
       copilot_proposal_id: input.copilotProposalId ?? null,
       updated_at: new Date().toISOString(),
     })

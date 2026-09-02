@@ -157,7 +157,7 @@ export async function createSuiteAction(
       const reserve = await createSiteReserve({
         siteId: c.site_id, label: title, location: null,
         issuedBy: auth.userId, issuedOn: new Date().toISOString().slice(0, 10),
-        userId: auth.userId, sourceCaptureId: capture_id,
+        userId: auth.userId, sourceCaptureId: capture_id, reportId: c.report_id,
       })
       entity = { type: 'site_reserve', id: reserve.id }
     }
@@ -262,7 +262,7 @@ export async function promoteWatchlistItemAction(
       const reserve = await createSiteReserve({
         siteId: item.site_id, label: item.label, location: null,
         issuedBy: auth.userId, issuedOn: new Date().toISOString().slice(0, 10),
-        userId: auth.userId,
+        userId: auth.userId, reportId: item.report_id,
       })
       refId = reserve.id
     }
