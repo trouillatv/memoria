@@ -9,6 +9,8 @@ import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence } from '@/lib/db/document-extractions'
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
 import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-import-post-processing'
+import { mergeReportAnalysis } from '@/lib/db/site-reports'
+import { projectHistoricalParticipants } from '@/lib/documents/historical-participant-eligibility'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -705,6 +707,33 @@ export async function createHistoricalVisitAction(fd: FormData): Promise<{
           admin.from('document_extraction_proposal').update({ review_status: 'materialized', reviewed_at: new Date().toISOString() }).eq('id', prop.id),
           admin.from('document_proposal_materialization').upsert({ organization_id: orgId, proposal_id: prop.id, target_entity_type: 'company_contacts', target_entity_id: contactId, status: 'done', created_by: access.userId }, { onConflict: 'proposal_id, target_entity_type, target_entity_id', ignoreDuplicates: true }),
         ])
+      }
+
+      // ── F3-2 : projection des personnes ÉLIGIBLES en participants du rapport ──
+      // Passe dédiée sur TOUTES les person proposals (y compris sans entreprise,
+      // que le pipeline ci-dessus saute). Seuls les non-null de F3-1 (preuve de
+      // participation) deviennent participants : interlocuteur/rôle/mention →
+      // inconnu → aucune ligne. contactId RÉUTILISÉ s'il a été résolu ci-dessus ;
+      // sinon AUCUNE création de contact (mieux vaut pas de contactId qu'une
+      // identité douteuse). Dédup intra-rapport par contactId → nom normalisé,
+      // priorité présence/absence explicite > invité > diffusion. Écriture
+      // idempotente + non destructive via mergeReportAnalysis (les participants
+      // saisis manuellement restent prioritaires et ne sont jamais écrasés).
+      {
+        const persons = (personPropsRaw ?? []).map((rawProp) => {
+          const prop = rawProp as { label: string; reviewed_label: string | null; description: string | null; source_payload: SPPerson | null; stable_key: string | null }
+          return {
+            label: prop.reviewed_label ?? prop.label,
+            description: prop.description,
+            presenceVerdict: prop.source_payload?.statusAtDocumentDate ?? null,
+            // contactId RÉUTILISÉ si résolu ci-dessus ; sinon undefined (pas de création).
+            contactId: prop.stable_key ? stableKeyToContactId.get(prop.stable_key) : undefined,
+          }
+        })
+        const eligibleParticipants = projectHistoricalParticipants(persons)
+        if (eligibleParticipants.length > 0) {
+          await mergeReportAnalysis(siteReportId, { participants: eligibleParticipants, risks: [] })
+        }
       }
 
       // ── Résolution linkedActorTemporaryKey → site_actions.assigned_* ─────────

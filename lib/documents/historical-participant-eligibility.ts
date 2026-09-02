@@ -16,7 +16,7 @@
 // On ne re-dérive JAMAIS la présence depuis le rôle : c'est le travail de F1.
 // Ne jamais traiter un statusAtDocumentDate PRÉ-F1 comme vérité de présence.
 
-import type { ParticipantPresence } from '@/types/db'
+import type { ParticipantPresence, SiteReportParticipant } from '@/types/db'
 
 /** Entrée = la partie sémantique d'une proposition `person`. */
 export interface HistoricalPersonInput {
@@ -85,4 +85,52 @@ export function eligibleHistoricalPersonParticipant(
   // « inconnu », « non déterminé », vide, ou tout autre (interlocuteur/rôle/
   // mention déjà normalisés en inconnu par F1) → PAS de participant.
   return null
+}
+
+/** Une personne à projeter : la partie sémantique + un contactId DÉJÀ résolu
+ *  (réutilisé) — jamais créé ici (une identité douteuse resterait sans contactId). */
+export interface HistoricalPersonForProjection extends HistoricalPersonInput {
+  contactId?: string
+}
+
+/** Priorité de participation quand une même personne porte plusieurs verdicts
+ *  dans un même rapport : présence/absence explicite > invité > diffusion. */
+function participationRank(p: HistoricalParticipantProjection): number {
+  if (p.presence) return 3
+  if (p.invite) return 2
+  if (p.diffusion) return 1
+  return 0
+}
+
+/**
+ * Projette une liste de propositions `person` d'un MÊME rapport en participants
+ * dédupliqués (F3-2, partie pure). Seuls les non-null de l'éligibilité deviennent
+ * participants. Dédup intra-rapport par `contactId` puis, à défaut, par nom
+ * normalisé ; en cas de doublon, le verdict le plus fort l'emporte. Ne crée aucun
+ * contact, n'écrit rien : la persistance (mergeReportAnalysis) est faite par
+ * l'appelant, de façon idempotente et non destructive.
+ */
+export function projectHistoricalParticipants(
+  persons: HistoricalPersonForProjection[],
+): SiteReportParticipant[] {
+  const byKey = new Map<string, { participant: SiteReportParticipant; rank: number }>()
+  for (const person of persons) {
+    const proj = eligibleHistoricalPersonParticipant(person)
+    if (!proj) continue
+    const key = person.contactId ?? proj.name.toLowerCase()
+    const r = participationRank(proj)
+    const existing = byKey.get(key)
+    if (existing && existing.rank >= r) continue // garde le verdict le plus fort
+    const participant: SiteReportParticipant = {
+      name: proj.name,
+      role: proj.role,
+      kind: 'person',
+      ...(proj.presence ? { presence: proj.presence } : {}),
+      invite: proj.invite,
+      diffusion: proj.diffusion,
+      ...(person.contactId ? { contactId: person.contactId } : {}),
+    }
+    byKey.set(key, { participant, rank: r })
+  }
+  return [...byKey.values()].map((v) => v.participant)
 }
