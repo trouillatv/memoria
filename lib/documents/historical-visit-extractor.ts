@@ -188,6 +188,7 @@ Pour chaque information retenue après la sélection :
 3b. Lorsque le texte source semble corrompu ou ambigu (coquille, OCR dégradé, formulation incohérente), ne pas affirmer plus que ce que le document permet. Formuler avec prudence : "Accès plateforme — indiqué comme réalisé dans le PV" plutôt que "Accès plateforme réalisé".
 4. Distinguer les points ouverts et les points résolus : un travail décrit au passé ou comme terminé (« déblais terminés », « purge exécutée ») → **knowledge_fact** avec statusAtDocumentDate='réalisé', jamais une action ou observation.
 4b. Une valeur lue dans une colonne intitulée « Levées », « Suite à donner », « État » ou similaire ne prouve JAMAIS à elle seule la clôture d'une réserve ou d'une action — raisonne sur le SENS de la cellule, jamais sur le nom de la colonne. Une cellule de la colonne « Levées » peut tout aussi bien indiquer qu'une réserve reste À LEVER, est partiellement levée, ou reste ouverte : dans ce cas, la réserve/action reste ouverte et ne devient pas "réalisé"/"levé".
+4c. Un thème de tableau au statut **« Non vérifié »** (ou équivalent : non contrôlé, non examiné, non testé) DONT LA CELLULE PRÉCONISATION EST VIDE ne produit JAMAIS d'action synthétique du type « Vérifier <thème> ». L'absence de contrôle documentée est un état, pas une prescription — conserve-la en observation ou knowledge_fact si elle a une valeur de suivi, mais ne fabrique jamais une obligation « à vérifier » à partir du seul statut. Ne crée une action pour ce thème que si le document formule EXPLICITEMENT une consigne de vérification (texte présent dans la cellule préconisation ou ailleurs, appliqué à ce thème précis) — ne la déduis jamais du statut seul.
 5. Citer la page exacte (sourcePage) — utilise les marqueurs [[page N]].
 6. Ne pas déduire des intentions — se limiter aux faits et décisions explicitement mentionnés.
 7. Pour une réservation : conserver le libellé exact du PV, préciser l'état si mentionné (ouvert/levé/en cours).
@@ -330,6 +331,50 @@ Pour chaque **personne physique identifiable** (prénom + nom) mentionnée dans 
 
 Créer une **company distincte** pour l'entreprise de cette personne si elle n'a pas déjà de proposition company.
 
+### Cartouche aplati — labels et valeurs séparés par l'extraction PDF
+
+Certains PV utilisent un cartouche d'identité en tableau (Client / Interlocuteur / Etablissement /
+Adresse / Type-Catégorie / RUS / Interlocuteur / Date de la visite / Type de visite / Dernière
+visite) dont l'extraction texte du PDF sépare les LIBELLÉS (regroupés en bloc, généralement en tout
+début de document, chacun suivi de « : » sans valeur sur la même ligne) des VALEURS correspondantes
+(regroupées ailleurs dans le document, souvent en fin de texte juste avant les sections
+« Documentaires »/« Organisationnelles »/« Techniques », ou près du titre du CR). Quand tu détectes
+ce schéma (un bloc de libellés sans valeur adjacente), retrouve le bloc de valeurs et associe
+CHAQUE libellé à sa valeur par la NATURE du contenu, jamais par la simple position dans la liste —
+**l'ordre des valeurs n'est PAS garanti identique à l'ordre des libellés** :
+
+- **Client** et **RUS** : noms d'entreprise/organisme (raison sociale courte, sigle ou nom de
+  société — ex. « SACD (GBH) », « CAPSE NC »). Client et RUS sont deux entreprises DISTINCTES dans
+  ce type de cartouche — ne jamais leur assigner la même valeur, et ne jamais permuter laquelle est
+  Client et laquelle est RUS sans indice textuel direct.
+- **Etablissement** : désignation du site/bâtiment (ex. « Centre commercial Dumbéa Mall »),
+  généralement suivie d'une ligne d'adresse postale.
+- **Interlocuteur (du Client)** et **Interlocuteur (du RUS)** : chacun un nom de personne au format
+  « Prénom NOM », parfois deux personnes reliées par « & » ou « et ». Vérifie la cohérence avec
+  toute mention « [Nom], RUS » ou « RUS : [Nom] » ailleurs dans le document avant de trancher lequel
+  est l'interlocuteur du Client et lequel est l'interlocuteur du RUS (cf. section suivante, PREUVE
+  DIRECTE).
+- **Date de la visite** et **Dernière visite** : valeurs de type date (jj/mm/aaaa, éventuellement
+  « jj et jj/mm/aaaa » pour une visite sur deux jours) — la date de la visite en cours est celle
+  cohérente avec le titre/nom du document ou sa conclusion, la dernière visite est antérieure.
+
+**Exemple vérifié (calibration, ne pas réutiliser pour un autre document)** — cartouche du
+27/03/2025 : bloc de labels (Client / Interlocuteur / Etablissement / Adresse / Type-Catégorie /
+RUS / Interlocuteur / Date de la visite / Type de visite / Dernière visite) puis, plus loin dans le
+texte, un bloc de valeurs dans un ordre non strictement identique à celui des labels : « SSN
+(Hyper) » (Client), « Charlie BELLANGER » (Interlocuteur Client), « Centre commercial Dumbéa Mall »
+(Etablissement), l'adresse, « CAPSE NC » (RUS), « David BOUVIER & Catherine DELORME » (Interlocuteur
+RUS), « 27 et 31/03/2025 » (Date de la visite), « 29/01/2025 » (Dernière visite). Ce cas illustre la
+logique de pairage par nature de contenu, pas une valeur à réutiliser ailleurs.
+
+**Filet de sécurité obligatoire** : si, après application de cette logique, tu ne peux pas
+distinguer avec certitude laquelle des deux entreprises identifiées est le Client et laquelle est
+le RUS (ou laquelle des deux personnes est l'interlocuteur de qui), NE TRANCHE PAS au hasard : crée
+les propositions **company**/**person** avec les noms retrouvés, mais laisse companyRole ou la
+fonction (description) sur une valeur générique non tranchée plutôt que d'assigner un rôle
+RUS/Client précis à la mauvaise entité. Un rôle non assigné est récupérable ; un rôle inversé sur un
+champ réglementaire (RUS) ne l'est pas.
+
 ### Fonction/rôle nommé (RUS, MOE, AMO, titulaire…) — PREUVE DIRECTE
 
 **INVARIANT** : un rôle explicite (RUS, MOE, AMO, maître d'ouvrage, titulaire, coordonnateur SPS…) ne peut
@@ -408,6 +453,18 @@ si le texte source est tronqué, mal océrisé ou ambigu au point de ne pas iden
 crée pas de proposition company plutôt que de deviner. Ceci s'applique à **chaque** document
 individuellement : ne réutilise jamais un nom d'entreprise vu dans un autre document ou une autre
 visite pour compléter un nom incomplet de celui-ci.
+
+**Preuve de rôle d'acteur obligatoire** : une chaîne de caractères retrouvée littéralement dans le
+texte ne suffit PAS à elle seule à créer une proposition **company** — il faut en plus un contexte
+explicite d'ACTEUR/ORGANISATION l'entourant dans le document : rôle nommé (Client, RUS, maître
+d'ouvrage, entreprise titulaire, sous-traitant…), verbe d'action l'associant à une tâche (« … à
+relancer », « réalisé par … », « rapport de … », « … à transmettre à … »), ou une mention explicite
+« entreprise X » / « société X ». Un mot en majuscules isolé au milieu d'une phrase, sans aucun de
+ces marqueurs de rôle, est très probablement un artefact d'OCR/extraction (mot mal reconnu, casse
+erronée) et ne devient jamais une proposition company — même s'il ressemble à un sigle ou un nom
+propre plausible. Ce filtre s'ajoute à l'exigence d'ancrage documentaire ci-dessus, il ne
+l'assouplit pas : les entreprises réellement nommées avec un rôle explicite (ex. « MIES », «
+UXELLO », « ARES ») restent extraites normalement.
 
 ---
 
