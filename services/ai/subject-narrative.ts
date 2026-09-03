@@ -51,7 +51,11 @@ Réponds en JSON : { "narrative": "...", "usedFactIds": ["..."] }`
 // ── Labels ────────────────────────────────────────────────────────────────────
 
 const STATUS_FR: Record<string, string> = {
+  // P0-2B — displayState partagé (vérité d'état courant)
   open:                 'à réaliser / ouvert',
+  resolved:             'résolu / clôturé',
+  reopened:             'réouvert',
+  // rawStatus historiques (compat descriptive)
   in_progress:          'en cours',
   planned:              'planifié',
   done:                 'clôturé / réalisé',
@@ -89,9 +93,10 @@ function buildInput(
   const validIds = new Set<string>()
   let dynamicFactCount = 0
 
-  // Statut — fait dynamique (état opérationnel actuel)
-  if (life.currentStatus) {
-    input.statut = { id: 'status', label: STATUS_FR[life.currentStatus] ?? life.currentStatus }
+  // Statut — fait dynamique (état opérationnel COURANT = vérité partagée displayState, jamais rawStatus).
+  // 'unknown' n'est pas un fait dynamique : pas de statut affirmé sans preuve d'état.
+  if (life.displayState !== 'unknown') {
+    input.statut = { id: 'status', label: STATUS_FR[life.displayState] ?? life.displayState }
     validIds.add('status')
     dynamicFactCount++
   }
@@ -203,7 +208,7 @@ export async function buildSubjectNarrative(
   const provider = getAIProvider()
 
   if (provider.name === 'mock') {
-    const statusPart = life.currentStatus ? (STATUS_FR[life.currentStatus] ?? life.currentStatus) : null
+    const statusPart = life.displayState !== 'unknown' ? (STATUS_FR[life.displayState] ?? life.displayState) : null
     const base = statusPart ? `${life.label} est ${statusPart}` : life.label
     const stagPart = intel.isStagnant && intel.stagnationDays
       ? ` sans évolution significative depuis ${intel.stagnationDays} jours`

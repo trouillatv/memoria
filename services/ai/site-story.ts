@@ -58,6 +58,8 @@ const storySchema = z.object({
 })
 
 const STATUS_FR: Record<string, string> = {
+  // P0-2B — displayState partagé (vérité d'état courant)
+  resolved: 'résolu', reopened: 'réouvert',
   open: 'ouvert', in_progress: 'en cours', planned: 'planifié', done: 'clôturé',
   non_compliant: 'non conforme', awaiting_validation: 'en attente', still_open: 'toujours ouvert',
   field_checked: 'vérifié terrain', cancelled: 'annulé', not_applicable: 'sans objet',
@@ -101,7 +103,7 @@ function buildInput(
   if (stagnants.length > 0) {
     lines.push(`\n[Stagnants — sans évolution significative]`)
     for (const s of stagnants.slice(0, 6)) {
-      const st = s.currentStatus ? ` (${STATUS_FR[s.currentStatus] ?? s.currentStatus})` : ''
+      const st = s.displayState !== 'unknown' ? ` (${STATUS_FR[s.displayState] ?? s.displayState})` : ''
       const stag = s.stagnationDays > 0 ? `, stagnation ${s.stagnationDays}j` : ''
       const change = s.lastMeaningfulChangeAt ? `, dernier chgt ${s.lastMeaningfulChangeAt.slice(0, 10)}` : ''
       const objParts = [
@@ -119,7 +121,7 @@ function buildInput(
   if (active.length > 0) {
     lines.push(`\n[En cours]`)
     for (const s of active.slice(0, 6)) {
-      const st = s.currentStatus ? ` (${STATUS_FR[s.currentStatus] ?? s.currentStatus})` : ''
+      const st = s.displayState !== 'unknown' ? ` (${STATUS_FR[s.displayState] ?? s.displayState})` : ''
       const objParts = [
         s.activeObjects.actionsOpen > 0 ? `${s.activeObjects.actionsOpen} action(s)` : '',
         s.activeObjects.reservesOpen > 0 ? `${s.activeObjects.reservesOpen} réserve(s)` : '',
@@ -300,7 +302,7 @@ export async function generateSiteStory(
         : `${operational.length} sujets actifs suivis`,
       narrative: `[mock] Ce chantier comporte ${operational.length} sujet(s) actif(s), ${dependencyGraph.links.length} relation(s) confirmée(s) et ${actors.length} responsabilité(s) acteur. ${stagnants.length > 0 ? `${stagnants.length} sujet(s) stagn${stagnants.length > 1 ? 'ent' : 'e'} sans évolution significative.` : ''}`,
       keyFindings: operational.slice(0, 2).map((s) => ({
-        text: `[mock] ${s.title} — ${s.isStagnant ? `stagnation ${s.stagnationDays}j` : s.currentStatus ?? 'en cours'}`,
+        text: `[mock] ${s.title} — ${s.isStagnant ? `stagnation ${s.stagnationDays}j` : (s.displayState !== 'unknown' ? STATUS_FR[s.displayState] ?? s.displayState : 'en cours')}`,
         evidenceType: 'subject' as const,
         evidenceId: s.canonicalSubjectId,
         resolvedHref: `/sites/${siteId}/historique/sujets/${s.canonicalSubjectId}`,

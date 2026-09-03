@@ -38,6 +38,8 @@ const trajectorySchema = z.object({
 })
 
 const STATUS_FR: Record<string, string> = {
+  // P0-2B — displayState partagé
+  resolved: 'résolu', reopened: 'réouvert',
   open: 'ouvert', in_progress: 'en cours', planned: 'planifié', done: 'clôturé',
   non_compliant: 'non conforme', awaiting_validation: 'en attente de validation',
   cancelled: 'annulé', informational: 'informatif', field_checked: 'vérifié terrain',
@@ -59,7 +61,8 @@ function buildInput(life: CanonicalSubjectLife): string {
   const lines: string[] = []
   lines.push(`Sujet : ${life.label}`)
   if (life.csStatus !== 'active') lines.push(`Statut sujet : ${life.csStatus}`)
-  if (life.currentStatus) lines.push(`État actuel : ${STATUS_FR[life.currentStatus] ?? life.currentStatus}`)
+  // P0-2B — « État actuel » = displayState partagé (vérité d'état courant), jamais le rawStatus.
+  if (life.displayState !== 'unknown') lines.push(`État actuel : ${STATUS_FR[life.displayState] ?? life.displayState}`)
   if (life.firstSeenAt) lines.push(`Première mention : ${frDateShort(life.firstSeenAt)}`)
   if (life.lastSeenAt)  lines.push(`Dernière mention : ${frDateShort(life.lastSeenAt)}`)
   if (life.isStagnant && life.stagnationDays) {
@@ -155,7 +158,7 @@ export async function generateSubjectTrajectory(
 
   if (provider.name === 'mock') {
     return {
-      headline: life.currentStatus ? (STATUS_FR[life.currentStatus] ?? life.currentStatus) : 'En cours',
+      headline: life.displayState !== 'unknown' ? (STATUS_FR[life.displayState] ?? life.displayState) : 'En cours',
       trajectory: `[mock] ${life.label} — trajectoire de démonstration sur ${realOccs.length} occurrence(s).`,
       evidence: realOccs.slice(0, 2).map((o) => ({
         kind: 'occurrence' as const,

@@ -123,23 +123,44 @@ describe('buildVisitPlan — contrôles terrain', () => {
     expect(plan[1].why).toContain('3 fois de suite')
   })
 
-  it('formule le dernier état connu depuis le statut et les objets actifs', () => {
+  it('P0-2B — lastKnown vient de displayState (vérité partagée), pas du rawStatus : reopened → « réouvert »', () => {
     const [c] = buildVisitPlan(
       [
         item({
           signal: 'subject_stagnant', title: 'A',
           metadata: {
             canonicalSubjectId: '1',
-            currentStatus: 'still_open',
+            // displayState = vérité d'état courant ; currentStatus brut « done » ne doit PAS gagner.
+            displayState: 'reopened',
+            currentStatus: 'done',
             activeObjects: { actionsOpen: 1, reservesOpen: 2, deadlinesActive: 0, decisionsOpen: 0, total: 3 },
           },
         }),
       ],
       [], 10,
     )
-    expect(c.lastKnown).toContain('toujours ouvert')
+    expect(c.lastKnown).toContain('réouvert')
+    expect(c.lastKnown).not.toContain('clôturé')
     expect(c.lastKnown).toContain('1 action ouverte')
     expect(c.lastKnown).toContain('2 réserves ouvertes')
+  })
+
+  it('P0-2B — displayState unknown n\'est pas affiché comme un état connu', () => {
+    const [c] = buildVisitPlan(
+      [
+        item({
+          signal: 'subject_stagnant', title: 'A',
+          metadata: {
+            canonicalSubjectId: '1', displayState: 'unknown',
+            activeObjects: { actionsOpen: 1, reservesOpen: 0, deadlinesActive: 0, decisionsOpen: 0, total: 1 },
+          },
+        }),
+      ],
+      [], 10,
+    )
+    // Pas de libellé d'état, mais les objets actifs restent formulés.
+    expect(c.lastKnown).not.toContain('indéterminé')
+    expect(c.lastKnown).toContain('1 action ouverte')
   })
 
   it('sans donnée d’état, lastKnown reste null plutôt qu’une phrase vide', () => {

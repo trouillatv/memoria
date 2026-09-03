@@ -496,6 +496,10 @@ export async function deriveSiteAttentionItems(
     // sert de départage au tri ci-dessous et ne doit surtout pas apparaître sur
     // des items qui n'en avaient pas, sous peine de réordonner l'Aperçu).
     item.metadata = {
+      // P0-2B — displayState = vérité d'état courant partagée (le plan de visite / lastKnown la consomment).
+      // currentStatus reste (brut) pour décrire une preuve, jamais comme état courant.
+      displayState: s.displayState,
+      provenOpen: s.provenOpen,
       currentStatus: s.currentStatus,
       kind: s.dominantFamily, // #228 : métadonnée descriptive = famille (dominantFamily), pas la nature durable
       durableKind: s.durableKind,

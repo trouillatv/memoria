@@ -7,6 +7,7 @@
 //   - Max 20 occurrences retournées (toujours les plus récentes)
 
 import type { CanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
+import type { CanonicalDisplayState } from '@/lib/documents/subject-state'
 
 export interface SubjectOccurrenceContext {
   date: string
@@ -47,6 +48,18 @@ export interface SubjectDetailContext {
   pvCount: number
   firstSeenAt: string | null
   lastSeenAt: string | null
+  /**
+   * P0-2B — SEULE vérité d'état courant autorisée pour le LLM (open|resolved|reopened|unknown).
+   * Déterministe (deriveCanonicalCurrentState). Le LLM l'EXPLIQUE, il ne la recalcule ni ne la
+   * contredit jamais depuis `documentStatus`/`occurrences`.
+   */
+  etatCourant: CanonicalDisplayState
+  /** P0-2B — open OU objet actif rattaché. Rattaché à etatCourant, ne pas redéduire. */
+  provenOpen: boolean
+  /**
+   * Statut brut historique (document_status/visit_status de la dernière occurrence).
+   * NE PAS l'utiliser comme état courant — uniquement pour décrire une preuve/occurrence.
+   */
   currentStatus: string | null
   /** Occurrences non-gap, les plus récentes en premier (max 20) */
   occurrences: SubjectOccurrenceContext[]
@@ -138,6 +151,8 @@ export function buildSubjectDetailForCopilot(
     pvCount: life.pvCount,
     firstSeenAt: life.firstSeenAt,
     lastSeenAt: life.lastSeenAt,
+    etatCourant: life.displayState,
+    provenOpen: life.provenOpen,
     currentStatus: life.currentStatus,
     occurrences,
     materializedEvents,

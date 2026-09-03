@@ -164,7 +164,11 @@ function checkOf(item: SiteAttentionItem): string {
 // ── Dernier état connu ────────────────────────────────────────────────────────
 
 const STATUS_FR: Record<string, string> = {
+  // P0-2B — displayState partagé (vérité d'état courant)
   open: 'ouvert',
+  resolved: 'résolu',
+  reopened: 'réouvert',
+  // rawStatus historiques (conservés pour compat descriptive)
   in_progress: 'en cours',
   still_open: 'toujours ouvert',
   non_compliant: 'non conforme',
@@ -214,8 +218,10 @@ function str(meta: Record<string, unknown> | undefined, key: string): string | n
  */
 function lastKnownOf(item: SiteAttentionItem): string | null {
   const parts: string[] = []
-  const status = str(item.metadata, 'currentStatus')
-  if (status) parts.push(STATUS_FR[status] ?? status)
+  // P0-2B — dernier état connu = displayState partagé (open/resolved/reopened), plus le rawStatus.
+  // 'unknown' n'est pas un état affichable : on ne comble pas une absence par « indéterminé ».
+  const state = str(item.metadata, 'displayState')
+  if (state && state !== 'unknown') parts.push(STATUS_FR[state] ?? state)
 
   const active = readActiveObjects(item.metadata)
   if (active) {
