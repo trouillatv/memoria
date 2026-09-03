@@ -15,6 +15,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { randomUUID } from 'node:crypto'
+import { emitNativeActionLifecycleSignal } from '@/lib/db/object-state-occurrence-signal'
+import { loadCboEvolutions } from '@/lib/knowledge/canonical-business-object-evolution'
+import type { CanonicalBusinessObjectEntry } from '@/lib/knowledge/canonical-business-object-projection'
 
 const TAG = `__test_h2b1_occurrence_signal_${Math.floor(Date.now() / 1000)}__`
 
@@ -24,6 +27,7 @@ let siteId: string
 let cboAId: string
 let cboBId: string
 const memberEntityId = randomUUID()
+let e2eActionId: string | null = null
 
 beforeAll(async () => {
   const db = createAdminClient()
@@ -65,6 +69,8 @@ afterAll(async () => {
   const db = createAdminClient()
   await db.from('object_state_occurrence_signal').delete().eq('site_id', siteId)
   await db.from('canonical_business_object_member').delete().eq('member_entity_id', memberEntityId)
+  if (e2eActionId) await db.from('canonical_business_object_member').delete().eq('member_entity_id', e2eActionId)
+  if (siteId) await db.from('site_actions').delete().eq('site_id', siteId)
   if (siteId) await db.from('canonical_business_object').delete().eq('site_id', siteId)
   if (siteId) await db.from('sites').delete().eq('id', siteId)
   if (clientId) await db.from('clients').delete().eq('id', clientId)
@@ -195,6 +201,77 @@ describe('object_state_occurrence_signal — contraintes (migration 349)', () =>
     expect(retry.data?.error_code).toBe('TIMEOUT')
 
     await db.from('object_state_occurrence_signal').delete().eq('entity_id', entityId)
+  })
+
+  // ── P1-4A — provenance native_action_event (migration 379) contre le CONTRAT SQL RÉEL ──
+  // Ces tests prouvent ce que le mock unitaire ne pouvait pas : la contrainte CHECK de la DB
+  // accepte désormais le canal natif (bug silencieux corrigé), et le best-effort n'avale plus
+  // une violation. Bout-en-bout : emit → object_state_occurrence_signal → loadCboEvolutions.
+
+  it('accepte source=native_action_event + COMPLETED (migration 379)', async () => {
+    const db = createAdminClient()
+    const entityId = randomUUID()
+    const { error } = await db.from('object_state_occurrence_signal').insert({
+      entity_type: 'site_action', entity_id: entityId, site_id: siteId,
+      status: 'resolved', source: 'native_action_event', final_signal: 'COMPLETED',
+    })
+    expect(error).toBeNull()
+    await db.from('object_state_occurrence_signal').delete().eq('entity_id', entityId)
+  })
+
+  it('accepte source=native_action_event + REOPENED', async () => {
+    const db = createAdminClient()
+    const entityId = randomUUID()
+    const { error } = await db.from('object_state_occurrence_signal').insert({
+      entity_type: 'site_action', entity_id: entityId, site_id: siteId,
+      status: 'resolved', source: 'native_action_event', final_signal: 'REOPENED',
+    })
+    expect(error).toBeNull()
+    await db.from('object_state_occurrence_signal').delete().eq('entity_id', entityId)
+  })
+
+  it('rejette toujours une source inconnue (le CHECK reste un garde-fou)', async () => {
+    const db = createAdminClient()
+    const { error } = await db.from('object_state_occurrence_signal').insert({
+      entity_type: 'site_action', entity_id: randomUUID(), site_id: siteId,
+      status: 'resolved', source: 'valeur_inconnue', final_signal: 'COMPLETED',
+    })
+    expect(error).not.toBeNull()
+  })
+
+  it('bout-en-bout : Terminer natif → signal COMPLETED/native → loadCboEvolutions=DONE ; Rouvrir → REOPENED', async () => {
+    const db = createAdminClient()
+    const { data: cbo } = await db.from('canonical_business_object')
+      .insert({ site_id: siteId, object_type: 'site_action', label: `${TAG} CBO action` })
+      .select('id').single()
+    const cboId = (cbo as { id: string }).id
+    const { data: act } = await db.from('site_actions')
+      .insert({ site_id: siteId, title: `${TAG} action`, status: 'open' })
+      .select('id').single()
+    const actionId = (act as { id: string }).id
+    e2eActionId = actionId
+    await db.from('canonical_business_object_member').insert({
+      canonical_business_object_id: cboId, member_entity_type: 'site_action',
+      member_entity_id: actionId, resolution_source: 'manual',
+    })
+
+    const entry = {
+      key: cboId, entityType: 'site_action', label: 'x', isGrouped: true,
+      members: [{ entityType: 'site_action', entityId: actionId, status: 'done', title: 'x' }],
+      status: 'done', statusIsDivergent: false,
+    } as unknown as CanonicalBusinessObjectEntry
+
+    // Terminer explicitement → le signal natif DOIT être accepté par la DB (plus de violation avalée)
+    const outC = await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: actionId, event: 'completed' })
+    expect(outC).toMatchObject({ kind: 'emitted', finalSignal: 'COMPLETED' })
+    const rowC = await db.from('object_state_occurrence_signal').select('source, final_signal').eq('entity_id', actionId).single()
+    expect(rowC.data).toMatchObject({ source: 'native_action_event', final_signal: 'COMPLETED' })
+    expect((await loadCboEvolutions([entry])).get(cboId)?.computedState).toBe('DONE')
+
+    // Rouvrir explicitement → REOPENED
+    const outR = await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: actionId, event: 'reopened' })
+    expect(outR).toMatchObject({ kind: 'emitted', finalSignal: 'REOPENED' })
+    expect((await loadCboEvolutions([entry])).get(cboId)?.computedState).toBe('REOPENED')
   })
 
   it('trigger de reroutage : un changement de membership CBO resynchronise canonical_business_object_id', async () => {

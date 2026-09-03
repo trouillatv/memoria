@@ -33,7 +33,10 @@ export type CboSignalOccurrence = {
   entityType: MaterializedEntityType
   occurrenceDate: string | null
   finalSignal: ObjectStateSignal
-  source: 'document_status' | 'llm'
+  // P1-4A : 'native_action_event' = clôture/réouverture explicite de l'utilisateur (preuve de
+  // premier ordre). La réduction n'utilise pas `source` (seul finalSignal+date comptent) ; ce
+  // champ ne sert qu'à la provenance affichée. Ouvert pour les canaux futurs (P1-4B documentaire).
+  source: string
   reasoning: string | null
 }
 
@@ -173,7 +176,7 @@ export async function loadCboEvolutions(
         entityType: r.entity_type as MaterializedEntityType,
         occurrenceDate: r.occurrence_date,
         finalSignal: r.final_signal as ObjectStateSignal,
-        source: r.source as 'document_status' | 'llm',
+        source: r.source,
         reasoning: r.step1_reasoning ?? memberTitleByEntity.get(`${r.entity_type}:${r.entity_id}`) ?? null,
       })),
     )
