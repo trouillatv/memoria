@@ -79,7 +79,7 @@ vi.mock('@/lib/ai/classify-occurrence-state-signal', async (importOriginal) => {
   return { ...actual, classifyOccurrenceStateSignal: mockClassify }
 })
 
-import { produceObjectStateOccurrenceSignal } from '@/lib/db/object-state-occurrence-signal'
+import { produceObjectStateOccurrenceSignal, emitNativeActionLifecycleSignal } from '@/lib/db/object-state-occurrence-signal'
 
 const SITE = 'site-1'
 
@@ -276,5 +276,77 @@ describe('produceObjectStateOccurrenceSignal — entité introuvable', () => {
     await expect(produceObjectStateOccurrenceSignal({ entityType: 'site_action', entityId: 'inconnu' }))
       .rejects.toThrow(/introuvable/)
     expect(TABLES.object_state_occurrence_signal).toHaveLength(0)
+  })
+})
+
+// ── P1-4A — cycle de vie NATIF (emitNativeActionLifecycleSignal) ──────────────
+// La réduction final_signal → état CBO (COMPLETED⇒DONE, REOPENED⇒REOPENED) appartient à
+// canonical-business-object-evolution.ts (code existant) ; ici on prouve que l'événement natif
+// produit EXACTEMENT le bon signal, sur la bonne occurrence, avec la bonne provenance.
+
+describe('emitNativeActionLifecycleSignal — clôture/réouverture explicite = preuve de premier ordre', () => {
+  function seedAction(entityId: string, cboId: string | null) {
+    TABLES.site_actions.push({ id: entityId, site_id: SITE, title: 'Poser garde-corps', body: null, due_date: null })
+    if (cboId) TABLES.canonical_business_object_member.push({ member_entity_type: 'site_action', member_entity_id: entityId, canonical_business_object_id: cboId })
+  }
+
+  it('completed → final_signal=COMPLETED, source=native_action_event, rattaché au CBO', async () => {
+    seedAction('a-done', 'cbo-A')
+    const out = await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'a-done', event: 'completed' })
+    expect(out).toMatchObject({ kind: 'emitted', finalSignal: 'COMPLETED', canonicalBusinessObjectId: 'cbo-A' })
+    expect(signalRow('a-done')).toMatchObject({
+      status: 'resolved', source: 'native_action_event', final_signal: 'COMPLETED',
+      canonical_business_object_id: 'cbo-A', entity_type: 'site_action',
+    })
+  })
+
+  it('reopened → final_signal=REOPENED', async () => {
+    seedAction('a-reop', 'cbo-A')
+    const out = await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'a-reop', event: 'reopened' })
+    expect(out).toMatchObject({ kind: 'emitted', finalSignal: 'REOPENED' })
+    expect(signalRow('a-reop')).toMatchObject({ source: 'native_action_event', final_signal: 'REOPENED' })
+  })
+
+  it('action sans CBO → skip explicite, AUCUN rattachement forcé, aucune ligne de signal', async () => {
+    seedAction('a-orphan', null)
+    const out = await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'a-orphan', event: 'completed' })
+    expect(out).toEqual({ kind: 'skipped_no_cbo' })
+    expect(signalRow('a-orphan')).toBeUndefined()
+  })
+
+  it('supersède le signal documentaire de la MÊME occurrence (une seule ligne, UNIQUE)', async () => {
+    seedAction('a-super', 'cbo-A')
+    TABLES.object_state_occurrence_signal.push({
+      id: 'sig-doc', entity_type: 'site_action', entity_id: 'a-super', site_id: SITE,
+      status: 'resolved', source: 'document_status', final_signal: 'OPENED', canonical_business_object_id: 'cbo-A',
+    })
+    await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'a-super', event: 'completed' })
+    const rows = (TABLES.object_state_occurrence_signal ?? []).filter((r) => r.entity_id === 'a-super')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ source: 'native_action_event', final_signal: 'COMPLETED' })
+  })
+
+  it('idempotence : deux clôtures successives → une seule ligne COMPLETED', async () => {
+    seedAction('a-idem', 'cbo-A')
+    await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'a-idem', event: 'completed' })
+    await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'a-idem', event: 'completed' })
+    const rows = (TABLES.object_state_occurrence_signal ?? []).filter((r) => r.entity_id === 'a-idem')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ final_signal: 'COMPLETED' })
+  })
+
+  it('OPEN → COMPLETE → REOPEN : la ligne finit à REOPENED (≠ DONE)', async () => {
+    seedAction('a-seq', 'cbo-A')
+    await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'a-seq', event: 'completed' })
+    await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'a-seq', event: 'reopened' })
+    expect(signalRow('a-seq')).toMatchObject({ final_signal: 'REOPENED' })
+  })
+
+  it('terminer A ne touche jamais l’occurrence B du même CBO', async () => {
+    seedAction('A', 'cbo-A')
+    seedAction('B', 'cbo-A')
+    await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: 'A', event: 'completed' })
+    expect(signalRow('A')).toMatchObject({ final_signal: 'COMPLETED' })
+    expect(signalRow('B')).toBeUndefined() // B intacte
   })
 })

@@ -13,7 +13,7 @@ import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { requireSiteWriteAccess, requireSiteActionWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
-import { createSiteAction, updateSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned } from '@/lib/db/site-actions'
+import { createSiteAction, updateSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned, reopenSiteAction } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
@@ -232,10 +232,13 @@ export async function reopenActionAction(
   // Réouverture ATOMIQUE : repasse open/done_at=null ET journalise l'événement
   // `reopened` dans la même transaction (mig 221). L'événement `completed` antérieur
   // reste dans le journal → l'histoire de clôture n'est plus détruite. No-op si
-  // l'action n'est pas terminée.
-  const supabase = createAdminClient()
-  const { error } = await supabase.rpc('fn_reopen_action', { p_id: id, p_actor_id: access.userId, p_reason: reason })
-  if (error) return { ok: false, error: 'Échec de la réouverture' }
+  // l'action n'est pas terminée. P1-4A : passe par le writer `reopenSiteAction`, qui
+  // projette aussi la preuve REOPENED de premier ordre sur le cycle de vie du CBO.
+  try {
+    await reopenSiteAction(id, access.userId, reason)
+  } catch {
+    return { ok: false, error: 'Échec de la réouverture' }
+  }
 
   revalidateActionSurfaces(siteId)
   return { ok: true }

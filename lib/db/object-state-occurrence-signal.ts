@@ -277,3 +277,75 @@ export async function produceObjectStateOccurrenceSignal(params: {
   if (error) throw new Error(`upsert object_state_occurrence_signal (llm) échoué entity=${entityId}: ${error.message}`)
   return { kind: 'resolved', source: 'llm', finalSignal: result.signal }
 }
+
+// ── P1-4A — Cycle de vie NATIF de l'objet métier durable ─────────────────────
+//
+// Une clôture / réouverture EXPLICITE par l'utilisateur est une preuve de premier ordre —
+// aucune inférence. On la projette sur le signal de CETTE occurrence (source distincte
+// `native_action_event`), qui SUPERSÈDE le signal documentaire de la même occurrence via
+// l'upsert `(entity_type, entity_id)`. `loadCboEvolutions` la voit comme le dernier signal
+// significatif (occurrence_date = jour de l'événement, postérieure aux dates documentaires)
+// → COMPLETED ⇒ DONE, REOPENED ⇒ REOPENED.
+//
+// Invariants (mandat P1-4A) :
+//   - Ne touche QUE l'occurrence concernée (jamais les autres membres du CBO ni du sujet).
+//   - Skip explicite si l'occurrence n'appartient à aucun CBO — AUCUN rattachement forcé.
+//   - Idempotence : l'upsert par clé unique rend un double clic / retry / replay sans effet
+//     de trajectoire artificielle (même ligne réécrite avec le même état).
+//   - Provenance tracée par `source='native_action_event'` (distincte de `document_status`) :
+//     même état DONE, mais on saura toujours qu'il vient d'une décision d'équipe, pas d'un PV.
+//   - `cancel` n'appelle JAMAIS cette fonction (cancel ≠ DONE) — traité côté writer.
+//   - Aucun LLM ici : MemorIA calcule, l'IA explique.
+export type NativeLifecycleEvent = 'completed' | 'reopened'
+
+export type EmitNativeLifecycleOutcome =
+  | { kind: 'emitted'; finalSignal: ObjectStateSignal; canonicalBusinessObjectId: string }
+  | { kind: 'skipped_no_cbo' }
+
+export async function emitNativeActionLifecycleSignal(params: {
+  entityType: CanonicalBusinessObjectEntityType
+  entityId: string
+  event: NativeLifecycleEvent
+}): Promise<EmitNativeLifecycleOutcome> {
+  const { entityType, entityId, event } = params
+  const sb = createAdminClient()
+
+  const canonicalBusinessObjectId = await lookupCanonicalBusinessObjectId(sb, entityType, entityId)
+  if (!canonicalBusinessObjectId) return { kind: 'skipped_no_cbo' } // invariant : jamais de rattachement hasardeux
+
+  const context = await loadEntityContext(sb, entityType, entityId)
+  const finalSignal: ObjectStateSignal = event === 'completed' ? 'COMPLETED' : 'REOPENED'
+  // Date de l'ÉVÉNEMENT (jour civil) : postérieure aux occurrences documentaires historiques,
+  // donc dernier signal significatif du CBO. Un jour précis suffit à l'ordre déterministe.
+  const occurrenceDate = new Date().toISOString().slice(0, 10)
+
+  const { error } = await sb.from('object_state_occurrence_signal').upsert(
+    {
+      entity_type: entityType,
+      entity_id: entityId,
+      site_id: context.siteId,
+      canonical_business_object_id: canonicalBusinessObjectId,
+      occurrence_date: occurrenceDate,
+      status: 'resolved',
+      source: 'native_action_event',
+      step1_signal: null,
+      step1_reasoning: null,
+      step2_signal: null,
+      step2_reasoning: null,
+      final_signal: finalSignal,
+      backstop_applied: false,
+      backstop_reason: null,
+      model: null,
+      model_version: null,
+      confidence: null,
+      error_code: null,
+      error_detail: null,
+      attempt_count: 0,
+      last_attempt_at: null,
+      provider_request_id: null,
+    },
+    { onConflict: 'entity_type,entity_id' },
+  )
+  if (error) throw new Error(`emit native lifecycle signal échoué entity=${entityId}: ${error.message}`)
+  return { kind: 'emitted', finalSignal, canonicalBusinessObjectId }
+}

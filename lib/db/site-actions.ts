@@ -11,6 +11,7 @@ import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { actionHealth, actionAttentionOf, noumeaDayOf, type ActionHealth } from '@/lib/actions/health'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import { resolveSubjectAndAttachCanonicalBusinessObject } from '@/lib/db/canonical-business-object-attach'
+import { emitNativeActionLifecycleSignal } from '@/lib/db/object-state-occurrence-signal'
 import type { DbSiteAction, SiteActionStatus } from '@/types/db'
 
 // Re-export pour compat : la fonction pure vit dans lib/actions/health (sans
@@ -434,6 +435,42 @@ export async function markSiteActionDone(
     p_photo: closure?.photoPath ?? null,
   })
   if (error) throw error
+
+  // P1-4A — la clôture explicite est une preuve de premier ordre du cycle de vie de l'objet
+  // durable. Best-effort : la clôture (déjà committée par le RPC) ne doit jamais échouer si la
+  // projection du signal échoue ; le signal se recalcule/rejoue par ailleurs. Skip si l'action
+  // n'appartient à aucun CBO (aucun rattachement forcé).
+  try {
+    await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: id, event: 'completed' })
+  } catch (e) {
+    console.error('[P1-4A] émission signal COMPLETED natif échouée', id, e instanceof Error ? e.message : String(e))
+  }
+}
+
+/**
+ * P1-4A — Réouverture native : miroir de `markSiteActionDone`. Le RPC `fn_reopen_action`
+ * (mig 221) fait `done → open` + événement `reopened` dans la même transaction, sans détruire
+ * l'événement `completed` antérieur. On projette ensuite une preuve REOPENED de premier ordre
+ * sur le cycle de vie du CBO (best-effort, même doctrine que la clôture).
+ */
+export async function reopenSiteAction(
+  id: string,
+  actorId?: string | null,
+  reason?: string | null,
+): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase.rpc('fn_reopen_action', {
+    p_id: id,
+    p_actor_id: actorId ?? null,
+    p_reason: reason ?? null,
+  })
+  if (error) throw error
+
+  try {
+    await emitNativeActionLifecycleSignal({ entityType: 'site_action', entityId: id, event: 'reopened' })
+  } catch (e) {
+    console.error('[P1-4A] émission signal REOPENED natif échouée', id, e instanceof Error ? e.message : String(e))
+  }
 }
 
 /**
