@@ -33,10 +33,15 @@ export function computeContextFingerprint(candidateCboIds: string[]): string {
   return createHash('sha256').update(canonical).digest('hex')
 }
 
+/** V2.2 (mig 381) : la preuve démontre-t-elle DIRECTEMENT le résultat, ou faut-il une inférence ? */
+export type EvidenceDirectness = 'direct' | 'inferred'
+
 export type CompletionCandidateInput = {
   canonicalBusinessObjectId: string
   verdict: CandidateVerdict
   intentMatch: IntentMatch
+  /** Nullable : les candidats V2/V2.1 antérieurs n'ont jamais produit cette dimension. */
+  evidenceDirectness?: EvidenceDirectness | null
   reason?: string | null
 }
 
@@ -105,6 +110,7 @@ export async function persistCompletionResolution(input: PersistResolutionInput)
         canonical_business_object_id: c.canonicalBusinessObjectId,
         candidate_verdict: c.verdict,
         intent_match: c.intentMatch,
+        evidence_directness: c.evidenceDirectness ?? null,
         reason: c.reason ?? null,
       })),
     )

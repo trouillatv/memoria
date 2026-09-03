@@ -9,6 +9,7 @@ import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-su
 import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import { attachHistoricalReportEntitiesToCanonicalBusinessObjects } from '@/lib/db/canonical-business-object-attach'
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
+import { resolveSiteDocumentCompletions } from '@/lib/knowledge/document-completion-resolver'
 
 export type HistoricalImportPostProcessingOutcome =
   | 'completed'
@@ -132,6 +133,15 @@ export async function runHistoricalImportPostProcessing(
     touchedCanonicalSubjectIds,
   })
   await attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId })
+
+  // Pont documentaire de complétion (P1-4B2a) : preuves de réalisation → candidats CBO action →
+  // résolution versionnée append-only (idempotente par contexte). Best-effort : ne produit ni signal
+  // ni changement d'état CBO, donc un échec ici ne doit jamais faire échouer l'import.
+  try {
+    await resolveSiteDocumentCompletions(siteId)
+  } catch (err) {
+    console.error('[historical-import-post-processing] document completion resolver failed:', err instanceof Error ? err.message : String(err))
+  }
 
   return decision === 'done' ? 'already_completed' : 'completed'
 }
