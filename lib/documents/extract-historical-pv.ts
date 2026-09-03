@@ -589,6 +589,7 @@ export async function extractHistoricalPv(
         try {
           const { tryActorAutoLink } = await import('@/lib/db/actor-auto-link')
           const { isSiteEstablishmentLabel } = await import('@/lib/db/site-identity-guard')
+          const { createOrReuseActorCanonicalSubject } = await import('@/lib/db/actor-canonical-subject-create')
           const stats = { linked: 0, skipped: 0, no_match: 0, ambiguous: 0, conflict: 0, error: 0, establishment_skipped: 0 }
 
           // #232 — GARDE D'INTÉGRITÉ : le nom propre / établissement du site ne doit jamais
@@ -613,26 +614,28 @@ export async function extractHistoricalPv(
               continue
             }
 
-            // Créer le canonical_subject
-            const { data: newCs, error: csErr } = await supabase
-              .from('canonical_subject')
-              // P1-C1a : sujet ACTEUR (provenance person/company) — marqué kind='actor'
-              // pour être exclu du pool de résolution des faits métier.
-              .insert({ site_id: siteIdForReconciliation, label: orphan.label, status: 'active', kind: 'actor' })
-              .select('id')
-              .single()
+            // Créer le canonical_subject (ou réutiliser l'actif existant en cas de
+            // collision sur canonical_subject_active_normalized_label_uniq — même
+            // acteur réel déjà canonicalisé plus tôt sur ce chantier).
+            // P1-C1a : sujet ACTEUR (provenance person/company) — marqué kind='actor'
+            // pour être exclu du pool de résolution des faits métier.
+            const csResult = await createOrReuseActorCanonicalSubject(supabase, siteIdForReconciliation, orphan.label)
 
-            if (csErr || !newCs) {
+            if (csResult.outcome === 'error') {
               stats.error++
-              log('actor_cs_create_failed', documentId, { threadId: orphan.threadId, error: csErr?.message })
+              log('actor_cs_create_failed', documentId, { threadId: orphan.threadId, error: csResult.message })
               continue
             }
+            if (csResult.outcome === 'reused') {
+              log('actor_cs_reused_existing', documentId, { threadId: orphan.threadId, canonicalSubjectId: csResult.id })
+            }
+            const canonicalSubjectId = csResult.id
 
             // Créer le subject_thread_identity (idempotent si déjà existant)
             const { error: stiErr } = await supabase
               .from('subject_thread_identity')
               .upsert(
-                { subject_thread_id: orphan.threadId, site_id: siteIdForReconciliation, canonical_subject_id: (newCs as { id: string }).id, source: 'auto' },
+                { subject_thread_id: orphan.threadId, site_id: siteIdForReconciliation, canonical_subject_id: canonicalSubjectId, source: 'auto' },
                 { onConflict: 'subject_thread_id', ignoreDuplicates: true },
               )
 
@@ -644,7 +647,7 @@ export async function extractHistoricalPv(
 
             // Tentative de liaison automatique
             const result = await tryActorAutoLink(
-              (newCs as { id: string }).id,
+              canonicalSubjectId,
               siteIdForReconciliation,
               orphan.family as 'person' | 'company',
             )
