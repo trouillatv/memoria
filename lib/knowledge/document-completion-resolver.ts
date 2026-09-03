@@ -24,11 +24,13 @@ import {
 
 // Version de policy ACTIVE de ce resolver. Distincte du défaut P1-4B1 (COMPLETION_POLICY_VERSION,
 // laissé à 'p1.4b.v2' — schéma B1 étendu additivement, jamais backfillé). V2.1 a généralisé
-// l'invariant de l'acte informationnel/documentaire ; V2.2 ajoute la dimension evidence_directness :
-// une correspondance INFÉRÉE (raisonnement causal implicite) ne peut jamais atteindre HIGH.
-// Append-only : les résolutions V2 et V2.1 restent l'historique d'audit ; V2.2 ajoute de nouvelles
-// lignes et devient la décision effective quand la policy active = V2.2.
-export const ACTIVE_POLICY_VERSION = 'p1.4b.v2.2'
+// l'invariant de l'acte informationnel/documentaire ; V2.2 a ajouté evidence_directness (une
+// correspondance INFÉRÉE ne peut jamais atteindre HIGH) ; V2.3 ajoute l'INVARIANT D'OBJET INTENTIONNEL
+// (gate V2.3-CAL : un acte physique/opérationnel sur X n'accomplit pas un acte documentaire sur X, et
+// réciproquement — indépendant de la topologie des candidats). Append-only : les résolutions V2/V2.1/
+// V2.2 restent l'historique d'audit ; V2.3 ajoute de nouvelles lignes et devient la décision effective
+// quand la policy active = V2.3. Les textes de policy antérieurs ne sont jamais réécrits.
+export const ACTIVE_POLICY_VERSION = 'p1.4b.v2.3'
 
 const POLICY = `Tu vérifies si une PREUVE DE RÉALISATION documentaire (compte-rendu) démontre l'ACCOMPLISSEMENT de l'INTENTION D'ACTION précise portée par un objet métier durable.
 
@@ -48,6 +50,13 @@ Exemples de cette CLASSE GÉNÉRIQUE (ne les traite pas comme des règles métie
 - former une personne ≠ rédiger/mettre à jour une consigne.
 
 Note : si l'INTENTION est elle-même l'acte direct (ex. « Vérifier la dotation des RIA ») et que la preuve démontre cet acte (« Vérification du nombre de RIA réalisée »), c'est bien "accomplished"/"exact". L'invariant ne mord QUE lorsque l'intention demande l'acte informationnel/documentaire et que la preuve n'atteste que l'événement/objet sous-jacent.
+
+INVARIANT D'OBJET INTENTIONNEL (V2.3) : pour intent_match="exact", la preuve doit accomplir le MÊME OBJET INTENTIONNEL que l'action candidate, pas seulement une opération portant le même verbe. Un objet PHYSIQUE/OPÉRATIONNEL et l'ARTEFACT INFORMATIONNEL/DOCUMENTAIRE qui le décrit sont DEUX objets intentionnels DIFFÉRENTS, même sous le même verbe. Quand l'intention porte sur un artefact documentaire (plan, rapport, registre, date, information) et que la preuve n'atteste que l'acte physique/opérationnel sur l'objet sous-jacent → au mieux "related"/"inferred", JAMAIS "exact"/"direct". Exemples génériques (le principe, pas des règles métier particulières) :
+- modifier/remplacer/mettre à jour un ÉQUIPEMENT ≠ modifier/mettre à jour son PLAN ou REGISTRE (« mettre à jour les extincteurs » ≠ « mettre à jour le plan des extincteurs ») ;
+- réaliser un rapport ≠ transmettre ce rapport ;
+- réaliser un test ≠ transmettre sa date ;
+- vérifier un équipement ≠ rédiger le rapport de vérification.
+Réciproquement, une preuve attestant DIRECTEMENT l'acte documentaire demandé reste "exact"/"direct" : « plan transmis » → « transmettre le plan » ; « rapport rédigé » → « rédiger le rapport ».
 
 TROIS DIMENSIONS DISTINCTES, à ne jamais confondre :
 1. verdict : la preuve démontre-t-elle un accomplissement ?
