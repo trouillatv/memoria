@@ -78,6 +78,18 @@ const STATUS_COLORS: Record<string, string> = {
   mentioned:          'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
 }
 
+// P0-2 — badge d'état de la fiche = projection opérationnelle COURANTE partagée (displayState),
+// jamais le rawStatus. Même vérité que la fiche mobile et le Suivi (deriveCanonicalCurrentState).
+const DISPLAY_STATE_LABELS: Record<string, string> = {
+  open: 'Ouvert', resolved: 'Résolu', reopened: 'Réouvert', unknown: 'Indéterminé',
+}
+const DISPLAY_STATE_COLORS: Record<string, string> = {
+  open:     'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  resolved: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  reopened: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+  unknown:  'bg-muted text-muted-foreground',
+}
+
 const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
   nouveau:        { label: 'Nouveau',        icon: '+',  color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
   réalisé:        { label: 'Réalisé',        icon: '✓',  color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' },
@@ -1370,14 +1382,12 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
                 </p>
               )}
             </div>
-            {life.currentStatus && (
-              <span className={cn(
-                'shrink-0 rounded-full px-3 py-1 text-sm font-medium',
-                STATUS_COLORS[life.currentStatus] ?? 'bg-muted text-muted-foreground',
-              )}>
-                {STATUS_LABELS[life.currentStatus] ?? life.currentStatus}
-              </span>
-            )}
+            <span className={cn(
+              'shrink-0 rounded-full px-3 py-1 text-sm font-medium',
+              DISPLAY_STATE_COLORS[life.displayState] ?? 'bg-muted text-muted-foreground',
+            )}>
+              {DISPLAY_STATE_LABELS[life.displayState] ?? life.displayState}
+            </span>
           </div>
 
           {summaryParts.length > 0 && (
