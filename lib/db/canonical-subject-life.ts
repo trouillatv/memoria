@@ -9,7 +9,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from '@/lib/documents/pv-history'
-import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrences, collapseLmcaOccurrencesByDate, deriveCurrentResolvedState, type LmcaOccurrence, type PvState } from '@/lib/documents/subject-state'
+import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrences, collapseLmcaOccurrencesByDate, deriveCurrentResolvedState, deriveCanonicalCurrentState, type LmcaOccurrence, type PvState, type CanonicalDisplayState } from '@/lib/documents/subject-state'
 import type { HistoryTransition } from '@/lib/documents/pv-history'
 import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/lib/db/subject-thread-links'
 import { isOperationalSubject } from '@/lib/subjects/kind'
@@ -124,6 +124,10 @@ export interface CanonicalSubjectLife {
   firstSeenAt: string | null
   lastSeenAt: string | null
   currentStatus: string | null
+  /** P0-2 — Projection opérationnelle COURANTE unique (open|resolved|reopened|unknown). Vérité du badge. */
+  displayState: CanonicalDisplayState
+  /** P0-2 — open OU objet actif rattaché (isProvenOpen). */
+  provenOpen: boolean
   primaryFamily: string | null
   threadIds: string[]
   pvCount: number
@@ -373,12 +377,17 @@ export async function getCanonicalSubjectLife(
     const nativeStagDays = (nativeLmca && nativeLastSeenAt && nativeLmca !== nativeLastSeenAt)
       ? Math.floor((new Date(nativeLastSeenAt).getTime() - new Date(nativeLmca).getTime()) / 86_400_000)
       : 0
+    const nativeCurrent = deriveCanonicalCurrentState({
+      occurrences: nativeReal.map((o) => ({ effectiveDate: o.effectiveDate, pvState: o.stateStatus ?? (o.visitStatus !== null ? visitStatusToPvState(o.visitStatus) : documentStatusToPvState(o.documentStatus)) })),
+      activeObjectsTotal: terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)) ? 1 : 0,
+    })
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
       firstSeenAt: nativeFirstSeenAt,
       lastSeenAt: nativeLastSeenAt,
       currentStatus: nativeReal[nativeReal.length - 1]?.visitStatus ?? null,
+      displayState: nativeCurrent.displayState, provenOpen: nativeCurrent.provenOpen,
       primaryFamily: null, threadIds: [],
       pvCount: 0,
       fieldVisitCount: new Set(nativeReal.filter((o) => o.sourceKind === 'field_visit' || o.sourceKind === 'meeting').map((o) => `${o.sourceKind}-${o.effectiveDate}`)).size,
@@ -433,11 +442,16 @@ export async function getCanonicalSubjectLife(
     const fallbackStagDays = (fallbackLmca && fallbackLast && fallbackLmca !== fallbackLast)
       ? Math.floor((new Date(fallbackLast).getTime() - new Date(fallbackLmca).getTime()) / 86_400_000)
       : 0
+    const fallbackCurrent = deriveCanonicalCurrentState({
+      occurrences: fallbackReal.map((o) => ({ effectiveDate: o.effectiveDate, pvState: o.stateStatus ?? (o.visitStatus !== null ? visitStatusToPvState(o.visitStatus) : documentStatusToPvState(o.documentStatus)) })),
+      activeObjectsTotal: terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)) ? 1 : 0,
+    })
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
       firstSeenAt: fallbackFirst, lastSeenAt: fallbackLast,
       currentStatus: fallbackReal[fallbackReal.length - 1]?.visitStatus ?? null,
+      displayState: fallbackCurrent.displayState, provenOpen: fallbackCurrent.provenOpen,
       primaryFamily: null, threadIds, pvCount: 0,
       fieldVisitCount: new Set(fallbackReal.map((o) => `${o.sourceKind}-${o.effectiveDate}`)).size,
       runs: [], occurrences: fallbackOccs, links: [], materializedEvents: [], terrainObjects,
@@ -515,7 +529,8 @@ export async function getCanonicalSubjectLife(
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
       mergedInto: csMergedInto, mergedIntoLabel: null, mergesAsWinner: [],
-      firstSeenAt: null, lastSeenAt: null, currentStatus: null, primaryFamily: null,
+      firstSeenAt: null, lastSeenAt: null, currentStatus: null,
+      displayState: 'unknown', provenOpen: false, primaryFamily: null,
       threadIds, pvCount: 0, fieldVisitCount: 0,
       runs: allRuns.map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) })),
       occurrences: [], links: [], materializedEvents: [], terrainObjects: [],
@@ -816,13 +831,14 @@ export async function getCanonicalSubjectLife(
   const lastSeenAt = presenceDates.length ? presenceDates.reduce((a, b) => (a > b ? a : b)) : null
   const pvCountHistorical = historicalPresenceRunIds.size
 
-  // Statut courant = dernier état SIGNIFICATIF (non-unknown) en chronologie documentaire — même
-  // définition que la grille (deriveCurrentResolvedState), pour que Ligne de vie et grille racontent le
-  // même état (critère de clôture R-1). Exprimé en statut brut-équivalent (done/open/null).
-  const byDateStates = [...realOccurrences].sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
-  const currentResolved = deriveCurrentResolvedState(byDateStates.map((o) =>
-    o.stateStatus ?? (o.visitStatus !== null ? visitStatusToPvState(o.visitStatus) : documentStatusToPvState(o.documentStatus))))
-  const currentStatus = currentResolved === null ? null : (currentResolved ? 'done' : 'open')
+  // P0-2 — Occurrences projetées en tri-state (stateStatus ?? visitStatus↦ ?? documentStatus↦).
+  // L'état COURANT partagé (displayState) est calculé plus bas via deriveCanonicalCurrentState, une
+  // fois connu hasOpenOperationalObject. Effondrement open-dominant intra-date → plus de dépendance
+  // à l'ordre SQL (élimine le non-déterminisme intra-date de l'ancien deriveCurrentResolvedState brut).
+  const displayOccs = realOccurrences.map((o) => ({
+    effectiveDate: o.effectiveDate,
+    pvState: o.stateStatus ?? (o.visitStatus !== null ? visitStatusToPvState(o.visitStatus) : documentStatusToPvState(o.documentStatus)),
+  }))
   const primaryFamily = realOccurrences[0]?.proposalFamily ?? null
 
   // Primitive stagnation V1B — signature combinée : statut + objets métier liés (création + changement d'état)
@@ -862,6 +878,19 @@ export async function getCanonicalSubjectLife(
   const hasOpenOperationalObject =
     terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)) ||
     materializedEvents.some((e) => isOpenOperationalObjectStatus(e.entityType, e.status))
+
+  // P0-2 — Projection opérationnelle COURANTE partagée (même primitive que le Suivi).
+  // displayState (open|resolved|reopened|unknown) est la SEULE vérité d'état courant affichée.
+  // currentStatus reste exposé en brut-équivalent (done|open|null) pour isStagnant, mais devient
+  // DÉTERMINISTE (issu du tri-state effondré open-dominant), plus jamais dépendant de l'ordre SQL.
+  const currentState = deriveCanonicalCurrentState({
+    occurrences: displayOccs,
+    activeObjectsTotal: hasOpenOperationalObject ? 1 : 0,
+  })
+  const currentStatus = currentState.triState === 'unknown'
+    ? null
+    : (currentState.triState === 'resolved' ? 'done' : 'open')
+
   let isReopened = false
   {
     const { buildSiteSubjectCells, cellDeltaTransition } = await import('@/lib/documents/site-occurrence-timeline')
@@ -1000,6 +1029,8 @@ export async function getCanonicalSubjectLife(
     firstSeenAt,
     lastSeenAt,
     currentStatus,
+    displayState: currentState.displayState,
+    provenOpen: currentState.provenOpen,
     primaryFamily,
     threadIds,
     pvCount: pvCountHistorical,
@@ -1192,22 +1223,25 @@ export interface NavigableSubjectSummary {
   terrainObjects: TerrainObject[]
   /** État tri-state dérivé de la dernière occurrence non-unknown (open | resolved | unknown). */
   currentTriState: PvState
+  /** P0-2 — Projection opérationnelle COURANTE unique (open|resolved|reopened|unknown). Vérité du badge. */
+  displayState: CanonicalDisplayState
+  /** P0-2 — open OU objet actif rattaché (isProvenOpen). Gate ouvert/fermé partagé. */
+  provenOpen: boolean
 }
 
-const OPEN_NAV_STATUSES = new Set([
-  'open', 'in_progress', 'still_open', 'non_compliant',
-  'planned', 'awaiting_validation', 'field_checked',
-])
 const CLOSED_NAV_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
 
 function navSortPriority(s: NavigableSubjectSummary): 0 | 1 | 2 | 3 {
   // #228 : éligibilité opérationnelle = nature DURABLE (actor exclu), plus la famille de la 1re occurrence.
   if (!isOperationalSubject(s.durableKind)) return 2
-  const isOpen = OPEN_NAV_STATUSES.has(s.currentStatus ?? '')
+  // P0-2 — gate ouvert/fermé sur la VÉRITÉ D'ÉTAT COURANT partagée (provenOpen/displayState),
+  // plus sur rawStatus : un `unknown` seul ne compte plus comme ouvert (D4), un résolu à objet
+  // actif rattaché n'est plus classé fermé (D3). Le tri fin intra-bucket reste ailleurs (rawStatus).
+  const isOpen = s.provenOpen
   if (s.isStagnant && isOpen) return 0    // à surveiller
-  if (!s.isStagnant && isOpen) return 1   // en évolution active
-  if (CLOSED_NAV_STATUSES.has(s.currentStatus ?? '')) return 3
-  return 2                                 // informatif / statut inconnu
+  if (!s.isStagnant && isOpen) return 1   // en évolution active (open OU reopened)
+  if (s.displayState === 'resolved') return 3
+  return 2                                 // informatif / indéterminé
 }
 
 /**
@@ -1596,6 +1630,14 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       [...(emStag?.get('site_reserve')  ?? [])].some((id) => OPEN_RESERVE_STATUS.has(reserveStatusById.get(id) ?? '')) ||
       [...(emStag?.get('site_deadline') ?? [])].some((id) => OPEN_DEADLINE_STATUS.has(deadlineStatusById.get(id) ?? '')) ||
       [...(emStag?.get('site_decision') ?? [])].some((id) => OPEN_DECISION_STATUT.has(decisionStatutById.get(id) ?? ''))
+
+    // P0-2 — MÊME primitive d'état courant que la fiche. Effondrement open-dominant intra-date,
+    // reopened dérivé de la résolution antérieure, provenOpen = open OU objet actif rattaché.
+    const currentState = deriveCanonicalCurrentState({
+      occurrences: occs.map((o) => ({ effectiveDate: o.effectiveDate, pvState: o.pvState })),
+      activeObjectsTotal: hasOpenObject ? 1 : 0,
+    })
+
     const isStagnant = isStagnationEligible(cs.kind, hasOpenObject, reopenedByCs.has(csId))
       && !CLOSED_NAV_STATUSES.has(currentStatus ?? '')
       && stagnationDays >= 30
@@ -1627,6 +1669,8 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       consecutiveMentionsWithoutChange,
       terrainObjects: csTerrainObjectsMap.get(csId) ?? [],
       currentTriState,
+      displayState: currentState.displayState,
+      provenOpen: currentState.provenOpen,
     })
   }
 

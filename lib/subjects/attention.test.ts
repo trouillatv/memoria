@@ -41,6 +41,8 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary>): NavigableSubj
     consecutiveMentionsWithoutChange: 0,
     terrainObjects: [],
     currentTriState: 'unknown',
+    displayState: 'unknown',
+    provenOpen: false,
     ...overrides,
   }
 }
@@ -48,32 +50,36 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary>): NavigableSubj
 // ── Veto absolu : sujets clôturés ─────────────────────────────────────────────
 
 describe('Veto clôturé', () => {
-  it('done + isStagnant → isClosed, aucun signal', () => {
-    const s = makeSubject({ currentStatus: 'done', isStagnant: true, stagnationDays: 77, consecutiveMentionsWithoutChange: 4 })
+  it('résolu + isStagnant → isClosed, aucun signal', () => {
+    // P0-2 : le veto clôturé est fondé sur displayState==='resolved' (vérité d'état partagée),
+    // plus sur currentStatus brut.
+    const s = makeSubject({ currentStatus: 'done', displayState: 'resolved', isStagnant: true, stagnationDays: 77, consecutiveMentionsWithoutChange: 4 })
     const sig = computeAttentionSignals(s)
     expect(sig.isClosed).toBe(true)
     expect(sig.attentionReasons).toEqual([])
   })
 
-  it('done + activeObjects historiques → isClosed, aucun signal', () => {
+  it('P0-2 D3 : done documentaire MAIS objets actifs ouverts → réouvert, NON clôturé, signalé', () => {
+    // Ancien bug D3 : « done » masquait des actions ouvertes. Désormais objets actifs → provenOpen →
+    // displayState='reopened' → attention non vetoée.
     const s = makeSubject({
-      currentStatus: 'done',
+      currentStatus: 'done', displayState: 'reopened', provenOpen: true,
       activeObjects: { actionsOpen: 3, reservesOpen: 0, deadlinesActive: 0, decisionsOpen: 0, total: 3 },
     })
     const sig = computeAttentionSignals(s)
-    expect(sig.isClosed).toBe(true)
-    expect(sig.attentionReasons).toEqual([])
+    expect(sig.isClosed).toBe(false)
+    expect(sig.attentionReasons).toContain('open_objects')
   })
 
   it('cancelled + nombreuses occurrences → isClosed', () => {
-    const s = makeSubject({ currentStatus: 'cancelled', pvCount: 8, consecutiveMentionsWithoutChange: 5 })
+    const s = makeSubject({ currentStatus: 'cancelled', displayState: 'resolved', pvCount: 8, consecutiveMentionsWithoutChange: 5 })
     const sig = computeAttentionSignals(s)
     expect(sig.isClosed).toBe(true)
     expect(sig.attentionReasons).toEqual([])
   })
 
   it('not_applicable → isClosed', () => {
-    const s = makeSubject({ currentStatus: 'not_applicable', isStagnant: true, stagnationDays: 90 })
+    const s = makeSubject({ currentStatus: 'not_applicable', displayState: 'resolved', isStagnant: true, stagnationDays: 90 })
     const sig = computeAttentionSignals(s)
     expect(sig.isClosed).toBe(true)
     expect(sig.attentionReasons).toEqual([])
@@ -148,8 +154,8 @@ describe('Signal reservation (dépend de la FAMILLE dominantFamily, pas du durab
     expect(sig.attentionReasons).toContain('reservation')
   })
 
-  it('dominantFamily=reservation + done → isClosed, pas de reservation', () => {
-    const s = makeSubject({ dominantFamily: 'reservation', currentStatus: 'done' })
+  it('dominantFamily=reservation + résolu → isClosed, pas de reservation', () => {
+    const s = makeSubject({ dominantFamily: 'reservation', currentStatus: 'done', displayState: 'resolved' })
     const sig = computeAttentionSignals(s)
     expect(sig.isClosed).toBe(true)
     expect(sig.attentionReasons).toEqual([])

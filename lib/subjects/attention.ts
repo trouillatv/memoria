@@ -17,9 +17,6 @@
 import type { NavigableSubjectSummary } from '@/lib/db/canonical-subject-life'
 import { isOperationalSubject } from '@/lib/subjects/kind'
 
-// Doit rester cohérent avec CLOSED_STATUSES dans SujetsList et CLOSED_NAV_STATUSES dans canonical-subject-life.
-const CLOSED_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
-
 export type AttentionReason =
   | 'open_objects'   // activeObjects.total > 0 — conséquence métier directe
   | 'non_conformity' // currentStatus === 'non_compliant'
@@ -39,7 +36,9 @@ export interface SubjectAttentionSignals {
  * Pure function, aucun effet de bord.
  */
 export function computeAttentionSignals(s: NavigableSubjectSummary): SubjectAttentionSignals {
-  const isClosed = CLOSED_STATUSES.has(s.currentStatus ?? '')
+  // P0-2 — VETO fondé sur la vérité d'état COURANT partagée : seul `resolved` clôt l'attention.
+  // `reopened`/`open` restent surveillables ; un `unknown` seul n'est plus vu comme fermé (D4).
+  const isClosed = s.displayState === 'resolved'
   // #228 : gate opérationnel sur la nature durable (actor exclu), pas sur la famille d'occurrence.
   const isOperational = isOperationalSubject(s.durableKind)
 

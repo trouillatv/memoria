@@ -113,6 +113,17 @@ const STATUS_COLORS: Record<string, string> = {
   mentioned:          'bg-violet-100 text-violet-700',
 }
 
+// P0-2 — badge d'état = projection opérationnelle COURANTE partagée (displayState).
+const DISPLAY_STATE_LABELS: Record<string, string> = {
+  open: 'Ouvert', resolved: 'Résolu', reopened: 'Réouvert', unknown: 'Indéterminé',
+}
+const DISPLAY_STATE_COLORS: Record<string, string> = {
+  open:     'bg-orange-100 text-orange-700',
+  resolved: 'bg-emerald-100 text-emerald-800',
+  reopened: 'bg-red-100 text-red-700',
+  unknown:  'bg-muted text-muted-foreground',
+}
+
 const ENTITY_TYPE_META: Record<MaterializedEntityType, { label: string; plural: string; color: string }> = {
   site_action:   { label: 'Action',   plural: 'Actions',   color: 'bg-blue-100 text-blue-700' },
   site_decision: { label: 'Décision', plural: 'Décisions', color: 'bg-violet-100 text-violet-700' },
@@ -660,8 +671,8 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   // Acteur du chantier : rendu différencié, pas de trajectoire ni de stagnation
   const isActorSubject = life.primaryFamily === 'person' || life.primaryFamily === 'company'
 
-  // Mirrors computeAttentionSignals() — lib/subjects/attention.ts
-  const isClosedSubject      = new Set(['done', 'cancelled', 'not_applicable']).has(life.currentStatus ?? '')
+  // Mirrors computeAttentionSignals() — lib/subjects/attention.ts. P0-2 : gate fermé = displayState résolu.
+  const isClosedSubject      = life.displayState === 'resolved'
   const isOperationalKind    = !new Set(['person', 'company', 'knowledge_fact']).has(life.primaryFamily ?? '')
   const watchReasons: Array<'open_objects' | 'non_conformity' | 'reservation' | 'awaiting' | 'stagnant'> = []
   if (isOperationalKind && !isClosedSubject) {
@@ -698,14 +709,12 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
           <header className="rounded-2xl border bg-card px-4 py-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <h1 className="min-w-0 text-lg font-semibold leading-snug">{life.label}</h1>
-              {life.currentStatus && (
-                <span className={cn(
-                  'shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium',
-                  STATUS_COLORS[life.currentStatus] ?? 'bg-muted text-muted-foreground',
-                )}>
-                  {STATUS_LABELS[life.currentStatus] ?? life.currentStatus}
-                </span>
-              )}
+              <span className={cn(
+                'shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium',
+                DISPLAY_STATE_COLORS[life.displayState] ?? 'bg-muted text-muted-foreground',
+              )}>
+                {DISPLAY_STATE_LABELS[life.displayState] ?? life.displayState}
+              </span>
             </div>
 
             {life.threadIds.length > 1 && (

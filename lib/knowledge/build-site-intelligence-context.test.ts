@@ -71,6 +71,8 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary> = {}): Navigabl
     consecutiveMentionsWithoutChange: 0,
     terrainObjects: [],
     currentTriState: 'unknown',
+    displayState: 'open',
+    provenOpen: true,
     ...overrides,
   }
 }

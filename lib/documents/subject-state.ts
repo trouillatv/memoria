@@ -253,6 +253,98 @@ export function visitStatusToPvState(status: string | null): PvState {
   return 'unknown'
 }
 
+// ── P0-2 — Projection opérationnelle COURANTE partagée ────────────────────────
+//
+// Question à laquelle répond CETTE primitive (et une seule) : « à cet instant, David
+// doit-il considérer ce sujet comme ouvert / résolu / réouvert / indéterminé ? »
+// C'est la VÉRITÉ D'ÉTAT COURANT que consomment Fiche, Suivi et le gate ouvert/fermé
+// de l'attention. Elle est DISTINCTE de la TRANSITION historique (computeHistoryTransition,
+// cellDeltaTransition) que rendent la matrice PV / la frise Chronologie : l'histoire reste
+// multi-facettes, on ne fabrique ici qu'une projection courante unique.
+
+/** État affiché courant. `reopened` = ouvert MAINTENANT après une résolution antérieure. */
+export type CanonicalDisplayState = 'open' | 'resolved' | 'reopened' | 'unknown'
+
+export interface CanonicalCurrentState {
+  /** Dernier état SIGNIFICATIF (ignore unknown), projeté en tri-state. */
+  triState: PvState
+  /** Projection opérationnelle unique affichée. */
+  displayState: CanonicalDisplayState
+  /** open OU objet actif rattaché (isProvenOpen). */
+  provenOpen: boolean
+  /** Trace du chemin de décision (diagnostic/tests, pas d'UI). */
+  reason: string
+}
+
+/**
+ * Effondre par DATE une timeline d'états, OPEN-DOMINANT.
+ *
+ * Contraste VOLONTAIRE avec `collapseLmcaOccurrencesByDate` (resolved > open, adapté à la
+ * détection de changement LMCA) : ici open > resolved > unknown, car pour la projection
+ * opérationnelle COURANTE, une facette OUVERTE à la même date PRIME sur une facette résolue
+ * (doctrine P0-2 : au 22/07 « VGP faite » + « modif réseau à prévoir » → le sujet reste à traiter).
+ *
+ * Déterministe et commutatif : max par date puis dates triées → le résultat NE DÉPEND JAMAIS
+ * de l'ordre d'entrée (donc plus de l'ordre de retour SQL). Élimine le non-déterminisme intra-date.
+ */
+export function collapseCurrentStateByDate(
+  occs: { effectiveDate: string; pvState: PvState }[],
+): PvState[] {
+  const rank = (s: PvState): number => (s === 'open' ? 2 : s === 'resolved' ? 1 : 0)
+  const byDate = new Map<string, PvState>()
+  for (const o of occs) {
+    const cur = byDate.get(o.effectiveDate)
+    if (cur === undefined || rank(o.pvState) > rank(cur)) byDate.set(o.effectiveDate, o.pvState)
+  }
+  return [...byDate.keys()].sort().map((d) => byDate.get(d)!)
+}
+
+/**
+ * Projection opérationnelle COURANTE unique d'un canonical_subject.
+ *
+ * Doctrine figée (Vincent, P0-2) :
+ *   - `unknown` est transparent : ne transforme jamais à lui seul un sujet en open.
+ *   - resolved + open à la même date → OPEN prime (jamais dépendant de l'ordre SQL).
+ *   - resolved seul, sans preuve ouverte ni objet actif rattaché → resolved.
+ *   - ouvert maintenant APRÈS une résolution antérieure → reopened.
+ *   - aucune preuve significative → unknown.
+ *
+ * Réutilise les primitives existantes : `collapseCurrentStateByDate`, `deriveCurrentResolvedState`
+ * (dernier état significatif), `isProvenOpen` (open OU objet actif). La détection reopened encode
+ * la MÊME règle REOPEN que `computeSubjectTransition` (resolved → open), appliquée à l'état courant
+ * — pas une réimplémentation parallèle des transitions historiques.
+ */
+export function deriveCanonicalCurrentState(input: {
+  /** États tri-state par occurrence, DÉJÀ projetés (stateStatus ?? visitStatus↦ ?? documentStatus↦). Ordre libre. */
+  occurrences: { effectiveDate: string; pvState: PvState }[]
+  /** Nb d'objets opérationnels ACTIFS réellement rattachés au canonical subject (0 si aucun). */
+  activeObjectsTotal: number
+}): CanonicalCurrentState {
+  const collapsed = collapseCurrentStateByDate(input.occurrences)
+  const resolved = deriveCurrentResolvedState(collapsed)
+  const triState: PvState = resolved === null ? 'unknown' : resolved ? 'resolved' : 'open'
+  const provenOpen = isProvenOpen(triState, input.activeObjectsTotal)
+  const hadResolved = collapsed.includes('resolved')
+
+  if (!provenOpen) {
+    // triState ∈ {resolved, unknown} — 'open' impliquerait provenOpen.
+    return triState === 'resolved'
+      ? { triState, displayState: 'resolved', provenOpen, reason: 'last_significant_resolved_no_active_object' }
+      : { triState, displayState: 'unknown', provenOpen, reason: 'no_significant_state' }
+  }
+  // provenOpen : le sujet est ouvert maintenant (dernier état open, ou objet actif rattaché).
+  if (hadResolved) {
+    return {
+      triState, displayState: 'reopened', provenOpen,
+      reason: triState === 'open' ? 'open_after_prior_resolution' : 'resolved_doc_with_active_object',
+    }
+  }
+  return {
+    triState, displayState: 'open', provenOpen,
+    reason: triState === 'open' ? 'currently_open_never_resolved' : 'active_object_only',
+  }
+}
+
 /** Occurrence unifiée pour le calcul de lastMeaningfulChangeAt. */
 export interface LmcaOccurrence {
   effectiveDate: string

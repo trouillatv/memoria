@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { AlertCircle, Brain, BookOpen, CheckCircle2, ChevronRight } from 'lucide-react'
 import type { NavigableSubjectSummary } from '@/lib/db/canonical-subject-life'
+import type { CanonicalDisplayState } from '@/lib/documents/subject-state'
 import { computeAttentionSignals, formatAttentionFragments } from '@/lib/subjects/attention'
 import { cn } from '@/lib/utils'
 
@@ -20,39 +21,20 @@ const TABS: { id: Tab; label: string }[] = [
 
 // ── Display constants ─────────────────────────────────────────────────────────
 
-const STATUS_LABELS: Record<string, string> = {
-  open:               'Ouvert',
-  in_progress:        'En cours',
-  planned:            'Planifié',
-  done:               'Clôturé',
-  non_compliant:      'Non conforme',
-  awaiting_validation:'En attente',
-  cancelled:          'Annulé',
-  informational:      'Informatif',
-  field_checked:      'Vérifié terrain',
-  still_open:         'Toujours ouvert',
-  not_applicable:     'Sans objet',
-  mentioned:          'Évoqué',
+// P0-2 — Badge d'état = projection opérationnelle COURANTE partagée (displayState).
+// Le tri fin (rawStatus : in_progress/planned/mentioned…) reste ailleurs, c'est de la représentation.
+const DISPLAY_STATE_LABELS: Record<CanonicalDisplayState, string> = {
+  open: 'Ouvert', resolved: 'Résolu', reopened: 'Réouvert', unknown: 'Indéterminé',
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  done:               'bg-emerald-100 text-emerald-800',
-  non_compliant:      'bg-red-100 text-red-700',
-  open:               'bg-orange-100 text-orange-700',
-  in_progress:        'bg-blue-100 text-blue-700',
-  planned:            'bg-sky-100 text-sky-700',
-  awaiting_validation:'bg-amber-100 text-amber-700',
-  cancelled:          'bg-muted text-muted-foreground',
-  informational:      'bg-muted text-muted-foreground',
-  field_checked:      'bg-teal-100 text-teal-700',
-  still_open:         'bg-orange-100 text-orange-700',
-  not_applicable:     'bg-muted text-muted-foreground',
-  mentioned:          'bg-violet-100 text-violet-700',
+const DISPLAY_STATE_COLORS: Record<CanonicalDisplayState, string> = {
+  open:     'bg-orange-100 text-orange-700',
+  resolved: 'bg-emerald-100 text-emerald-800',
+  reopened: 'bg-red-100 text-red-700',
+  unknown:  'bg-muted text-muted-foreground',
 }
 
 // ── Bucketing ─────────────────────────────────────────────────────────────────
 
-const CLOSED_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
 const SIXTY_DAYS_MS   = 60 * 86_400_000
 
 type Bucket = 'watch' | 'moving' | 'open' | 'knowledge' | 'closed'
@@ -74,7 +56,7 @@ function getBucket(s: NavigableSubjectSummary, nowMs: number): Bucket {
 function youngSiteRadarPriority(s: NavigableSubjectSummary): number {
   // #228 : éligibilité opérationnelle = nature durable (actor exclu). L'ordre fin reste sur la famille.
   if (s.durableKind === 'actor')                        return 99
-  if (CLOSED_STATUSES.has(s.currentStatus ?? ''))       return 99
+  if (s.displayState === 'resolved')                    return 99
   if (s.activeObjects.total > 0)                        return 0
   if (s.currentStatus === 'non_compliant')              return 1
   if (s.dominantFamily === 'reservation')               return 2
@@ -118,11 +100,12 @@ function SubjectCard({ subject, siteId, bucket }: {
   siteId: string
   bucket: Bucket
 }) {
-  const { canonicalSubjectId, title, currentStatus, pvCount, nativeOccurrenceCount,
+  const { canonicalSubjectId, title, displayState, pvCount, nativeOccurrenceCount,
     isStagnant, stagnationDays, lastMeaningfulChangeAt, activeObjects } = subject
 
-  const statusLabel = currentStatus ? (STATUS_LABELS[currentStatus] ?? currentStatus) : null
-  const statusColor = currentStatus ? (STATUS_COLORS[currentStatus] ?? 'bg-muted text-muted-foreground') : null
+  // P0-2 — badge = vérité d'état courant partagée (open|resolved|reopened|unknown).
+  const statusLabel = DISPLAY_STATE_LABELS[displayState]
+  const statusColor = DISPLAY_STATE_COLORS[displayState]
 
   const sourceFragments: string[] = []
   if (pvCount > 0) sourceFragments.push(`${pvCount} PV`)
@@ -355,7 +338,7 @@ export function SujetsList({ subjects, siteId }: {
     }
 
     // Tout — regroupé par nature du sujet
-    const notClosed = (s: NavigableSubjectSummary) => !CLOSED_STATUSES.has(s.currentStatus ?? '')
+    const notClosed = (s: NavigableSubjectSummary) => s.displayState !== 'resolved'
     const operational = subjects.filter((s) => notClosed(s) && getKindGroup(s) === 'operational')
     const knowledge   = subjects.filter((s) => notClosed(s) && getKindGroup(s) === 'knowledge')
     const deadlines   = subjects.filter((s) => notClosed(s) && getKindGroup(s) === 'deadline')
