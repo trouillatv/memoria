@@ -17,7 +17,8 @@ import { z } from 'zod'
 import { getAIProvider } from '@/services/ai/factory'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
-  persistCompletionResolution, getEffectiveResolution, COMPLETION_POLICY_VERSION,
+  persistCompletionResolution, getEffectiveResolution, getEffectiveResolutionByProposal,
+  computeProofContextFingerprint, COMPLETION_POLICY_VERSION,
   type CompletionDecision, type ConfidenceClass, type CandidateVerdict, type IntentMatch,
 } from '@/lib/db/document-completion-resolution'
 
@@ -216,5 +217,139 @@ export async function resolveSiteDocumentCompletions(siteId: string): Promise<Si
 }
 
 function bump(d: Record<string, number>, k: string) { d[k] = (d[k] ?? 0) + 1 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-4B-PROPOSAL — chemin proposition-level (unité de preuve ATOMIQUE).
+//
+// Une preuve = UNE document_extraction_proposal (un fait cohérent unique). Contrairement à
+// l'occurrence agrégée, ses champs (label/description/source_excerpt) décrivent LE MÊME fait — aucun
+// pooling, aucun re-join. Policy p1.4b.v2.2 STRICTEMENT inchangée (même POLICY/schema/dérivation) ;
+// seule la SOURCE d'entrée change (proposition, pas occurrence.label/note).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Preuve proposition-level : un fait documentaire cohérent unique + sa provenance. */
+export type ProposalProof = {
+  proposalId: string
+  label: string
+  description?: string | null
+  sourceExcerpt?: string | null
+  documentStatus?: string | null
+  effectiveDate?: string | null
+}
+
+/** Jugement V2.2 sur UNE proposition (label/description/extrait = même fait). Rôles explicites. */
+export async function judgeProposalAgainstCandidates(
+  proof: ProposalProof, subjectLabel: string, candidates: Candidate[],
+): Promise<CompletionJudgment> {
+  const provider = getAIProvider()
+  const userMessage = `SUJET: ${subjectLabel}
+PREUVE — DE QUOI IL S'AGIT (intitulé) : "${proof.label}"
+PREUVE — DESCRIPTION : "${proof.description ?? '(aucune)'}"
+PREUVE — EXTRAIT SOURCE : "${proof.sourceExcerpt ?? '(aucun)'}"
+Statut documentaire : ${proof.documentStatus ?? '(inconnu)'} | Date : ${proof.effectiveDate ?? '(inconnue)'}
+Juge l'accomplissement à partir du CONTENU PROBANT de CETTE preuve (un fait unique) ; ne conclus JAMAIS à un accomplissement par simple implication tirée de l'intitulé si description/extrait ne le démontrent pas.
+CANDIDATS :
+${candidates.map((c) => `[id=${c.cboId}] ${c.label}`).join('\n')}
+
+Réponds en JSON {"verdicts":[...]} pour CHAQUE candidat.`
+  const out = await provider.complete({ systemPrompt: POLICY, userMessage, responseSchema: verdictSchema, geminiSchema: GEMINI_SCHEMA, modelTier: 'light', maxOutputTokens: 1500 })
+  const parsed = parseVerdicts(out)
+  const byId = new Map(parsed.map((v) => [v.id, v]))
+  const judgments: CandidateJudgment[] = candidates.map((c) => {
+    const v = byId.get(c.cboId)
+    return { cboId: c.cboId, verdict: v?.verdict ?? 'not_accomplished', intentMatch: v?.intent_match ?? 'different', evidenceDirectness: v?.evidence_directness ?? 'inferred', reason: v?.reason ?? '' }
+  })
+  return { ...deriveCompletionDecision(judgments), candidates: judgments }
+}
+
+/** Population éligible proposition-level : un fait documentaire résolu, examinable comme preuve. */
+export const PROPOSAL_PROOF_FAMILY = 'knowledge_fact'
+export const PROPOSAL_PROOF_STATUS = 'done'
+
+/**
+ * Charge les preuves proposition-level éligibles d'un site : propositions knowledge_fact/done, chacune
+ * rattachée à son canonical_subject (via subject_thread_id) et à ses candidats CBO action. READ-ONLY
+ * (aucune persistance) — brique partagée entre l'orchestrateur et le gate de simulation.
+ * `done` ne signifie JAMAIS accompli : seul le resolver V2.2 décide MATCH/AMBIGUOUS/NO_MATCH.
+ */
+export async function loadProposalProofs(siteId: string): Promise<Array<{ proof: ProposalProof; canonicalSubjectId: string; subjectLabel: string; candidates: Candidate[] }>> {
+  const sb = createAdminClient()
+  const { data: idn } = await sb.from('subject_thread_identity').select('subject_thread_id, canonical_subject_id').eq('site_id', siteId)
+  const threadToSubj = new Map<string, string>()
+  for (const r of (idn ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) threadToSubj.set(r.subject_thread_id, r.canonical_subject_id)
+  const threadIds = [...threadToSubj.keys()]
+  if (threadIds.length === 0) return []
+
+  const props: Array<{ id: string; subject_thread_id: string; label: string; description: string | null; source_excerpt: string | null; document_status: string | null; document_id: string | null }> = []
+  const CHUNK = 100
+  for (let i = 0; i < threadIds.length; i += CHUNK) {
+    const { data } = await sb.from('document_extraction_proposal')
+      .select('id, subject_thread_id, label, description, source_excerpt, document_status, document_id')
+      .in('subject_thread_id', threadIds.slice(i, i + CHUNK))
+      .eq('proposal_family', PROPOSAL_PROOF_FAMILY).eq('document_status', PROPOSAL_PROOF_STATUS)
+    props.push(...((data ?? []) as typeof props))
+  }
+  if (props.length === 0) return []
+
+  const subjIds = [...new Set(props.map((p) => threadToSubj.get(p.subject_thread_id)).filter((x): x is string => !!x))]
+  const subjLabel = new Map<string, string>()
+  const candBySubj = new Map<string, Candidate[]>()
+  const { data: subjRows } = await sb.from('canonical_subject').select('id, label').eq('site_id', siteId).in('id', subjIds)
+  for (const s of (subjRows ?? []) as Array<{ id: string; label: string | null }>) if (s.label) subjLabel.set(s.id, s.label)
+  const { data: cboRows } = await sb.from('canonical_business_object').select('id, label, canonical_subject_id').eq('site_id', siteId).eq('object_type', 'site_action').in('canonical_subject_id', subjIds)
+  for (const c of (cboRows ?? []) as Array<{ id: string; label: string; canonical_subject_id: string }>) {
+    const list = candBySubj.get(c.canonical_subject_id) ?? []; list.push({ cboId: c.id, label: c.label }); candBySubj.set(c.canonical_subject_id, list)
+  }
+
+  const docIds = [...new Set(props.map((p) => p.document_id).filter((x): x is string => !!x))]
+  const docDate = new Map<string, string | null>()
+  if (docIds.length) {
+    const { data: docs } = await sb.from('documents').select('id, effective_date').in('id', docIds)
+    for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) docDate.set(d.id, d.effective_date)
+  }
+
+  return props.map((p) => {
+    const csId = threadToSubj.get(p.subject_thread_id) ?? ''
+    return {
+      canonicalSubjectId: csId,
+      subjectLabel: subjLabel.get(csId) ?? p.label,
+      candidates: candBySubj.get(csId) ?? [],
+      proof: { proposalId: p.id, label: p.label, description: p.description, sourceExcerpt: p.source_excerpt, documentStatus: p.document_status, effectiveDate: p.document_id ? docDate.get(p.document_id) ?? null : null },
+    }
+  })
+}
+
+/**
+ * Orchestrateur proposition-level (persiste). Idempotent par (proof_proposal_id, policy, fingerprint
+ * enrichi). Ne modifie AUCUN état CBO, AUCUN signal, AUCUNE surface produit ; les résolutions
+ * occurrence-level legacy restent intactes (append-only via le XOR de références). NON branché en
+ * production tant que le gate n'est pas validé.
+ */
+export async function resolveSiteDocumentCompletionsByProposal(siteId: string): Promise<SiteCompletionResolutionStats> {
+  const items = await loadProposalProofs(siteId)
+  const stats: SiteCompletionResolutionStats = { proofsExamined: 0, resolverCalls: 0, created: 0, skipped: 0, distribution: {} }
+  for (const it of items) {
+    stats.proofsExamined++
+    const fp = computeProofContextFingerprint(it.proof, it.candidates)
+    if (it.candidates.length === 0) {
+      const existing = await getEffectiveResolutionByProposal(it.proof.proposalId, fp, ACTIVE_POLICY_VERSION)
+      if (existing) { stats.skipped++; bump(stats.distribution, 'NO_MATCH/—(skip)'); continue }
+      await persistCompletionResolution({ siteId, proofProposalId: it.proof.proposalId, candidates: [], decision: 'NO_MATCH', confidenceClass: 'LOW', selectedCboId: null, reasoning: 'aucun CBO action candidat', resolverSource: 'deterministic', policyVersion: ACTIVE_POLICY_VERSION, contextFingerprint: fp })
+      stats.created++; bump(stats.distribution, 'NO_MATCH/—'); continue
+    }
+    const existing = await getEffectiveResolutionByProposal(it.proof.proposalId, fp, ACTIVE_POLICY_VERSION)
+    if (existing) { stats.skipped++; bump(stats.distribution, `${existing.decision}/${existing.confidenceClass}(skip)`); continue }
+    const judgment = await judgeProposalAgainstCandidates(it.proof, it.subjectLabel, it.candidates)
+    stats.resolverCalls++
+    await persistCompletionResolution({
+      siteId, proofProposalId: it.proof.proposalId,
+      candidates: judgment.candidates.map((c) => ({ canonicalBusinessObjectId: c.cboId, verdict: c.verdict, intentMatch: c.intentMatch, evidenceDirectness: c.evidenceDirectness, reason: c.reason })),
+      decision: judgment.decision, confidenceClass: judgment.confidenceClass, selectedCboId: judgment.selectedCboId,
+      reasoning: judgment.reasoning, resolverSource: 'llm', model: getAIProvider().name, policyVersion: ACTIVE_POLICY_VERSION, contextFingerprint: fp,
+    })
+    stats.created++; bump(stats.distribution, `${judgment.decision}/${judgment.confidenceClass}`)
+  }
+  return stats
+}
 
 export { COMPLETION_POLICY_VERSION }

@@ -33,6 +33,25 @@ export function computeContextFingerprint(candidateCboIds: string[]): string {
   return createHash('sha256').update(canonical).digest('hex')
 }
 
+/**
+ * Empreinte de contexte ENRICHIE (P1-4B-PROPOSAL) — lie TOUT le contenu décisionnel réellement
+ * présenté au resolver, pas seulement les IDs candidats : contenu de la preuve (proposition) ET,
+ * pour chaque candidat, son ID **et son libellé** (un CBO dont le libellé change sans changer d'ID
+ * change le jugement possible). Ordre-invariante sur les candidats, normalisée.
+ *
+ * L'IDENTITÉ de la preuve est portée par proof_proposal_id (hors hash). `stable_key` N'ENTRE PAS
+ * dans le fingerprint : c'est un identifiant intra-document, pas du contenu décisionnel.
+ */
+export function computeProofContextFingerprint(
+  proof: { label: string; description?: string | null; sourceExcerpt?: string | null; documentStatus?: string | null; effectiveDate?: string | null },
+  candidates: { cboId: string; label: string }[],
+): string {
+  const norm = (s: string | null | undefined) => (s ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase()
+  const proofPart = [norm(proof.label), norm(proof.description), norm(proof.sourceExcerpt), norm(proof.documentStatus), norm(proof.effectiveDate)].join('␟')
+  const candPart = [...candidates].map((c) => `${c.cboId}␝${norm(c.label)}`).sort().join('␞')
+  return createHash('sha256').update(`${proofPart}‖${candPart}`).digest('hex')
+}
+
 /** V2.2 (mig 381) : la preuve démontre-t-elle DIRECTEMENT le résultat, ou faut-il une inférence ? */
 export type EvidenceDirectness = 'direct' | 'inferred'
 
@@ -47,7 +66,10 @@ export type CompletionCandidateInput = {
 
 export type PersistResolutionInput = {
   siteId: string
-  proofOccurrenceId: string
+  /** Preuve LEGACY occurrence-level. XOR avec proofProposalId : exactement une des deux. */
+  proofOccurrenceId?: string | null
+  /** Preuve ATOMIQUE proposition-level (P1-4B-PROPOSAL). XOR avec proofOccurrenceId. */
+  proofProposalId?: string | null
   candidates: CompletionCandidateInput[]
   decision: CompletionDecision
   confidenceClass: ConfidenceClass
@@ -58,6 +80,8 @@ export type PersistResolutionInput = {
   resolverSource?: 'llm' | 'deterministic' | 'manual'
   model?: string | null
   modelVersion?: string | null
+  /** Empreinte enrichie précalculée (proposition-level). Si absente → legacy (IDs candidats seuls). */
+  contextFingerprint?: string
 }
 
 export type PersistResolutionOutcome =
@@ -72,7 +96,11 @@ export type PersistResolutionOutcome =
 export async function persistCompletionResolution(input: PersistResolutionInput): Promise<PersistResolutionOutcome> {
   const sb = createAdminClient()
   const policyVersion = input.policyVersion ?? COMPLETION_POLICY_VERSION
-  const contextFingerprint = computeContextFingerprint(input.candidates.map((c) => c.canonicalBusinessObjectId))
+  // XOR : exactement une référence de preuve (occurrence legacy OU proposition atomique).
+  const hasOcc = input.proofOccurrenceId != null
+  const hasProp = input.proofProposalId != null
+  if (hasOcc === hasProp) throw new Error('persistCompletionResolution: exactement une preuve requise (proofOccurrenceId XOR proofProposalId)')
+  const contextFingerprint = input.contextFingerprint ?? computeContextFingerprint(input.candidates.map((c) => c.canonicalBusinessObjectId))
 
   // Persistance ATOMIQUE (migration 382) : parent + candidats dans une seule transaction plpgsql.
   // Un échec candidat (CHECK/FK) provoque le rollback INTÉGRAL — jamais de résolution effective
@@ -80,7 +108,8 @@ export async function persistCompletionResolution(input: PersistResolutionInput)
   // la RPC ne change ni la policy, ni la décision, ni l'identité (proof, policy, fingerprint).
   const { data, error } = await sb.rpc('persist_document_completion_resolution', {
     p_site_id: input.siteId,
-    p_proof_occurrence_id: input.proofOccurrenceId,
+    p_proof_occurrence_id: input.proofOccurrenceId ?? null,
+    p_proof_proposal_id: input.proofProposalId ?? null,
     p_policy_version: policyVersion,
     p_context_fingerprint: contextFingerprint,
     p_decision: input.decision,
@@ -131,6 +160,32 @@ export async function getEffectiveResolution(
     .from('document_completion_resolution')
     .select('id, decision, confidence_class, selected_cbo_id, policy_version, context_fingerprint, resolved_at')
     .eq('proof_occurrence_id', proofOccurrenceId)
+    .eq('policy_version', policyVersion)
+    .eq('context_fingerprint', contextFingerprint)
+    .maybeSingle()
+  if (!data) return null
+  const r = data as { id: string; decision: string; confidence_class: string; selected_cbo_id: string | null; policy_version: string; context_fingerprint: string; resolved_at: string }
+  return {
+    id: r.id, decision: r.decision as CompletionDecision, confidenceClass: r.confidence_class as ConfidenceClass,
+    selectedCboId: r.selected_cbo_id, policyVersion: r.policy_version, contextFingerprint: r.context_fingerprint, resolvedAt: r.resolved_at,
+  }
+}
+
+/**
+ * Décision effective proposition-level (P1-4B-PROPOSAL). Identique en esprit à getEffectiveResolution
+ * mais adressée par proof_proposal_id + empreinte enrichie précalculée (le contexte de décision est le
+ * contenu de la proposition, pas seulement les IDs candidats).
+ */
+export async function getEffectiveResolutionByProposal(
+  proofProposalId: string,
+  contextFingerprint: string,
+  policyVersion: string = COMPLETION_POLICY_VERSION,
+): Promise<EffectiveResolution | null> {
+  const sb = createAdminClient()
+  const { data } = await sb
+    .from('document_completion_resolution')
+    .select('id, decision, confidence_class, selected_cbo_id, policy_version, context_fingerprint, resolved_at')
+    .eq('proof_proposal_id', proofProposalId)
     .eq('policy_version', policyVersion)
     .eq('context_fingerprint', contextFingerprint)
     .maybeSingle()
