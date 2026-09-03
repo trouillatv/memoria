@@ -274,4 +274,32 @@ describe('generateSiteHistoryNarrative', () => {
     expect(result.narrative).toBe('Chronologie du chantier : démarrage en avril, avancée en mai.')
     expect(mocks.fetch).toHaveBeenCalledOnce()
   })
+
+  it('15. effectiveDate utilise documents.effective_date et non created_at (import rétroactif)', async () => {
+    vi.stubEnv('GOOGLE_GENAI_API_KEY', '')
+
+    // PV avec date métier réelle = 22/07/2026, importé le 03/09/2026.
+    const runs = [
+      {
+        id: 'r1',
+        document_id: 'doc-1',
+        created_at: '2026-09-03T10:00:00Z',
+        documents: [{ effective_date: '2026-07-22T00:00:00Z' }],
+      },
+    ]
+    const props = [
+      { id: 'p1', extraction_run_id: 'r1', subject_thread_id: 'ta', proposal_family: 'observation', document_status: 'open', label: 'Sprinkler' },
+    ]
+
+    mocks.from.mockImplementation((table: string) => {
+      if (table === 'document_extraction_run') return makeRunsChain(runs)
+      return makePropsInChain(props)
+    })
+
+    const result = await generateSiteHistoryNarrative('site-rus')
+    expect(result.periods).toHaveLength(1)
+    // La date affichée doit être la date métier du document, pas la date d'import.
+    expect(result.periods[0].effectiveDate).toBe('2026-07-22T00:00:00Z')
+    expect(result.periods[0].effectiveDate).not.toBe('2026-09-03T10:00:00Z')
+  })
 })

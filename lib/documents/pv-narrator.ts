@@ -150,7 +150,7 @@ ${promptText}`
 
 // ── Lot 4B — Récit historique global du chantier ─────────────────────────────
 
-type RunRow = { id: string; document_id: string; created_at: string }
+type RunRow = { id: string; document_id: string; created_at: string; documents: Array<{ effective_date: string | null }> | null }
 type PropRow = {
   id: string
   extraction_run_id: string
@@ -172,7 +172,7 @@ export async function generateSiteHistoryNarrative(siteId: string): Promise<Site
 
   const { data: runsRaw, error: runsErr } = await supabase
     .from('document_extraction_run')
-    .select('id, document_id, created_at')
+    .select('id, document_id, created_at, documents(effective_date)')
     .eq('target_site_id', siteId)
     .eq('status', 'ready_for_review')
     .order('created_at', { ascending: true })
@@ -230,7 +230,7 @@ export async function generateSiteHistoryNarrative(siteId: string): Promise<Site
     periods.push({
       runId: run.id,
       documentId: run.document_id,
-      effectiveDate: run.created_at,
+      effectiveDate: run.documents?.[0]?.effective_date ?? run.created_at,
       items,
     })
   }

@@ -166,16 +166,16 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
     }
   }
 
-  // Les objets confirmés — datés par leur confirmation (le replay les fait
-  // apparaître au moment où ils sont ENTRÉS dans la mémoire).
+  // Les objets confirmés — datés par la date métier du PV source (report_id → started_at via tOf).
+  // Fallback created_at pour les objets natifs MemorIA sans PV source (report_id null = création directe).
   for (const a of (actions.data ?? []) as Array<{ id: string; title: string; status: string; report_id: string | null; created_at: string }>) {
-    add({ id: `a_${a.id}`, type: 'action', label: a.title, sub: a.status === 'open' ? 'Action ouverte' : 'Action', t: a.created_at })
+    add({ id: `a_${a.id}`, type: 'action', label: a.title, sub: a.status === 'open' ? 'Action ouverte' : 'Action', t: tOf(a.report_id) ?? a.created_at })
   }
   for (const d of (deadlines.data ?? []) as Array<{ id: string; title: string; due_date: string | null; constraint_text: string | null; report_id: string | null; created_at: string }>) {
     add({
       id: `e_${d.id}`, type: 'ech', label: d.title,
       sub: d.due_date ? `Échéance · ${fr(d.due_date)}` : d.constraint_text ? `À planifier · « ${d.constraint_text} »` : 'À planifier',
-      t: d.created_at,
+      t: tOf(d.report_id) ?? d.created_at,
     })
   }
   for (const d of (decisions.data ?? []) as Array<{ id: string; titre: string; date_decision: string | null; created_at: string }>) {
@@ -254,7 +254,7 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
       (a.assigned_contact_id && intByContact.get(a.assigned_contact_id)) ||
       (a.assigned_company_id && intByCompany.get(a.assigned_company_id)) || null
     if (!actorNode) continue
-    link({ a: actorNode, b: `a_${a.id}`, type: 'action', why: 'Action assignée à cet intervenant', date: fr(a.created_at), status: 'confirmed' })
+    link({ a: actorNode, b: `a_${a.id}`, type: 'action', why: 'Action assignée à cet intervenant', date: fr(tOf(a.report_id) ?? a.created_at), status: 'confirmed' })
     if (a.subject_thread_id) {
       ;(actorActionThreads.get(actorNode) ?? actorActionThreads.set(actorNode, new Set()).get(actorNode)!).add(a.subject_thread_id)
     }
