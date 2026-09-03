@@ -74,49 +74,35 @@ export async function persistCompletionResolution(input: PersistResolutionInput)
   const policyVersion = input.policyVersion ?? COMPLETION_POLICY_VERSION
   const contextFingerprint = computeContextFingerprint(input.candidates.map((c) => c.canonicalBusinessObjectId))
 
-  const { data: existing } = await sb
-    .from('document_completion_resolution')
-    .select('id')
-    .eq('proof_occurrence_id', input.proofOccurrenceId)
-    .eq('policy_version', policyVersion)
-    .eq('context_fingerprint', contextFingerprint)
-    .maybeSingle()
-  if (existing) return { kind: 'already_exists', resolutionId: (existing as { id: string }).id, contextFingerprint }
-
-  const { data: res, error } = await sb
-    .from('document_completion_resolution')
-    .insert({
-      site_id: input.siteId,
-      proof_occurrence_id: input.proofOccurrenceId,
-      policy_version: policyVersion,
-      context_fingerprint: contextFingerprint,
-      decision: input.decision,
-      confidence_class: input.confidenceClass,
-      selected_cbo_id: input.selectedCboId,
-      reasoning: input.reasoning ?? null,
-      resolver_source: input.resolverSource ?? 'llm',
-      model: input.model ?? null,
-      model_version: input.modelVersion ?? null,
-    })
-    .select('id')
-    .single()
-  if (error || !res) throw new Error(`persistCompletionResolution: insert résolution échoué — ${error?.message}`)
-  const resolutionId = (res as { id: string }).id
-
-  if (input.candidates.length > 0) {
-    const { error: cErr } = await sb.from('document_completion_candidate').insert(
-      input.candidates.map((c) => ({
-        resolution_id: resolutionId,
-        canonical_business_object_id: c.canonicalBusinessObjectId,
-        candidate_verdict: c.verdict,
-        intent_match: c.intentMatch,
-        evidence_directness: c.evidenceDirectness ?? null,
-        reason: c.reason ?? null,
-      })),
-    )
-    if (cErr) throw new Error(`persistCompletionResolution: insert candidats échoué — ${cErr.message}`)
-  }
-  return { kind: 'created', resolutionId, contextFingerprint }
+  // Persistance ATOMIQUE (migration 382) : parent + candidats dans une seule transaction plpgsql.
+  // Un échec candidat (CHECK/FK) provoque le rollback INTÉGRAL — jamais de résolution effective
+  // partielle, retry toujours sûr. Le fingerprint reste calculé ici (sha256) et passé à la RPC ;
+  // la RPC ne change ni la policy, ni la décision, ni l'identité (proof, policy, fingerprint).
+  const { data, error } = await sb.rpc('persist_document_completion_resolution', {
+    p_site_id: input.siteId,
+    p_proof_occurrence_id: input.proofOccurrenceId,
+    p_policy_version: policyVersion,
+    p_context_fingerprint: contextFingerprint,
+    p_decision: input.decision,
+    p_confidence_class: input.confidenceClass,
+    p_selected_cbo_id: input.selectedCboId,
+    p_reasoning: input.reasoning ?? null,
+    p_resolver_source: input.resolverSource ?? 'llm',
+    p_model: input.model ?? null,
+    p_model_version: input.modelVersion ?? null,
+    p_candidates: input.candidates.map((c) => ({
+      canonicalBusinessObjectId: c.canonicalBusinessObjectId,
+      verdict: c.verdict,
+      intentMatch: c.intentMatch,
+      evidenceDirectness: c.evidenceDirectness ?? null,
+      reason: c.reason ?? null,
+    })),
+  })
+  if (error) throw new Error(`persistCompletionResolution: RPC atomique échouée — ${error.message}`)
+  const row = (Array.isArray(data) ? data[0] : data) as { kind: string; resolution_id: string } | undefined
+  if (!row?.resolution_id) throw new Error('persistCompletionResolution: RPC sans résultat exploitable')
+  const kind = row.kind === 'already_exists' ? 'already_exists' : 'created'
+  return { kind, resolutionId: row.resolution_id, contextFingerprint }
 }
 
 export type EffectiveResolution = {

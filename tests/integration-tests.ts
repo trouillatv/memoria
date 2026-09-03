@@ -82,4 +82,5 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/db/object-state-occurrence-signal-producer-integration.test.ts',
   'tests/lib/db/canonical-business-object-attach-signal-integration.test.ts',
   'tests/lib/db/document-completion-resolution-constraints.test.ts',
+  'tests/lib/db/document-completion-persist-atomic.test.ts',
 ]
