@@ -144,7 +144,21 @@ export default async function SubjectThreadPage({ params }: PageProps) {
   ])
 
   if (!site) notFound()
-  if (!timeline) notFound()
+  if (!timeline) {
+    // Lien direct (favori, historique navigateur, ancien lien externe) construit avant le
+    // correctif 7598f4a0 : subjectThreadId est en réalité un canonical_subject_id (sujet fusionné
+    // multi-PV). getSubjectTimeline() ne le résout pas (cherche dans document_extraction_proposal).
+    // On redirige vers la route canonique au lieu de 404 sur une donnée qui existe réellement.
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const supabase = createAdminClient()
+    const { data: cs } = await supabase
+      .from('canonical_subject')
+      .select('id')
+      .eq('id', subjectThreadId)
+      .maybeSingle()
+    if (cs) redirect(`/sites/${siteId}/historique/sujets/${subjectThreadId}`)
+    notFound()
+  }
 
   const realOccurrences = timeline.occurrences.filter((o) => !o.isGap)
   const currentStatus = timeline.currentStatus
