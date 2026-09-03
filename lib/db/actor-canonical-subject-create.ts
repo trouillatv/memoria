@@ -7,13 +7,17 @@ export type ActorCanonicalSubjectResult =
   | { outcome: 'reused'; id: string }
   | { outcome: 'error'; message: string | undefined }
 
+const ACTIVE_NORMALIZED_LABEL_CONSTRAINT = 'canonical_subject_active_normalized_label_uniq'
+
 /**
  * Crée un canonical_subject kind='actor' pour ce site ; en cas de violation de
  * canonical_subject_active_normalized_label_uniq (mig 323), un actif avec le
  * même label normalisé existe déjà sur ce site — c'est le MÊME acteur réel, on
  * le retrouve et on réutilise son id plutôt que de perdre le rattachement du
- * thread. Ne traite QUE cette clé d'unicité — toute autre erreur SQL reste une
- * erreur (jamais de fusion sur simple ressemblance lexicale).
+ * thread. Ne traite QUE cette clé d'unicité (code 23505 ET nom de contrainte
+ * dans le message Postgres — PostgrestError n'expose pas de champ `constraint`
+ * dédié) — toute autre erreur SQL reste une erreur (jamais de fusion sur
+ * simple ressemblance lexicale).
  */
 export async function createOrReuseActorCanonicalSubject(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -32,7 +36,7 @@ export async function createOrReuseActorCanonicalSubject(
     return { outcome: 'created', id: createdId }
   }
 
-  if (csErr?.code === '23505') {
+  if (csErr?.code === '23505' && csErr?.message?.includes(ACTIVE_NORMALIZED_LABEL_CONSTRAINT)) {
     const normalizedLabel = normalizeCanonicalLabel(label)
     const { data: activeSubjects } = await supabase
       .from('canonical_subject')
