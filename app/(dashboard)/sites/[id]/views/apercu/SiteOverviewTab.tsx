@@ -379,7 +379,7 @@ function activeActionsDetail(summary: { active: number; planned: number; overdue
   const parts: string[] = []
   if (summary.overdue > 0) parts.push(`${summary.overdue} en retard`)
   if (summary.planned > 0) parts.push(`dont ${summary.planned} planifiée${summary.planned > 1 ? 's' : ''}`)
-  return parts.length > 0 ? parts.join(' · ') : 'À traiter ou suivre'
+  return parts.length > 0 ? parts.join(' · ') : 'Suivis dans le temps'
 }
 
 function StateCard({

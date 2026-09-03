@@ -873,10 +873,14 @@ export async function buildSiteStatusSummary(siteId: string): Promise<SiteStatus
   // Toujours 4 cellules (grille stable) ; « colonne vide » → « 0 » ou « Aucune ».
   return [
     {
+      // P1-1A — ces lignes sont des OCCURRENCES documentaires d'action (une même intention
+      // métier est ré-extraite à chaque PV), pas un backlog opérationnel. On ne les présente
+      // donc plus comme des « actions ouvertes » en tone d'alerte : « détectées » + tone info.
+      // Le tone alerte reste réservé au vrai signal opérationnel (échéance en retard).
       key: 'actions',
       value: String(openActionsN),
-      label: openActionsN === 1 ? 'Action ouverte' : 'Actions ouvertes',
-      tone: overdueN > 0 ? 'alert' : openActionsN > 0 ? 'warn' : 'info',
+      label: openActionsN === 1 ? 'Action détectée' : 'Actions détectées',
+      tone: overdueN > 0 ? 'alert' : 'info',
       href: openActionsN > 0 ? `/m/actions?site=${siteId}` : undefined,
     },
     {

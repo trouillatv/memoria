@@ -152,7 +152,7 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
             <span className="text-lg font-bold leading-none">{weekCount}</span> cette semaine
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-sm font-medium text-muted-foreground">
-            <span className="text-lg font-bold leading-none">{undatedCount}</span> à planifier
+            <span className="text-lg font-bold leading-none">{undatedCount}</span> sans échéance datée
           </span>
         </div>
 
