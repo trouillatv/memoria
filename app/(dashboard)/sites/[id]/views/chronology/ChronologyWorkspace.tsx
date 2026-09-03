@@ -320,7 +320,7 @@ function SincePvSection({
                   <li key={item.subjectThreadId} className="text-sm">
                     {item.subjectThreadId ? (
                       <Link
-                        href={`/sites/${siteId}/historique/${item.subjectThreadId}`}
+                        href={`/sites/${siteId}/historique/sujets/${item.subjectThreadId}`}
                         className="hover:underline underline-offset-2"
                       >
                         {item.label}

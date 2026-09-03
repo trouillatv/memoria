@@ -216,7 +216,7 @@ export async function deriveSiteAttentionItems(
   const pvWatchlist = matrix ? computeWatchlist(matrix) : []
 
   for (const w of pvWatchlist) {
-    const csId = threadToCs.get(w.subjectThreadId)
+    const csId = w.canonicalSubjectId ?? threadToCs.get(w.subjectThreadId)
     if (!csId) continue
     if (coveredCsIds.has(csId)) continue
 

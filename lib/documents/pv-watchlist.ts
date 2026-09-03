@@ -12,7 +12,11 @@ import { OPERATIONAL_EXCLUDED_FAMILIES } from './canonical-transitions'
 export type WatchReason = 'non_conforme' | 'aggravé' | 'réouvert' | 'sans_évolution'
 
 export interface WatchlistEntry {
+  /** Clé interne de dédup (SubjectMatrixRow.subjectThreadId) : un vrai subject_thread_id pour les
+   *  sujets non fusionnés, mais le canonical_subject_id pour les sujets fusionnés multi-PV — NE PAS
+   *  l'utiliser pour construire un lien. Utiliser `canonicalSubjectId` en priorité. */
   subjectThreadId: string
+  canonicalSubjectId: string | null
   label: string
   thematicCategory: string | null
   family: string
@@ -49,6 +53,7 @@ export function computeWatchlist(matrix: SiteSubjectMatrix): WatchlistEntry[] {
 
     const base: Omit<WatchlistEntry, 'reason'> = {
       subjectThreadId: row.subjectThreadId,
+      canonicalSubjectId: row.canonicalSubjectId,
       label: row.canonicalLabel,
       thematicCategory: row.thematicCategory,
       family: row.family,

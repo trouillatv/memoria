@@ -245,7 +245,9 @@ function WatchlistBloc({ items, siteId, runs }: { items: WatchlistEntry[]; siteI
           return (
             <li key={item.subjectThreadId}>
               <Link
-                href={`/sites/${siteId}/historique/${item.subjectThreadId}`}
+                href={item.canonicalSubjectId
+                  ? `/sites/${siteId}/historique/sujets/${item.canonicalSubjectId}`
+                  : `/sites/${siteId}/historique/${item.subjectThreadId}`}
                 className={cn(
                   'flex items-start gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted/60',
                   cfg.bgColor,
