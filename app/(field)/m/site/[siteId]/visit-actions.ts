@@ -11,10 +11,12 @@ import { requireOwned } from '@/lib/auth/ownership'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVisit, endVisit, closeVisit, reopenVisit, getActiveVisit } from '@/lib/db/visits'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
-import { buildWatchlistProposals } from '@/lib/visits/watchlist-proposals'
+import { buildWatchlistProposals, WATCHLIST_MAX } from '@/lib/visits/watchlist-proposals'
 import { seedWatchlist } from '@/lib/db/visit-watchlist'
 import { consumePreparationItems } from '@/lib/db/visit-preparation'
 import { mergeProposals } from '@/lib/visits/watchlist-merge'
+import { filterSettledNotApplicable, proposalsNeedingFreshness } from '@/lib/visits/watchlist-not-applicable-memory'
+import { loadNotApplicableVerdicts, loadSourceChangedAt } from '@/lib/db/watchlist-not-applicable'
 
 const MOTIVES = [
   'inspection', 'controle', 'reunion', 'avancement', 'reception',
@@ -64,11 +66,22 @@ export async function startVisitAction(
     // au démarrage — déterministe (signaux mémoire × motif), 1 à 7 points,
     // silencieuse (friction zéro), best-effort (ne bloque JAMAIS le démarrage).
     try {
-      const [signals, humanItems] = await Promise.all([
+      const motive = parsed.data.motive ?? null
+      const [signals, humanItems, verdicts] = await Promise.all([
         buildSiteMemorySignals(parsed.data.site_id),
         consumePreparationItems(parsed.data.site_id, auth.userId, reportId).catch(() => []),
+        // Mémoire du verdict « sans objet » (WOW-2A′) : ne pas reposer une
+        // question déjà écartée sur une source qui n'a pas bougé.
+        loadNotApplicableVerdicts(parsed.data.site_id).catch(() => []),
       ])
-      const autoProposals = buildWatchlistProposals(signals, parsed.data.motive ?? null)
+      // On construit SANS plafond, on retire ce qui a déjà été écarté, puis on
+      // plafonne : la mémoire libère des places au lieu de raccourcir la liste.
+      const candidates = buildWatchlistProposals(signals, motive, Number.MAX_SAFE_INTEGER)
+      const changedAt = await loadSourceChangedAt(
+        proposalsNeedingFreshness(candidates, motive, verdicts),
+      ).catch(() => new Map<string, string | null>())
+      const autoProposals = filterSettledNotApplicable(candidates, motive, verdicts, changedAt)
+        .slice(0, WATCHLIST_MAX)
       await seedWatchlist({
         reportId,
         siteId: parsed.data.site_id,
