@@ -24,7 +24,10 @@ import {
 } from '@/lib/knowledge/debrief-contract'
 import { getSiteOverview } from '@/lib/knowledge/site-overview'
 import { buildSinceLastVisitDelta, getSiteRecentActivity, type SinceLastVisitDelta, type SiteActivityItem } from '@/lib/db/visits'
-import { deriveCanonicalAttentionItems, type CanonicalAttentionItem, type CanonicalSignal } from '@/lib/knowledge/canonical-attention'
+import { deriveCanonicalAttentionItems, type CanonicalAttentionItem, type CanonicalSignal, type AttentionCategory } from '@/lib/knowledge/canonical-attention'
+import { getNavigableSubjectsForSite } from '@/lib/db/canonical-subject-life'
+import { loadCboReducedStates } from '@/lib/knowledge/canonical-business-object-evolution'
+import { isActiveCboState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import { markAttentionSignalSeen, getAttentionSignalAcks } from '@/lib/db/attention-signal-acknowledgements'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 import type { ToHandleRank } from './to-handle-ranking'
@@ -128,6 +131,10 @@ export interface LiveDebrief {
    *  d'attention déjà calculés, sans requête neuve. Sert au classement desktop
    *  « À traiter » (`rankLiveDebriefToHandle`). Le mobile l'ignore. */
   reopenedSubjectIds: string[]
+  /** WOW-1 — registres de pilotage au niveau SUJET, projetés depuis P2-2 `category` + P0-2
+   *  `displayState`. Vérité de composition du Débrief reconnecté ; les blocs objets ci-dessus
+   *  deviennent le détail/preuve. ADDITIF (les blocs objets restent peuplés pour compat). */
+  registers: DebriefRegisterItem[]
 }
 
 // ── Lecture brute des objets métier ──────────────────────────────────────────
@@ -271,9 +278,18 @@ function isPurelyOperational(item: CanonicalAttentionItem): boolean {
  * combine donc le sujet et l'ensemble trié de ses signaux ; jamais le texte
  * généré (`title`/`reasons`), qui peut varier sans changement de fond.
  */
-export function buildDebriefSignalKey(item: Pick<CanonicalAttentionItem, 'canonicalSubjectId' | 'signals'>): string {
+export function buildDebriefSignalKey(
+  item: Pick<CanonicalAttentionItem, 'canonicalSubjectId' | 'signals'>,
+  episodeAnchor?: string | null,
+): string {
   const sortedSignals = [...item.signals].sort()
-  return `${item.canonicalSubjectId}:${sortedSignals.join(',')}`
+  const base = `${item.canonicalSubjectId}:${sortedSignals.join(',')}`
+  // WOW-1 D2 — le silence documentaire est un ÉPISODE : deux silences séparés par une réapparition
+  // sont deux informations distinctes, même si l'ensemble de signaux redevient identique. On ancre donc
+  // la clé sur la dernière mention business (`lastSeenAt`) — déterministe, chronologie métier, jamais
+  // created_at. Silence prolongé (pvSinceLastMention 2→3→4) = même ancre = même clé = reste acquitté.
+  // Réapparition → `lastSeenAt` avance → nouvelle ancre → nouvel épisode → ré-émerge non-vu.
+  return episodeAnchor ? `${base}:${episodeAnchor}` : base
 }
 
 /**
@@ -307,6 +323,97 @@ export function informationalItems(
     })
   }
   return items
+}
+
+// ── WOW-1 — Registres de pilotage (projection, JAMAIS un 4e moteur) ─────────────
+// Le Débrief compose des vérités DÉJÀ calculées : P2-2 `category` = pourquoi le sujet mérite
+// l'attention ; P0-2 `displayState` = état courant (dont `reopened`) ; C2A/C2D alimentent déjà ces
+// projections en amont. Un item = un SUJET (l'inflation de formulations documentaires — RUS Sprinkler
+// 35 site_actions — est déjà repliée par `deriveCanonicalAttentionItems`, qui itère les sujets). Les
+// objets bruts restent le détail/preuve (blocs objets existants), jamais le compteur principal.
+
+export type DebriefRegister = AttentionCategory // act_now | watch | dormant | documentary_silence
+
+export interface DebriefRegisterItem {
+  canonicalSubjectId: string
+  title: string
+  register: DebriefRegister
+  category: AttentionCategory
+  /** P0-2 displayState surfacé tel quel (annotation narrative « Réouvert »), jamais recalculé. */
+  reopened: boolean
+  /** Clé ACK — épisode pour le silence (`csId:signals:lastSeenAt`), sinon `csId:signals`. */
+  signalKey: string
+  ack: DebriefSignalAck
+  pvSinceLastMention: number
+  lastSeenAt: string | null
+  reasons: string[]
+  href: string
+  /** WOW-1 — « À piloter » : objets DURABLES (CBO C2A) du sujet, PAS les formulations documentaires
+   *  (arbitrage : Sprinkler 36 formulations → CBO durables). État = `computedCurrentState` C2A pris tel
+   *  quel (jamais recalculé) ; seuls les CBO ACTIFS (isActiveCboState) sont « à piloter » — unknown /
+   *  terminal ne sont pas transformés en actif. Le geste vit sur la fiche (aucun geste CBO inline). */
+  durableObjects: DebriefDurableObject[]
+  /** WOW-1 — objets 1:1 réellement actionnables INLINE (réserves/échéances ouvertes, non inflatées) :
+   *  ils conservent leurs gestes existants (lever / dater). Les actions ne sont JAMAIS ici (→ CBO). */
+  inlineObjects: LiveDebriefObjectItem[]
+}
+
+/** Un CBO durable « à piloter » projeté depuis C2A (lecture seule dans le Débrief ; agir = fiche). */
+export interface DebriefDurableObject {
+  cboId: string
+  title: string
+  /** `computedCurrentState` C2A, affiché tel quel (open/progressing/reopened/conflict…). */
+  state: string
+  conflict: boolean
+  divergence: boolean
+  href: string
+}
+
+/** Résumé minimal d'un sujet consommé par la projection (P0-2 + chronologie business). */
+export interface DebriefSubjectTruth {
+  displayState: string
+  lastSeenAt: string | null
+  pvSinceLastMention: number
+}
+
+/**
+ * WOW-1 — projette les items d'attention canonical (qui portent déjà `category`) en registres de
+ * pilotage, au niveau SUJET. ACK : identité `csId:signals` pour tous, PLUS l'ancre d'épisode
+ * `lastSeenAt` pour `documentary_silence` uniquement (cf. buildDebriefSignalKey). Un item acquitté
+ * disparaît (comme le « Vu » informationnel actuel). Aucune règle d'état recalculée ici.
+ */
+export function registerItems(
+  canonicalItems: CanonicalAttentionItem[],
+  truthByCs: Map<string, DebriefSubjectTruth>,
+  seenSignalKeys: Set<string> = new Set(),
+  durableByCs: Map<string, DebriefDurableObject[]> = new Map(),
+  inlineByCs: Map<string, LiveDebriefObjectItem[]> = new Map(),
+): DebriefRegisterItem[] {
+  const out: DebriefRegisterItem[] = []
+  for (const item of canonicalItems) {
+    if (isPurelyOperational(item)) continue
+    const truth = truthByCs.get(item.canonicalSubjectId)
+    const episodeAnchor = item.category === 'documentary_silence' ? (truth?.lastSeenAt ?? null) : null
+    const signalKey = buildDebriefSignalKey(item, episodeAnchor)
+    const ack: DebriefSignalAck = seenSignalKeys.has(signalKey) ? 'seen' : 'unseen'
+    if (ack === 'seen') continue // acquitté (épisode-aware pour le silence) → disparaît du Débrief
+    out.push({
+      canonicalSubjectId: item.canonicalSubjectId,
+      title: item.title,
+      register: item.category,
+      category: item.category,
+      reopened: truth?.displayState === 'reopened',
+      signalKey,
+      ack,
+      pvSinceLastMention: truth?.pvSinceLastMention ?? 0,
+      lastSeenAt: truth?.lastSeenAt ?? null,
+      reasons: item.reasons,
+      href: item.href,
+      durableObjects: durableByCs.get(item.canonicalSubjectId) ?? [],
+      inlineObjects: inlineByCs.get(item.canonicalSubjectId) ?? [],
+    })
+  }
+  return out
 }
 
 /**
@@ -346,14 +453,41 @@ function place(item: LiveDebriefItem, toHandle: LiveDebriefItem[], toWatch: Live
 export async function buildLiveDebrief(siteId: string, userId: string | null = null): Promise<LiveDebrief> {
   const today = new Date().toISOString().slice(0, 10)
 
-  const [{ actions, deadlines, reserves }, overview, sinceDelta, recentActivity, canonicalItems, seenSignalKeys] = await Promise.all([
+  const [{ actions, deadlines, reserves }, overview, sinceDelta, recentActivity, canonicalItems, seenSignalKeys, navSubjects, cboMap] = await Promise.all([
     fetchLiveObjects(siteId).catch(() => ({ actions: [] as RawActionRow[], deadlines: [] as RawDeadlineRow[], reserves: [] as RawReserveRow[] })),
     getSiteOverview(siteId),
     buildSinceLastVisitDelta(siteId, userId).catch(() => null),
     getSiteRecentActivity(siteId, RECENT_ACTIVITY_LIMIT).catch(() => [] as SiteActivityItem[]),
     deriveCanonicalAttentionItems(siteId).catch(() => [] as CanonicalAttentionItem[]),
     userId ? getAttentionSignalAcks(siteId, userId).catch(() => new Set<string>()) : Promise.resolve(new Set<string>()),
+    getNavigableSubjectsForSite(siteId).catch(() => []),
+    loadCboReducedStates(siteId).catch(() => new Map()),
   ])
+
+  // WOW-1 — vérité de sujet (P0-2 displayState + chronologie business) pour la projection en registres.
+  const truthByCs = new Map<string, DebriefSubjectTruth>(
+    navSubjects.map((s) => [s.canonicalSubjectId, {
+      displayState: s.displayState, lastSeenAt: s.lastSeenAt, pvSinceLastMention: s.pvSinceLastMention,
+    }]),
+  )
+
+  // WOW-1 « À piloter » — objets DURABLES par sujet = CBO ACTIFS (C2A), JAMAIS les formulations brutes.
+  // État pris tel quel (computedCurrentState) ; unknown/terminal exclus (isActiveCboState) — jamais
+  // transformés en actif. Aucun recalcul local, aucune requête status='open' : lecture C2A pure.
+  const durableByCs = new Map<string, DebriefDurableObject[]>()
+  for (const [, e] of cboMap as Map<string, { cboId: string; canonicalSubjectId: string | null; label: string; reduced: { computedCurrentState: string; conflicts: string[]; documentaryDivergences: string[] } }>) {
+    if (!e.canonicalSubjectId || !isActiveCboState(e.reduced.computedCurrentState as never)) continue
+    const list = durableByCs.get(e.canonicalSubjectId) ?? []
+    list.push({
+      cboId: e.cboId,
+      title: e.label,
+      state: e.reduced.computedCurrentState,
+      conflict: e.reduced.conflicts.length > 0 || e.reduced.computedCurrentState === 'conflict',
+      divergence: e.reduced.documentaryDivergences.length > 0,
+      href: `/sites/${siteId}/historique/sujets/${e.canonicalSubjectId}`,
+    })
+    durableByCs.set(e.canonicalSubjectId, list)
+  }
 
   // confirmed_today : mêmes compteurs que l'Aperçu (getSiteOverview), jamais une
   // deuxième définition (D2 §8).
@@ -387,10 +521,26 @@ export async function buildLiveDebrief(siteId: string, userId: string | null = n
   const toWatch: LiveDebriefItem[] = []
   const recentlyHandled: LiveDebriefItem[] = []
 
+  // WOW-1 — objets INLINE 1:1 groupés par sujet (réserves/échéances ouvertes uniquement) : ils gardent
+  // leurs gestes existants (lever/dater). Les ACTIONS ne sont JAMAIS ici (arbitrage : elles sont
+  // représentées par les CBO durables ci-dessus, pas par leurs formulations documentaires).
+  const inlineByCs = new Map<string, LiveDebriefObjectItem[]>()
+  const collectInline = (it: LiveDebriefObjectItem) => {
+    if (!it.canonicalSubjectId) return
+    if (it.disposition !== 'to_handle' && it.disposition !== 'to_watch') return
+    const list = inlineByCs.get(it.canonicalSubjectId) ?? []
+    list.push(it)
+    inlineByCs.set(it.canonicalSubjectId, list)
+  }
+
   for (const row of actions) place(actionToItem(row, today, siteId), toHandle, toWatch, recentlyHandled)
-  for (const row of deadlines) place(deadlineToItem(row, today, siteId), toHandle, toWatch, recentlyHandled)
-  for (const row of reserves) place(reserveToItem(row, today, siteId), toHandle, toWatch, recentlyHandled)
+  for (const row of deadlines) { const it = deadlineToItem(row, today, siteId); collectInline(it); place(it, toHandle, toWatch, recentlyHandled) }
+  for (const row of reserves) { const it = reserveToItem(row, today, siteId); collectInline(it); place(it, toHandle, toWatch, recentlyHandled) }
   for (const item of informationalItems(canonicalItems, openCanonicalSubjectIds, seenSignalKeys)) place(item, toHandle, toWatch, recentlyHandled)
+
+  // WOW-1 — registres de pilotage au niveau SUJET (partition unique = category ; reopened en flag ;
+  // CBO durables + objets 1:1 en drill-down). Projection, pas un moteur : consomme category + P0-2 + C2A.
+  const registers = registerItems(canonicalItems, truthByCs, seenSignalKeys, durableByCs, inlineByCs)
 
   // 14A — sujets rouverts (signal `pv_reopened`), dérivés des items d'attention
   // déjà chargés : aucune requête neuve. `toHandle` reste dans l'ordre object-first
@@ -409,5 +559,6 @@ export async function buildLiveDebrief(siteId: string, userId: string | null = n
     recentlyHandled,
     recentActivity,
     reopenedSubjectIds,
+    registers,
   }
 }

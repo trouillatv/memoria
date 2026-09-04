@@ -39,7 +39,7 @@ import {
 import { getSiteBriefAction, logBriefOpenAction, generateDiscussionPointsAction, type SiteBrief, type SiteBriefFactLine, type DiscussionPoint } from './site-brief-actions'
 import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
 import { selectNarrativeHighlights } from '@/lib/knowledge/visit-preparation'
-import type { LiveDebrief, LiveDebriefItem, LiveDebriefObjectItem, ToHandleRank, ToHandlePriority } from '@/lib/knowledge/live-debrief'
+import type { LiveDebrief, LiveDebriefItem, LiveDebriefObjectItem, LiveDebriefInformationalItem, DebriefRegisterItem, DebriefRegister, ToHandleRank, ToHandlePriority } from '@/lib/knowledge/live-debrief'
 import { LiveDebriefVuButton } from './LiveDebriefVuButton'
 import { completeDeadlineAction, rescheduleDeadlineAction } from './views/planning/deadline-actions'
 import { closeActionAction, updateActionDetailsAction } from '@/app/(dashboard)/actions/actions'
@@ -1146,6 +1146,163 @@ function LiveDebriefBlock({
   )
 }
 
+// ── WOW-1 — Situation actuelle SUJET-FIRST (projection pure de liveDebrief.registers) ──────────────
+// Partition unique = category ; reopened = badge transversal (jamais une 2e partition) ; un sujet une
+// seule fois. Drill-down : CBO durables (C2A, lecture seule → fiche) + objets 1:1 (gestes existants).
+// JAMAIS les 411 formulations brutes. La lecture principale = les sujets, pas les objets.
+
+const CBO_STATE_FR: Record<string, string> = {
+  open: 'Ouvert', progressing: 'En cours', documentary_completed: 'Complété (doc)',
+  documentary_reopened: 'Rouvert (doc)', native_completed: 'Terminé', native_reopened: 'Rouvert',
+  native_cancelled: 'Annulé', conforme_at: 'Conforme', unknown: 'Indéterminé', conflict: 'Contradiction',
+}
+
+const REGISTER_META: Record<DebriefRegister, { label: string; icon: React.ReactNode }> = {
+  act_now:             { label: 'À traiter maintenant', icon: <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> },
+  watch:               { label: 'À surveiller',         icon: <BellRing className="h-3.5 w-3.5 text-amber-600" /> },
+  documentary_silence: { label: 'Silence documentaire', icon: <Info className="h-3.5 w-3.5 text-sky-600" /> },
+  dormant:             { label: 'Dormants',             icon: <Clock3 className="h-3.5 w-3.5 text-slate-500" /> },
+}
+
+/** Adapte un DebriefRegisterItem vers la forme attendue par « Vu » (signalKey épisode-aware conservé). */
+function toInformational(item: DebriefRegisterItem): LiveDebriefInformationalItem {
+  return {
+    kind: 'informational_signal',
+    canonicalSubjectId: item.canonicalSubjectId,
+    signalKey: item.signalKey,
+    title: item.title,
+    disposition: 'to_watch',
+    ack: item.ack,
+    reasons: item.reasons,
+    href: item.href,
+  }
+}
+
+function RegisterCard({
+  item, siteId, variant, canLiftReserve, onDebriefChange,
+}: {
+  item: DebriefRegisterItem
+  siteId: string
+  variant: 'mobile' | 'desktop'
+  canLiftReserve: boolean
+  onDebriefChange: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const hasDrill = item.durableObjects.length > 0 || item.inlineObjects.length > 0
+  // Silence : énoncé factuel, jamais « toujours ouvert »/« oublié ». Sinon : 1re raison (trajectoire).
+  const line = item.register === 'documentary_silence'
+    ? `Plus mentionné depuis ${item.pvSinceLastMention} PV`
+    : (item.reasons[0] ?? null)
+  return (
+    <li className="rounded-lg border bg-background">
+      <div className="flex items-start justify-between gap-2 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <a href={item.href} className="text-sm font-medium hover:underline">{item.title}</a>
+            {item.reopened && (
+              <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-orange-50 px-1.5 py-0.5 text-[10px] font-semibold text-orange-700 ring-1 ring-orange-100 dark:bg-orange-950/30 dark:text-orange-300 dark:ring-orange-900">
+                <Repeat className="h-2.5 w-2.5" /> Réouvert
+              </span>
+            )}
+          </div>
+          {line && <p className="mt-0.5 text-[11px] text-muted-foreground">{line}</p>}
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <LiveDebriefVuButton item={toInformational(item)} siteId={siteId} onSeen={onDebriefChange} />
+          {hasDrill && (
+            <button type="button" onClick={() => setOpen((v) => !v)} aria-label={open ? 'Réduire' : 'Détailler'}
+              className="rounded p-1 text-muted-foreground/60 hover:bg-muted hover:text-muted-foreground">
+              <ChevronRight className={`h-4 w-4 transition-transform ${open ? 'rotate-90' : ''}`} />
+            </button>
+          )}
+        </div>
+      </div>
+      {open && hasDrill && (
+        <div className="space-y-2 border-t px-3 py-2">
+          {item.durableObjects.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">À piloter · {item.durableObjects.length}</p>
+              <ul className="space-y-1">
+                {item.durableObjects.map((o) => (
+                  <li key={o.cboId} className="flex items-start justify-between gap-2">
+                    <a href={o.href} className="min-w-0 text-[13px] hover:underline">{o.title}</a>
+                    <span className={`shrink-0 whitespace-nowrap text-[10px] font-medium ${o.conflict ? 'text-red-600' : 'text-muted-foreground'}`}>
+                      {o.conflict ? '⚠ ' : ''}{o.divergence ? '~ ' : ''}{CBO_STATE_FR[o.state] ?? o.state}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {item.inlineObjects.length > 0 && (
+            <ul className="space-y-1.5">
+              {item.inlineObjects.map((o) => (
+                <LiveDebriefItemRow key={`${o.kind}-${o.id}`} item={o} siteId={siteId} variant={variant} canLiftReserve={canLiftReserve} onDebriefChange={onDebriefChange} />
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function LiveDebriefRegisters({
+  registers, siteId, variant, canLiftReserve, onDebriefChange,
+}: {
+  registers: DebriefRegisterItem[]
+  siteId: string
+  variant: 'mobile' | 'desktop'
+  canLiftReserve: boolean
+  onDebriefChange: () => void
+}) {
+  const [showDormant, setShowDormant] = useState(false)
+  if (registers.length === 0) return null
+  const by = (r: DebriefRegister) => registers.filter((x) => x.register === r)
+  const actNow = by('act_now'), watch = by('watch'), silence = by('documentary_silence'), dormant = by('dormant')
+  const reopenedCount = registers.filter((x) => x.reopened).length
+
+  // Bandeau de tête = la lecture « remise à niveau » en une phrase (le « wow ») : d'abord l'urgence
+  // réelle (souvent 0 = calme, jamais alarmiste), puis les faits saillants transverses.
+  const headline: string[] = []
+  headline.push(actNow.length > 0 ? `${actNow.length} à traiter maintenant` : 'Rien d’urgent aujourd’hui')
+  if (reopenedCount > 0) headline.push(`${reopenedCount} réouvert${reopenedCount > 1 ? 's' : ''}`)
+  if (silence.length > 0) headline.push(`${silence.length} plus mentionné${silence.length > 1 ? 's' : ''} dans les derniers PV`)
+
+  const Section = ({ reg, items }: { reg: DebriefRegister; items: DebriefRegisterItem[] }) => (
+    <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+      <SectionTitle icon={REGISTER_META[reg].icon} count={items.length}>{REGISTER_META[reg].label}</SectionTitle>
+      <ul className="space-y-1.5">
+        {items.map((item) => (
+          <RegisterCard key={item.canonicalSubjectId} item={item} siteId={siteId} variant={variant} canLiftReserve={canLiftReserve} onDebriefChange={onDebriefChange} />
+        ))}
+      </ul>
+    </section>
+  )
+
+  return (
+    <div className="space-y-3">
+      <p className="px-1 text-sm font-medium text-foreground">{headline.join(' · ')}</p>
+      {actNow.length > 0 && <Section reg="act_now" items={actNow} />}
+      {watch.length > 0 && <Section reg="watch" items={watch} />}
+      {silence.length > 0 && <Section reg="documentary_silence" items={silence} />}
+      {dormant.length > 0 && (
+        showDormant ? (
+          <Section reg="dormant" items={dormant} />
+        ) : (
+          <button type="button" onClick={() => setShowDormant(true)}
+            className="flex w-full items-center gap-1.5 rounded-xl border border-dashed bg-background px-3.5 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/40">
+            <Clock3 className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+            <span className="font-medium text-foreground/80">Dormants</span>
+            <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium">{dormant.length}</span>
+            <span className="ml-auto text-xs">Toujours suivis, sans évolution récente · Voir</span>
+          </button>
+        )
+      )}
+    </div>
+  )
+}
+
 function BriefBody({
   brief,
   mode,
@@ -1580,43 +1737,17 @@ function BriefBody({
         )}
       </section>
 
-      {/* D7 §1 — synthèse compacte, dérivée EXCLUSIVEMENT des trois blocs
-          LiveDebrief ci-dessous (aucun nouveau comptage) : elle annonce ce que
-          la page contient avant de le détailler, jamais un chiffre inventé.
-          Absente si les trois blocs sont vides — la page se vide naturellement,
-          jamais de synthèse d'un vide. */}
-      {(liveDebrief.toHandle.length > 0 || liveDebrief.toWatch.length > 0 || liveDebrief.recentlyHandled.length > 0) && (
-        <p className="px-1 text-xs font-medium text-muted-foreground">
-          {liveDebrief.recentlyHandled.length} traité{liveDebrief.recentlyHandled.length > 1 ? 's' : ''} · {liveDebrief.toHandle.length} à traiter · {liveDebrief.toWatch.length} à surveiller
-        </p>
-      )}
-
-      {/* 11A' — sélectivité DESKTOP uniquement (gate variant) : le Brief montre
-          les 5 déjà prioritaires par l'ordre actuel (aucun retri), le titre porte
-          le total (« À traiter (89) »), et « Voir les N autres » renvoie vers la
-          surface métier (liste complète), jamais un dépli dans le Brief. Aucune
-          modification mobile (initialLimit/overflowHref undefined si variant !== desktop). */}
-      <LiveDebriefBlock
-        title="À traiter"
-        icon={<ListTodo className="h-3.5 w-3.5 text-rose-600" />}
-        items={liveDebrief.toHandle}
+      {/* WOW-1 — « Situation actuelle » SUJET-FIRST : projection pure de liveDebrief.registers
+          (partition category ; reopened en badge ; drill-down CBO durables + objets 1:1). Remplace
+          l'ancien mur object-first toHandle/toWatch (411 formulations) par 57 sujets. Le bandeau de
+          tête donne la lecture « remise à niveau » (souvent « Rien d'urgent · N réouverts · N
+          silences »). Desktop et mobile partagent EXACTEMENT cette sémantique. */}
+      <LiveDebriefRegisters
+        registers={liveDebrief.registers}
         siteId={siteId}
         variant={variant}
         canLiftReserve={canLiftReserve}
         onDebriefChange={onDebriefChange}
-        initialLimit={variant === 'desktop' ? 5 : undefined}
-        overflowHref={variant === 'desktop' ? `/sites/${siteId}/actions` : undefined}
-      />
-      <LiveDebriefBlock
-        title="À surveiller"
-        icon={<BellRing className="h-3.5 w-3.5 text-amber-600" />}
-        items={liveDebrief.toWatch}
-        siteId={siteId}
-        variant={variant}
-        canLiftReserve={canLiftReserve}
-        onDebriefChange={onDebriefChange}
-        initialLimit={variant === 'desktop' ? 5 : undefined}
-        overflowHref={variant === 'desktop' ? `/sites/${siteId}/historique` : undefined}
       />
       {/* D7 §2 — bloc volontairement secondaire : peu d'éléments visibles
           d'emblée, dépli local pour le reste. Pas d'action métier ici (déjà

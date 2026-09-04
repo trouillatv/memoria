@@ -1,36 +1,23 @@
-// D4 — intégration du Débrief vivant (LiveDebrief) dans la vraie surface
-// « À savoir avant d'y aller » (SiteBriefButton). Le classement Action/Échéance/
-// Réserve/signal → à_traiter/à_surveiller/traité_récemment est déjà exhaustivement
-// prouvé côté read-model dans tests/knowledge/live-debrief.test.ts (buildLiveDebrief,
-// actionToItem, deadlineToItem, reserveToItem, informationalItems). Ce fichier ne
-// reteste donc PAS cette classification : il prouve que la surface UI restitue
-// fidèlement un LiveDebrief déjà classé — placement dans le bon bloc, lien réel,
-// affordance « Vu » strictement limitée aux signaux informationnels non vus,
-// première visite représentée correctement, et absence de tout bouton
-// Régénérer propre au LiveDebrief (doctrine D4 : pas de statut ni de
-// régénération propriétaires — cf. CLAUDE.md / GO D4).
+// WOW-1 — intégration du Débrief reconnecté (registres SUJET-FIRST) dans la surface réelle
+// « À savoir avant d'y aller » (SiteBriefButton). La classification (category / displayState / ACK
+// épisode / CBO durables) est prouvée côté read-model dans tests/knowledge/live-debrief.test.ts et
+// tests/lib/wow1-debrief-registers.test.ts. Ce fichier prouve que l'UI restitue fidèlement
+// `liveDebrief.registers` : partition unique par category, `reopened` en badge transversal (jamais
+// une 2e partition, un sujet une seule fois), silence énoncé factuellement, dormants repliés,
+// drill-down = CBO durables (lecture → fiche) + objets 1:1 actionnables, « Vu » épisode-aware, et
+// axe personnel « Depuis votre dernière venue » distinct. Jamais le mur des formulations brutes.
 
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, within, act, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
 import type { SiteBrief } from '@/app/(dashboard)/sites/[id]/site-brief-actions'
-import type { LiveDebrief, LiveDebriefItem } from '@/lib/knowledge/live-debrief'
+import type { LiveDebrief, LiveDebriefItem, DebriefRegisterItem } from '@/lib/knowledge/live-debrief'
 
 const SITE_ID = '33333333-3333-3333-3333-333333333333'
 
-const {
-  mockGetSiteBriefAction,
-  mockMarkSeen,
-  mockCompleteDeadline,
-  mockRescheduleDeadline,
-  mockCloseAction,
-  mockLiftReserve,
-} = vi.hoisted(() => ({
+const { mockGetSiteBriefAction, mockMarkSeen, mockLiftReserve } = vi.hoisted(() => ({
   mockGetSiteBriefAction: vi.fn(),
-  mockMarkSeen: vi.fn(async () => ({ ok: true as const })),
-  mockCompleteDeadline: vi.fn(async () => ({ ok: true as const })),
-  mockRescheduleDeadline: vi.fn(async () => ({ ok: true as const })),
-  mockCloseAction: vi.fn(async () => ({ ok: true as const })),
+  mockMarkSeen: vi.fn(async (_item: { signalKey: string }) => ({ ok: true as const })),
   mockLiftReserve: vi.fn(async (): Promise<{ ok: true } | { error: string }> => ({ ok: true })),
 }))
 
@@ -39,535 +26,183 @@ vi.mock('@/app/(dashboard)/sites/[id]/site-brief-actions', () => ({
   logBriefOpenAction: vi.fn(async () => {}),
   generateDiscussionPointsAction: vi.fn(async () => ({ ok: true as const, points: [], mock: false, hadInput: false })),
 }))
-
 vi.mock('@/app/(dashboard)/sites/[id]/live-debrief-signal-actions', () => ({
   markLiveDebriefSignalSeenAction: mockMarkSeen,
 }))
-
 vi.mock('@/app/(dashboard)/sites/[id]/views/planning/deadline-actions', () => ({
-  completeDeadlineAction: mockCompleteDeadline,
-  rescheduleDeadlineAction: mockRescheduleDeadline,
+  completeDeadlineAction: vi.fn(async () => ({ ok: true as const })),
+  rescheduleDeadlineAction: vi.fn(async () => ({ ok: true as const })),
 }))
+vi.mock('@/app/(dashboard)/actions/actions', () => ({ closeActionAction: vi.fn(async () => ({ ok: true as const })) }))
+vi.mock('@/app/(dashboard)/sites/[id]/reserves/actions', () => ({ liftReserveAction: mockLiftReserve }))
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
-vi.mock('@/app/(dashboard)/actions/actions', () => ({
-  closeActionAction: mockCloseAction,
-}))
+// ── Fixtures registres ──────────────────────────────────────────────────────────
 
-vi.mock('@/app/(dashboard)/sites/[id]/reserves/actions', () => ({
-  liftReserveAction: mockLiftReserve,
-}))
-
-vi.mock('sonner', () => ({
-  toast: { error: vi.fn(), success: vi.fn() },
-}))
-
-// ── Fixtures ──────────────────────────────────────────────────────────────────
-
-const actionOpen: LiveDebriefItem = {
-  kind: 'action',
-  id: 'act-open-1',
-  title: 'Réparer la clôture Nord',
-  status: 'open',
-  disposition: 'to_handle',
-  date: '2026-08-20',
-  canonicalSubjectId: null,
-  reportId: null,
-  href: `/sites/${SITE_ID}/action/act-open-1`,
+const reserveInline: LiveDebriefItem = {
+  kind: 'reserve', id: 'res-1', title: 'Rejointoyer le carrelage hall', status: 'open',
+  disposition: 'to_handle', date: '2026-08-10', canonicalSubjectId: 'cs-watch', reportId: null,
+  href: `/sites/${SITE_ID}/reserve/res-1`,
 }
-
-const actionDoneRecent: LiveDebriefItem = {
-  kind: 'action',
-  id: 'act-done-1',
-  title: 'Nettoyer la base vie',
-  status: 'done',
-  disposition: 'recently_handled',
-  date: '2026-08-25',
-  canonicalSubjectId: null,
-  reportId: null,
+const actionRecent: LiveDebriefItem = {
+  kind: 'action', id: 'act-done-1', title: 'Nettoyer la base vie', status: 'done',
+  disposition: 'recently_handled', date: '2026-08-25', canonicalSubjectId: null, reportId: null,
   href: `/sites/${SITE_ID}/action/act-done-1`,
 }
 
-const deadlineToPlan: LiveDebriefItem = {
-  kind: 'deadline',
-  id: 'dl-1',
-  title: 'Envoyer le DOE',
-  status: 'to_plan',
-  disposition: 'to_handle',
-  date: null,
-  canonicalSubjectId: null,
-  reportId: null,
-  href: `/sites/${SITE_ID}?tab=planning&plantab=echeances`,
-}
-
-const reserveOpen: LiveDebriefItem = {
-  kind: 'reserve',
-  id: 'res-1',
-  title: 'Rejointoyer le carrelage hall',
-  status: 'open',
-  disposition: 'to_handle',
-  date: '2026-08-10',
-  canonicalSubjectId: null,
-  reportId: null,
-  href: `/sites/${SITE_ID}/reserve/res-1`,
-}
-
-const deadlinePlanned: LiveDebriefItem = {
-  kind: 'deadline',
-  id: 'dl-2',
-  title: 'Livrer le plan de récolement',
-  status: 'planned',
-  disposition: 'to_watch',
-  date: '2026-09-15',
-  canonicalSubjectId: null,
-  reportId: null,
-  href: `/sites/${SITE_ID}?tab=planning&plantab=echeances`,
-}
-
-const signalUnseen: LiveDebriefItem = {
-  kind: 'informational_signal',
-  canonicalSubjectId: 'cs-1',
-  signalKey: 'cs-1:pv_aggrave',
-  title: 'Fissure façade — situation aggravée au dernier PV',
-  disposition: 'to_watch',
+const reg = (o: Partial<DebriefRegisterItem> & Pick<DebriefRegisterItem, 'canonicalSubjectId' | 'title' | 'register'>): DebriefRegisterItem => ({
+  category: o.register,
+  reopened: false,
+  signalKey: `${o.canonicalSubjectId}:stagnant`,
   ack: 'unseen',
-  reasons: ['Signalé aggravé dans le PV du 20 août'],
-  href: `/sites/${SITE_ID}/subjects/cs-1`,
-}
+  pvSinceLastMention: 0,
+  lastSeenAt: '2026-07-22',
+  reasons: ['Mentionné dans 5 rapports'],
+  href: `/sites/${SITE_ID}/historique/sujets/${o.canonicalSubjectId}`,
+  durableObjects: [],
+  inlineObjects: [],
+  ...o,
+})
 
-const signalSeen: LiveDebriefItem = {
-  kind: 'informational_signal',
-  canonicalSubjectId: 'cs-2',
-  signalKey: 'cs-2:stagnant',
-  title: 'Fuite réseau EU — stagnante',
-  disposition: 'recently_handled',
-  ack: 'seen',
-  reasons: [],
-  href: `/sites/${SITE_ID}/subjects/cs-2`,
-}
+// Sprinkler : dormant + Réouvert, drill-down = 2 CBO durables (jamais 35 formulations).
+const sprinkler = reg({
+  canonicalSubjectId: 'cs-spk', title: 'Système Sprinkler', register: 'dormant', reopened: true,
+  reasons: ['Mentionné dans 8 rapports · aucune évolution depuis 320 j'],
+  durableObjects: [
+    { cboId: 'cbo-1', title: 'Modification du réseau sprinkler', state: 'open', conflict: false, divergence: false, href: `/sites/${SITE_ID}/historique/sujets/cs-spk` },
+    { cboId: 'cbo-2', title: 'Évacuer les batteries du local sprinkler', state: 'open', conflict: false, divergence: false, href: `/sites/${SITE_ID}/historique/sujets/cs-spk` },
+  ],
+})
+// Silence documentaire + Réouvert (un SEUL sujet, une SEULE carte, badge Réouvert dans Silence).
+const bacs = reg({
+  canonicalSubjectId: 'cs-bacs', title: 'Bacs de rétention produits chimiques', register: 'documentary_silence',
+  reopened: true, pvSinceLastMention: 7, lastSeenAt: '2025-01-29', signalKey: 'cs-bacs:open_with_objects:2025-01-29',
+  durableObjects: [{ cboId: 'cbo-b', title: 'Mettre en place des bacs de rétention', state: 'open', conflict: false, divergence: false, href: `/sites/${SITE_ID}/historique/sujets/cs-bacs` }],
+})
+const watch = reg({
+  canonicalSubjectId: 'cs-watch', title: 'Désenfumage réserve 2', register: 'watch',
+  inlineObjects: [reserveInline],
+})
+const dormantA = reg({ canonicalSubjectId: 'cs-d1', title: 'Plans de sécurité', register: 'dormant' })
+const dormantB = reg({ canonicalSubjectId: 'cs-d2', title: 'Registre de sécurité', register: 'dormant' })
 
 function makeLiveDebrief(overrides: Partial<LiveDebrief> = {}): LiveDebrief {
   return {
     siteId: SITE_ID,
-    confirmedToday: {
-      actionsActive: 1,
-      actionsOverdue: 0,
-      deadlinesToPlan: 1,
-      deadlinesPlanned: 0,
-      reservesOpen: 1,
-      nextEvent: null,
-    },
+    confirmedToday: { actionsActive: 1, actionsOverdue: 0, deadlinesToPlan: 0, deadlinesPlanned: 0, reservesOpen: 1, nextEvent: null },
     sinceLastVisit: {
-      kind: 'delta',
-      at: '2026-08-20T08:00:00.000Z',
-      visitDateLabel: '20 août',
-      daysAgo: 10,
-      personal: true,
-      items: [{ kind: 'action_done', label: 'Peinture hall terminée', at: '2026-08-22T08:00:00.000Z' }],
-      overflow: 0,
+      kind: 'delta', at: '2026-08-20T08:00:00.000Z', visitDateLabel: '20 août', daysAgo: 10, personal: true,
+      items: [{ kind: 'action_done', label: 'Peinture hall terminée', at: '2026-08-22T08:00:00.000Z' }], overflow: 0,
     },
-    toHandle: [actionOpen, deadlineToPlan, reserveOpen],
-    toWatch: [signalUnseen],
-    recentlyHandled: [actionDoneRecent, signalSeen],
-    recentActivity: [],
-    reopenedSubjectIds: [],
+    toHandle: [], toWatch: [], recentlyHandled: [actionRecent], recentActivity: [], reopenedSubjectIds: ['cs-spk', 'cs-bacs'],
+    registers: [sprinkler, bacs, watch, dormantA, dormantB], // act_now vide par défaut (cas RUS)
     ...overrides,
   }
 }
 
 function makeBrief(liveDebrief: LiveDebrief, canLiftReserve = true): SiteBrief {
   return {
-    siteName: 'Chantier Test',
-    contractName: null,
+    siteName: 'Chantier Test', contractName: null,
     situation: { openActions: 0, openAnomalies: 0, nextScheduledAt: null, passagesThisMonth: 0 },
-    vigilance: [],
-    openActions: [],
-    recentDoneActions: [],
-    anomaliesOpen: [],
-    aSavoir: [],
-    recurring: [],
-    teams: [],
-    missionNames: [],
-    recentPhotosCount: 0,
-    meetings: [],
-    openReserves: [],
-    lastReport: null,
-    changeSinceLastReport: null,
-    followedPoints: [],
-    phase: 'follow_up',
-    phaseLabel: 'Suivi',
-    minuteSummary: [],
-    urgentItems: [],
-    blockedItems: [],
-    lastPresence: null,
-    activities: [],
-    persistedNarrative: null,
-    sinceLastVenue: null,
-    changedSinceVenue: [],
-    beforeLeaving: [],
-    verificationQuestions: [],
-    deadlines: [],
-    decisions: [],
-    narratives: [],
-    proofs: [],
-    objective: null,
-    estimatedPhase: 'follow_up',
-    freshness: { days: 0, label: "aujourd'hui", level: 'recent', at: null },
-    freshnessKind: null,
-    coherenceInsights: [],
-    rememberToday: [],
-    completedSinceVenue: [],
-    unknowns: [],
-    openActivityItems: [],
-    activityReadModel: {
-      interventionStarted: null,
-      dayIndex: null,
-      activitiesInProgress: [],
-      activitiesStartedRecently: [],
-      stillOpen: [],
-      toReconfirm: [],
-    },
-    liveDebrief,
-    canLiftReserve,
+    vigilance: [], openActions: [], recentDoneActions: [], anomaliesOpen: [], aSavoir: [], recurring: [], teams: [],
+    missionNames: [], recentPhotosCount: 0, meetings: [], openReserves: [], lastReport: null, changeSinceLastReport: null,
+    followedPoints: [], phase: 'follow_up', phaseLabel: 'Suivi', minuteSummary: [], urgentItems: [], blockedItems: [],
+    lastPresence: null, activities: [], persistedNarrative: null, sinceLastVenue: null, changedSinceVenue: [],
+    beforeLeaving: [], verificationQuestions: [], deadlines: [], decisions: [], narratives: [], proofs: [], objective: null,
+    estimatedPhase: 'follow_up', freshness: { days: 0, label: "aujourd'hui", level: 'recent', at: null }, freshnessKind: null,
+    coherenceInsights: [], rememberToday: [], completedSinceVenue: [], unknowns: [], openActivityItems: [],
+    activityReadModel: { interventionStarted: null, dayIndex: null, activitiesInProgress: [], activitiesStartedRecently: [], stillOpen: [], toReconfirm: [] },
+    liveDebrief, canLiftReserve,
   }
-}
-
-function sectionByHeading(headingText: string): HTMLElement {
-  const heading = screen.getByText(headingText)
-  const section = heading.closest('section')
-  if (!section) throw new Error(`section introuvable pour « ${headingText} »`)
-  return section as HTMLElement
 }
 
 async function openBrief(liveDebrief: LiveDebrief = makeLiveDebrief()) {
   mockGetSiteBriefAction.mockResolvedValue({ ok: true, brief: makeBrief(liveDebrief) })
   render(<SiteBriefButton siteId={SITE_ID} mode="visit" />)
-  await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /préparer ma visite/i }))
-  })
-  await screen.findByText('À traiter')
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /préparer ma visite/i })) })
+  await screen.findByText('Depuis votre dernière venue')
 }
 
-// D5 — variante qui distingue le brief initial du brief renvoyé par le
-// refetchBrief() déclenché après une mutation inline (Planifier/Marquer
-// réalisée/Clôturer/Lever), pour prouver le changement de bloc immédiat.
-async function openBriefSeq(responses: { ok: true; brief: SiteBrief }[], waitForText: string) {
-  mockGetSiteBriefAction.mockReset()
-  responses.forEach((r) => mockGetSiteBriefAction.mockResolvedValueOnce(r))
-  render(<SiteBriefButton siteId={SITE_ID} mode="visit" />)
-  await act(async () => {
-    fireEvent.click(screen.getByRole('button', { name: /préparer ma visite/i }))
-  })
-  await screen.findByText(waitForText)
-}
-
-describe('SiteBriefButton — Débrief vivant — À traiter', () => {
-  it('1. Action ouverte (to_handle) → rendue dans « À traiter »', async () => {
+describe('WOW-1 — Debrief registres sujet-first', () => {
+  it('act_now=0 → bandeau « Rien d’urgent aujourd’hui », aucune section « À traiter maintenant »', async () => {
     await openBrief()
-    const section = sectionByHeading('À traiter')
-    expect(within(section).getByText('Réparer la clôture Nord')).toBeInTheDocument()
+    expect(screen.getByText(/Rien d.?urgent aujourd/i)).toBeTruthy()
+    expect(screen.queryByText('À traiter maintenant')).toBeNull()
   })
 
-  it('3. Échéance to_plan (to_handle) → rendue dans « À traiter »', async () => {
+  it('bandeau saillant : N réouverts + N plus mentionnés (lecture remise à niveau)', async () => {
     await openBrief()
-    const section = sectionByHeading('À traiter')
-    expect(within(section).getByText('Envoyer le DOE')).toBeInTheDocument()
+    const headline = screen.getByText(/Rien d.?urgent aujourd/i).textContent ?? ''
+    expect(headline).toMatch(/2 réouverts/)
+    expect(headline).toMatch(/1 plus mentionné/)
   })
 
-  it('4. Réserve ouverte (to_handle) → rendue dans « À traiter »', async () => {
+  it('act_now>0 → section « À traiter maintenant » présente', async () => {
+    const actNow = reg({ canonicalSubjectId: 'cs-an', title: 'NC critique', register: 'act_now', signalKey: 'cs-an:pv_non_conforme' })
+    await openBrief(makeLiveDebrief({ registers: [actNow, watch] }))
+    expect(screen.getByText('À traiter maintenant')).toBeTruthy()
+  })
+
+  it('silence : énoncé factuel « Plus mentionné depuis N PV », jamais « toujours ouvert »', async () => {
     await openBrief()
-    const section = sectionByHeading('À traiter')
-    expect(within(section).getByText('Rejointoyer le carrelage hall')).toBeInTheDocument()
+    const section = screen.getByText('Silence documentaire').closest('section') as HTMLElement
+    expect(within(section).getByText(/Plus mentionné depuis 7 PV/)).toBeTruthy()
+    expect(within(section).queryByText(/toujours ouvert/i)).toBeNull()
   })
-})
 
-describe('SiteBriefButton — Débrief vivant — Traité récemment', () => {
-  it('2. Action terminée récemment (recently_handled) → rendue dans « Traité récemment »', async () => {
+  it('un sujet réouvert-et-silencieux apparaît UNE seule fois (badge Réouvert dans Silence), pas de 2e partition', async () => {
     await openBrief()
-    const section = sectionByHeading('Traité récemment')
-    expect(within(section).getByText('Nettoyer la base vie')).toBeInTheDocument()
+    expect(screen.queryByText('Réouverts')).toBeNull() // pas de registre « Réouverts » concurrent
+    const bacsLink = screen.getByText('Bacs de rétention produits chimiques')
+    const card = bacsLink.closest('li') as HTMLElement
+    expect(within(card).getByText('Réouvert')).toBeTruthy()
+    expect(screen.getAllByText('Bacs de rétention produits chimiques')).toHaveLength(1)
   })
-})
 
-describe('SiteBriefButton — Débrief vivant — affordance « Vu »', () => {
-  it("5. Signal informationnel non vu (to_watch) → rendu dans « À surveiller » AVEC un bouton Vu", async () => {
+  it('dormants repliés par défaut (pas de mur de cartes), dépliables', async () => {
     await openBrief()
-    const section = sectionByHeading('À surveiller')
-    const row = within(section).getByText('Fissure façade — situation aggravée au dernier PV').closest('li')!
-    expect(within(row).getByRole('button', { name: 'Vu' })).toBeInTheDocument()
+    expect(screen.queryByText('Plans de sécurité')).toBeNull() // replié
+    fireEvent.click(screen.getByText('Dormants').closest('button')!)
+    expect(screen.getByText('Plans de sécurité')).toBeTruthy()
+    expect(screen.getByText('Registre de sécurité')).toBeTruthy()
   })
 
-  it('6. Signal informationnel vu (recently_handled) → rendu dans « Traité récemment » SANS bouton Vu', async () => {
+  it('drill-down : CBO durables (lecture → fiche), jamais les formulations brutes', async () => {
     await openBrief()
-    const section = sectionByHeading('Traité récemment')
-    const row = within(section).getByText('Fuite réseau EU — stagnante').closest('li')!
-    expect(within(row).queryByRole('button', { name: 'Vu' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Dormants').closest('button')!) // Sprinkler est dormant (replié)
+    const card = screen.getByText('Système Sprinkler').closest('li') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: /détailler/i }))
+    expect(within(card).getByText(/À piloter/)).toBeTruthy()
+    expect(within(card).getByText('Modification du réseau sprinkler')).toBeTruthy()
+    expect(within(card).getByText('Évacuer les batteries du local sprinkler')).toBeTruthy()
   })
 
-  it('7. Aucune Action/Échéance/Réserve ne porte jamais de bouton Vu, quel que soit le bloc', async () => {
+  it('drill-down : objet 1:1 (réserve) reste actionnable avec son geste', async () => {
     await openBrief()
-    const aTraiter = sectionByHeading('À traiter') // actionOpen + deadlineToPlan + reserveOpen
-    expect(within(aTraiter).queryByRole('button', { name: 'Vu' })).not.toBeInTheDocument()
-    const traiteRecemment = sectionByHeading('Traité récemment') // actionDoneRecent + signalSeen
-    const actionRow = within(traiteRecemment).getByText('Nettoyer la base vie').closest('li')!
-    expect(within(actionRow).queryByRole('button', { name: 'Vu' })).not.toBeInTheDocument()
+    const card = screen.getByText('Désenfumage réserve 2').closest('li') as HTMLElement
+    fireEvent.click(within(card).getByRole('button', { name: /détailler/i }))
+    expect(within(card).getByText('Rejointoyer le carrelage hall')).toBeTruthy()
   })
-})
 
-describe('SiteBriefButton — Débrief vivant — liens réels', () => {
-  it('8. Chaque item pointe vers la route réelle de son objet (jamais un lien factice)', async () => {
+  it('« Vu » sur une carte registre → ACK épisode-aware (signalKey du silence transmis)', async () => {
     await openBrief()
-    expect(screen.getByRole('link', { name: 'Réparer la clôture Nord' })).toHaveAttribute(
-      'href',
-      `/sites/${SITE_ID}/action/act-open-1`,
-    )
-    expect(screen.getByRole('link', { name: 'Rejointoyer le carrelage hall' })).toHaveAttribute(
-      'href',
-      `/sites/${SITE_ID}/reserve/res-1`,
-    )
-    expect(screen.getByRole('link', { name: 'Envoyer le DOE' })).toHaveAttribute(
-      'href',
-      `/sites/${SITE_ID}?tab=planning&plantab=echeances`,
-    )
-    expect(
-      screen.getByRole('link', { name: 'Fissure façade — situation aggravée au dernier PV' }),
-    ).toHaveAttribute('href', `/sites/${SITE_ID}/subjects/cs-1`)
+    const card = screen.getByText('Bacs de rétention produits chimiques').closest('li') as HTMLElement
+    await act(async () => { fireEvent.click(within(card).getByRole('button', { name: /^vu$/i })) })
+    expect(mockMarkSeen).toHaveBeenCalled()
+    const arg = mockMarkSeen.mock.calls[0][0] as { signalKey: string }
+    expect(arg.signalKey).toBe('cs-bacs:open_with_objects:2025-01-29')
   })
-})
 
-describe('SiteBriefButton — Débrief vivant — première visite', () => {
-  it("9. sinceLastVisit.kind === 'first_visit' → message « Première visite », pas de section delta vide/cassée", async () => {
-    await openBrief(makeLiveDebrief({ sinceLastVisit: { kind: 'first_visit' } }))
-    const section = sectionByHeading('Depuis votre dernière venue')
-    expect(within(section).getByText(/première visite/i)).toBeInTheDocument()
-    expect(within(section).queryByText(/depuis votre dernière venue (personnelle|connue) du/i)).not.toBeInTheDocument()
-  })
-})
-
-describe('SiteBriefButton — Débrief vivant — pas de Régénérer propriétaire', () => {
-  it('10. Aucun bouton Régénérer/Générer propre au LiveDebrief ; le bouton IA existant reste séparé et intact', async () => {
+  it('axe personnel « Depuis votre dernière venue » distinct + « Traité récemment » conservé', async () => {
     await openBrief()
-    for (const heading of ['À traiter', 'À surveiller', 'Traité récemment', 'Depuis votre dernière venue']) {
-      const section = sectionByHeading(heading)
-      expect(within(section).queryByRole('button', { name: /génér/i })).not.toBeInTheDocument()
-    }
-    // Le bouton Générer/Régénérer légitime (« Recommandations MemorIA », feature LLM
-    // distincte hors périmètre D4) doit rester présent et fonctionnel ailleurs.
-    expect(screen.getByText(/recommandations memoria/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Générer' })).toBeInTheDocument()
-  })
-})
-
-// ── D5 — Débrief vivant : CTA inline (Échéances, Action, Réserve) ─────────────
-// GO Vincent D5 : « le geste de planification doit faire changer de bloc
-// immédiatement » — ces tests prouvent le changement de bloc après mutation
-// (refetchBrief), pas seulement l'appel de la server action. Réutilise
-// strictement complete/rescheduleDeadlineAction, closeActionAction,
-// liftReserveAction (mockées) ; aucune nouvelle mutation métier.
-
-describe('SiteBriefButton — Débrief vivant D5 — Échéance inline', () => {
-  it('D5-1. to_plan → Planifier → quitte « À traiter », rejoint « À surveiller »', async () => {
-    await openBriefSeq(
-      [
-        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [deadlineToPlan], toWatch: [], recentlyHandled: [] })) },
-        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [deadlinePlanned], recentlyHandled: [] })) },
-      ],
-      'Envoyer le DOE',
-    )
-    const aTraiter = sectionByHeading('À traiter')
-    const row = within(aTraiter).getByText('Envoyer le DOE').closest('li')!
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Échéance' }))
-    })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Planifier' }))
-    })
-    const dateInput = row.querySelector('input[type="date"]') as HTMLInputElement
-    fireEvent.change(dateInput, { target: { value: '2026-09-15' } })
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Enregistrer' }))
-    })
-    expect(mockRescheduleDeadline).toHaveBeenCalledWith({ deadlineId: 'dl-1', dueDate: '2026-09-15' })
-    await waitFor(() => {
-      expect(screen.queryByText('Envoyer le DOE')).not.toBeInTheDocument()
-    })
-    expect(within(sectionByHeading('À surveiller')).getByText('Livrer le plan de récolement')).toBeInTheDocument()
+    expect(screen.getByText('Depuis votre dernière venue')).toBeTruthy()
+    expect(screen.getByText('Peinture hall terminée')).toBeTruthy()
+    expect(screen.getByText('Traité récemment')).toBeTruthy()
+    expect(screen.getByText('Nettoyer la base vie')).toBeTruthy()
   })
 
-  it('D5-2. planned → Marquer réalisée → quitte « À surveiller », rejoint « Traité récemment »', async () => {
-    const deadlineDone: LiveDebriefItem = { ...deadlinePlanned, status: 'done', disposition: 'recently_handled' }
-    await openBriefSeq(
-      [
-        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [deadlinePlanned], recentlyHandled: [] })) },
-        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [], recentlyHandled: [deadlineDone] })) },
-      ],
-      'Livrer le plan de récolement',
-    )
-    const aSurveiller = sectionByHeading('À surveiller')
-    const row = within(aSurveiller).getByText('Livrer le plan de récolement').closest('li')!
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Échéance' }))
-    })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Marquer réalisée' }))
-    })
-    expect(mockCompleteDeadline).toHaveBeenCalledWith('dl-2')
-    await waitFor(() => {
-      expect(within(sectionByHeading('Traité récemment')).getByText('Livrer le plan de récolement')).toBeInTheDocument()
-    })
-    // Bloc « À surveiller » vidé par la mutation → section entière masquée (pas de bloc vide).
-    expect(screen.queryByText('À surveiller')).not.toBeInTheDocument()
-  })
-})
-
-describe('SiteBriefButton — Débrief vivant D5 — Action inline', () => {
-  it('D5-3. open → Clôturer → rejoint « Traité récemment »', async () => {
-    const actionClosed: LiveDebriefItem = { ...actionOpen, status: 'done', disposition: 'recently_handled' }
-    await openBriefSeq(
-      [
-        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [actionOpen], toWatch: [], recentlyHandled: [] })) },
-        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [], recentlyHandled: [actionClosed] })) },
-      ],
-      'Réparer la clôture Nord',
-    )
-    const aTraiter = sectionByHeading('À traiter')
-    const row = within(aTraiter).getByText('Réparer la clôture Nord').closest('li')!
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Action' }))
-    })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Clôturer' }))
-    })
-    const textarea = row.querySelector('textarea') as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: 'Clôture réparée et vérifiée.' } })
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Clôturer' }))
-    })
-    expect(mockCloseAction).toHaveBeenCalled()
-    await waitFor(() => {
-      expect(within(sectionByHeading('Traité récemment')).getByText('Réparer la clôture Nord')).toBeInTheDocument()
-    })
-  })
-})
-
-describe('SiteBriefButton — Débrief vivant D5 — Réserve inline (rôle autorisé)', () => {
-  it('D5-4. open → Lever (canLiftReserve) → rejoint « Traité récemment »', async () => {
-    const reserveLifted: LiveDebriefItem = { ...reserveOpen, status: 'lifted', disposition: 'recently_handled' }
-    await openBriefSeq(
-      [
-        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [reserveOpen], toWatch: [], recentlyHandled: [] })) },
-        { ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [], toWatch: [], recentlyHandled: [reserveLifted] })) },
-      ],
-      'Rejointoyer le carrelage hall',
-    )
-    const aTraiter = sectionByHeading('À traiter')
-    const row = within(aTraiter).getByText('Rejointoyer le carrelage hall').closest('li')!
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Réserve' }))
-    })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Lever la réserve' }))
-    })
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
-    })
-    expect(mockLiftReserve).toHaveBeenCalled()
-    await waitFor(() => {
-      expect(within(sectionByHeading('Traité récemment')).getByText('Rejointoyer le carrelage hall')).toBeInTheDocument()
-    })
-  })
-
-  it("D5-5. open, rôle non autorisé (canLiftReserve=false) → pas de bouton Lever, lien vers la fiche conservé (« Ouvrir »)", async () => {
-    await openBriefSeq(
-      [
-        {
-          ok: true,
-          brief: makeBrief(makeLiveDebrief({ toHandle: [reserveOpen], toWatch: [], recentlyHandled: [] }), false),
-        },
-      ],
-      'Rejointoyer le carrelage hall',
-    )
-    const section = sectionByHeading('À traiter')
-    expect(within(section).queryByRole('button', { name: 'Lever' })).not.toBeInTheDocument()
-    expect(within(section).getByRole('link', { name: 'Rejointoyer le carrelage hall' })).toHaveAttribute(
-      'href',
-      `/sites/${SITE_ID}/reserve/res-1`,
-    )
-  })
-
-  // Bug réel signalé par Vincent : au clic sur Lever, « aucun changement observable ».
-  // Cause racine identifiée = reserveOnSite() interrogeait la mauvaise table
-  // (site_reserves au lieu de site_reserve), donc liftReserveAction échouait
-  // TOUJOURS avant d'écrire quoi que ce soit. Ce test verrouille le contrat côté
-  // UI : un échec de mutation doit rester visible dans le formulaire, pas
-  // silencieux, et ne doit ni faire disparaître la réserve ni appeler refetchBrief.
-  it('D5-6. échec de la mutation (Réserve introuvable) → erreur visible inline, réserve reste dans « À traiter »', async () => {
-    mockLiftReserve.mockResolvedValueOnce({ error: 'Réserve introuvable' })
-    await openBriefSeq(
-      [{ ok: true, brief: makeBrief(makeLiveDebrief({ toHandle: [reserveOpen], toWatch: [], recentlyHandled: [] })) }],
-      'Rejointoyer le carrelage hall',
-    )
-    const aTraiter = sectionByHeading('À traiter')
-    const row = within(aTraiter).getByText('Rejointoyer le carrelage hall').closest('li')!
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Réserve' }))
-    })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Lever la réserve' }))
-    })
-    await act(async () => {
-      fireEvent.click(within(row).getByRole('button', { name: 'Lever' }))
-    })
-    expect(mockLiftReserve).toHaveBeenCalled()
-    expect(await within(row).findByRole('alert')).toHaveTextContent('Réserve introuvable')
-    // Un seul appel getSiteBriefAction (l'ouverture) : la mutation en échec n'a pas déclenché refetchBrief.
-    expect(mockGetSiteBriefAction).toHaveBeenCalledTimes(1)
-    expect(within(aTraiter).getByText('Rejointoyer le carrelage hall')).toBeInTheDocument()
-  })
-})
-
-describe('SiteBriefButton — Débrief vivant D5 — Traité récemment reste lecture seule', () => {
-  it('D5-6. Aucun CTA (Planifier/Marquer réalisée/Clôturer/Lever) sur un item déjà traité', async () => {
+  it('aucun bouton « Régénérer » propre au Débrief (doctrine projection)', async () => {
     await openBrief()
-    const section = sectionByHeading('Traité récemment')
-    expect(within(section).queryByRole('button', { name: 'Planifier' })).not.toBeInTheDocument()
-    expect(within(section).queryByRole('button', { name: 'Marquer réalisée' })).not.toBeInTheDocument()
-    expect(within(section).queryByRole('button', { name: 'Clôturer' })).not.toBeInTheDocument()
-    expect(within(section).queryByRole('button', { name: 'Lever' })).not.toBeInTheDocument()
-  })
-})
-
-// D7 §2 — « Traité récemment » reste court par défaut : au-delà de 3 éléments,
-// seuls les 3 plus récents (ordre déjà fourni par LiveDebrief, jamais retrié
-// ici) sont visibles, avec un dépli local sans action métier ni persistance.
-describe('SiteBriefButton — Débrief vivant D7 §2 — Traité récemment plafonné', () => {
-  const manyRecentlyHandled: LiveDebriefItem[] = [
-    actionDoneRecent,
-    signalSeen,
-    { ...actionDoneRecent, id: 'act-done-2', title: 'Ranger le dépôt matériel' },
-    { ...actionDoneRecent, id: 'act-done-3', title: 'Baliser la zone Sud' },
-  ]
-
-  it('D7-2a. > 3 éléments → seuls les 3 premiers rendus, avec « Voir les 4 éléments »', async () => {
-    await openBrief(makeLiveDebrief({ recentlyHandled: manyRecentlyHandled }))
-    const section = sectionByHeading('Traité récemment')
-    expect(within(section).getByText('Nettoyer la base vie')).toBeInTheDocument()
-    expect(within(section).getByText('Fuite réseau EU — stagnante')).toBeInTheDocument()
-    expect(within(section).getByText('Ranger le dépôt matériel')).toBeInTheDocument()
-    expect(within(section).queryByText('Baliser la zone Sud')).not.toBeInTheDocument()
-    expect(within(section).getByRole('button', { name: 'Voir les 4 éléments' })).toBeInTheDocument()
-  })
-
-  it("D7-2b. clic sur « Voir les 4 éléments » → tous les éléments rendus, bouton disparaît", async () => {
-    await openBrief(makeLiveDebrief({ recentlyHandled: manyRecentlyHandled }))
-    const section = sectionByHeading('Traité récemment')
-    fireEvent.click(within(section).getByRole('button', { name: 'Voir les 4 éléments' }))
-    expect(within(section).getByText('Baliser la zone Sud')).toBeInTheDocument()
-    expect(within(section).queryByRole('button', { name: /voir les/i })).not.toBeInTheDocument()
-  })
-
-  it('D7-2c. ≤ 3 éléments (défaut) → jamais de bouton « Voir les N éléments »', async () => {
-    await openBrief()
-    const section = sectionByHeading('Traité récemment')
-    expect(within(section).queryByRole('button', { name: /voir les/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /régénérer/i })).toBeNull()
   })
 })
