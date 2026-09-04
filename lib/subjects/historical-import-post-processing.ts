@@ -9,7 +9,7 @@ import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-su
 import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import { attachHistoricalReportEntitiesToCanonicalBusinessObjects } from '@/lib/db/canonical-business-object-attach'
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
-import { resolveSiteDocumentCompletions } from '@/lib/knowledge/document-completion-resolver'
+import { resolveSiteDocumentCompletionsByProposal } from '@/lib/knowledge/document-completion-resolver'
 
 export type HistoricalImportPostProcessingOutcome =
   | 'completed'
@@ -134,13 +134,16 @@ export async function runHistoricalImportPostProcessing(
   })
   await attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId })
 
-  // Pont documentaire de complétion (P1-4B2a) : preuves de réalisation → candidats CBO action →
-  // résolution versionnée append-only (idempotente par contexte). Best-effort : ne produit ni signal
-  // ni changement d'état CBO, donc un échec ici ne doit jamais faire échouer l'import.
+  // Pont documentaire de complétion (P1-4B-WIRING) : UNITÉ DE PREUVE = document_extraction_proposal
+  // (fait atomique), pas l'occurrence agrégée. Preuve → candidats CBO action du sujet → résolution
+  // versionnée append-only proposal-level (idempotente par proof_proposal_id + policy + fingerprint).
+  // Appelé APRÈS canonicalisation + attach (les subject_thread → canonical_subject → CBO existent).
+  // Best-effort : ne produit ni signal ni changement d'état CBO ; un échec ici ne fait jamais échouer
+  // l'import. Les résolutions occurrence-level antérieures restent lisibles (audit), non recalculées.
   try {
-    await resolveSiteDocumentCompletions(siteId)
+    await resolveSiteDocumentCompletionsByProposal(siteId)
   } catch (err) {
-    console.error('[historical-import-post-processing] document completion resolver failed:', err instanceof Error ? err.message : String(err))
+    console.error('[historical-import-post-processing] document completion resolver (proposal) failed:', err instanceof Error ? err.message : String(err))
   }
 
   return decision === 'done' ? 'already_completed' : 'completed'

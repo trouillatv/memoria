@@ -33,4 +33,19 @@ describe('historical import post-processing orchestration', () => {
     expect(source).toMatch(/decideReconcileLock/)
     expect(source).toMatch(/runHistoricalMemoryBuildPipeline/)
   })
+
+  it('branche le pont documentaire proposal-level (P1-4B-WIRING), pas occurrence-level', () => {
+    const source = read('lib/subjects/historical-import-post-processing.ts')
+    // Nouvelle vérité de production = unité de preuve proposition atomique.
+    expect(source).toMatch(/resolveSiteDocumentCompletionsByProposal\(siteId\)/)
+    // Le chemin occurrence-level ne doit plus être appelé pour les nouveaux imports.
+    expect(source).not.toMatch(/\bresolveSiteDocumentCompletions\(siteId\)/)
+    // Appelé après canonicalisation + attach des CBO (les candidats doivent exister).
+    const attach = source.indexOf('attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId')
+    const resolve = source.indexOf('resolveSiteDocumentCompletionsByProposal(siteId)')
+    expect(attach).toBeGreaterThan(-1)
+    expect(resolve).toBeGreaterThan(attach)
+    // Best-effort : n'écrit jamais de signal lifecycle.
+    expect(source).not.toMatch(/object_state_occurrence_signal/)
+  })
 })
