@@ -34,6 +34,16 @@ export interface PilotageCbo {
   documentaryDivergences: string[]
 }
 
+/** Niveau 3 — une formulation documentaire BRUTE (site_actions) rattachée au sujet. ARCHIVE, jamais
+ *  une charge opérationnelle courante : `status` reste un statut brut de preuve, pas un état durable. */
+export interface PilotageFormulation {
+  id: string
+  title: string
+  status: string
+  dueDate: string | null
+  reportId: string | null
+}
+
 /** Niveau 1 — un sujet canonique porteur d'actions, avec le résumé de ses CBO. */
 export interface PilotageSubject {
   canonicalSubjectId: string
@@ -47,6 +57,9 @@ export interface PilotageSubject {
   lastMeaningfulChangeAt: string | null
   pvCount: number
   cbos: PilotageCbo[]
+  /** N3 — formulations documentaires brutes du sujet + nombre de PV distincts. Archive repliée. */
+  formulations: PilotageFormulation[]
+  formulationPvCount: number
 }
 
 /** KPI Aperçu — raconte les DEUX niveaux, sans jamais appeler les sujets « actions »
@@ -104,6 +117,7 @@ export function assembleActionsPilotage(
   subjectCtxById: Map<string, PilotageSubjectContext>,
   reduced: Iterable<CboReducedEntry>,
   historicalFormulations: number,
+  formulationsBySubject: Map<string, PilotageFormulation[]> = new Map(),
 ): SiteActionsPilotage {
   let activeCbo = 0, completedCbo = 0, toQualifyCbo = 0, totalCbo = 0, unattachedCbo = 0
   const bySubject = new Map<string, CboReducedEntry[]>()
@@ -126,6 +140,7 @@ export function assembleActionsPilotage(
     const activeCount = cbos.filter((c) => c.active).length
     const completedCount = cbos.filter((c) => c.terminal).length
     const ctx = subjectCtxById.get(subjectId)
+    const formulations = formulationsBySubject.get(subjectId) ?? []
     subjects.push({
       canonicalSubjectId: subjectId,
       label: ctx?.title ?? entries[0]?.label ?? '(sujet)',
@@ -135,6 +150,8 @@ export function assembleActionsPilotage(
       lastMeaningfulChangeAt: ctx?.lastMeaningfulChangeAt ?? null,
       pvCount: ctx?.pvCount ?? 0,
       cbos,
+      formulations,
+      formulationPvCount: new Set(formulations.map((f) => f.reportId).filter(Boolean)).size,
     })
   }
 
@@ -160,15 +177,26 @@ export async function getActionsPilotageKpi(siteId: string): Promise<PilotageKpi
   return assembleActionsPilotage(new Map(), reduced.values(), rawCount).kpi
 }
 
+type RawFormulationRow = { id: string; title: string | null; status: string; due_date: string | null; report_id: string | null; canonical_subject_id: string | null }
+
 export async function getSiteActionsPilotage(siteId: string): Promise<SiteActionsPilotage> {
   const sb = createAdminClient()
-  const [nav, reduced, rawCount] = await Promise.all([
+  const [nav, reduced, rawRows] = await Promise.all([
     getNavigableSubjectsForSite(siteId).catch(() => []),
     loadCboReducedStates(siteId).catch(() => new Map<string, CboReducedEntry>()),
-    sb.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId).then((r) => r.count ?? 0, () => 0),
+    sb.from('site_actions').select('id, title, status, due_date, report_id, canonical_subject_id').eq('site_id', siteId)
+      .then((r) => (r.data ?? []) as RawFormulationRow[], () => [] as RawFormulationRow[]),
   ])
   const ctxById = new Map<string, PilotageSubjectContext>(
     nav.map((n) => [n.canonicalSubjectId, { canonicalSubjectId: n.canonicalSubjectId, title: n.title, displayState: n.displayState, lastMeaningfulChangeAt: n.lastMeaningfulChangeAt, pvCount: n.pvCount }]),
   )
-  return assembleActionsPilotage(ctxById, reduced.values(), rawCount)
+  // N3 — formulations documentaires brutes groupées par sujet (archive ; jamais un état).
+  const formulationsBySubject = new Map<string, PilotageFormulation[]>()
+  for (const a of rawRows) {
+    if (!a.canonical_subject_id) continue
+    const l = formulationsBySubject.get(a.canonical_subject_id) ?? []
+    l.push({ id: a.id, title: a.title ?? '(sans titre)', status: a.status, dueDate: a.due_date, reportId: a.report_id })
+    formulationsBySubject.set(a.canonical_subject_id, l)
+  }
+  return assembleActionsPilotage(ctxById, reduced.values(), rawRows.length, formulationsBySubject)
 }
