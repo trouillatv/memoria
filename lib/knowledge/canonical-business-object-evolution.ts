@@ -4,6 +4,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { CanonicalBusinessObjectEntry } from '@/lib/knowledge/canonical-business-object-projection'
 import type { MaterializedEntityType } from '@/lib/db/canonical-subject-life'
 import type { ObjectStateSignal } from '@/lib/ai/classify-occurrence-state-signal'
+import {
+  reduceCboLifecycle, deriveCboNature, assembleCboEvents,
+  type CboReducedState, type CboMemberProvenance, type CboCompletionProof, type CboNativeJournalEvent,
+} from '@/lib/knowledge/cbo-lifecycle-reducer'
+import { loadProposalProofs, ACTIVE_POLICY_VERSION } from '@/lib/knowledge/document-completion-resolver'
+import { getEffectiveResolutionByProposal, computeProofContextFingerprint } from '@/lib/db/document-completion-resolution'
 
 // Read-model de trajectoire longitudinale par CBO — P1-C2B.4 H2-B.4UI.
 //
@@ -59,7 +65,8 @@ function bucketOfSignal(signal: ObjectStateSignal): SignalBucket | null {
 
 function bucketOfPhysicalStatus(status: string | null): SignalBucket | null {
   if (!status) return null
-  if (status === 'done' || status === 'cancelled' || status === 'lifted' || status === 'informational') return 'REALIZED'
+  if (status === 'cancelled') return null // D2 : annulation ≠ réalisation (exclue de la baseline, jamais REALIZED)
+  if (status === 'done' || status === 'lifted' || status === 'informational') return 'REALIZED'
   if (status === 'in_progress') return 'PROGRESSING'
   if (status === 'open' || status === 'planned' || status === 'non_compliant' || status === 'awaiting_validation' || status === 'to_plan' || status === 'still_open') return 'OPEN_LIKE'
   return null
@@ -198,4 +205,163 @@ export async function loadCboEvolutions(
   }
 
   return result
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-4C2A (INTEGRATION + DOC-OPEN) — réducteur CBO UNIQUE branché sur les sources AUTORITATIVES.
+//
+// Compose DEUX sources, par date MÉTIER uniquement :
+//   1. DOCUMENTAIRE (inférence révisable), toute CBO-scopée par le membership déjà décidé :
+//      - doc_open(T) = chaque MEMBRE site_action du CBO (canonical_business_object_member), daté par
+//        la date métier de son document source (report → source_document → effective_date). L'identité
+//        est fournie par le membership ; aucun matching lexical/subject-wide/LLM/resolver.
+//      - documentary_completion(T) = résolutions B EFFECTIVES (MATCH/HIGH, policy active), datées par la
+//        date du document de la preuve, PUIS filtrées par la qualification DÉTERMINISTE C1C : seule une
+//        intention one_shot + terminal_candidate complète (Test SSI/RIA/Allée/« Mettre en place un
+//        SSIAP » ne complètent jamais).
+//      - RÈGLE DE PROVENANCE (même document) : un membre dont source_document_id est l'un des documents
+//        fournissant la complétion retenue du CBO n'est PAS ré-émis en doc_open — le PV qui CLÔTURE ne
+//        doit pas produire simultanément doc_open(T)+doc_completion(T) → faux CONFLICT (cas Éclairage).
+//   2. NATIVE (autoritative) : journal `site_action_events`. `completed`/`reopened`/`cancelled`/
+//      `progress` = événements natifs datés (`occurred_at`) ; les terminaux verrouillent (le documentaire
+//      ne les renverse jamais). `created` est EXCLU de la réduction : son occurred_at est l'horloge
+//      d'IMPORT (date technique), pas une date métier — il reste dans le journal mais n'entre pas ici.
+//
+// Population/inventaire = canonical_business_object_member (pas l'existence d'un ancien signal). Un
+// membership DANGLING (member_entity_id sans site_action vivant) est ignoré ; sans autre preuve →
+// unknown. Aucune réparation de données dans ce lot.
+//
+// READ-ONLY : ne persiste rien, aucun consommateur branché.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type CboReducedEntry = {
+  cboId: string
+  label: string
+  nature: ReturnType<typeof deriveCboNature>
+  reduced: CboReducedState
+  /** Nombre de complétions documentaires EFFECTIVES (B HIGH) attribuées à ce CBO. */
+  documentaryHighCount: number
+  /** Complétions documentaires SUPPRIMÉES par la qualification C1C (non one_shot/terminal). */
+  suppressedByNature: number
+  /** Nombre de doc_open(T) émis (membres datables hors document de complétion). */
+  docOpenCount: number
+  /** Membres exclus du doc_open car provenant du document de complétion (règle de provenance). */
+  membersSharedWithCompletionDoc: number
+}
+
+/**
+ * État réduit de chaque CBO action d'un site, composé depuis les sources autoritatives.
+ * Déterministe et READ-ONLY. La complétion documentaire n'est émise que si (a) une résolution B
+ * effective MATCH/HIGH existe pour le CBO ET (b) la nature C1C du libellé est one_shot+terminal.
+ */
+export async function loadCboReducedStates(siteId: string): Promise<Map<string, CboReducedEntry>> {
+  const sb = createAdminClient()
+  const out = new Map<string, CboReducedEntry>()
+  const CHUNK = 100
+
+  // 1. CBO action du site + libellés.
+  const { data: cboRows } = await sb
+    .from('canonical_business_object')
+    .select('id, label')
+    .eq('site_id', siteId).eq('object_type', 'site_action')
+  const cbos = (cboRows ?? []) as Array<{ id: string; label: string }>
+  if (cbos.length === 0) return out
+  const cboIds = cbos.map((c) => c.id)
+
+  // 2. Membership CBO → membres site_action (source d'INVENTAIRE : canonical_business_object_member).
+  const memberIdsByCbo = new Map<string, string[]>()
+  const allMemberIds = new Set<string>()
+  for (let i = 0; i < cboIds.length; i += CHUNK) {
+    const { data } = await sb
+      .from('canonical_business_object_member')
+      .select('canonical_business_object_id, member_entity_id, member_entity_type')
+      .in('canonical_business_object_id', cboIds.slice(i, i + CHUNK))
+      .eq('member_entity_type', 'site_action')
+    for (const r of (data ?? []) as Array<{ canonical_business_object_id: string; member_entity_id: string }>) {
+      const l = memberIdsByCbo.get(r.canonical_business_object_id) ?? []
+      l.push(r.member_entity_id); memberIdsByCbo.set(r.canonical_business_object_id, l)
+      allMemberIds.add(r.member_entity_id)
+    }
+  }
+
+  // 3. Résolution des membres → site_action vivant → report → document (id + date métier).
+  //    Un membre sans site_action = DANGLING → absent de cette map → ignoré (jamais inventé).
+  const actionInfo = new Map<string, { reportId: string | null }>()
+  const memberIdList = [...allMemberIds]
+  for (let i = 0; i < memberIdList.length; i += CHUNK) {
+    const { data } = await sb.from('site_actions').select('id, report_id').in('id', memberIdList.slice(i, i + CHUNK))
+    for (const a of (data ?? []) as Array<{ id: string; report_id: string | null }>) actionInfo.set(a.id, { reportId: a.report_id })
+  }
+  const reportIds = [...new Set([...actionInfo.values()].map((a) => a.reportId).filter((x): x is string => !!x))]
+  const reportDoc = new Map<string, string>()
+  for (let i = 0; i < reportIds.length; i += CHUNK) {
+    const { data } = await sb.from('site_reports').select('id, source_document_id').in('id', reportIds.slice(i, i + CHUNK))
+    for (const r of (data ?? []) as Array<{ id: string; source_document_id: string | null }>) if (r.source_document_id) reportDoc.set(r.id, r.source_document_id)
+  }
+  const docDate = new Map<string, string>()
+  const docIds = [...new Set([...reportDoc.values()])]
+  for (let i = 0; i < docIds.length; i += CHUNK) {
+    const { data } = await sb.from('documents').select('id, effective_date').in('id', docIds.slice(i, i + CHUNK))
+    for (const d of (data ?? []) as Array<{ id: string; effective_date: string | null }>) if (d.effective_date) docDate.set(d.id, d.effective_date)
+  }
+  // date métier + document source d'un membre (undefined si dangling ou chaîne incomplète).
+  const memberBusiness = (memberId: string): { docId: string; date: string } | null => {
+    const a = actionInfo.get(memberId); if (!a?.reportId) return null
+    const docId = reportDoc.get(a.reportId); if (!docId) return null
+    const date = docDate.get(docId); if (!date) return null
+    return { docId, date }
+  }
+
+  // 4. Journal natif des membres vivants (site_action_events) — created EXCLU en aval par nativeKindOf.
+  const journalByAction = new Map<string, Array<{ kind: string; occurredAt: string }>>()
+  const liveActionIds = [...actionInfo.keys()]
+  for (let i = 0; i < liveActionIds.length; i += CHUNK) {
+    const { data } = await sb.from('site_action_events').select('action_id, kind, occurred_at').in('action_id', liveActionIds.slice(i, i + CHUNK))
+    for (const e of (data ?? []) as Array<{ action_id: string; kind: string; occurred_at: string }>) {
+      const l = journalByAction.get(e.action_id) ?? []
+      l.push({ kind: e.kind, occurredAt: e.occurred_at }); journalByAction.set(e.action_id, l)
+    }
+  }
+
+  // 5. Complétions documentaires EFFECTIVES (B HIGH, policy active) : date + document de la preuve.
+  //    Réutilise la chaîne autoritative loadProposalProofs → getEffectiveResolutionByProposal.
+  const highByCbo = new Map<string, Array<{ date: string | null; proposalId: string; docId: string | null }>>()
+  const proofs = await loadProposalProofs(siteId)
+  const proofDocByProposal = new Map<string, string | null>()
+  {
+    const propIds = proofs.map((p) => p.proof.proposalId)
+    for (let i = 0; i < propIds.length; i += CHUNK) {
+      const { data } = await sb.from('document_extraction_proposal').select('id, document_id').in('id', propIds.slice(i, i + CHUNK))
+      for (const p of (data ?? []) as Array<{ id: string; document_id: string | null }>) proofDocByProposal.set(p.id, p.document_id)
+    }
+  }
+  for (const it of proofs) {
+    const fp = computeProofContextFingerprint(it.proof, it.candidates)
+    const eff = await getEffectiveResolutionByProposal(it.proof.proposalId, fp, ACTIVE_POLICY_VERSION)
+    if (!eff || eff.decision !== 'MATCH' || eff.confidenceClass !== 'HIGH' || !eff.selectedCboId) continue
+    const l = highByCbo.get(eff.selectedCboId) ?? []
+    l.push({ date: it.proof.effectiveDate ?? null, proposalId: it.proof.proposalId, docId: proofDocByProposal.get(it.proof.proposalId) ?? null })
+    highByCbo.set(eff.selectedCboId, l)
+  }
+
+  // 6. Réduction par CBO — assemblage PUR (assembleCboEvents) puis reduceCboLifecycle.
+  for (const cbo of cbos) {
+    const memberIds = memberIdsByCbo.get(cbo.id) ?? []
+    const members: CboMemberProvenance[] = memberIds.map((memberId) => {
+      const biz = memberBusiness(memberId)
+      return { memberId, docId: biz?.docId ?? null, date: biz?.date ?? null }
+    })
+    const completions: CboCompletionProof[] = (highByCbo.get(cbo.id) ?? []).map((h) => ({ proposalId: h.proposalId, docId: h.docId, date: h.date }))
+    const natives: CboNativeJournalEvent[] = memberIds.flatMap((memberId) => (journalByAction.get(memberId) ?? []).map((e) => ({ kind: e.kind, occurredAt: e.occurredAt })))
+
+    const asm = assembleCboEvents(cbo.label, members, completions, natives)
+    const reduced = reduceCboLifecycle(asm.events)
+    out.set(cbo.id, {
+      cboId: cbo.id, label: cbo.label, nature: asm.nature, reduced,
+      documentaryHighCount: asm.documentaryHighCount, suppressedByNature: asm.suppressedByNature,
+      docOpenCount: asm.docOpenCount, membersSharedWithCompletionDoc: asm.membersSharedWithCompletionDoc,
+    })
+  }
+
+  return out
 }
