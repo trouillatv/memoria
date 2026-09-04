@@ -3,13 +3,15 @@ import { ClipboardCheck, MapPin } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteReserves, summarizeReserves } from '@/lib/db/site-reserve'
+import { getSiteReservesPilotage } from '@/lib/knowledge/reserves-pilotage'
 import { listSiteActionsByReserve } from '@/lib/db/site-actions'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { getSignedPhotoUrl } from '@/lib/storage/intervention-photos'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SiteChantierNav } from '../SiteChantierNav'
 import { ReserveForm } from './ReserveForm'
-import { ReservesView, type ReserveWithPhotos } from './ReservesView'
+import { type ReserveWithPhotos } from './ReservesView'
+import { ReservesPilotageClient } from './ReservesPilotageClient'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -22,9 +24,10 @@ export default async function SiteReservesPage({ params }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const [identity, reserves] = await Promise.all([
+  const [identity, reserves, pilotage] = await Promise.all([
     getSiteIdentity(id),
     getSiteReserves(id),
+    getSiteReservesPilotage(id),
   ])
 
   if (!identity) notFound()
@@ -78,13 +81,14 @@ export default async function SiteReservesPage({ params }: PageProps) {
             <ClipboardCheck className="h-5 w-5 text-muted-foreground" />
             Points à lever
           </h1>
-          {/* Compteurs sobres — calme, jamais rouge. Amber pour les ouverts. */}
+          {/* V1-3 — compteurs DURABLES : N problèmes suivis + N occurrences. Jamais « N ouvertes »
+              (aucun lifecycle réserve). `summary.lifted` (occurrences levées) reste une info occurrence. */}
           <div className="flex items-center gap-2 text-xs">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 font-medium text-amber-900 tabular-nums">
-              {summary.open} ouvert{summary.open > 1 ? 's' : ''}
+              {pilotage.kpi.durableReserves} réserve{pilotage.kpi.durableReserves > 1 ? 's' : ''} suivie{pilotage.kpi.durableReserves > 1 ? 's' : ''}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 font-medium text-emerald-900 tabular-nums">
-              {summary.lifted} levé{summary.lifted > 1 ? 's' : ''}
+            <span className="inline-flex items-center gap-1.5 rounded-full border bg-muted/40 px-2.5 py-1 font-medium tabular-nums text-muted-foreground">
+              {pilotage.kpi.occurrences} occurrence{pilotage.kpi.occurrences > 1 ? 's' : ''}
             </span>
             {reserves.length > 0 && (
               <a
@@ -110,7 +114,8 @@ export default async function SiteReservesPage({ params }: PageProps) {
 
       <ReserveForm siteId={id} />
 
-      <ReservesView siteId={id} reserves={withPhotos} siteDocuments={sitePickerDocs} />
+      {/* V1-3 — hiérarchie SUJET → réserve durable → occurrences (mini-dossier préservé en N3). */}
+      <ReservesPilotageClient siteId={id} subjects={pilotage.subjects} reserves={withPhotos} siteDocuments={sitePickerDocs} />
     </div>
   )
 }

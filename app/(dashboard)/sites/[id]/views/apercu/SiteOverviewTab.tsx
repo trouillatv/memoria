@@ -37,7 +37,7 @@ import { SiteAttentionSection, SiteAttentionSkeleton } from './SiteAttentionSect
 export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   const {
-    actions, actionsPilotage, nextEvent, reserves, blockages, activity, synthesis,
+    actions, actionsPilotage, reservesPilotage, nextEvent, reserves, blockages, activity, synthesis,
     pvActivity,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
@@ -62,13 +62,17 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
             title="Sujets à piloter"
             detail={pilotageDetail(actionsPilotage)}
           />
+          {/* V1-3 — Réserves DURABLES : occurrences documentaires regroupées par CBO réserve. Jamais
+              « N ouvertes » (aucun lifecycle réserve) ; les occurrences restent une info secondaire. */}
           <StateCard
             href={`/sites/${siteId}/reserves`}
             icon={AlertTriangle}
-            tone={reserves.open > 0 ? 'orange' : 'green'}
-            value={reserves.open}
-            title="Réserves ouvertes"
-            detail={reserves.open > 0 ? 'À lever' : 'Aucune réserve ouverte'}
+            tone={reservesPilotage.durableReserves > 0 ? 'orange' : 'green'}
+            value={reservesPilotage.durableReserves}
+            title="Réserves suivies"
+            detail={reservesPilotage.durableReserves > 0
+              ? `${reservesPilotage.occurrences} occurrence${reservesPilotage.occurrences > 1 ? 's' : ''} documentaire${reservesPilotage.occurrences > 1 ? 's' : ''}`
+              : 'Aucune réserve suivie'}
           />
           <StateCard
             href={`/sites/${siteId}/reserves`}

@@ -67,6 +67,7 @@ import {
 import { buildOccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 import { getActionsPilotageKpi, type PilotageKpi } from '@/lib/knowledge/actions-pilotage'
+import { getSiteReservesPilotage, type ReservesPilotageKpi } from '@/lib/knowledge/reserves-pilotage'
 
 const TOP = 3
 const HISTORY_LIMIT = 5
@@ -234,6 +235,10 @@ export interface SiteOverview {
    *  brutes. Raconte les deux niveaux : N sujets, N objets actifs/terminés/à qualifier, N formulations
    *  historiques. `actions` (legacy, site_actions brut) reste pour les consommateurs existants. */
   actionsPilotage: PilotageKpi
+  /** V1-3 — KPI Réserves DURABLES (occurrences documentaires regroupées par CBO réserve). AUCUN
+   *  lifecycle : `durableReserves` n'est PAS « N ouvertes » (pas d'état calculé). `reserves.open`
+   *  (brut) reste pour les consommateurs existants. */
+  reservesPilotage: ReservesPilotageKpi
   attention: { level: AttentionLevel; reasons: AttentionReason[] }
   nextEvent: OverviewEvent | null
   recentChanges: OverviewChange[]
@@ -442,6 +447,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
     },
     actions: { proposed: [], confirmed: [], completedRecent: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, week: 0, undated: 0, completed: 0 } },
     actionsPilotage: { subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 },
+    reservesPilotage: { subjectsWithReserves: 0, durableReserves: 0, occurrences: 0 },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
     recentChanges: [],
@@ -585,6 +591,8 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
 
   // V1-1 — KPI « Actions à piloter » (vérité durable CBO/sujet). Best-effort : repli KPI vide.
   const actionsPilotage: PilotageKpi = await getActionsPilotageKpi(siteId).catch(() => ({ subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 }))
+  // V1-3 — KPI « Réserves durables » (occurrences → CBO réserve, sans lifecycle). Best-effort.
+  const reservesPilotage: ReservesPilotageKpi = await getSiteReservesPilotage(siteId).then((r) => r.kpi, () => ({ subjectsWithReserves: 0, durableReserves: 0, occurrences: 0 }))
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
   // Déduplication V1 : même subject_thread_id = une seule entrée opérationnelle.
@@ -761,6 +769,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     },
     actions,
     actionsPilotage,
+    reservesPilotage,
     attention: { level: attentionLevelOf(reasons), reasons },
     nextEvent: nextEvent
       ? { id: nextEvent.id, kind: nextEvent.kind, title: nextEvent.title, startsAt: nextEvent.startsAt, detail: nextEvent.detail ?? null, href: nextEvent.href ?? null }

@@ -67,6 +67,7 @@ function makeOverview(overrides: Partial<SiteOverview> = {}): SiteOverview {
       summary: { proposed: 0, active: 0, planned: 0, overdue: 0, week: 0, undated: 0, completed: 0 },
     },
     actionsPilotage: { subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 },
+    reservesPilotage: { subjectsWithReserves: 0, durableReserves: 0, occurrences: 0 },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
     recentChanges: [],
