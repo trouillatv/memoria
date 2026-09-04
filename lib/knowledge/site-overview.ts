@@ -66,6 +66,7 @@ import {
 } from '@/lib/documents/site-synthesis'
 import { buildOccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
+import { getActionsPilotageKpi, type PilotageKpi } from '@/lib/knowledge/actions-pilotage'
 
 const TOP = 3
 const HISTORY_LIMIT = 5
@@ -229,6 +230,10 @@ export interface SiteOverview {
     projectionFailed: boolean
   }
   actions: ActionsSection
+  /** V1-1 — KPI « Actions à piloter » fondé sur la vérité DURABLE (CBO/sujet), pas les 398 formulations
+   *  brutes. Raconte les deux niveaux : N sujets, N objets actifs/terminés/à qualifier, N formulations
+   *  historiques. `actions` (legacy, site_actions brut) reste pour les consommateurs existants. */
+  actionsPilotage: PilotageKpi
   attention: { level: AttentionLevel; reasons: AttentionReason[] }
   nextEvent: OverviewEvent | null
   recentChanges: OverviewChange[]
@@ -436,6 +441,7 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
       projectionFailed: false,
     },
     actions: { proposed: [], confirmed: [], completedRecent: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, week: 0, undated: 0, completed: 0 } },
+    actionsPilotage: { subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
     recentChanges: [],
@@ -576,6 +582,9 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     // #230 — Activité « Depuis le dernier PV » (occurrence-first).
     buildActivitySinceLastPv(siteId).catch(() => null),
   ])
+
+  // V1-1 — KPI « Actions à piloter » (vérité durable CBO/sujet). Best-effort : repli KPI vide.
+  const actionsPilotage: PilotageKpi = await getActionsPilotageKpi(siteId).catch(() => ({ subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 }))
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
   // Déduplication V1 : même subject_thread_id = une seule entrée opérationnelle.
@@ -751,6 +760,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
       projectionFailed: synth?.projectionError != null,
     },
     actions,
+    actionsPilotage,
     attention: { level: attentionLevelOf(reasons), reasons },
     nextEvent: nextEvent
       ? { id: nextEvent.id, kind: nextEvent.kind, title: nextEvent.title, startsAt: nextEvent.startsAt, detail: nextEvent.detail ?? null, href: nextEvent.href ?? null }

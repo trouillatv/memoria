@@ -37,7 +37,7 @@ import { SiteAttentionSection, SiteAttentionSkeleton } from './SiteAttentionSect
 export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   const {
-    actions, nextEvent, reserves, blockages, activity, synthesis,
+    actions, actionsPilotage, nextEvent, reserves, blockages, activity, synthesis,
     pvActivity,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
@@ -52,13 +52,15 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
           État du chantier
         </h2>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {/* V1-1 — KPI DURABLE : sujets à piloter + objets métier CBO, plus les 398 formulations brutes.
+              Ne jamais appeler les sujets « actions » ni présenter les formulations comme charge. */}
           <StateCard
             href={`/sites/${siteId}/actions`}
             icon={ListTodo}
-            tone={actions.summary.overdue > 0 ? 'orange' : actions.summary.active > 0 ? 'blue' : 'green'}
-            value={actions.summary.active}
-            title="Sujets d'action"
-            detail={activeActionsDetail(actions.summary)}
+            tone={actionsPilotage.activeCbo > 0 ? 'blue' : 'green'}
+            value={actionsPilotage.subjectsWithActions}
+            title="Sujets à piloter"
+            detail={pilotageDetail(actionsPilotage)}
           />
           <StateCard
             href={`/sites/${siteId}/reserves`}
@@ -85,6 +87,13 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
             detail={actions.summary.overdue > 0 ? `${actions.summary.overdue} action${actions.summary.overdue > 1 ? 's' : ''} à traiter en priorité` : 'Aucune action en retard'}
           />
         </div>
+        {/* V1-1 — information documentaire SECONDAIRE, jamais une charge opérationnelle. */}
+        {actionsPilotage.historicalFormulations > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {actionsPilotage.historicalFormulations} formulation{actionsPilotage.historicalFormulations > 1 ? 's' : ''} documentaire{actionsPilotage.historicalFormulations > 1 ? 's' : ''} détectée{actionsPilotage.historicalFormulations > 1 ? 's' : ''} dans les PV
+            {actionsPilotage.totalCbo > 0 && ` · regroupées en ${actionsPilotage.totalCbo} objet${actionsPilotage.totalCbo > 1 ? 's' : ''} métier`}
+          </p>
+        )}
       </section>
 
       {/* ── COPILOTE ──────────────────────────────────────────────────────────
@@ -373,13 +382,14 @@ function SynthesisBadge({
   )
 }
 
-/** Detail du KPI sujets d'action — charge opérationnelle dédupliquée. */
-function activeActionsDetail(summary: { active: number; planned: number; overdue: number }): string {
-  if (summary.active === 0) return 'Aucun sujet d\'action actif'
-  const parts: string[] = []
-  if (summary.overdue > 0) parts.push(`${summary.overdue} en retard`)
-  if (summary.planned > 0) parts.push(`dont ${summary.planned} planifiée${summary.planned > 1 ? 's' : ''}`)
-  return parts.length > 0 ? parts.join(' · ') : 'Suivis dans le temps'
+/** V1-1 — detail du KPI DURABLE : objets métier CBO (actifs / terminés / à qualifier). Jamais « ouvert »
+ *  pour les à-qualifier, jamais « actions » pour les sujets. */
+function pilotageDetail(kpi: { activeCbo: number; completedCbo: number; toQualifyCbo: number }): string {
+  if (kpi.activeCbo + kpi.completedCbo + kpi.toQualifyCbo === 0) return 'Aucun objet métier à piloter'
+  const parts: string[] = [`${kpi.activeCbo} objet${kpi.activeCbo > 1 ? 's' : ''} actif${kpi.activeCbo > 1 ? 's' : ''}`]
+  if (kpi.completedCbo > 0) parts.push(`${kpi.completedCbo} terminé${kpi.completedCbo > 1 ? 's' : ''}`)
+  if (kpi.toQualifyCbo > 0) parts.push(`${kpi.toQualifyCbo} à qualifier`)
+  return parts.join(' · ')
 }
 
 function StateCard({

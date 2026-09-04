@@ -247,6 +247,16 @@ export function assembleCboEvents(
 const SUBJECT_ACTIVE_STATES = new Set<CboComputedCurrentState>(['open', 'progressing', 'documentary_reopened', 'native_reopened'])
 const SUBJECT_TERMINAL_STATES = new Set<CboComputedCurrentState>(['documentary_completed', 'native_completed', 'native_cancelled', 'conforme_at'])
 
+/** Un CBO est ACTIF (à piloter) ssi ouvert/réouvert/en cours. Lecture des classes gelées C2A —
+ *  n'altère aucun lifecycle. `conflict`/`unknown` NE sont PAS actifs (à qualifier séparément). */
+export function isActiveCboState(s: CboComputedCurrentState): boolean {
+  return SUBJECT_ACTIVE_STATES.has(s)
+}
+/** Un CBO est TERMINÉ (accompli/annulé/conforme). Lecture des classes gelées C2A. */
+export function isTerminalCboState(s: CboComputedCurrentState): boolean {
+  return SUBJECT_TERMINAL_STATES.has(s)
+}
+
 export type SubjectCboState = {
   /** CBO action en état actif (open/reopened/progressing). */
   activeCboTotal: number
