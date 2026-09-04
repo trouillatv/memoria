@@ -329,10 +329,12 @@ export async function deriveCanonicalAttentionItems(
     // Signal : stagnation (sans blocage — déjà compté ci-dessus sinon)
     if (s.isStagnant && !isBlocking) {
       signals.push('stagnant')
-      // >= 60 j → high ; < 60 j mais objets actifs → high ; sinon medium
+      // >= 60 j → high ; < 60 j mais activité DURABLE (CBO-aware, P2) → high ; sinon medium.
+      // On ne se fonde plus sur activeObjects.total brut : une action obsolète d'un CBO complété
+      // ne doit pas rehausser l'urgence d'un sujet dont l'activité durable est nulle.
       const stagScore =
         s.stagnationDays >= 60 ? 70 :
-        s.activeObjects.total > 0 ? 68 :
+        s.activeObjectsCboAware > 0 ? 68 :
         45
       score = Math.max(score, stagScore)
     }
@@ -343,8 +345,10 @@ export async function deriveCanonicalAttentionItems(
       score = Math.max(score, SIGNAL_BASE_SCORE.pv_no_evolution)
     }
 
-    // Signal : objets actifs (sans autre signal fort)
-    if (s.activeObjects.total > 0 && !s.isStagnant && !pv) {
+    // Signal : objets actifs (sans autre signal fort). P2 — activité DURABLE CBO-aware, plus
+    // activeObjects.total brut : un sujet resolved dont la seule « activité » est une site_action
+    // obsolète d'un CBO complété ne doit plus remonter en Attention.
+    if (s.activeObjectsCboAware > 0 && !s.isStagnant && !pv) {
       signals.push('open_with_objects')
       score = Math.max(score, SIGNAL_BASE_SCORE.open_with_objects)
     }

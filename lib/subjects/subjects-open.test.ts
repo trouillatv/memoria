@@ -46,6 +46,7 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary>): NavigableSubj
     currentTriState: 'unknown',
     displayState: 'unknown',
     provenOpen: false,
+    activeObjectsCboAware: 0,
     ...overrides,
   }
 }

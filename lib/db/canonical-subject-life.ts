@@ -1253,6 +1253,13 @@ export interface NavigableSubjectSummary {
   displayState: CanonicalDisplayState
   /** P0-2 — open OU objet actif rattaché (isProvenOpen). Gate ouvert/fermé partagé. */
   provenOpen: boolean
+  /**
+   * P2 — Activité DURABLE CBO-aware (0/1) : action via lifecycle CBO (blocksResolution) + non-action
+   * brut, MÊME projection que celle qui alimente `deriveCanonicalCurrentState`. Les signaux d'urgence
+   * (Attention) doivent lire CECI, pas `activeObjects.total` brut — sinon une `site_action` obsolète
+   * d'un CBO complété réactive un faux signal. `activeObjects` (compteurs bruts) reste exposé tel quel.
+   */
+  activeObjectsCboAware: number
 }
 
 const CLOSED_NAV_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
@@ -1670,11 +1677,16 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       [...(emStag?.get('site_deadline') ?? [])].some((id) => OPEN_DEADLINE_STATUS.has(deadlineStatusById.get(id) ?? '')) ||
       [...(emStag?.get('site_decision') ?? [])].some((id) => OPEN_DECISION_STATUT.has(decisionStatutById.get(id) ?? ''))
 
+    // P1-4C2D/P2 — activité durable CBO-aware : action via lifecycle CBO + non-action brut. Calculée
+    // UNE fois ici ; alimente P0-2 (activeObjectsTotal) ET exposée (activeObjectsCboAware) pour que
+    // l'Attention consomme la MÊME projection au lieu de recalculer ou lire activeObjects brut.
+    const activeObjectsCboAware = activeObjectsTotalForState(subjectCboBySubject.get(csId), rawActionOpenNav, nonActionOpenNav)
+
     // P0-2 — MÊME primitive d'état courant que la fiche. Effondrement open-dominant intra-date,
     // reopened dérivé de la résolution antérieure, provenOpen = open OU objet actif rattaché (C2D : CBO).
     const currentState = deriveCanonicalCurrentState({
       occurrences: occs.map((o) => ({ effectiveDate: o.effectiveDate, pvState: o.pvState })),
-      activeObjectsTotal: activeObjectsTotalForState(subjectCboBySubject.get(csId), rawActionOpenNav, nonActionOpenNav),
+      activeObjectsTotal: activeObjectsCboAware,
     })
 
     const isStagnant = isStagnationEligible(cs.kind, hasOpenObject, reopenedByCs.has(csId))
@@ -1710,6 +1722,7 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       currentTriState,
       displayState: currentState.displayState,
       provenOpen: currentState.provenOpen,
+      activeObjectsCboAware,
     })
   }
 
