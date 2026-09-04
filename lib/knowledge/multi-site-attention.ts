@@ -198,8 +198,9 @@ export async function deriveMultiSiteAttention(
         const top = items[0]
         const topSubjectScore = top.score
 
-        // Volume HIGH+ : chaque sujet high ou critique au-delà du premier ajoute 3 pts, max +15
-        const highCount = items.filter(it => it.score >= 65).length
+        // P2-2 — Volume « à traiter maintenant » : chaque sujet act_now ajoute 3 pts, max +15. On lit
+        // la CATÉGORIE métier, plus le score brut (un dormant/silence ancien ne gonfle plus ce volume).
+        const highCount = items.filter(it => it.category === 'act_now').length
         const highCountBoost = Math.min(highCount * 3, 15)
 
         // Objets en retard : actions overdue dans les sujets retenus, max +15

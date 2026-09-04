@@ -1,38 +1,40 @@
 import Link from 'next/link'
-import { ArrowRight, RefreshCw, ShieldAlert, TrendingDown } from 'lucide-react'
-import type { CanonicalAttentionItem } from '@/lib/knowledge/canonical-attention'
+import { ArrowRight, EyeOff, Moon, RefreshCw, ShieldAlert } from 'lucide-react'
+import type { AttentionCategory, CanonicalAttentionItem } from '@/lib/knowledge/canonical-attention'
 import { cn } from '@/lib/utils'
 
 // #231 — carte d'un sujet d'attention, PARTAGÉE entre l'Aperçu (top 3) et la vue
 // « Attention » de la page Histoire (population complète). Même read-model
 // (deriveCanonicalAttentionItems), même rendu : la destination montre EXACTEMENT ce
 // que l'Aperçu résume, jamais une liste voisine recalculée.
+//
+// P2-2 — le badge affiche la CATÉGORIE métier (grammaire transverse), plus l'ancien niveau d'urgence :
+// un sujet dormant/silencieux n'est plus présenté « Important/high » du seul fait de son ancienneté.
 
-type AttentionUrgency = CanonicalAttentionItem['urgency']
-
-const URGENCY_BADGE: Record<AttentionUrgency, { label: string; className: string }> = {
-  critical: { label: 'Critique',     className: 'bg-red-50 text-red-700 ring-red-100 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-900' },
-  high:     { label: 'Important',    className: 'bg-orange-50 text-orange-700 ring-orange-100 dark:bg-orange-950/30 dark:text-orange-300 dark:ring-orange-900' },
-  medium:   { label: 'À surveiller', className: 'bg-yellow-50 text-yellow-700 ring-yellow-100 dark:bg-yellow-950/30 dark:text-yellow-300 dark:ring-yellow-900' },
-  low:      { label: 'Information',  className: 'bg-sky-50 text-sky-700 ring-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900' },
+const CATEGORY_BADGE: Record<AttentionCategory, { label: string; className: string }> = {
+  act_now:             { label: 'À traiter maintenant', className: 'bg-red-50 text-red-700 ring-red-100 dark:bg-red-950/30 dark:text-red-300 dark:ring-red-900' },
+  watch:               { label: 'À surveiller',         className: 'bg-yellow-50 text-yellow-700 ring-yellow-100 dark:bg-yellow-950/30 dark:text-yellow-300 dark:ring-yellow-900' },
+  dormant:             { label: 'Dormant',              className: 'bg-slate-50 text-slate-600 ring-slate-200 dark:bg-slate-900/40 dark:text-slate-300 dark:ring-slate-700' },
+  documentary_silence: { label: 'Silence documentaire', className: 'bg-sky-50 text-sky-700 ring-sky-100 dark:bg-sky-950/30 dark:text-sky-300 dark:ring-sky-900' },
 }
 
-function urgencyIcon(urgency: AttentionUrgency) {
+function categoryIcon(category: AttentionCategory) {
   const className = 'mt-0.5 h-4 w-4 shrink-0 text-muted-foreground group-hover:text-foreground'
-  if (urgency === 'critical') return <ShieldAlert className={className} />
-  if (urgency === 'high')     return <TrendingDown className={className} />
-  return <RefreshCw className={className} />
+  if (category === 'act_now')             return <ShieldAlert className={className} />
+  if (category === 'watch')               return <RefreshCw className={className} />
+  if (category === 'dormant')             return <Moon className={className} />
+  return <EyeOff className={className} /> // documentary_silence
 }
 
 export function CanonicalAttentionRow({ item }: { item: CanonicalAttentionItem }) {
-  const badge = URGENCY_BADGE[item.urgency]
+  const badge = CATEGORY_BADGE[item.category]
 
   return (
     <Link
       href={item.href}
       className="group flex items-start gap-3 rounded-lg border bg-card px-4 py-3 shadow-sm transition-colors hover:bg-muted/50"
     >
-      {urgencyIcon(item.urgency)}
+      {categoryIcon(item.category)}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <span className="text-sm font-medium leading-snug text-foreground">

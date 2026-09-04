@@ -46,9 +46,95 @@ const SIGNAL_BASE_SCORE: Record<CanonicalSignal, number> = {
   action_to_verify:   20,
 }
 
+// ── P2-2 — Grammaire d'attention TRANSVERSE + politique métier ───────────────────
+//
+// INVARIANT DE TRANSVERSALITÉ MÉTIER
+// AttentionCategory est une grammaire produit transverse (BTP, HSE, nettoyage, maintenance,
+// exploitation…). Elle NE contient aucune dépendance sémantique à RUS, au BTP ou au vocabulaire PV.
+// Un sujet peut être récent et préoccupant, toujours suivi, immobile, ou ne plus être documenté :
+//   act_now             — une PREUVE métier qualifiée « intervention immédiate » existe.
+//   watch               — sujet pertinent/actif, encore suivi récemment, sans preuve act_now.
+//   dormant             — pertinence durable, encore mentionné récemment, sans évolution significative.
+//   documentary_silence — sujet durable ATTENDU dans le suivi, plus documenté depuis plusieurs cycles.
+// Elle ne crée aucun nouvel état de sujet, ne modifie ni displayState, ni C2A/C2D, ni lifecycle.
+//
+// On SÉPARE explicitement :
+//   • PRIMITIVE GÉNÉRIQUE (moteur de vérité) — présence documentaire, nb de cycles depuis la dernière
+//     mention, dernière évolution significative, activité durable, signaux d'aggravation/réouverture/
+//     échéance. Ne connaît PAS le domaine métier. Aucun branchement `if métier === BTP`.
+//   • POLITIQUE MÉTIER (projection) — quels signaux impliquent act_now ; combien de cycles constituent
+//     un silence significatif ; (extensible) quelles familles constituent une pertinence durable.
+// Pour RUS, la politique validée par le corpus est `silenceCycles = 2` et l'ensemble act_now ci-dessous.
+// Ce sont des POLITIQUES, pas des constantes universelles de MemorIA : la même primitive fonctionnera
+// sur BTP/HSE/nettoyage/maintenance en changeant SEULEMENT la politique, jamais le moteur.
+export type AttentionCategory = 'act_now' | 'watch' | 'dormant' | 'documentary_silence'
+
+/** POLITIQUE MÉTIER de projection (pas une vérité du moteur). Configurable par type de suivi/site. */
+export interface AttentionPolicy {
+  /** Signaux qui, pour CE suivi, qualifient une intervention immédiate → act_now. */
+  actNowSignals: ReadonlySet<CanonicalSignal>
+  /** Nb de cycles documentaires sans mention à partir duquel un sujet durable est « en silence ». */
+  silenceCycles: number
+}
+
+/** Politique VALIDÉE PAR LE CORPUS RUS (BTP, CR ~hebdo). Point de départ, pas une loi universelle :
+ *  action_to_verify (date IA non confirmée) reste un rappel, deadline_near n'est pas un dépassement. */
+export const DEFAULT_ATTENTION_POLICY: AttentionPolicy = {
+  actNowSignals: new Set<CanonicalSignal>([
+    'stagnant_blocking', 'pv_non_conforme', 'pv_aggrave', 'pv_reopened', 'action_overdue',
+  ]),
+  silenceCycles: 2,
+}
+
+/** Silence documentaire = pertinence durable (activité CBO-aware, primitive C2D générique et
+ *  family-agnostic) ET ≥ `silenceCycles` cycles sans mention. Exclut de fait les informations
+ *  one-shot (activité durable nulle). Le SEUIL vient de la politique, pas du moteur. */
+export function isDocumentarySilence(
+  pvSinceLastMention: number,
+  activeObjectsCboAware: number,
+  policy: AttentionPolicy = DEFAULT_ATTENTION_POLICY,
+): boolean {
+  return pvSinceLastMention >= policy.silenceCycles && activeObjectsCboAware > 0
+}
+
+/** Classe un sujet dans UNE catégorie de la grammaire transverse via la POLITIQUE fournie. Précédence :
+ *  act_now > documentary_silence > dormant > watch. Le silence REMPLACE l'ancienne classification
+ *  « stagnant/high » (jamais un second badge). Aucune sémantique de domaine ici. */
+export function classifyAttentionCategory(
+  input: {
+    signals: readonly CanonicalSignal[]
+    isStagnant: boolean
+    pvSinceLastMention: number
+    activeObjectsCboAware: number
+  },
+  policy: AttentionPolicy = DEFAULT_ATTENTION_POLICY,
+): AttentionCategory {
+  if (input.signals.some((s) => policy.actNowSignals.has(s))) return 'act_now'
+  if (isDocumentarySilence(input.pvSinceLastMention, input.activeObjectsCboAware, policy)) return 'documentary_silence'
+  if (input.isStagnant) return 'dormant'
+  return 'watch'
+}
+
+/** Ordre d'AFFICHAGE des catégories (act_now → watch → dormant → silence). Sert au tri de la population :
+ *  le sommet (Aperçu, mobile) montre d'abord ce qui est le plus opérationnel. */
+export const ATTENTION_CATEGORY_RANK: Record<AttentionCategory, number> = {
+  act_now: 0, watch: 1, dormant: 2, documentary_silence: 3,
+}
+
+/** P2-2 — urgency devient un ADAPTATEUR LEGACY dérivé de la catégorie (plus une vérité parallèle) : un
+ *  dormant/silence n'est JAMAIS « high ». act_now conserve la granularité critical/high issue du score. */
+function categoryToUrgency(category: AttentionCategory, score: number): 'critical' | 'high' | 'medium' | 'low' {
+  if (category === 'act_now') return scoreToUrgency(score)
+  if (category === 'watch') return 'medium'
+  return 'low' // dormant + documentary_silence : pertinents mais non urgents.
+}
+
 export interface CanonicalAttentionItem {
   canonicalSubjectId: string
   title: string
+  /** P2-2 — catégorie métier faisant autorité (hiérarchie unique). Les consommateurs LISENT ceci. */
+  category: AttentionCategory
+  /** Legacy/adapter dérivé de `category` (compat) : ne jamais s'en servir pour reconstruire la hiérarchie. */
   urgency: 'critical' | 'high' | 'medium' | 'low'
   score: number
   signals: CanonicalSignal[]
@@ -130,7 +216,7 @@ export function narrateTrajectory(
 
 export async function deriveCanonicalAttentionItems(
   siteId: string,
-  opts: { limit?: number; today?: string } = {},
+  opts: { limit?: number; today?: string; policy?: AttentionPolicy } = {},
 ): Promise<CanonicalAttentionItem[]> {
   // #231 : `limit` absent = population COMPLÈTE (aucun cap). Le compteur « N autres
   // sujets » de l'Aperçu doit connaître le total réel AVANT le cap d'affichage —
@@ -138,6 +224,8 @@ export async function deriveCanonicalAttentionItems(
   // appelants qui ne veulent que le sommet passent un `limit` explicite.
   const limit = opts.limit
   const today = opts.today ?? todayIso()
+  // P2-2 — politique métier de projection (act_now / seuil de silence). Défaut = politique RUS.
+  const policy = opts.policy ?? DEFAULT_ATTENTION_POLICY
   const admin = createAdminClient()
   const subjectHref = (csId: string) => `/sites/${siteId}/historique/sujets/${csId}`
 
@@ -359,24 +447,46 @@ export async function deriveCanonicalAttentionItems(
       score = Math.max(score, SIGNAL_BASE_SCORE.deadline_near)
     }
 
-    // Aucun signal → skip (sujet sans alerte)
-    if (signals.length === 0) continue
+    // ── P2-2 — Catégorie métier faisant autorité (projection de signaux existants). ────────────
+    const category = classifyAttentionCategory({
+      signals,
+      isStagnant: s.isStagnant,
+      pvSinceLastMention: s.pvSinceLastMention,
+      activeObjectsCboAware: s.activeObjectsCboAware,
+    }, policy)
+
+    // Population : >=1 signal OU silence documentaire. Le silence est surfacé même sans raison
+    // d'attention préalable (vérité générique sur TOUS les sujets navigables, non liée à l'ancienne
+    // population « stagnant »). Un sujet sans signal ET non silencieux reste écarté.
+    if (signals.length === 0 && category !== 'documentary_silence') continue
+
+    const isSilent = category === 'documentary_silence'
 
     // ── Lignes de raisons ──────────────────────────────────────────────────
     const reasons: string[] = []
+
+    // Ligne 1 (silence) : énoncé de silence — dit UNIQUEMENT « plus mentionné », jamais un état.
+    if (isSilent) {
+      const nSince = s.pvSinceLastMention
+      const sincePart = s.lastSeenAt ? fmtPvDate(s.lastSeenAt) : ''
+      reasons.push(`Sujet pertinent, non mentionné dans les ${nSince} derniers PV${sincePart ? ` · dernière mention${sincePart}` : ''}`)
+    }
 
     // Ligne 1 : récence + stagnation
     const total = s.pvCount + s.nativeOccurrenceCount
     const mentionPart = total > 0 ? `Mentionné dans ${total} rapport${total > 1 ? 's' : ''}` : null
     const stagnPart = s.isStagnant ? `aucune évolution depuis ${s.stagnationDays} j` : null
-    if (mentionPart || stagnPart) {
+    // Le cadrage « récence + stagnation » est écarté en silence : le silence le REMPLACE (on ne dit
+    // pas « aucune évolution depuis X j » d'un sujet qu'on ne voit plus).
+    if (!isSilent && (mentionPart || stagnPart)) {
       reasons.push([mentionPart, stagnPart].filter(Boolean).join(' · '))
     }
 
     // Ligne 2 : TRAJECTOIRE réelle (occurrence-first — MÊME source que fiche & Chronologie, aucun
     // nouveau calcul longitudinal). #229 Lot A : on corrige le RÉCIT, pas la sélection. Le fallback
     // générique « Toujours ouvert » n'est utilisé QUE pour une continuité réelle (maintenu/open).
-    const trajLine = narrateTrajectory(
+    // Ecarte en silence : on n'affirme pas "toujours ouvert" pour un sujet qu'on ne voit plus.
+    const trajLine = isSilent ? null : narrateTrajectory(
       transitionByCs.get(csId),
       s.currentStatus,
       OPEN_STATUS.has(s.currentStatus ?? ''),
@@ -409,7 +519,8 @@ export async function deriveCanonicalAttentionItems(
     items.push({
       canonicalSubjectId: csId,
       title: s.title,
-      urgency: scoreToUrgency(score),
+      category,
+      urgency: categoryToUrgency(category, score),
       score,
       signals,
       reasons,
@@ -418,8 +529,12 @@ export async function deriveCanonicalAttentionItems(
   }
 
   // ── 8. Tri déterministe et sélection ─────────────────────────────────────
-  // score DESC → stagnationDays DESC → title ASC
+  // P2-2 : catégorie (act_now → watch → dormant → silence) d'abord, pour que le sommet (Aperçu top-3,
+  // mobile top-2) montre le plus opérationnel — un dormant/silence ancien ne domine plus par son score.
+  // Puis score DESC → stagnationDays DESC → title ASC (tie-break intra-catégorie inchangé).
   items.sort((a, b) => {
+    const ra = ATTENTION_CATEGORY_RANK[a.category], rb = ATTENTION_CATEGORY_RANK[b.category]
+    if (ra !== rb) return ra - rb
     if (b.score !== a.score) return b.score - a.score
     const aDays = csIndex.get(a.canonicalSubjectId)?.stagnationDays ?? 0
     const bDays = csIndex.get(b.canonicalSubjectId)?.stagnationDays ?? 0

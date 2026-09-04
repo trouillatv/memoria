@@ -41,8 +41,9 @@ export async function SiteToTreatSection({ siteId }: { siteId: string }) {
 
   const proposals = review.toReview
   const overdueActions = (overdueRes.data ?? []) as Array<{ id: string; title: string; due_date: string }>
-  // Seuls les sujets critiques ou importants méritent un signal dans "À traiter".
-  const urgentItems = attentionItems.filter(i => i.urgency === 'critical' || i.urgency === 'high')
+  // P2-2 — « À traiter » = catégorie métier act_now UNIQUEMENT (preuve d'intervention immédiate).
+  // Un sujet dormant/silencieux ancien n'est plus poussé ici du seul fait de son ancienneté.
+  const urgentItems = attentionItems.filter(i => i.category === 'act_now')
 
   if (proposals.length === 0 && overdueActions.length === 0 && urgentItems.length === 0) return null
 

@@ -1260,6 +1260,30 @@ export interface NavigableSubjectSummary {
    * d'un CBO complété réactive un faux signal. `activeObjects` (compteurs bruts) reste exposé tel quel.
    */
   activeObjectsCboAware: number
+  /**
+   * P2-2 — Métriques documentaires GÉNÉRIQUES, source UNIQUE. Calculées sur la CHRONOLOGIE MÉTIER du
+   * chantier (dates effectives des PV/visites, JAMAIS created_at). L'Attention et ses consommateurs
+   * LISENT ces champs, ils ne les recalculent pas.
+   *
+   * `presentInLastPv` : le sujet est-il mentionné dans le dernier point documentaire du chantier ?
+   * `pvSinceLastMention` : nombre de points documentaires écoulés depuis la dernière mention du sujet
+   *   (0 = présent au dernier PV). Le « silence documentaire » (P2-2) = pvSinceLastMention ≥ 2 ET
+   *   pertinence durable — il dit UNIQUEMENT « ce sujet pertinent n'est plus mentionné », jamais un état.
+   */
+  presentInLastPv: boolean
+  pvSinceLastMention: number
+}
+
+/**
+ * P2-2 — Primitive PURE : nombre de points documentaires (dates métier triées, uniques) postérieurs à
+ * la dernière mention d'un sujet. `timelineDates` = axe documentaire du chantier (tous PV/visites) trié
+ * ASC. `lastSeenAt` = dernière date de mention du sujet. Aucune notion de created_at. 0 si inconnu.
+ */
+export function pvSinceMentionCount(lastSeenAt: string | null, timelineDates: readonly string[]): number {
+  if (!lastSeenAt) return 0
+  let n = 0
+  for (const d of timelineDates) if (d > lastSeenAt) n++
+  return n
 }
 
 const CLOSED_NAV_STATUSES = new Set(['done', 'cancelled', 'not_applicable'])
@@ -1480,6 +1504,16 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
     .not('validation_status', 'in', '("rejected","source_superseded")')
     .order('effective_date', { ascending: true })
   const nativeOccs = (nativeRaw ?? []) as NativeRow[]
+
+  // 4bis. P2-2 — Axe documentaire du chantier (chronologie métier) : dates effectives de TOUS les PV
+  // canoniques ∪ dates des occurrences natives (visites/réunions), uniques et triées ASC. Sert de base
+  // unique à pvSinceLastMention/presentInLastPv (jamais created_at). L'absence d'un sujet à un point de
+  // cet axe = mesure du silence, pas un événement d'état.
+  const siteTimelineDates = [...new Set([
+    ...allRuns.map((r) => runEffDate.get(r.id) ?? '').filter(Boolean),
+    ...nativeOccs.map((o) => o.effective_date),
+  ])].sort()
+  const lastSiteDate = siteTimelineDates.at(-1) ?? null
 
   // 5. Union des CS IDs (PV canoniques ∪ natif)
   const pvCsIds = new Set([...threadToCsId.values()])
@@ -1723,6 +1757,9 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       displayState: currentState.displayState,
       provenOpen: currentState.provenOpen,
       activeObjectsCboAware,
+      // P2-2 — chronologie métier (source unique) : nb de PV depuis la dernière mention + présence au dernier PV.
+      pvSinceLastMention: pvSinceMentionCount(lastSeenAt, siteTimelineDates),
+      presentInLastPv: lastSiteDate != null && lastSeenAt != null && lastSeenAt >= lastSiteDate,
     })
   }
 
