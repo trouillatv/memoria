@@ -380,6 +380,24 @@ export async function loadCboReducedStates(
 }
 
 /**
+ * P1-4C2E2 — détail des CBO action réduits, groupés par canonical_subject. READ-ONLY.
+ * Sert au contexte Copilote (vérité C2A par objet métier) ; l'IA l'explique, ne le recalcule pas.
+ */
+export async function loadCboReducedBySubject(
+  siteId: string,
+  opts?: { canonicalSubjectId?: string },
+): Promise<Map<string, CboReducedEntry[]>> {
+  const reduced = await loadCboReducedStates(siteId, opts)
+  const bySubject = new Map<string, CboReducedEntry[]>()
+  for (const e of reduced.values()) {
+    if (!e.canonicalSubjectId) continue
+    const l = bySubject.get(e.canonicalSubjectId) ?? []
+    l.push(e); bySubject.set(e.canonicalSubjectId, l)
+  }
+  return bySubject
+}
+
+/**
  * Agrégat SUJET ← CBO (P1-4C2D) : `SubjectCboState` par canonical_subject, à partir des CBO action
  * réduits. Sert à remplacer la SEULE contribution action de `activeObjectsTotal` (P0-2). READ-ONLY.
  * `opts.canonicalSubjectId` scope à un sujet (fiche) ; sinon site entier (Suivi/Attention).

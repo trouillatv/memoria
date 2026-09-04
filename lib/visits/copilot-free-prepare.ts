@@ -53,6 +53,8 @@ import type { CopilotScope, CopilotSttRoute } from '@/lib/db/copilot-telemetry'
 import { extractQuestionSubjectPhrase } from '@/lib/visits/copilot-classify'
 import { getCanonicalSubjectLifeForSite, getCanonicalSubjectLabelsByIds } from '@/lib/db/canonical-subject-life'
 import { buildSubjectDetailForCopilot } from '@/lib/visits/copilot-subject-context'
+import { loadCboReducedBySubject } from '@/lib/knowledge/canonical-business-object-evolution'
+import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-evolution'
 import type { FreeAnswer, FreeAnswerContext, HistoryMessage, RecentChangeContext } from '@/lib/visits/copilot-free-answer'
 import { buildSiteActivityReadModel } from '@/lib/knowledge/site-activity-read-model'
 import { buildVisitPlan } from '@/lib/visits/visit-plan-builder'
@@ -1906,9 +1908,13 @@ export async function prepareCopilotAnswer(
   }
 
   // Enrichissement sujets détaillés
+  // P1-4C2E2 — vérité CBO autoritative (C2A) par sujet : le LLM l'explique, ne la recalcule pas.
+  // Best-effort : en cas d'échec de la couche CBO, businessObjects reste vide (dégradation gracieuse).
+  let cboBySubject = new Map<string, CboReducedEntry[]>()
+  try { cboBySubject = await loadCboReducedBySubject(siteId) } catch { cboBySubject = new Map() }
   const subjectDetails = subjectLives
     .filter((l): l is NonNullable<typeof l> => l !== null)
-    .map(buildSubjectDetailForCopilot)
+    .map((life) => buildSubjectDetailForCopilot(life, cboBySubject.get(life.canonicalSubjectId) ?? []))
 
   // ── Contexte 3B — modules chargés à la demande ───────────────────────────────
   const extra: FreeAnswerContext = {}

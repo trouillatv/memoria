@@ -8,6 +8,8 @@
 
 import type { CanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
 import type { CanonicalDisplayState } from '@/lib/documents/subject-state'
+import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-evolution'
+import type { CboComputedCurrentState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 
 export interface SubjectOccurrenceContext {
   date: string
@@ -39,6 +41,19 @@ export interface SubjectTerrainObjectContext {
   title: string
   status: string | null
   createdAt: string
+}
+
+/**
+ * P1-4C2E2 — vérité C2A d'UN objet métier durable (CBO action) du sujet. `computedCurrentState` est
+ * l'état courant AUTORITATIF calculé par MemorIA ; le LLM l'EXPLIQUE, il ne le recalcule ni ne le
+ * remplace jamais depuis un statut brut. Granularité distincte de l'état SUJET (etatCourant / P0-2).
+ */
+export interface SubjectBusinessObjectContext {
+  label: string
+  computedCurrentState: CboComputedCurrentState
+  stateBasis: string[]
+  conflicts: string[]
+  documentaryDivergences: string[]
 }
 
 export interface SubjectDetailContext {
@@ -75,6 +90,12 @@ export interface SubjectDetailContext {
   stagnationDays: number | null
   /** Actions et échéances terrain liées à ce sujet via canonical_subject_id. */
   terrainObjects: SubjectTerrainObjectContext[]
+  /**
+   * P1-4C2E2 — objets métier durables (CBO action) du sujet avec leur état courant AUTORITATIF C2A.
+   * Le LLM utilise `computedCurrentState` tel quel ; les preuves/historique l'EXPLIQUENT, ne le
+   * recalculent jamais. Distinct de `etatCourant` (état du SUJET). Vide si aucun CBO exploitable.
+   */
+  businessObjects: SubjectBusinessObjectContext[]
 }
 
 const MAX_OCCURRENCES = 20
@@ -99,7 +120,17 @@ function truncate(text: string | null, maxLength: number): string | null {
 
 export function buildSubjectDetailForCopilot(
   life: CanonicalSubjectLife,
+  cboEntries: CboReducedEntry[] = [],
 ): SubjectDetailContext {
+  // P1-4C2E2 — projection d'affichage des CBO : uniquement l'état AUTORITATIF C2A + sa provenance.
+  // Aucune donnée brute d'état ici (pas de site_actions.status / signal / document_status).
+  const businessObjects: SubjectBusinessObjectContext[] = cboEntries.map((e) => ({
+    label: e.label,
+    computedCurrentState: e.reduced.computedCurrentState,
+    stateBasis: e.reduced.stateBasis,
+    conflicts: e.reduced.conflicts,
+    documentaryDivergences: e.reduced.documentaryDivergences,
+  }))
   // Occurrences non-gap, triées par date décroissante, limitées à MAX_OCCURRENCES
   const occurrences: SubjectOccurrenceContext[] = life.occurrences
     .filter((o) => !o.isGap)
@@ -161,5 +192,6 @@ export function buildSubjectDetailForCopilot(
     isStagnant: life.isStagnant,
     stagnationDays: life.stagnationDays,
     terrainObjects,
+    businessObjects,
   }
 }
