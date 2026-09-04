@@ -11,7 +11,9 @@ import { projectCanonicalBusinessObjects } from '@/lib/knowledge/canonical-busin
 import type { CanonicalBusinessObjectEntry } from '@/lib/knowledge/canonical-business-object-projection'
 import { loadCboReducedStates } from '@/lib/knowledge/canonical-business-object-evolution'
 import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-evolution'
+import { isTerminalCboState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import type { CboComputedCurrentState, CboEventKind } from '@/lib/knowledge/cbo-lifecycle-reducer'
+import { partitionFilGroups } from '@/lib/knowledge/fil-metier-visibility'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
@@ -709,7 +711,7 @@ const SOURCE_KIND_LABEL: Record<string, string> = {
   historical_pdf: 'PV du chantier',
 }
 
-function FilMetierGrouped({ occurrences, siteId }: { occurrences: SubjectOccurrenceMerged[]; siteId: string }) {
+function FilMetierGrouped({ occurrences, siteId, lastMeaningfulChangeAt }: { occurrences: SubjectOccurrenceMerged[]; siteId: string; lastMeaningfulChangeAt: string | null }) {
   if (occurrences.length === 0) return <p className="text-sm text-muted-foreground">Aucune entrée.</p>
 
   // Construire les groupes dans l'ordre des occurrences (déjà triées chronologiquement).
@@ -738,9 +740,12 @@ function FilMetierGrouped({ occurrences, siteId }: { occurrences: SubjectOccurre
 
   const hasGap = occurrences.some((o) => o.isGap)
 
-  return (
-    <div className="space-y-2">
-      {groups.map((group) => {
+  // P2-1 — lecture progressive : zone visible = récent + transitions significatives (helper pur partagé
+  // avec le mobile). Les groupes restants (répétitions/mentions/gaps anciens) → « historique complet ».
+  const { visible: visibleGroups, history: historyGroups } = partitionFilGroups(groups, lastMeaningfulChangeAt)
+  const hiddenOccCount = historyGroups.reduce((n, g) => n + g.occs.filter((o) => !o.isGap).length, 0)
+
+  const renderGroup = (group: OccGroup) => {
         const realOccs = group.occs.filter((o) => !o.isGap)
         const gapOccs  = group.occs.filter((o) =>  o.isGap)
 
@@ -795,7 +800,23 @@ function FilMetierGrouped({ occurrences, siteId }: { occurrences: SubjectOccurre
             </ol>
           </details>
         )
-      })}
+  }
+
+  return (
+    <div className="space-y-2">
+      {visibleGroups.map(renderGroup)}
+
+      {historyGroups.length > 0 && (
+        <details className="group/hist">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-1 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/40 select-none">
+            <span className="transition-transform group-open/hist:rotate-90">▸</span>
+            Voir l&apos;historique complet ({hiddenOccCount} occurrence{hiddenOccCount > 1 ? 's' : ''})
+          </summary>
+          <div className="mt-2 space-y-2 border-l-2 border-muted/60 pl-3">
+            {historyGroups.map(renderGroup)}
+          </div>
+        </details>
+      )}
 
       {hasGap && (
         <p className="text-xs text-muted-foreground pt-1">
@@ -958,13 +979,17 @@ function MaterializedEventsSection({
       {ORDER.filter((t) => byType.has(t)).map((t) => {
         const meta = ENTITY_TYPE_META[t]
         const items = byType.get(t)!
-        return (
-          <div key={t} id={`objets-metier-${t}`}>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              {meta.plural} ({items.length})
-            </p>
-            <ul className="space-y-1.5">
-              {items.map((entry) => {
+        // P2-1 — repli des objets TERMINÉS (C2A) : actifs visibles, terminés repliés. unknown reste
+        // visible/neutre ; conflict/divergence JAMAIS masqués. Aucun état recalculé (isTerminalCboState gelé).
+        const isTerminalEntry = (entry: CanonicalBusinessObjectEntry): boolean => {
+          const ev = evolutions.get(entry.key)
+          if (!ev) return false
+          if (ev.reduced.conflicts.length > 0 || ev.reduced.documentaryDivergences.length > 0) return false
+          return isTerminalCboState(ev.reduced.computedCurrentState)
+        }
+        const activeItems = items.filter((e) => !isTerminalEntry(e))
+        const terminalItems = items.filter(isTerminalEntry)
+        const renderEntry = (entry: CanonicalBusinessObjectEntry) => {
                 const evolution = evolutions.get(entry.key)
                 const hasEvolution = entry.isGrouped && !!evolution && evolution.reduced.historicalTrajectory.length > 0
                 if (hasEvolution) {
@@ -1045,8 +1070,26 @@ function MaterializedEventsSection({
                     </details>
                   </li>
                 )
-              })}
+        }
+        return (
+          <div key={t} id={`objets-metier-${t}`}>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              {meta.plural} ({items.length})
+            </p>
+            <ul className="space-y-1.5">
+              {activeItems.map(renderEntry)}
             </ul>
+            {terminalItems.length > 0 && (
+              <details className="group/term mt-1.5">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted/40 select-none">
+                  <span className="transition-transform group-open/term:rotate-90">▸</span>
+                  Terminé{terminalItems.length > 1 ? 's' : ''} ({terminalItems.length})
+                </summary>
+                <ul className="mt-1.5 space-y-1.5">
+                  {terminalItems.map(renderEntry)}
+                </ul>
+              </details>
+            )}
           </div>
         )
       })}
@@ -1496,7 +1539,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Fil métier ({life.occurrences.filter((o) => !o.isGap).length} preuve{life.occurrences.filter((o) => !o.isGap).length > 1 ? 's' : ''})
           </h2>
-          <FilMetierGrouped occurrences={life.occurrences} siteId={siteId} />
+          <FilMetierGrouped occurrences={life.occurrences} siteId={siteId} lastMeaningfulChangeAt={life.lastMeaningfulChangeAt} />
         </section>
       </main>
     </>

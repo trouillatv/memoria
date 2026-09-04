@@ -5,6 +5,10 @@ import { AlertCircle, ArrowLeft, Building2, FileText, MapPin, User, Users } from
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
+import { partitionFilGroups } from '@/lib/knowledge/fil-metier-visibility'
+import { projectCanonicalBusinessObjects } from '@/lib/knowledge/canonical-business-object-projection'
+import { loadCboReducedStates } from '@/lib/knowledge/canonical-business-object-evolution'
+import { isTerminalCboState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import type { CanonicalSubjectLife, CanonicalLink, SubjectOccurrenceMerged, MaterializedEvent, MaterializedEntityType } from '@/lib/db/canonical-subject-life'
 import { getActorIdentity, getActorResponsibilities } from '@/lib/db/actor-subject-life'
 import type { ActorLinkedIdentity, ActorResponsibilities } from '@/lib/db/actor-subject-life'
@@ -664,7 +668,30 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
 
   const latestOcc        = realOccs.length > 0 ? realOccs[realOccs.length - 1] : null
   const currentStateText = latestOcc?.description ?? latestOcc?.label ?? null
-  const activeEvents     = life.materializedEvents.filter((e) => !e.status || ACTIVE_STATUSES.has(e.status))
+
+  // P2-1 (B mobile) — vérité d'état = C2A, JAMAIS MaterializedEvent.status brut. On dérive les entityId
+  // TERMINAUX via la projection existante (membre → CBO) + loadCboReducedStates ; conflict/divergence/
+  // unknown restent visibles. Réutilise des primitives GÉNÉRIQUES gelées ; aucun reducer mobile.
+  const cboKnownEntityIds = new Set<string>()
+  const cboTerminalEntityIds = new Set<string>()
+  try {
+    const [boEntries, cboStates] = await Promise.all([
+      projectCanonicalBusinessObjects(life.materializedEvents),
+      loadCboReducedStates(siteId, { canonicalSubjectId }),
+    ])
+    for (const entry of boEntries) {
+      const ev = cboStates.get(entry.key)
+      if (!ev) continue
+      for (const m of entry.members) cboKnownEntityIds.add(m.entityId)
+      if (ev.reduced.conflicts.length > 0 || ev.reduced.documentaryDivergences.length > 0) continue // jamais masqué
+      if (isTerminalCboState(ev.reduced.computedCurrentState)) for (const m of entry.members) cboTerminalEntityIds.add(m.entityId)
+    }
+  } catch { /* best-effort : repli sur le statut brut pour les objets sans CBO connu */ }
+
+  // Objet CBO connu → C2A décide (terminal = replié) ; objet sans CBO (non modélisé C2A) → statut brut.
+  const visibleEvents  = life.materializedEvents.filter((e) =>
+    cboKnownEntityIds.has(e.entityId) ? !cboTerminalEntityIds.has(e.entityId) : (!e.status || ACTIVE_STATUSES.has(e.status)))
+  const terminalEvents = life.materializedEvents.filter((e) => cboTerminalEntityIds.has(e.entityId))
 
   void siteRow // utilisé uniquement si l'orbe est réintégré plus tard
 
@@ -676,7 +703,7 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   const isOperationalKind    = !new Set(['person', 'company', 'knowledge_fact']).has(life.primaryFamily ?? '')
   const watchReasons: Array<'open_objects' | 'non_conformity' | 'reservation' | 'awaiting' | 'stagnant'> = []
   if (isOperationalKind && !isClosedSubject) {
-    if (activeEvents.length > 0)                       watchReasons.push('open_objects')
+    if (visibleEvents.length > 0)                       watchReasons.push('open_objects')
     if (life.currentStatus === 'non_compliant')         watchReasons.push('non_conformity')
     if (life.primaryFamily === 'reservation')           watchReasons.push('reservation')
     if (life.currentStatus === 'awaiting_validation')   watchReasons.push('awaiting')
@@ -771,7 +798,7 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
               <p className="text-[13px] leading-snug text-amber-900">
                 {[
                   watchReasons.includes('open_objects')
-                    ? `${activeEvents.length} objet${activeEvents.length > 1 ? 's' : ''} actif${activeEvents.length > 1 ? 's' : ''}`
+                    ? `${visibleEvents.length} objet${visibleEvents.length > 1 ? 's' : ''} à piloter`
                     : null,
                   watchReasons.includes('non_conformity') ? 'non conforme' : null,
                   watchReasons.includes('reservation')    ? 'réserve ouverte' : null,
@@ -789,13 +816,26 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
             </section>
           )}
 
-          {/* 5 — Objets actifs */}
-          {activeEvents.length > 0 && (
+          {/* 5 — Objets à piloter (état C2A) + terminés repliés */}
+          {visibleEvents.length > 0 && (
             <section>
               <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Objets actifs
+                Objets à piloter
               </h2>
-              <EventsSection events={activeEvents} />
+              <EventsSection events={visibleEvents} />
+            </section>
+          )}
+          {terminalEvents.length > 0 && (
+            <section>
+              <details className="group/term">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground select-none">
+                  <span className="transition-[transform] [details[open]>&]:rotate-90">▸</span>
+                  Terminé{terminalEvents.length > 1 ? 's' : ''} ({terminalEvents.length})
+                </summary>
+                <div className="mt-2.5">
+                  <EventsSection events={terminalEvents} />
+                </div>
+              </details>
             </section>
           )}
 
@@ -813,8 +853,12 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
               <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                 Ligne de vie
               </h2>
-              <ol className="space-y-4">
-                {groupOccurrences(realOccs).map((group, gi, arr) => {
+              {(() => {
+                // P2-1 — lecture progressive : mêmes règles que le desktop (helper pur partagé).
+                const filGroups = groupOccurrences(realOccs).map((g) => ({ ...g, date: g.occs[0]?.effectiveDate ?? '' }))
+                const { visible, history } = partitionFilGroups(filGroups, life.lastMeaningfulChangeAt)
+                const hiddenCount = history.reduce((n, g) => n + g.occs.filter((o) => !o.isGap).length, 0)
+                const renderTick = (group: (typeof filGroups)[number], gi: number, arr: unknown[]) => {
                   const [primary, ...extras] = group.occs
                   return (
                     <li key={group.key}>
@@ -839,8 +883,22 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
                       )}
                     </li>
                   )
-                })}
-              </ol>
+                }
+                return (
+                  <>
+                    <ol className="space-y-4">{visible.map((g, i, a) => renderTick(g, i, a))}</ol>
+                    {history.length > 0 && (
+                      <details className="mt-3">
+                        <summary className="cursor-pointer select-none text-[12px] font-medium text-muted-foreground hover:text-foreground list-none flex items-center gap-1.5">
+                          <span className="transition-[transform] [details[open]>&]:rotate-90">▸</span>
+                          Voir l&apos;historique complet ({hiddenCount} occurrence{hiddenCount > 1 ? 's' : ''})
+                        </summary>
+                        <ol className="mt-3 space-y-4 border-l-2 border-muted/60 pl-3">{history.map((g, i, a) => renderTick(g, i, a))}</ol>
+                      </details>
+                    )}
+                  </>
+                )
+              })()}
             </section>
           ) : (
             <p className="rounded-xl border border-dashed px-4 py-8 text-center text-[13px] text-muted-foreground">
