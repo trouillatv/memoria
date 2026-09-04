@@ -15,7 +15,6 @@ import {
   getSiteHealthTimeline,
   getSiteDependencyGraph,
 } from '@/lib/documents/site-synthesis'
-import { buildOccurrenceActivityMap } from '@/lib/documents/occurrence-population'
 import { buildEvolutionReadModel, generateEvolutionNarrative } from '@/lib/documents/pv-evolution'
 import { isEvolutionV2Enabled, classifySubjectEvolutionV2 } from '@/lib/knowledge/evolution-v2'
 import type { V2SubjectResult } from '@/lib/knowledge/evolution-v2'
@@ -25,13 +24,15 @@ import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbPr
 import { cn } from '@/lib/utils'
 import { SubjectLifelineGrid } from './SubjectLifelineGrid'
 import { SyntheseView } from './SyntheseView'
-import { ActivityMapView } from './ActivityMapView'
 import { EvolutionView } from './EvolutionView'
 import { DependencyGraphView } from './DependencyGraphView'
 
 export const dynamic = 'force-dynamic'
 
-type ViewKey = 'synthese' | 'lifelines' | 'heatmap' | 'evolution' | 'deps' | 'attention'
+// P2-3 — la vue « PV » (heatmap / ActivityMapView) a été retirée : c'était une 2e matrice sujet × PV,
+// moins expressive que Lignes de vie, dont le seul apport (objets métier) était une projection brute
+// obsolète (hors C2A). Les anciens deep-links `?view=heatmap` redirigent vers `lifelines`.
+type ViewKey = 'synthese' | 'lifelines' | 'evolution' | 'deps' | 'attention'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -54,7 +55,9 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   const { id: siteId } = await params
   const sp = await searchParams
-  const VALID_VIEWS: ViewKey[] = ['synthese', 'lifelines', 'heatmap', 'evolution', 'deps', 'attention']
+  // P2-3 — compat non-cassante : l'ancien `?view=heatmap` (vue « PV » supprimée) redirige vers Lignes de vie.
+  if (sp.view === 'heatmap') redirect(`/sites/${siteId}/historique?view=lifelines`)
+  const VALID_VIEWS: ViewKey[] = ['synthese', 'lifelines', 'evolution', 'deps', 'attention']
   const view: ViewKey = (VALID_VIEWS.includes(sp.view as ViewKey) ? sp.view as ViewKey : 'synthese')
   const initialThread = sp.thread ?? null
   const initialTheme = sp.theme ?? null
@@ -66,12 +69,6 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     getSiteHistoricalTimeline(siteId).catch(() => ({ siteId, snapshots: [] })),
     getImportantSubjects(siteId).catch(() => []),
   ])
-
-  // P0 Phase 2B — Historique PV occurrence-first (projection partagée, acteurs exclus #228,
-  // knowledge_fact gardé) : un sujet apparaît PARCE QU'IL A DES OCCURRENCES, sans score/seuil.
-  const activityMap = view === 'heatmap'
-    ? await buildOccurrenceActivityMap(siteId).catch(() => null)
-    : null
 
   const depsGraph = view === 'deps'
     ? await getSiteDependencyGraph(siteId).catch(() => null)
@@ -247,7 +244,6 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               { key: 'attention',  label: 'Attention' },
               { key: 'evolution',  label: 'Évolution' },
               { key: 'lifelines',  label: 'Lignes de vie' },
-              { key: 'heatmap',    label: 'PV' },
             ] as const).map(({ key, label }) => (
               <Link
                 key={key}
@@ -319,23 +315,6 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               <p className="font-medium">Aucun fil thématique reconstruit.</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Les sujets apparaissent ici une fois que des propositions ont été rattachées à un sujet canonique.
-              </p>
-            </section>
-          )
-        )}
-
-        {/* Carte d'activité */}
-        {view === 'heatmap' && (
-          activityMap ? (
-            <>
-              <p className="px-1 text-xs text-muted-foreground">Comparaison des sujets entre les PV historiques importés — visites terrain et réunions visibles dans Lignes de vie</p>
-              <ActivityMapView activityMap={activityMap} siteId={siteId} />
-            </>
-          ) : (
-            <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
-              <p className="font-medium">Données non disponibles.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Les PV doivent être importés et analysés pour afficher la carte d'activité.
               </p>
             </section>
           )
