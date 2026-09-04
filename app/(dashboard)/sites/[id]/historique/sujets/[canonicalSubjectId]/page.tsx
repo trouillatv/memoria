@@ -9,9 +9,9 @@ import { buildCanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonic
 import type { CanonicalSubjectIntelligence } from '@/lib/knowledge/build-canonical-subject-intelligence'
 import { projectCanonicalBusinessObjects } from '@/lib/knowledge/canonical-business-object-projection'
 import type { CanonicalBusinessObjectEntry } from '@/lib/knowledge/canonical-business-object-projection'
-import { loadCboEvolutions } from '@/lib/knowledge/canonical-business-object-evolution'
-import type { CboComputedState, CboEvolution } from '@/lib/knowledge/canonical-business-object-evolution'
-import type { ObjectStateSignal } from '@/lib/ai/classify-occurrence-state-signal'
+import { loadCboReducedStates } from '@/lib/knowledge/canonical-business-object-evolution'
+import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-evolution'
+import type { CboComputedCurrentState, CboEventKind } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
@@ -130,76 +130,120 @@ const ENTITY_STATUS_LABELS: Record<string, string> = {
   superseded: 'Remplacée',
 }
 
-const CBO_STATE_LABELS: Record<CboComputedState, string> = {
-  OPEN:         'Ouvert',
-  PROGRESSING:  'En cours',
-  DONE:         'Terminé',
-  REOPENED:     'Réouvert',
-  CONTRADICTED: 'Signaux contradictoires',
-  NO_SIGNAL:    'Aucun signal exploitable',
+// P1-4C2E1 — la fiche CBO consomme la vérité AUTORITATIVE C2A (loadCboReducedStates / CboReducedState),
+// plus jamais l'ancienne projection loadCboEvolutions. Adapter d'AFFICHAGE explicite (pas un reducer
+// métier) : chaque état riche C2A a un libellé/couleur. Invariants d'affichage figés :
+//   - conflict ≠ Terminé ; documentary_completed distinct de native_completed ;
+//   - native_cancelled = « Annulé » (jamais un accomplissement) ;
+//   - documentaryDivergence reste visible (badge), ne bascule jamais silencieusement un état natif.
+const CBO_STATE_LABELS: Record<CboComputedCurrentState, string> = {
+  open:                  'Ouvert',
+  progressing:           'En cours',
+  documentary_completed: 'Terminé (documentaire)',
+  documentary_reopened:  'Réouvert (documentaire)',
+  native_completed:      'Terminé',
+  native_reopened:       'Réouvert',
+  native_cancelled:      'Annulé',
+  conforme_at:           'Conforme (ponctuel)',
+  unknown:               'Aucun signal exploitable',
+  conflict:              'Signaux contradictoires',
 }
 
-const CBO_STATE_COLORS: Record<CboComputedState, string> = {
-  OPEN:         'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
-  PROGRESSING:  'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-  DONE:         'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
-  REOPENED:     'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-  CONTRADICTED: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
-  NO_SIGNAL:    'bg-muted text-muted-foreground',
+const CBO_STATE_COLORS: Record<CboComputedCurrentState, string> = {
+  open:                  'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  progressing:           'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  documentary_completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  documentary_reopened:  'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+  native_completed:      'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  native_reopened:       'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+  native_cancelled:      'bg-muted text-muted-foreground',
+  conforme_at:           'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300',
+  unknown:               'bg-muted text-muted-foreground',
+  conflict:              'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
 }
 
-const SIGNAL_LABELS: Record<ObjectStateSignal, string> = {
-  OPENED:          'Ouvert',
-  STILL_OPEN:      'Toujours ouvert',
-  PROGRESS:        'En cours',
-  COMPLETED:       'Terminé',
-  REOPENED:        'Réouvert',
-  NO_STATE_SIGNAL: 'Sans signal',
+// Trajectoire chronologique = événements C2A (dates métier), plus les anciens signaux upsert.
+const CBO_EVENT_LABELS: Record<CboEventKind, string> = {
+  doc_open:         'Signalé à traiter (PV)',
+  doc_completion:   'Complétion documentaire',
+  doc_conformity:   'Conformité constatée',
+  native_open:      'Ouvert',
+  native_progress:  'En cours',
+  native_completed: 'Terminé (natif)',
+  native_reopened:  'Réouvert (natif)',
+  native_cancelled: 'Annulé (natif)',
 }
 
-const SIGNAL_COLORS: Record<ObjectStateSignal, string> = {
-  OPENED:          'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
-  STILL_OPEN:      'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
-  PROGRESS:        'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-  COMPLETED:       'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
-  REOPENED:        'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-  NO_STATE_SIGNAL: 'bg-muted text-muted-foreground',
+const CBO_EVENT_COLORS: Record<CboEventKind, string> = {
+  doc_open:         'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  doc_completion:   'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  doc_conformity:   'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300',
+  native_open:      'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  native_progress:  'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  native_completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  native_reopened:  'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
+  native_cancelled: 'bg-muted text-muted-foreground',
 }
 
-const CBO_STATE_ORDER: CboComputedState[] = ['OPEN', 'REOPENED', 'PROGRESSING', 'DONE', 'CONTRADICTED', 'NO_SIGNAL']
+const CBO_STATE_ORDER: CboComputedCurrentState[] = [
+  'open', 'documentary_reopened', 'native_reopened', 'progressing',
+  'documentary_completed', 'native_completed', 'conforme_at', 'native_cancelled', 'conflict', 'unknown',
+]
 
-function formatCboStateCount(state: CboComputedState, count: number): string {
+const CBO_PLURAL_STATES = new Set<CboComputedCurrentState>(['open', 'documentary_completed', 'native_completed', 'documentary_reopened', 'native_reopened'])
+function formatCboStateCount(state: CboComputedCurrentState, count: number): string {
   const base = CBO_STATE_LABELS[state].toLowerCase()
-  const pluralizable = state === 'OPEN' || state === 'DONE' || state === 'REOPENED'
-  return `${count} ${pluralizable && count > 1 ? `${base}s` : base}`
+  return `${count} ${CBO_PLURAL_STATES.has(state) && count > 1 ? `${base}s` : base}`
+}
+
+/** Modèle d'AFFICHAGE dérivé d'un CboReducedEntry (vérité C2A). Aucun recalcul d'état. */
+interface CboDisplayVM {
+  state: CboComputedCurrentState
+  eventCount: number
+  lastEvolutionAt: string | null
+  conflicts: string[]
+  documentaryDivergences: string[]
+  trajectory: { date: string; kind: CboEventKind }[]
+}
+function toCboDisplay(entry: CboReducedEntry): CboDisplayVM {
+  const traj = entry.reduced.historicalTrajectory
+  const dates = traj.map((t) => t.effectiveAt).filter((d) => d > '0001-01-01')
+  return {
+    state: entry.reduced.computedCurrentState,
+    eventCount: traj.length,
+    lastEvolutionAt: dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null,
+    conflicts: entry.reduced.conflicts,
+    documentaryDivergences: entry.reduced.documentaryDivergences,
+    trajectory: traj.map((t) => ({ date: t.effectiveAt, kind: t.kind })),
+  }
 }
 
 interface CboStateSummary {
   total: number
-  byState: Partial<Record<CboComputedState, number>>
+  byState: Partial<Record<CboComputedCurrentState, number>>
   totalOccurrences: number
   lastEvolutionAt: string | null
 }
 
-/** Résumé déterministe des états CBO — lecture pure de loadCboEvolutions(), 0 appel IA. */
+/** Résumé déterministe des états CBO — lecture pure de loadCboReducedStates(), 0 appel IA. */
 function summarizeCboStates(
   entries: CanonicalBusinessObjectEntry[],
-  evolutions: Map<string, CboEvolution>,
+  evolutions: Map<string, CboReducedEntry>,
 ): CboStateSummary | null {
-  const byState: Partial<Record<CboComputedState, number>> = {}
+  const byState: Partial<Record<CboComputedCurrentState, number>> = {}
   let total = 0
   let totalOccurrences = 0
   let lastEvolutionAt: string | null = null
   for (const entry of entries) {
     if (!entry.isGrouped) continue
-    const evolution = evolutions.get(entry.key)
-    if (!evolution || evolution.occurrenceCount === 0) continue
+    const e = evolutions.get(entry.key)
+    if (!e) continue
+    const vm = toCboDisplay(e)
+    if (vm.eventCount === 0) continue
     total++
-    byState[evolution.computedState] = (byState[evolution.computedState] ?? 0) + 1
-    totalOccurrences += evolution.occurrenceCount
-    if (evolution.lastMeaningfulEvolutionAt && (!lastEvolutionAt || evolution.lastMeaningfulEvolutionAt > lastEvolutionAt)) {
-      lastEvolutionAt = evolution.lastMeaningfulEvolutionAt
-    }
+    byState[vm.state] = (byState[vm.state] ?? 0) + 1
+    totalOccurrences += vm.eventCount
+    if (vm.lastEvolutionAt && (!lastEvolutionAt || vm.lastEvolutionAt > lastEvolutionAt)) lastEvolutionAt = vm.lastEvolutionAt
   }
   return total > 0 ? { total, byState, totalOccurrences, lastEvolutionAt } : null
 }
@@ -899,7 +943,7 @@ function MaterializedEventsSection({
   evolutions,
 }: {
   entries: CanonicalBusinessObjectEntry[]
-  evolutions: Map<string, CboEvolution>
+  evolutions: Map<string, CboReducedEntry>
 }) {
   const ORDER: MaterializedEntityType[] = ['site_reserve', 'site_action', 'site_decision', 'site_deadline']
   const byType = new Map<MaterializedEntityType, CanonicalBusinessObjectEntry[]>()
@@ -922,7 +966,7 @@ function MaterializedEventsSection({
             <ul className="space-y-1.5">
               {items.map((entry) => {
                 const evolution = evolutions.get(entry.key)
-                const hasEvolution = entry.isGrouped && !!evolution && evolution.occurrenceCount > 0
+                const hasEvolution = entry.isGrouped && !!evolution && evolution.reduced.historicalTrajectory.length > 0
                 if (hasEvolution) {
                   return <CboEvolutionCard key={entry.key} entry={entry} evolution={evolution!} />
                 }
@@ -1010,8 +1054,9 @@ function MaterializedEventsSection({
   )
 }
 
-function CboEvolutionCard({ entry, evolution }: { entry: CanonicalBusinessObjectEntry; evolution: CboEvolution }) {
+function CboEvolutionCard({ entry, evolution }: { entry: CanonicalBusinessObjectEntry; evolution: CboReducedEntry }) {
   const meta = ENTITY_TYPE_META[entry.entityType]
+  const vm = toCboDisplay(evolution)
 
   return (
     <li className="rounded-lg border text-sm">
@@ -1023,17 +1068,17 @@ function CboEvolutionCard({ entry, evolution }: { entry: CanonicalBusinessObject
           <div className="min-w-0 flex-1">
             <p className="font-medium leading-snug">{entry.label}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className={cn('rounded-full px-1.5 py-0.5 font-medium', CBO_STATE_COLORS[evolution.computedState])}>
-                {CBO_STATE_LABELS[evolution.computedState]}
+              <span className={cn('rounded-full px-1.5 py-0.5 font-medium', CBO_STATE_COLORS[vm.state])}>
+                {CBO_STATE_LABELS[vm.state]}
               </span>
-              <span>{evolution.occurrenceCount} occurrence{evolution.occurrenceCount > 1 ? 's' : ''}</span>
-              {evolution.lastMeaningfulEvolutionAt && (
-                <span>dernière évolution le {frDateShort(evolution.lastMeaningfulEvolutionAt)}</span>
+              <span>{vm.eventCount} événement{vm.eventCount > 1 ? 's' : ''}</span>
+              {vm.lastEvolutionAt && (
+                <span>dernière évolution le {frDateShort(vm.lastEvolutionAt)}</span>
               )}
-              {evolution.structuredStatusDesync && (
+              {vm.documentaryDivergences.length > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                   <AlertTriangle className="h-3 w-3" />
-                  statut structuré non synchronisé
+                  divergence documentaire
                 </span>
               )}
             </div>
@@ -1045,20 +1090,14 @@ function CboEvolutionCard({ entry, evolution }: { entry: CanonicalBusinessObject
             Trajectoire chronologique
           </p>
           <ul className="ml-3 space-y-2.5 border-l-2 border-muted pl-4">
-            {evolution.trajectory.map((t, i) => (
-              <li key={`${t.entityId}-${i}`} className="text-xs">
+            {vm.trajectory.map((t, i) => (
+              <li key={`${t.kind}-${t.date}-${i}`} className="text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="font-semibold text-foreground">{t.occurrenceDate ? frDate(t.occurrenceDate) : 'Date inconnue'}</span>
-                  <span className={cn('rounded-full px-1.5 py-0.5 font-medium', SIGNAL_COLORS[t.finalSignal])}>
-                    {SIGNAL_LABELS[t.finalSignal]}
+                  <span className="font-semibold text-foreground">{t.date > '0001-01-01' ? frDate(t.date) : 'Date inconnue'}</span>
+                  <span className={cn('rounded-full px-1.5 py-0.5 font-medium', CBO_EVENT_COLORS[t.kind])}>
+                    {CBO_EVENT_LABELS[t.kind]}
                   </span>
                 </div>
-                {t.reasoning && (
-                  <p className="mt-0.5 text-muted-foreground">
-                    {t.reasoning}
-                    <span className="ml-1 text-muted-foreground/60">({t.source === 'llm' ? 'IA' : 'statut document'})</span>
-                  </p>
-                )}
               </li>
             ))}
           </ul>
@@ -1304,7 +1343,8 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
 
   const intel = await buildCanonicalSubjectIntelligence(canonicalSubjectId, life)
   const businessObjectEntries = await projectCanonicalBusinessObjects(life.materializedEvents)
-  const cboEvolutions = await loadCboEvolutions(businessObjectEntries)
+  // P1-4C2E1 — vérité CBO autoritative C2A (scopée au sujet), plus loadCboEvolutions.
+  const cboEvolutions = await loadCboReducedStates(life.siteId, { canonicalSubjectId })
   const cboSummary = summarizeCboStates(businessObjectEntries, cboEvolutions)
   // Le résumé CBO déterministe couvre déjà "l'état actuel" quand il est disponible ;
   // la synthèse narrative IA (sans connaissance des CBO) ne servirait alors qu'à se
