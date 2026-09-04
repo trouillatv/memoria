@@ -15,6 +15,8 @@ import type { SubjectLinkType, SubjectLinkStatus, SubjectLinkSource } from '@/li
 import { isOperationalSubject } from '@/lib/subjects/kind'
 import { isStagnationEligible, isOpenOperationalObjectStatus } from '@/lib/subjects/stagnation'
 import { computeNativeChangeMetrics } from '@/lib/knowledge/evolution-metrics'
+import { loadActiveActionCboBySubject } from '@/lib/knowledge/canonical-business-object-evolution'
+import { activeObjectsTotalForState, type SubjectCboState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import { isImportedDocumentOrigin } from '@/lib/field/visit-origins'
 
 export type { HistoryTransition }
@@ -332,6 +334,13 @@ export async function getCanonicalSubjectLife(
   // #228 : nature durable (actor|business_subject) — base de l'éligibilité opérationnelle ET stagnation.
   const csKind: string | null = (cs as { kind: string | null }).kind ?? null
 
+  // P1-4C2D — agrégat CBO du sujet (scopé) : remplace la SEULE composante action de activeObjectsTotal.
+  // Best-effort : si la couche CBO échoue, on retombe sur la vérité brute (subjectCbo = undefined).
+  let subjectCbo: SubjectCboState | undefined
+  try {
+    subjectCbo = (await loadActiveActionCboBySubject(siteId, { canonicalSubjectId })).get(canonicalSubjectId)
+  } catch { subjectCbo = undefined }
+
   // 2. Tous les threads rattachés à ce sujet
   const { data: stiRows } = await supabase
     .from('subject_thread_identity')
@@ -379,7 +388,11 @@ export async function getCanonicalSubjectLife(
       : 0
     const nativeCurrent = deriveCanonicalCurrentState({
       occurrences: nativeReal.map((o) => ({ effectiveDate: o.effectiveDate, pvState: o.stateStatus ?? (o.visitStatus !== null ? visitStatusToPvState(o.visitStatus) : documentStatusToPvState(o.documentStatus)) })),
-      activeObjectsTotal: terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)) ? 1 : 0,
+      activeObjectsTotal: activeObjectsTotalForState(
+        subjectCbo,
+        terrainObjects.some((t) => t.entityType === 'site_action' && isOpenOperationalObjectStatus(t.entityType, t.status)),
+        terrainObjects.some((t) => t.entityType !== 'site_action' && isOpenOperationalObjectStatus(t.entityType, t.status)),
+      ),
     })
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
@@ -444,7 +457,11 @@ export async function getCanonicalSubjectLife(
       : 0
     const fallbackCurrent = deriveCanonicalCurrentState({
       occurrences: fallbackReal.map((o) => ({ effectiveDate: o.effectiveDate, pvState: o.stateStatus ?? (o.visitStatus !== null ? visitStatusToPvState(o.visitStatus) : documentStatusToPvState(o.documentStatus)) })),
-      activeObjectsTotal: terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)) ? 1 : 0,
+      activeObjectsTotal: activeObjectsTotalForState(
+        subjectCbo,
+        terrainObjects.some((t) => t.entityType === 'site_action' && isOpenOperationalObjectStatus(t.entityType, t.status)),
+        terrainObjects.some((t) => t.entityType !== 'site_action' && isOpenOperationalObjectStatus(t.entityType, t.status)),
+      ),
     })
     return {
       canonicalSubjectId, siteId, label: csLabel, aliases: csAliases, csStatus,
@@ -879,13 +896,22 @@ export async function getCanonicalSubjectLife(
     terrainObjects.some((t) => isOpenOperationalObjectStatus(t.entityType, t.status)) ||
     materializedEvents.some((e) => isOpenOperationalObjectStatus(e.entityType, e.status))
 
+  // P1-4C2D — composante ACTION de l'activité courante = lifecycle CBO ; NON-action = brut.
+  // (hasOpenOperationalObject reste inchangé ci-dessus pour isStagnant : hors périmètre C2D.)
+  const rawActionOpen =
+    terrainObjects.some((t) => t.entityType === 'site_action' && isOpenOperationalObjectStatus(t.entityType, t.status)) ||
+    materializedEvents.some((e) => e.entityType === 'site_action' && isOpenOperationalObjectStatus(e.entityType, e.status))
+  const nonActionOpen =
+    terrainObjects.some((t) => t.entityType !== 'site_action' && isOpenOperationalObjectStatus(t.entityType, t.status)) ||
+    materializedEvents.some((e) => e.entityType !== 'site_action' && isOpenOperationalObjectStatus(e.entityType, e.status))
+
   // P0-2 — Projection opérationnelle COURANTE partagée (même primitive que le Suivi).
   // displayState (open|resolved|reopened|unknown) est la SEULE vérité d'état courant affichée.
   // currentStatus reste exposé en brut-équivalent (done|open|null) pour isStagnant, mais devient
   // DÉTERMINISTE (issu du tri-state effondré open-dominant), plus jamais dépendant de l'ordre SQL.
   const currentState = deriveCanonicalCurrentState({
     occurrences: displayOccs,
-    activeObjectsTotal: hasOpenOperationalObject ? 1 : 0,
+    activeObjectsTotal: activeObjectsTotalForState(subjectCbo, rawActionOpen, nonActionOpen),
   })
   const currentStatus = currentState.triState === 'unknown'
     ? null
@@ -1257,6 +1283,11 @@ function navSortPriority(s: NavigableSubjectSummary): 0 | 1 | 2 | 3 {
  */
 export async function getNavigableSubjectsForSite(siteId: string): Promise<NavigableSubjectSummary[]> {
   const supabase = createAdminClient()
+
+  // P1-4C2D — agrégat CBO par sujet (site entier, un seul appel). Best-effort : en cas d'échec de la
+  // couche CBO, subjectCboBySubject vide → retour à la vérité brute des actions (aucune régression).
+  let subjectCboBySubject = new Map<string, SubjectCboState>()
+  try { subjectCboBySubject = await loadActiveActionCboBySubject(siteId) } catch { subjectCboBySubject = new Map() }
 
   // 1. Runs canoniques avec dates effectives
   const allRuns = await canonicalRunsForSite(siteId)
@@ -1631,11 +1662,19 @@ export async function getNavigableSubjectsForSite(siteId: string): Promise<Navig
       [...(emStag?.get('site_deadline') ?? [])].some((id) => OPEN_DEADLINE_STATUS.has(deadlineStatusById.get(id) ?? '')) ||
       [...(emStag?.get('site_decision') ?? [])].some((id) => OPEN_DECISION_STATUT.has(decisionStatutById.get(id) ?? ''))
 
+    // P1-4C2D — action = lifecycle CBO ; réserve/échéance/décision = brut. hasOpenObject reste
+    // inchangé ci-dessus pour isStagnant (hors périmètre C2D).
+    const rawActionOpenNav = [...(emStag?.get('site_action') ?? [])].some((id) => OPEN_ACTION_STATUS.has(actionStatusById.get(id) ?? ''))
+    const nonActionOpenNav =
+      [...(emStag?.get('site_reserve')  ?? [])].some((id) => OPEN_RESERVE_STATUS.has(reserveStatusById.get(id) ?? '')) ||
+      [...(emStag?.get('site_deadline') ?? [])].some((id) => OPEN_DEADLINE_STATUS.has(deadlineStatusById.get(id) ?? '')) ||
+      [...(emStag?.get('site_decision') ?? [])].some((id) => OPEN_DECISION_STATUT.has(decisionStatutById.get(id) ?? ''))
+
     // P0-2 — MÊME primitive d'état courant que la fiche. Effondrement open-dominant intra-date,
-    // reopened dérivé de la résolution antérieure, provenOpen = open OU objet actif rattaché.
+    // reopened dérivé de la résolution antérieure, provenOpen = open OU objet actif rattaché (C2D : CBO).
     const currentState = deriveCanonicalCurrentState({
       occurrences: occs.map((o) => ({ effectiveDate: o.effectiveDate, pvState: o.pvState })),
-      activeObjectsTotal: hasOpenObject ? 1 : 0,
+      activeObjectsTotal: activeObjectsTotalForState(subjectCboBySubject.get(csId), rawActionOpenNav, nonActionOpenNav),
     })
 
     const isStagnant = isStagnationEligible(cs.kind, hasOpenObject, reopenedByCs.has(csId))

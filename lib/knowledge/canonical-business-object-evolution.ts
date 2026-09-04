@@ -5,8 +5,9 @@ import type { CanonicalBusinessObjectEntry } from '@/lib/knowledge/canonical-bus
 import type { MaterializedEntityType } from '@/lib/db/canonical-subject-life'
 import type { ObjectStateSignal } from '@/lib/ai/classify-occurrence-state-signal'
 import {
-  reduceCboLifecycle, deriveCboNature, assembleCboEvents,
+  reduceCboLifecycle, deriveCboNature, assembleCboEvents, deriveCanonicalSubjectCboState,
   type CboReducedState, type CboMemberProvenance, type CboCompletionProof, type CboNativeJournalEvent,
+  type SubjectCboState,
 } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import { loadProposalProofs, ACTIVE_POLICY_VERSION } from '@/lib/knowledge/document-completion-resolver'
 import { getEffectiveResolutionByProposal, computeProofContextFingerprint } from '@/lib/db/document-completion-resolution'
@@ -236,6 +237,7 @@ export async function loadCboEvolutions(
 
 export type CboReducedEntry = {
   cboId: string
+  canonicalSubjectId: string | null
   label: string
   nature: ReturnType<typeof deriveCboNature>
   reduced: CboReducedState
@@ -254,19 +256,26 @@ export type CboReducedEntry = {
  * Déterministe et READ-ONLY. La complétion documentaire n'est émise que si (a) une résolution B
  * effective MATCH/HIGH existe pour le CBO ET (b) la nature C1C du libellé est one_shot+terminal.
  */
-export async function loadCboReducedStates(siteId: string): Promise<Map<string, CboReducedEntry>> {
+export async function loadCboReducedStates(
+  siteId: string,
+  opts?: { canonicalSubjectId?: string },
+): Promise<Map<string, CboReducedEntry>> {
   const sb = createAdminClient()
   const out = new Map<string, CboReducedEntry>()
   const CHUNK = 100
 
-  // 1. CBO action du site + libellés.
-  const { data: cboRows } = await sb
+  // 1. CBO action du site (option : scopé à un sujet pour la fiche — évite une réduction site entière).
+  let cboQuery = sb
     .from('canonical_business_object')
-    .select('id, label')
+    .select('id, label, canonical_subject_id')
     .eq('site_id', siteId).eq('object_type', 'site_action')
-  const cbos = (cboRows ?? []) as Array<{ id: string; label: string }>
+  if (opts?.canonicalSubjectId) cboQuery = cboQuery.eq('canonical_subject_id', opts.canonicalSubjectId)
+  const { data: cboRows } = await cboQuery
+  const cbos = (cboRows ?? []) as Array<{ id: string; label: string; canonical_subject_id: string | null }>
   if (cbos.length === 0) return out
   const cboIds = cbos.map((c) => c.id)
+  const subjByCbo = new Map(cbos.map((c) => [c.id, c.canonical_subject_id]))
+  const cboIdSet = new Set(cboIds)
 
   // 2. Membership CBO → membres site_action (source d'INVENTAIRE : canonical_business_object_member).
   const memberIdsByCbo = new Map<string, string[]>()
@@ -326,7 +335,11 @@ export async function loadCboReducedStates(siteId: string): Promise<Map<string, 
   // 5. Complétions documentaires EFFECTIVES (B HIGH, policy active) : date + document de la preuve.
   //    Réutilise la chaîne autoritative loadProposalProofs → getEffectiveResolutionByProposal.
   const highByCbo = new Map<string, Array<{ date: string | null; proposalId: string; docId: string | null }>>()
-  const proofs = await loadProposalProofs(siteId)
+  const allProofs = await loadProposalProofs(siteId)
+  // Scopé sujet : ne garder que les preuves dont un candidat appartient aux CBO du sujet (fiche = léger).
+  const proofs = opts?.canonicalSubjectId
+    ? allProofs.filter((p) => p.candidates.some((c) => cboIdSet.has(c.cboId)))
+    : allProofs
   const proofDocByProposal = new Map<string, string | null>()
   {
     const propIds = proofs.map((p) => p.proof.proposalId)
@@ -357,11 +370,32 @@ export async function loadCboReducedStates(siteId: string): Promise<Map<string, 
     const asm = assembleCboEvents(cbo.label, members, completions, natives)
     const reduced = reduceCboLifecycle(asm.events)
     out.set(cbo.id, {
-      cboId: cbo.id, label: cbo.label, nature: asm.nature, reduced,
+      cboId: cbo.id, canonicalSubjectId: subjByCbo.get(cbo.id) ?? null, label: cbo.label, nature: asm.nature, reduced,
       documentaryHighCount: asm.documentaryHighCount, suppressedByNature: asm.suppressedByNature,
       docOpenCount: asm.docOpenCount, membersSharedWithCompletionDoc: asm.membersSharedWithCompletionDoc,
     })
   }
 
+  return out
+}
+
+/**
+ * Agrégat SUJET ← CBO (P1-4C2D) : `SubjectCboState` par canonical_subject, à partir des CBO action
+ * réduits. Sert à remplacer la SEULE contribution action de `activeObjectsTotal` (P0-2). READ-ONLY.
+ * `opts.canonicalSubjectId` scope à un sujet (fiche) ; sinon site entier (Suivi/Attention).
+ */
+export async function loadActiveActionCboBySubject(
+  siteId: string,
+  opts?: { canonicalSubjectId?: string },
+): Promise<Map<string, SubjectCboState>> {
+  const reduced = await loadCboReducedStates(siteId, opts)
+  const bySubject = new Map<string, CboReducedState[]>()
+  for (const e of reduced.values()) {
+    if (!e.canonicalSubjectId) continue // CBO sans sujet (dangling) → hors agrégat sujet
+    const l = bySubject.get(e.canonicalSubjectId) ?? []
+    l.push(e.reduced); bySubject.set(e.canonicalSubjectId, l)
+  }
+  const out = new Map<string, SubjectCboState>()
+  for (const [subjId, states] of bySubject) out.set(subjId, deriveCanonicalSubjectCboState(states))
   return out
 }

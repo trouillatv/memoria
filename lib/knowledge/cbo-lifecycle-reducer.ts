@@ -229,3 +229,76 @@ export function assembleCboEvents(
 
   return { events, nature, documentaryHighCount: completions.length, suppressedByNature: suppressed, docOpenCount, membersSharedWithCompletionDoc: shared }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-4C2D — agrégat SUJET ← CBO. Traduit les CboReducedState des CBO ACTION d'un sujet en une
+// grandeur d'ACTIVITÉ DURABLE, destinée à remplacer la SEULE contribution « action » de
+// `activeObjectsTotal` dans deriveCanonicalCurrentState (P0-2). Ne recalcule PAS C2A, ne remplace
+// PAS P0-2 : les occurrences documentaires du sujet restent la preuve OPEN/RESOLVED/UNKNOWN.
+//
+// Sémantique figée (C2C) :
+//   - actif : open | documentary_reopened | native_reopened | progressing
+//   - non actif : documentary_completed | native_completed | native_cancelled | conforme_at
+//   - conflict : bloque une résolution silencieuse (compté à part, `blocksResolution`)
+//   - unknown : neutre — ne fabrique ni activité ni résolution (la preuve occurrence décide)
+//   - documentaryDivergence : conservée pour la provenance, ne renverse jamais le natif.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SUBJECT_ACTIVE_STATES = new Set<CboComputedCurrentState>(['open', 'progressing', 'documentary_reopened', 'native_reopened'])
+const SUBJECT_TERMINAL_STATES = new Set<CboComputedCurrentState>(['documentary_completed', 'native_completed', 'native_cancelled', 'conforme_at'])
+
+export type SubjectCboState = {
+  /** CBO action en état actif (open/reopened/progressing). */
+  activeCboTotal: number
+  /** CBO action terminés (completed/cancelled/conforme). */
+  completedCboTotal: number
+  /** CBO action en état unknown (neutre). */
+  unknownCboTotal: number
+  /** CBO action en conflit (bloque une résolution silencieuse). */
+  conflictCboTotal: number
+  /** Nombre total de CBO action du sujet (0 = aucun CBO → l'appelant retombe sur la vérité brute). */
+  totalCboTotal: number
+  /** Vrai si ≥1 CBO actif OU en conflit : le sujet ne peut pas être silencieusement résolu par le CBO. */
+  blocksResolution: boolean
+  conflicts: string[]
+  documentaryDivergences: string[]
+  stateBasis: string[]
+}
+
+/**
+ * Contribution objet à l'état COURANT (entrée `activeObjectsTotal` de P0-2), composée :
+ *  - ACTION : lifecycle CBO durable (`blocksResolution` = ≥1 actif OU conflit) DÈS QUE le sujet a des
+ *    CBO action ; sinon vérité brute des actions (aucun CBO → ne jamais perdre d'activité non modélisée).
+ *  - NON-ACTION (réserve/échéance/décision) : projection brute inchangée.
+ * Retourne 1/0 (contrat isProvenOpen). Ne fabrique jamais de résolution : une occurrence OPEN reste
+ * portée par deriveCanonicalCurrentState.
+ */
+export function activeObjectsTotalForState(
+  subjectCbo: SubjectCboState | undefined,
+  rawActionOpen: boolean,
+  nonActionOpen: boolean,
+): number {
+  const actionActive = subjectCbo && subjectCbo.totalCboTotal > 0 ? subjectCbo.blocksResolution : rawActionOpen
+  return actionActive || nonActionOpen ? 1 : 0
+}
+
+/** Agrège les CboReducedState des CBO action d'UN sujet. Pur, déterministe. */
+export function deriveCanonicalSubjectCboState(states: CboReducedState[]): SubjectCboState {
+  let active = 0, completed = 0, unknown = 0, conflict = 0
+  const conflicts: string[] = [], divergences: string[] = [], basis: string[] = []
+  for (const s of states) {
+    const st = s.computedCurrentState
+    if (st === 'conflict') conflict++
+    else if (SUBJECT_ACTIVE_STATES.has(st)) active++
+    else if (SUBJECT_TERMINAL_STATES.has(st)) completed++
+    else unknown++ // 'unknown' — neutre
+    if (s.conflicts.length) conflicts.push(...s.conflicts)
+    if (s.documentaryDivergences.length) divergences.push(...s.documentaryDivergences)
+    if (s.stateBasis.length) basis.push(...s.stateBasis)
+  }
+  return {
+    activeCboTotal: active, completedCboTotal: completed, unknownCboTotal: unknown, conflictCboTotal: conflict,
+    totalCboTotal: states.length, blocksResolution: active > 0 || conflict > 0,
+    conflicts, documentaryDivergences: divergences, stateBasis: basis,
+  }
+}

@@ -5,8 +5,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   reduceCboLifecycle, deriveCboNature, assembleCboEvents,
+  deriveCanonicalSubjectCboState, activeObjectsTotalForState,
   type CboLifecycleEvent, type CboMemberProvenance, type CboCompletionProof, type CboNativeJournalEvent,
+  type CboReducedState,
 } from '@/lib/knowledge/cbo-lifecycle-reducer'
+import { deriveCanonicalCurrentState, type PvState } from '@/lib/documents/subject-state'
 
 const ev = (kind: CboLifecycleEvent['kind'], attestedAt: string, eventAt?: string): CboLifecycleEvent => ({ kind, attestedAt, eventAt })
 
@@ -211,4 +214,93 @@ describe('assembleCboEvents — anti-témoins (nature C1C) restent non-DONE', ()
       expect(reduced.historicalTrajectory.some((t) => t.kind === 'doc_completion')).toBe(false)
     })
   }
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P1-4C2D — agrégat SUJET←CBO + composition dans deriveCanonicalCurrentState.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const rs = (s: CboReducedState['computedCurrentState']): CboReducedState =>
+  ({ computedCurrentState: s, historicalTrajectory: [], stateBasis: [], conflicts: s === 'conflict' ? ['x'] : [], documentaryDivergences: [] })
+const occ = (effectiveDate: string, pvState: PvState) => ({ effectiveDate, pvState })
+// projection SUJET candidate = deriveCanonicalCurrentState(occurrences, activeObjectsTotalForState(...))
+const subjectDisplay = (occs: { effectiveDate: string; pvState: PvState }[], scbo: ReturnType<typeof deriveCanonicalSubjectCboState> | undefined, rawActionOpen: boolean, nonActionOpen: boolean) =>
+  deriveCanonicalCurrentState({ occurrences: occs, activeObjectsTotal: activeObjectsTotalForState(scbo, rawActionOpen, nonActionOpen) }).displayState
+
+describe('deriveCanonicalSubjectCboState — classification', () => {
+  it('mix actif/completed/unknown/conflict → compteurs + blocksResolution', () => {
+    const s = deriveCanonicalSubjectCboState([rs('open'), rs('documentary_completed'), rs('unknown'), rs('conflict'), rs('native_reopened')])
+    expect(s).toMatchObject({ activeCboTotal: 2, completedCboTotal: 1, unknownCboTotal: 1, conflictCboTotal: 1, totalCboTotal: 5, blocksResolution: true })
+  })
+  it('tous completed → blocksResolution false', () => {
+    expect(deriveCanonicalSubjectCboState([rs('documentary_completed'), rs('native_completed')]).blocksResolution).toBe(false)
+  })
+  it('unknown seul → neutre (blocksResolution false)', () => {
+    expect(deriveCanonicalSubjectCboState([rs('unknown')]).blocksResolution).toBe(false)
+  })
+})
+
+describe('activeObjectsTotalForState — composition action(CBO)+non-action(brut)', () => {
+  it('aucun CBO action → retombe sur la vérité brute des actions', () => {
+    expect(activeObjectsTotalForState(undefined, true, false)).toBe(1)
+    expect(activeObjectsTotalForState(undefined, false, false)).toBe(0)
+    expect(activeObjectsTotalForState(deriveCanonicalSubjectCboState([]), true, false)).toBe(1) // total 0 → brut
+  })
+  it('CBO action completed → action non active, ignore le brut open', () => {
+    const scbo = deriveCanonicalSubjectCboState([rs('documentary_completed')])
+    expect(activeObjectsTotalForState(scbo, true, false)).toBe(0) // le site_action brut open est ignoré
+  })
+  it('CBO action actif → 1', () => {
+    expect(activeObjectsTotalForState(deriveCanonicalSubjectCboState([rs('open')]), false, false)).toBe(1)
+  })
+  it('conflict → bloque (1) même sans brut', () => {
+    expect(activeObjectsTotalForState(deriveCanonicalSubjectCboState([rs('conflict')]), false, false)).toBe(1)
+  })
+  it('non-action actif seul → 1 (réserve/échéance/décision conservées)', () => {
+    expect(activeObjectsTotalForState(deriveCanonicalSubjectCboState([rs('documentary_completed')]), false, true)).toBe(1)
+  })
+})
+
+describe('composition SUJET — état courant (deriveCanonicalCurrentState)', () => {
+  it('TÉMOIN Calfeutrement : occurrence resolved + CBO completed + action brute open → resolved (avant: reopened)', () => {
+    const occs = [occ('2025-01-29', 'open'), occ('2025-07-10', 'resolved')]
+    const scbo = deriveCanonicalSubjectCboState([rs('documentary_completed')])
+    // AVANT C2D : activeObjectsTotal venait du brut (action open) → reopened
+    expect(deriveCanonicalCurrentState({ occurrences: occs, activeObjectsTotal: 1 }).displayState).toBe('reopened')
+    // APRÈS C2D : le CBO completed retire la fausse activité → resolved (occurrence disait déjà resolved)
+    expect(subjectDisplay(occs, scbo, /*rawActionOpen*/ true, /*nonActionOpen*/ false)).toBe('resolved')
+  })
+
+  it('CBO completed + occurrence OPEN significative → reste open (complétion ne fabrique jamais resolved)', () => {
+    const occs = [occ('2025-03-27', 'open')]
+    const scbo = deriveCanonicalSubjectCboState([rs('documentary_completed')])
+    expect(subjectDisplay(occs, scbo, true, false)).toBe('open')
+  })
+
+  it('tous CBO action completed MAIS réserve active → reste ouvert (non résolu)', () => {
+    const occs = [occ('2025-03-27', 'open'), occ('2025-07-10', 'resolved')]
+    const scbo = deriveCanonicalSubjectCboState([rs('documentary_completed')])
+    expect(subjectDisplay(occs, scbo, false, /*nonActionOpen=réserve*/ true)).not.toBe('resolved')
+  })
+
+  it('occurrence resolved + CBO unknown → resolved (unknown neutre, occurrence décide)', () => {
+    const occs = [occ('2025-07-10', 'resolved')]
+    const scbo = deriveCanonicalSubjectCboState([rs('unknown')])
+    expect(subjectDisplay(occs, scbo, false, false)).toBe('resolved')
+  })
+
+  it('CBO completed + unknown SANS preuve occurrence resolved → jamais resolved (unknown)', () => {
+    const scbo = deriveCanonicalSubjectCboState([rs('documentary_completed'), rs('unknown')])
+    expect(subjectDisplay([], scbo, false, false)).toBe('unknown')
+  })
+
+  it('dangling (aucun CBO sujet) sans action brute open → aucune activité inventée (unknown)', () => {
+    expect(subjectDisplay([], undefined, false, false)).toBe('unknown')
+  })
+
+  it('conflict CBO + occurrence resolved → bloque la résolution silencieuse (non resolved)', () => {
+    const occs = [occ('2025-07-10', 'resolved')]
+    const scbo = deriveCanonicalSubjectCboState([rs('conflict')])
+    expect(subjectDisplay(occs, scbo, false, false)).not.toBe('resolved')
+  })
 })
