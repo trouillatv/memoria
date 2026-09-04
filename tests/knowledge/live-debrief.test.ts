@@ -124,6 +124,7 @@ function makeCanonicalItem(overrides: Partial<CanonicalAttentionItem> = {}): Can
   return {
     canonicalSubjectId: 'cs-1',
     title: 'Sujet',
+    category: 'dormant',
     urgency: 'high',
     score: 80,
     signals: ['stagnant'],

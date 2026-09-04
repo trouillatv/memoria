@@ -74,6 +74,8 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary> = {}): Navigabl
     displayState: 'open',
     provenOpen: true,
     activeObjectsCboAware: 2,
+    presentInLastPv: true,
+    pvSinceLastMention: 0,
     ...overrides,
   }
 }

@@ -47,6 +47,8 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary>): NavigableSubj
     displayState: 'unknown',
     provenOpen: false,
     activeObjectsCboAware: 0,
+    presentInLastPv: true,
+    pvSinceLastMention: 0,
     ...overrides,
   }
 }
