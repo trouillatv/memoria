@@ -25,12 +25,14 @@ import {
 // Version de policy ACTIVE de ce resolver. Distincte du défaut P1-4B1 (COMPLETION_POLICY_VERSION,
 // laissé à 'p1.4b.v2' — schéma B1 étendu additivement, jamais backfillé). V2.1 a généralisé
 // l'invariant de l'acte informationnel/documentaire ; V2.2 a ajouté evidence_directness (une
-// correspondance INFÉRÉE ne peut jamais atteindre HIGH) ; V2.3 ajoute l'INVARIANT D'OBJET INTENTIONNEL
-// (gate V2.3-CAL : un acte physique/opérationnel sur X n'accomplit pas un acte documentaire sur X, et
-// réciproquement — indépendant de la topologie des candidats). Append-only : les résolutions V2/V2.1/
-// V2.2 restent l'historique d'audit ; V2.3 ajoute de nouvelles lignes et devient la décision effective
-// quand la policy active = V2.3. Les textes de policy antérieurs ne sont jamais réécrits.
-export const ACTIVE_POLICY_VERSION = 'p1.4b.v2.3'
+// correspondance INFÉRÉE ne peut jamais atteindre HIGH) ; V2.3 a ajouté l'INVARIANT D'OBJET INTENTIONNEL
+// (un acte physique/opérationnel sur X n'accomplit pas un acte documentaire sur X) ; V2.4 ajoute
+// l'INVARIANT ÉVÉNEMENT → INFORMATION (gate V2.4-CAL : contenir/connaître une information — même la
+// valeur exacte demandée — ne démontre jamais l'ACTE de la transmettre/communiquer/déclarer/renseigner ;
+// stable 0/10 sur tous les NEG, sans garde déterministe ni vote). Append-only : les résolutions
+// V2/V2.1/V2.2/V2.3 restent l'historique d'audit ; V2.4 devient la décision effective quand la policy
+// active = V2.4. Les textes de policy antérieurs ne sont jamais réécrits.
+export const ACTIVE_POLICY_VERSION = 'p1.4b.v2.4'
 
 const POLICY = `Tu vérifies si une PREUVE DE RÉALISATION documentaire (compte-rendu) démontre l'ACCOMPLISSEMENT de l'INTENTION D'ACTION précise portée par un objet métier durable.
 
@@ -57,6 +59,8 @@ INVARIANT D'OBJET INTENTIONNEL (V2.3) : pour intent_match="exact", la preuve doi
 - réaliser un test ≠ transmettre sa date ;
 - vérifier un équipement ≠ rédiger le rapport de vérification.
 Réciproquement, une preuve attestant DIRECTEMENT l'acte documentaire demandé reste "exact"/"direct" : « plan transmis » → « transmettre le plan » ; « rapport rédigé » → « rédiger le rapport ».
+
+INVARIANT ÉVÉNEMENT → INFORMATION (V2.4) : une preuve attestant seulement qu'un ÉVÉNEMENT a eu lieu — MÊME SI elle CONTIENT explicitement l'information demandée (date, résultat, valeur) — ne démontre JAMAIS l'ACTE consistant à transmettre/communiquer/déclarer/renseigner/remettre cette information à un destinataire. CONTENIR/CONNAÎTRE l'information ≠ avoir ACCOMPLI l'acte de la communiquer. Exemple fondamental : « Contrôle effectué le 12/03 » prouve que le contrôle a eu lieu et que sa date est connue ; il ne prouve PAS que cette date a été communiquée/transmise/déclarée/renseignée au destinataire attendu → NON "exact"/"direct" (au mieux "related"/"inferred"). Pour "exact"/"direct" sur une intention informationnelle, la preuve doit attester l'ACTE informationnel lui-même (« date communiquée », « rapport transmis », « résultat déclaré »), pas seulement l'événement source qui contient l'information. Même principe : événement → date de l'événement ; test → résultat du test ; visite → compte-rendu/date de visite ; intervention → information/document sur l'intervention. C'est un PRINCIPE (le résultat attendu est la MISE À DISPOSITION d'une information à un tiers), pas une liste de verbes.
 
 TROIS DIMENSIONS DISTINCTES, à ne jamais confondre :
 1. verdict : la preuve démontre-t-elle un accomplissement ?
