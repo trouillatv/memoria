@@ -104,7 +104,7 @@ beforeEach(() => {
 describe('produceObjectStateOccurrenceSignal — fast-path document_status (ÉTAPE 0)', () => {
   it.each([
     ['done', 'COMPLETED'],
-    ['cancelled', 'COMPLETED'],
+    ['cancelled', 'NO_STATE_SIGNAL'], // P1-4A-D2 : cancelled ≠ accomplissement → jamais COMPLETED
     ['in_progress', 'PROGRESS'],
     ['non_compliant', 'STILL_OPEN'],
     ['awaiting_validation', 'STILL_OPEN'],

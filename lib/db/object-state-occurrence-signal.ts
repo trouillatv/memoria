@@ -48,9 +48,13 @@ export type ProduceOccurrenceSignalOutcome =
 // Calqué sur scripts/p1c2b4i-h2a-live-mechanism-dryrun.ts::fromDocumentStatus — mapping
 // déterministe validé en H2-A. Aucun appel LLM quand ce mapping s'applique (ÉTAPE 0
 // bypasse complètement l'ÉTAPE 1, jamais un "et si les deux étaient combinés").
-function fromDocumentStatus(status: string): ObjectStateSignal {
+export function fromDocumentStatus(status: string): ObjectStateSignal {
   if (status === 'done') return 'COMPLETED'
-  if (status === 'cancelled') return 'COMPLETED'
+  // P1-4A-D2 : `cancelled` = abandon/annulation d'une intention, JAMAIS un accomplissement.
+  // Le vocabulaire de signal ne possède pas de CANCELLED ; on ne fabrique pas de faux signal et on
+  // ne le mappe ni vers COMPLETED (faux accompli) ni vers OPEN/STILL_OPEN (faux « en cours ») →
+  // NO_STATE_SIGNAL, l'occurrence annulée est exclue de la projection d'état du CBO.
+  if (status === 'cancelled') return 'NO_STATE_SIGNAL'
   if (status === 'in_progress') return 'PROGRESS'
   if (status === 'non_compliant') return 'STILL_OPEN'
   if (status === 'awaiting_validation') return 'STILL_OPEN'
