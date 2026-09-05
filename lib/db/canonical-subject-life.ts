@@ -7,6 +7,7 @@ import 'server-only'
 //
 // Lecture seule. Ne modifie aucune donnée.
 
+import { cache } from 'react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { canonicalRunsForSite, runEffectiveDate, computeHistoryTransition } from '@/lib/documents/pv-history'
 import { documentStatusToPvState, visitStatusToPvState, computeLmcaFromOccurrences, collapseLmcaOccurrencesByDate, deriveCurrentResolvedState, deriveCanonicalCurrentState, type LmcaOccurrence, type PvState, type CanonicalDisplayState } from '@/lib/documents/subject-state'
@@ -1312,7 +1313,15 @@ function navSortPriority(s: NavigableSubjectSummary): 0 | 1 | 2 | 3 {
  * Le read-model est pré-calculé (stagnation, tri, compteurs) pour éviter
  * une deuxième refonte de requête lors de l'enrichissement de l'UI.
  */
-export async function getNavigableSubjectsForSite(siteId: string): Promise<NavigableSubjectSummary[]> {
+export const getNavigableSubjectsForSite = cache(getNavigableSubjectsForSiteUncached)
+
+/**
+ * P0-PERF-2 — enveloppé dans React cache() : plusieurs read-models d'une même page (attention,
+ * briefing, debrief, actions, occurrence-population) appelaient chacun ce listing complet.
+ * Cache STRICTEMENT request-scoped (clé = siteId primitif) : aucun TTL, aucune persistance,
+ * aucune donnée périmée possible entre deux requêtes serveur.
+ */
+async function getNavigableSubjectsForSiteUncached(siteId: string): Promise<NavigableSubjectSummary[]> {
   const supabase = createAdminClient()
 
   // P1-4C2D — agrégat CBO par sujet (site entier, un seul appel). Best-effort : en cas d'échec de la

@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { cache } from 'react'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { CanonicalBusinessObjectEntry } from '@/lib/knowledge/canonical-business-object-projection'
 import type { MaterializedEntityType } from '@/lib/db/canonical-subject-life'
@@ -10,7 +11,7 @@ import {
   type SubjectCboState,
 } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import { loadProposalProofs, ACTIVE_POLICY_VERSION } from '@/lib/knowledge/document-completion-resolver'
-import { getEffectiveResolutionByProposal, computeProofContextFingerprint } from '@/lib/db/document-completion-resolution'
+import { getEffectiveResolutionsByProposalBatch, computeProofContextFingerprint } from '@/lib/db/document-completion-resolution'
 
 // Read-model de trajectoire longitudinale par CBO — P1-C2B.4 H2-B.4UI.
 //
@@ -262,7 +263,17 @@ export type CboReducedEntry = {
  * Déterministe et READ-ONLY. La complétion documentaire n'est émise que si (a) une résolution B
  * effective MATCH/HIGH existe pour le CBO ET (b) la nature C1C du libellé est one_shot+terminal.
  */
-export async function loadCboReducedStates(
+export const loadCboReducedStates = cache(loadCboReducedStatesUncached)
+
+/**
+ * P0-PERF-2 — l'export public est enveloppé dans React cache() : au sein d'UNE même requête
+ * serveur, plusieurs read-models (nav P0-2, Debrief, Actions, Briefing…) demandaient chacun leur
+ * propre réduction site entière. Le cache est STRICTEMENT request-scoped (aucun TTL, aucune
+ * persistance, aucune donnée périmée possible entre deux requêtes). NB : seuls les appels
+ * site entiers (sans `opts`) se dédupliquent — un littéral `opts` change d'identité à chaque
+ * appel, ce qui est un raté de cache SÛR, jamais une vérité fausse.
+ */
+async function loadCboReducedStatesUncached(
   siteId: string,
   opts?: { canonicalSubjectId?: string },
 ): Promise<Map<string, CboReducedEntry>> {
@@ -354,9 +365,18 @@ export async function loadCboReducedStates(
       for (const p of (data ?? []) as Array<{ id: string; document_id: string | null }>) proofDocByProposal.set(p.id, p.document_id)
     }
   }
+  // P0-PERF-1 : lecture BATCH des résolutions effectives (même sélection policy + fingerprint
+  // courant, appliquée en mémoire) — remplace le N+1 d'1 requête par preuve (92 sur RUS,
+  // 234 sur OCEF Compostage) qui dominait le coût de chaque rendu.
+  const effByProposal = await getEffectiveResolutionsByProposalBatch(
+    proofs.map((it) => ({
+      proofProposalId: it.proof.proposalId,
+      contextFingerprint: computeProofContextFingerprint(it.proof, it.candidates),
+    })),
+    ACTIVE_POLICY_VERSION,
+  )
   for (const it of proofs) {
-    const fp = computeProofContextFingerprint(it.proof, it.candidates)
-    const eff = await getEffectiveResolutionByProposal(it.proof.proposalId, fp, ACTIVE_POLICY_VERSION)
+    const eff = effByProposal.get(it.proof.proposalId) ?? null
     if (!eff || eff.decision !== 'MATCH' || eff.confidenceClass !== 'HIGH' || !eff.selectedCboId) continue
     const l = highByCbo.get(eff.selectedCboId) ?? []
     l.push({ date: it.proof.effectiveDate ?? null, proposalId: it.proof.proposalId, docId: proofDocByProposal.get(it.proof.proposalId) ?? null })

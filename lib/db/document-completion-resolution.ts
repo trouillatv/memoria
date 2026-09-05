@@ -196,3 +196,40 @@ export async function getEffectiveResolutionByProposal(
     selectedCboId: r.selected_cbo_id, policyVersion: r.policy_version, contextFingerprint: r.context_fingerprint, resolvedAt: r.resolved_at,
   }
 }
+
+/**
+ * P0-PERF-1 — variante BATCH de getEffectiveResolutionByProposal, même vérité.
+ *
+ * Une lecture par preuve coûtait 1 requête réseau (92 sur RUS, 234 sur OCEF Compostage) dans
+ * loadCboReducedStates — le N+1 de l'incident P0. Ici : une requête par tranche de 100 preuves
+ * (proof_proposal_id IN … + policy active), puis la MÊME sélection en mémoire : seule la ligne
+ * dont le context_fingerprint égale l'empreinte COURANTE de la preuve est une décision effective.
+ * L'index UNIQUE (proof, policy, fingerprint) garantit zéro ambiguïté — la clé composite suffit.
+ */
+export async function getEffectiveResolutionsByProposalBatch(
+  proofs: Array<{ proofProposalId: string; contextFingerprint: string }>,
+  policyVersion: string = COMPLETION_POLICY_VERSION,
+): Promise<Map<string, EffectiveResolution>> {
+  const out = new Map<string, EffectiveResolution>()
+  if (proofs.length === 0) return out
+  const wanted = new Map(proofs.map((p) => [`${p.proofProposalId}␟${p.contextFingerprint}`, p.proofProposalId]))
+  const sb = createAdminClient()
+  const ids = [...new Set(proofs.map((p) => p.proofProposalId))]
+  const CHUNK = 100
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data } = await sb
+      .from('document_completion_resolution')
+      .select('id, proof_proposal_id, decision, confidence_class, selected_cbo_id, policy_version, context_fingerprint, resolved_at')
+      .eq('policy_version', policyVersion)
+      .in('proof_proposal_id', ids.slice(i, i + CHUNK))
+    for (const r of (data ?? []) as Array<{ id: string; proof_proposal_id: string; decision: string; confidence_class: string; selected_cbo_id: string | null; policy_version: string; context_fingerprint: string; resolved_at: string }>) {
+      const proposalId = wanted.get(`${r.proof_proposal_id}␟${r.context_fingerprint}`)
+      if (!proposalId) continue // fingerprint périmé → pas la décision effective (comme le .eq unitaire)
+      out.set(proposalId, {
+        id: r.id, decision: r.decision as CompletionDecision, confidenceClass: r.confidence_class as ConfidenceClass,
+        selectedCboId: r.selected_cbo_id, policyVersion: r.policy_version, contextFingerprint: r.context_fingerprint, resolvedAt: r.resolved_at,
+      })
+    }
+  }
+  return out
+}
