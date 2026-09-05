@@ -32,6 +32,8 @@ export interface PilotageCbo {
   stateBasis: string[]
   conflicts: string[]
   documentaryDivergences: string[]
+  /** P3-Actions-Lot1 — membre site_action déterministe portant le geste humain close/reopen. */
+  targetActionId: string | null
 }
 
 /** Niveau 3 — une formulation documentaire BRUTE (site_actions) rattachée au sujet. ARCHIVE, jamais
@@ -97,6 +99,7 @@ const cboOf = (e: CboReducedEntry): PilotageCbo => {
     cboId: e.cboId, label: e.label, computedCurrentState: st,
     active: isActiveCboState(st), terminal: isTerminalCboState(st),
     stateBasis: e.reduced.stateBasis, conflicts: e.reduced.conflicts, documentaryDivergences: e.reduced.documentaryDivergences,
+    targetActionId: e.targetActionId,
   }
 }
 

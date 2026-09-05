@@ -27,6 +27,7 @@ const cbo = (state: CboComputedCurrentState, over: Partial<CboReducedEntry['redu
   nature: { nature: 'one_shot', stateChar: 'terminal_candidate' },
   reduced: { computedCurrentState: state, historicalTrajectory: [], stateBasis: [`x@2025-07-10`], conflicts: [], documentaryDivergences: [], ...over },
   documentaryHighCount: 1, suppressedByNature: 0, docOpenCount: 1, membersSharedWithCompletionDoc: 0,
+  targetActionId: null,
 })
 
 describe('P1-4C2E2 — businessObjects (C2A) dans le contexte sujet', () => {

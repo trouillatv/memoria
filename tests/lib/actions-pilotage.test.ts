@@ -11,6 +11,7 @@ const entry = (cboId: string, subjectId: string | null, label: string, state: Cb
   nature: { nature: 'one_shot', stateChar: 'terminal_candidate' },
   reduced: { computedCurrentState: state, historicalTrajectory: [], stateBasis: [], conflicts: state === 'conflict' ? ['x'] : [], documentaryDivergences: [] },
   documentaryHighCount: 0, suppressedByNature: 0, docOpenCount: 0, membersSharedWithCompletionDoc: 0,
+  targetActionId: null,
 })
 const ctx = (id: string, title: string, displayState: PilotageSubjectContext['displayState']): [string, PilotageSubjectContext] =>
   [id, { canonicalSubjectId: id, title, displayState, lastMeaningfulChangeAt: '2025-07-10', pvCount: 8 }]

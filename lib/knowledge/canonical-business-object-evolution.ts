@@ -241,6 +241,12 @@ export type CboReducedEntry = {
   label: string
   nature: ReturnType<typeof deriveCboNature>
   reduced: CboReducedState
+  /**
+   * P3-Actions-Lot1 — membre site_action VIVANT DÉTERMINISTE portant le geste humain de
+   * clôture/réouverture (le geste est per-site_action, le CBO agrège). Règle : membre à la
+   * date métier la PLUS RÉCENTE (tie → id). Émettre un event natif sur ce membre bascule LE
+   * CBO (prouvé §2). null = aucun membre vivant (dangling) → clôture non proposable. */
+  targetActionId: string | null
   /** Nombre de complétions documentaires EFFECTIVES (B HIGH) attribuées à ce CBO. */
   documentaryHighCount: number
   /** Complétions documentaires SUPPRIMÉES par la qualification C1C (non one_shot/terminal). */
@@ -369,10 +375,19 @@ export async function loadCboReducedStates(
 
     const asm = assembleCboEvents(cbo.label, members, completions, natives)
     const reduced = reduceCboLifecycle(asm.events)
+    // Target déterministe : membre VIVANT (présent dans actionInfo) à la date métier la plus
+    // récente, tie → id. Seul un membre vivant peut porter le geste natif (close/reopen).
+    const liveMembers = memberIds.filter((m) => actionInfo.has(m))
+    const targetActionId = liveMembers.length === 0 ? null : [...liveMembers].sort((a, b) => {
+      const da = memberBusiness(a)?.date ?? ''
+      const db = memberBusiness(b)?.date ?? ''
+      return db.localeCompare(da) || a.localeCompare(b)
+    })[0]
     out.set(cbo.id, {
       cboId: cbo.id, canonicalSubjectId: subjByCbo.get(cbo.id) ?? null, label: cbo.label, nature: asm.nature, reduced,
       documentaryHighCount: asm.documentaryHighCount, suppressedByNature: asm.suppressedByNature,
       docOpenCount: asm.docOpenCount, membersSharedWithCompletionDoc: asm.membersSharedWithCompletionDoc,
+      targetActionId,
     })
   }
 
