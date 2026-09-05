@@ -12,11 +12,12 @@
 // l'état. La provenance (manuel vs documentaire) est LUE de computedCurrentState, jamais du status brut.
 
 import Link from 'next/link'
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle } from 'lucide-react'
+import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle, Search, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { closeActionAction, reopenActionAction } from '@/app/(dashboard)/actions/actions'
+import { filterPilotageSubjects, countByFilter, type ActionsFilter } from '@/lib/knowledge/actions-filter'
 import type { PilotageSubject, PilotageCbo } from '@/lib/knowledge/actions-pilotage'
 import type { CanonicalDisplayState } from '@/lib/documents/subject-state'
 import type { CboComputedCurrentState } from '@/lib/knowledge/cbo-lifecycle-reducer'
@@ -180,7 +181,19 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
   )
 }
 
+const FILTERS: Array<{ key: ActionsFilter; label: string }> = [
+  { key: 'all', label: 'Tous' },
+  { key: 'open', label: 'Ouverts' },
+  { key: 'reopened', label: 'Réouverts' },
+  { key: 'treated', label: 'Traités' },
+]
+
 export function ActionsPilotageClient({ subjects, siteId }: { subjects: PilotageSubject[]; siteId: string }) {
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<ActionsFilter>('all')
+  const counts = useMemo(() => countByFilter(subjects, query), [subjects, query])
+  const visible = useMemo(() => filterPilotageSubjects(subjects, query, filter), [subjects, query, filter])
+
   if (subjects.length === 0) {
     return (
       <p className="rounded-xl border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
@@ -188,9 +201,58 @@ export function ActionsPilotageClient({ subjects, siteId }: { subjects: Pilotage
       </p>
     )
   }
+
   return (
+    <div className="space-y-3">
+      {/* ── Zone de contrôle : recherche + filtres déterministes (navigation, zéro vérité) ── */}
+      <div className="space-y-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <input
+            type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+            aria-label="Rechercher un sujet ou une action"
+            placeholder="Rechercher un sujet ou une action…"
+            className="w-full rounded-xl border bg-background py-2 pl-9 pr-9 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          {query && (
+            <button type="button" onClick={() => setQuery('')} aria-label="Effacer la recherche"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {FILTERS.map((f) => (
+            <button
+              key={f.key} type="button" onClick={() => setFilter(f.key)} aria-pressed={filter === f.key}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition',
+                filter === f.key ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
+              )}
+            >
+              {f.label}
+              <span className={cn('tabular-nums', filter === f.key ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{counts[f.key]}</span>
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {visible.length === subjects.length && filter === 'all' && !query
+            ? `${subjects.length} sujet${subjects.length > 1 ? 's' : ''}`
+            : `${visible.length} sur ${subjects.length} sujet${subjects.length > 1 ? 's' : ''}`}
+        </p>
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="rounded-xl border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
+          <p>Aucun sujet ne correspond{query ? ` à « ${query} »` : ' à ce filtre'}.</p>
+          <button type="button" onClick={() => { setQuery(''); setFilter('all') }}
+            className="mt-2 inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted/60">
+            Réinitialiser
+          </button>
+        </div>
+      ) : (
     <ul className="space-y-2">
-      {subjects.map((s) => {
+      {visible.map((s) => {
         const st = SUBJECT_STATE[s.displayState]
         return (
           <li key={s.canonicalSubjectId} className="rounded-xl border text-sm">
@@ -249,5 +311,7 @@ export function ActionsPilotageClient({ subjects, siteId }: { subjects: Pilotage
         )
       })}
     </ul>
+      )}
+    </div>
   )
 }
