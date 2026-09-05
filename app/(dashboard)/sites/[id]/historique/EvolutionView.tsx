@@ -518,6 +518,10 @@ export interface EvolutionViewProps {
   siteId: string
   readModel: EvolutionReadModel
   narrative: EvolutionNarrative
+  /** P1-PERF-A — narration IA en cours de génération hors réponse : les faits affichés
+   *  sont complets (texte déterministe) ; la narration enrichie apparaîtra au prochain
+   *  rendu de l'onglet. */
+  narrativePending?: boolean
   healthTimeline: SiteHealthTimeline | null
   nativeEvents?: Array<{ date: string; sourceKind: 'field_visit' | 'meeting'; label: string; canonicalSubjectId: string }>
   nativeSubjectEvolutions?: NativeSubjectEvolution[]
@@ -525,7 +529,7 @@ export interface EvolutionViewProps {
   subjectLabelMap?: Record<string, string>
 }
 
-export function EvolutionView({ siteId, readModel, narrative, healthTimeline, nativeEvents, nativeSubjectEvolutions, v2Results, subjectLabelMap }: EvolutionViewProps) {
+export function EvolutionView({ siteId, readModel, narrative, narrativePending, healthTimeline, nativeEvents, nativeSubjectEvolutions, v2Results, subjectLabelMap }: EvolutionViewProps) {
   if (readModel.periods.length === 0) {
     if (nativeSubjectEvolutions && nativeSubjectEvolutions.length > 0) {
       return <NativeEvolutionSection subjects={nativeSubjectEvolutions} siteId={siteId} v2Results={v2Results} />
@@ -562,6 +566,7 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline, na
             <p className="mt-0.5 text-xs text-muted-foreground">
               {essentialMoments.length} moment{essentialMoments.length > 1 ? 's' : ''} essentiel{essentialMoments.length > 1 ? 's' : ''} · {readModel.totalRuns} PV
               {!narrative.deterministic && narrative.model && ' · narration IA'}
+              {narrativePending && ' · narration IA en préparation'}
             </p>
           </div>
           {readModel.dateRange && (

@@ -1,4 +1,5 @@
 import 'server-only'
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { buildOccurrenceActivityMap } from './occurrence-population'
 import type { ActivityMap, ActivityCellState } from './site-synthesis'
@@ -423,13 +424,43 @@ function buildDeterministicText(period: EvolutionPeriod): string {
   return `${pvLabel} — ${parts.join(' ')}`
 }
 
+// P1-PERF-A — le plafond historique .max(10) invalidait TOUTE narration d'un chantier à
+// plus de 10 périodes (RUS : 15) : le LLM était payé à chaque rendu et sa réponse jetée,
+// l'utilisateur ne voyait que le fallback. Le plafond suit désormais la borne réelle du
+// read-model (périodes = PV groupés + silences ; 40 = garde-fou large, pas une cible).
 const narrativeSchema = z.object({
   periods: z.array(z.object({
     periodLabel:          z.string(),
-    text:                 z.string().min(10).max(600),
+    // Un texte trop long est TRONQUÉ, pas rejeté : jeter une génération de ~11 s parce
+    // qu'une période dépasse de 30 caractères était l'une des causes du « narration
+    // jamais affichée » (P1-PERF-A). La borne d'affichage reste 600.
+    text:                 z.string().min(10).transform((t) => (t.length > 600 ? `${t.slice(0, 597)}…` : t)),
     supportingSubjectIds: z.array(z.string()),
-  })).max(10),
+  })).max(40),
 })
+
+// P1-PERF-A — schéma NATIF Gemini : sans lui, le provider ne contraint PAS la sortie
+// (le zod ne sert qu'à valider après coup) → Gemini répondait en JSON libre d'une autre
+// forme, systématiquement rejeté : la narration était facturée à chaque rendu et jamais
+// affichée. Même style que canonical-subject-trajectory / site-story.
+const NARRATIVE_GEMINI_SCHEMA: Record<string, unknown> = {
+  type: 'OBJECT',
+  properties: {
+    periods: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          periodLabel:          { type: 'STRING' },
+          text:                 { type: 'STRING' },
+          supportingSubjectIds: { type: 'ARRAY', items: { type: 'STRING' } },
+        },
+        required: ['periodLabel', 'text', 'supportingSubjectIds'],
+      },
+    },
+  },
+  required: ['periods'],
+}
 
 const NARRATIVE_SYSTEM = `Tu es un analyste chantier. Tu produis une narration historique courte et factuelle
 à partir de données structurées sur l'évolution d'un chantier de construction.
@@ -439,7 +470,7 @@ Règles absolues :
 - Absence de mention dans un PV ≠ résolution — ne conclus jamais qu'un sujet est clos sans le voir dans les données.
 - Pas de causalité implicite entre sujets différents.
 - Pas de jugement sur des personnes ou entreprises.
-- 2 à 4 phrases par période normale, sobres, concrètes, en français.
+- 2 à 4 phrases par période normale, sobres, concrètes, en français — 550 caractères maximum par période.
 - Pour une période de silence : 1 seule phrase factuelle mentionnant le nombre de jours.
 - Dans supportingSubjectIds, liste uniquement les canonicalSubjectIds des sujets nommés dans le texte.`
 
@@ -512,10 +543,13 @@ function buildNarrativePrompt(model: EvolutionReadModel): string {
   return lines.join('\n')
 }
 
-export async function generateEvolutionNarrative(
-  readModel: EvolutionReadModel,
-): Promise<EvolutionNarrative> {
-  const fallback: EvolutionNarrative = {
+/**
+ * P1-PERF-A — narration DÉTERMINISTE complète (le « fallback » historique, promu en
+ * export) : une entrée par période, texte factuel, zéro LLM. C'est la vérité affichable
+ * immédiatement ; la narration IA ne fait que l'ENRICHIR, jamais la conditionner.
+ */
+export function buildDeterministicNarrative(readModel: EvolutionReadModel): EvolutionNarrative {
+  return {
     deterministic: true,
     model: null,
     periods: readModel.periods.map((p) => ({
@@ -527,6 +561,29 @@ export async function generateEvolutionNarrative(
       ],
     })),
   }
+}
+
+/** Bump à chaque changement de NARRATIVE_SYSTEM, du prompt ou du schéma : invalide le cache. */
+export const EVOLUTION_NARRATIVE_PROMPT_VERSION = 'evonarr.v1'
+
+/**
+ * P1-PERF-A — fingerprint MÉTIER de la narration : sha256(version ‖ system ‖ prompt).
+ * `buildNarrativePrompt` est une fonction PURE du read-model (périodes, transitions,
+ * sujets, dates métier, jours de silence — aucun timestamp de rendu, aucun champ
+ * volatil) : il EST la matière exacte présentée au LLM. Même matière → même
+ * fingerprint → la narration se réutilise ; matière changée (nouveau PV, transition,
+ * moments essentiels) → fingerprint neuf → régénération.
+ */
+export function computeEvolutionNarrativeFingerprint(readModel: EvolutionReadModel): string {
+  return createHash('sha256')
+    .update(`${EVOLUTION_NARRATIVE_PROMPT_VERSION}‖${NARRATIVE_SYSTEM}‖${buildNarrativePrompt(readModel)}`)
+    .digest('hex')
+}
+
+export async function generateEvolutionNarrative(
+  readModel: EvolutionReadModel,
+): Promise<EvolutionNarrative> {
+  const fallback = buildDeterministicNarrative(readModel)
 
   if (readModel.periods.length === 0) return fallback
 
@@ -539,23 +596,34 @@ export async function generateEvolutionNarrative(
       systemPrompt:    NARRATIVE_SYSTEM,
       userMessage:     buildNarrativePrompt(readModel),
       responseSchema:  narrativeSchema,
+      geminiSchema:    NARRATIVE_GEMINI_SCHEMA,
       modelTier:       'light',
-      maxOutputTokens: 2500,
+      // 2500 tronquait le JSON dès ~10 périodes (les supportingSubjectIds sont des UUID,
+      // ~25 tokens chacun) → parse impossible, narration jetée. 15 périodes RUS ≈ 4-6k.
+      maxOutputTokens: 8000,
     })
 
     let parsed: z.infer<typeof narrativeSchema> | undefined
+    let zodIssue: string | null = null
     if (res.parsed) {
       const r = narrativeSchema.safeParse(res.parsed)
       if (r.success) parsed = r.data
+      else zodIssue = r.error.issues.slice(0, 3).map((i) => `${i.path.join('.')}: ${i.message}`).join(' · ')
     }
     if (!parsed) {
-      try { parsed = narrativeSchema.parse(JSON.parse(res.text)) } catch { /* ignore */ }
+      try { parsed = narrativeSchema.parse(JSON.parse(res.text)) } catch { /* zodIssue porte déjà la cause structurée */ }
     }
 
-    if (!parsed) return fallback
+    if (!parsed) {
+      // Un LLM payé ~10 s dont la réponse est jetée ne doit JAMAIS être silencieux
+      // (P1-PERF-A : des mois de narration facturée et jamais affichée sur RUS).
+      console.error('[evolution-narrative] réponse LLM rejetée', { model: res.model, zodIssue, textStart: (res.text ?? '').slice(0, 180) })
+      return fallback
+    }
 
     return { deterministic: false, model: res.model, periods: parsed.periods }
-  } catch {
+  } catch (e) {
+    console.error('[evolution-narrative] échec LLM', e instanceof Error ? e.message : e)
     return fallback
   }
 }

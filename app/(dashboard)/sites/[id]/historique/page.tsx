@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { after } from 'next/server'
 import Link from 'next/link'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
@@ -15,7 +16,8 @@ import {
   getSiteHealthTimeline,
   getSiteDependencyGraph,
 } from '@/lib/documents/site-synthesis'
-import { buildEvolutionReadModel, generateEvolutionNarrative } from '@/lib/documents/pv-evolution'
+import { buildEvolutionReadModel, buildDeterministicNarrative, computeEvolutionNarrativeFingerprint } from '@/lib/documents/pv-evolution'
+import { getCachedEvolutionNarrative, ensureEvolutionNarrative } from '@/lib/documents/evolution-narrative-cache'
 import { isEvolutionV2Enabled, classifySubjectEvolutionV2 } from '@/lib/knowledge/evolution-v2'
 import type { V2SubjectResult } from '@/lib/knowledge/evolution-v2'
 import { deriveCanonicalAttentionItems } from '@/lib/knowledge/canonical-attention'
@@ -103,7 +105,16 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             getSiteHealthTimeline(siteId).catch(() => null),
             buildNativeEvolutionData(siteId).catch(() => []),
           ])
-          const narrative = await generateEvolutionNarrative(readModel)
+          // P1-PERF-A — la narration IA ne bloque plus le rendu (11,4 s mesurés pendant
+          // l'incident P0-PERF). Cache-first par fingerprint métier : matière inchangée
+          // → narration réutilisée, 0 appel LLM. Sinon : fallback déterministe rendu
+          // IMMÉDIATEMENT, génération via after() (hors réponse) → le prochain rendu de
+          // l'onglet (chaque clic est un rendu serveur) lit le cache.
+          const narrativeFingerprint = computeEvolutionNarrativeFingerprint(readModel)
+          const cachedNarrative = await getCachedEvolutionNarrative(siteId, narrativeFingerprint).catch(() => null)
+          const narrative = cachedNarrative ?? buildDeterministicNarrative(readModel)
+          const narrativePending = !cachedNarrative && readModel.periods.length > 0
+          if (narrativePending) after(() => ensureEvolutionNarrative(siteId, readModel, narrativeFingerprint))
 
           let v2Results: V2SubjectResult[] | null = null
           if (debugV2 && isEvolutionV2Enabled(siteId) && nativeSubjectEvolutions.length > 0) {
@@ -112,7 +123,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             ).catch(() => null)
           }
 
-          return { readModel, narrative, healthTimeline, nativeSubjectEvolutions, v2Results }
+          return { readModel, narrative, narrativePending, healthTimeline, nativeSubjectEvolutions, v2Results }
         } catch {
           return null
         }
@@ -369,6 +380,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               siteId={siteId}
               readModel={evolutionData.readModel}
               narrative={evolutionData.narrative}
+              narrativePending={evolutionData.narrativePending}
               healthTimeline={evolutionData.healthTimeline}
               nativeEvents={nativeEventsForEvolution}
               nativeSubjectEvolutions={evolutionData.nativeSubjectEvolutions}
