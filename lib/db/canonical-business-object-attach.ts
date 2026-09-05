@@ -48,6 +48,18 @@ import { produceObjectStateOccurrenceSignal } from '@/lib/db/object-state-occurr
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
+/**
+ * P3-3a — garde anti-récidive des CBO exact-byte-identiques (correctness).
+ * Choisit la cible du rattachement parmi les CBO déjà filtrés EN SQL sur
+ * (site, sujet winner, object_type, label STRICTEMENT byte-identique) : le plus
+ * ancien (created_at puis id). Déterministe, zéro fuzzy/normalisation/LLM.
+ * Renvoie null si aucun exact-dup → création normale.
+ */
+export function chooseExactGuardTarget(rows: Array<{ id: string; created_at: string }>): string | null {
+  if (rows.length === 0) return null
+  return [...rows].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))[0].id
+}
+
 export type AttachOutcome =
   | { kind: 'attached_existing'; canonicalBusinessObjectId: string; decision: ResolverDecision; confidence: number; reasoning: string }
   | { kind: 'created_new'; canonicalBusinessObjectId: string; source: 'llm' | 'deterministic'; decision?: ResolverDecision; confidence?: number; reasoning?: string }
@@ -215,6 +227,38 @@ async function createSoloCbo(
   if (!winnerSubjectId) {
     logError(`winner introuvable (chaîne de fusion cyclique/rompue) entity=${entityId} subject=${canonicalSubjectId}`, null)
     return { kind: 'skipped', reason: 'winner_unresolved' }
+  }
+
+  // P3-3a — GARDE ANTI-RÉCIDIVE : ne jamais créer un solo si un CBO de même
+  // (site, sujet winner, object_type, label BYTE-IDENTIQUE) existe déjà → s'y
+  // rattacher. Les .eq() enforcent structurellement les invariants : jamais
+  // cross-site, cross-subject ni cross-type ; label strict (aucune normalisation,
+  // aucun fuzzy, aucun LLM). Casse la boucle « ambiguous → solo » qui auto-
+  // entretenait les doublons exacts (audit CBO multiplicité 2026-09-05).
+  const { data: exactRows } = await sb
+    .from('canonical_business_object')
+    .select('id, created_at')
+    .eq('site_id', siteId)
+    .eq('canonical_subject_id', winnerSubjectId)
+    .eq('object_type', entityType)
+    .eq('label', label)
+  const exactTargetId = chooseExactGuardTarget((exactRows ?? []) as Array<{ id: string; created_at: string }>)
+  if (exactTargetId) {
+    const { error: attErr } = await sb.from('canonical_business_object_member').insert({
+      canonical_business_object_id: exactTargetId,
+      member_entity_type: entityType,
+      member_entity_id: entityId,
+      resolution_source: 'deterministic',
+      llm_confidence: null,
+      llm_reasoning: null,
+    })
+    if (attErr) {
+      if (attErr.code === '23505') return { kind: 'skipped', reason: 'already_member_race' }
+      logError(`garde exact-dup: erreur insertion membre entity=${entityId}`, attErr)
+      return { kind: 'skipped', reason: 'insert_error' }
+    }
+    log(`exact-dup guard: entity=${entityId} type=${entityType} → CBO existant ${exactTargetId} (label byte-identique, sujet ${winnerSubjectId})`)
+    return { kind: 'attached_existing', canonicalBusinessObjectId: exactTargetId, decision: 'SAME_OBJECT', confidence: 1, reasoning: 'garde déterministe : label byte-identique (P3-3a)' }
   }
 
   const { data: cbo, error } = await sb
