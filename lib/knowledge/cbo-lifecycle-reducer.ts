@@ -223,8 +223,13 @@ export function assembleCboEvents(
 
   for (const ev of natives) {
     const kind = nativeKindOf(ev.kind); if (!kind) continue
-    const at = day(ev.occurredAt); if (!at) continue
-    events.push({ kind, attestedAt: at, eventAt: at, source: 'journal' })
+    if (!ev.occurredAt) continue
+    // P3-3b — NATIF : conserver l'horodatage COMPLET (occurred_at porte un ordre métier réel,
+    // fiable et sub-seconde). Le documentaire reste au JOUR (day()). Ainsi deux natifs opposés
+    // le même jour (completed 11:00 → reopened 11:01) tombent dans des groupes de date DISTINCTS
+    // et sont réduits séquentiellement (→ native_reopened), au lieu de collisionner en un faux
+    // CONFLICT. La date civile de deux natifs opposés n'est plus, à elle seule, un conflit.
+    events.push({ kind, attestedAt: ev.occurredAt, eventAt: ev.occurredAt, source: 'journal' })
   }
 
   return { events, nature, documentaryHighCount: completions.length, suppressedByNature: suppressed, docOpenCount, membersSharedWithCompletionDoc: shared }
