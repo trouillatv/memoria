@@ -11,12 +11,13 @@ import { requireOwned } from '@/lib/auth/ownership'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVisit, endVisit, closeVisit, reopenVisit, getActiveVisit } from '@/lib/db/visits'
 import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
-import { buildWatchlistProposals, WATCHLIST_MAX } from '@/lib/visits/watchlist-proposals'
+import { buildWatchlistProposals, WATCHLIST_MAX, type WatchlistProposal } from '@/lib/visits/watchlist-proposals'
 import { seedWatchlist } from '@/lib/db/visit-watchlist'
 import { consumePreparationItems } from '@/lib/db/visit-preparation'
 import { mergeProposals } from '@/lib/visits/watchlist-merge'
 import { filterSettledNotApplicable, proposalsNeedingFreshness } from '@/lib/visits/watchlist-not-applicable-memory'
 import { loadNotApplicableVerdicts, loadSourceChangedAt } from '@/lib/db/watchlist-not-applicable'
+import { deriveVisitCandidates } from '@/lib/visits/visit-candidates'
 
 const MOTIVES = [
   'inspection', 'controle', 'reunion', 'avancement', 'reception',
@@ -76,12 +77,27 @@ export async function startVisitAction(
       ])
       // On construit SANS plafond, on retire ce qui a déjà été écarté, puis on
       // plafonne : la mémoire libère des places au lieu de raccourcir la liste.
-      const candidates = buildWatchlistProposals(signals, motive, Number.MAX_SAFE_INTEGER)
+      const proposals = buildWatchlistProposals(signals, motive, Number.MAX_SAFE_INTEGER)
       const changedAt = await loadSourceChangedAt(
-        proposalsNeedingFreshness(candidates, motive, verdicts),
+        proposalsNeedingFreshness(proposals, motive, verdicts),
       ).catch(() => new Map<string, string | null>())
-      const autoProposals = filterSettledNotApplicable(candidates, motive, verdicts, changedAt)
+      // Mémoire WOW-2A′ AVANT projection : on écarte d'abord ce qui a déjà été
+      // déclaré « sans objet » (identité/motif/fraîcheur inchangés), puis on projette.
+      const kept = filterSettledNotApplicable(proposals, motive, verdicts, changedAt)
+      // WOW-2C : le seed consomme la projection terrain V1 (WOW-2B). Chaque point
+      // porte désormais un verificationMode (field_check | ask_confirm) dérivable de
+      // source_kind — donc AUCUNE colonne ni migration. Ordre HISTORIQUE conservé
+      // (pas de rankVisitCandidates) : verificationMode est une annotation, pas un
+      // moteur de tri tant qu'aucune donnée réelle ne justifie un autre ordre.
+      const autoProposals: WatchlistProposal[] = deriveVisitCandidates(kept)
         .slice(0, WATCHLIST_MAX)
+        .map((c) => ({
+          label: c.label,
+          source_kind: c.sourceKind,
+          source_ref: c.sourceRef,
+          priority: c.priority,
+          reason: c.reason,
+        }))
       await seedWatchlist({
         reportId,
         siteId: parsed.data.site_id,
