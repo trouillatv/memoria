@@ -4,9 +4,15 @@
 // Doctrine : Aujourd'hui classe les CHANTIERS, pas les sujets.
 // Les sujets servent à expliquer pourquoi un chantier est remonté.
 //
-// Score = topSubjectScore + modifiers temporels et volumétriques.
-// Gravité d'abord (sujet le plus urgent du chantier), contexte ensuite.
+// Score = topSubjectScore + modifiers PROUVÉS (volume act_now, objets en retard,
+// débrief en attente, visite planifiée imminente). Gravité d'abord, contexte ensuite.
 // Zéro LLM. Zéro score affiché à l'utilisateur.
+//
+// P0 (2026-09-05) — l'ancienneté de la dernière visite (« longNoVisitBoost ») a été
+// RETIRÉE du classement : sans cadence de visite explicite en données, « pas visité
+// depuis N jours » ne prouve pas qu'une visite était DUE, donc ne peut pas justifier
+// qu'un chantier remonte. `lastVisitAt` reste renvoyé comme fait brut (jamais comme
+// priorité). Voir signal `planned_visit_overdue` pour le seul retard de visite prouvé.
 
 import 'server-only'
 import { TERRAIN_VISIT_ORIGINS } from '@/lib/field/visit-origins'
@@ -27,7 +33,6 @@ export interface SiteAttentionScore {
     overdueObjectBoost: number
     pendingDebriefBoost: number
     upcomingVisitBoost: number
-    longNoVisitBoost: number
   }
   /** Urgence du sujet le plus grave — dicte l'affichage du badge site */
   urgency: 'critical' | 'high' | 'medium' | 'low' | 'none'
@@ -47,20 +52,6 @@ function addDays(iso: string, n: number): string {
   const d = new Date(iso)
   d.setUTCDate(d.getUTCDate() + n)
   return d.toISOString().slice(0, 10)
-}
-
-function daysBetween(isoA: string, isoB: string): number {
-  return Math.round((new Date(isoB).getTime() - new Date(isoA).getTime()) / 86_400_000)
-}
-
-// Classe basée sur l'ancienneté de la dernière visite — pas de croissance linéaire.
-// récent (≤30j) → 0 / à revoir (31-90j) → 5 / très ancien (>90j ou aucune visite) → 8
-function computeLongNoVisitBoost(lastVisitAt: string | null, today: string): number {
-  if (!lastVisitAt) return 8
-  const days = daysBetween(lastVisitAt.slice(0, 10), today)
-  if (days <= 30) return 0
-  if (days <= 90) return 5
-  return 8
 }
 
 function scoreToUrgency(score: number): SiteAttentionScore['urgency'] {
@@ -215,17 +206,17 @@ export async function deriveMultiSiteAttention(
         const nextVisitAt = nextVisitBySite.get(site.id) ?? null
         const upcomingVisitBoost = nextVisitAt ? 8 : 0
 
-        // Ancienneté de la dernière visite (classe, pas croissance linéaire)
+        // `lastVisitAt` = fait brut renvoyé pour affichage, JAMAIS un poids de classement
+        // (pas de cadence attendue en données → l'ancienneté ne prouve pas une négligence).
         const lastVisitAt = lastVisitBySite.get(site.id) ?? null
-        const longNoVisitBoost = computeLongNoVisitBoost(lastVisitAt, today)
 
-        const score = topSubjectScore + highCountBoost + overdueObjectBoost + pendingDebriefBoost + upcomingVisitBoost + longNoVisitBoost
+        const score = topSubjectScore + highCountBoost + overdueObjectBoost + pendingDebriefBoost + upcomingVisitBoost
 
         return {
           siteId: site.id,
           siteName: site.name,
           score,
-          contributions: { topSubjectScore, highCountBoost, overdueObjectBoost, pendingDebriefBoost, upcomingVisitBoost, longNoVisitBoost },
+          contributions: { topSubjectScore, highCountBoost, overdueObjectBoost, pendingDebriefBoost, upcomingVisitBoost },
           urgency: scoreToUrgency(topSubjectScore),
           topSubjects: items.slice(0, 2),
           lastVisitAt,

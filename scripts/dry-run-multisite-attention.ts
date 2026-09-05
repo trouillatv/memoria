@@ -62,7 +62,6 @@ async function main() {
     console.log(`   └─ overdue obj : +${s.contributions.overdueObjectBoost}`)
     console.log(`   └─ débrief     : +${s.contributions.pendingDebriefBoost}`)
     console.log(`   └─ visite imm. : +${s.contributions.upcomingVisitBoost}`)
-    console.log(`   └─ ancienneté  : +${s.contributions.longNoVisitBoost}`)
 
     if (s.lastVisitAt) {
       const days = Math.round((Date.now() - new Date(s.lastVisitAt).getTime()) / 86_400_000)
