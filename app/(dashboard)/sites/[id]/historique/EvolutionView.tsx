@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
-import type {
-  EvolutionReadModel,
-  EvolutionNarrative,
-  EvolutionSubjectFact,
+import {
+  selectEssentialMoments,
+  type EvolutionReadModel,
+  type EvolutionNarrative,
+  type EvolutionSubjectFact,
+  type EssentialMoment,
 } from '@/lib/documents/pv-evolution'
 import type { SiteHealthTimeline } from '@/lib/documents/site-synthesis'
 import type { NativeSubjectEvolution } from '@/lib/db/canonical-subject-life'
@@ -73,38 +75,6 @@ const PHASE_STYLES: Record<PhaseType, { dot: string; badge: string; cardBorder: 
   stable:     { dot: 'bg-slate-400 ring-slate-100 dark:ring-slate-800',  badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-400',   cardBorder: 'border-border',                               bg: '' },
   neutral:    { dot: 'bg-slate-500 ring-slate-100 dark:ring-slate-800',  badge: 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-400',   cardBorder: 'border-border',                               bg: '' },
   silence:    { dot: 'bg-slate-300 dark:bg-slate-600 ring-slate-100 dark:ring-slate-800', badge: 'bg-slate-100 text-slate-500 dark:bg-slate-800/40 dark:text-slate-400', cardBorder: 'border-dashed border-border', bg: 'bg-muted/20' },
-}
-
-// ── Sélection des moments charnières ──────────────────────────────────────────
-
-function selectCharnieres(
-  periods: EvolutionReadModel['periods'],
-  phases: PhaseInfo[],
-): number[] {
-  const nonSilenceScores = periods.filter((p) => !p.isSilence).map((p) => p.importanceScore)
-  const maxScore = Math.max(...nonSilenceScores, 1)
-  const threshold = Math.max(12, maxScore * 0.25)
-
-  const selected = new Set<number>()
-
-  for (let i = 0; i < periods.length; i++) {
-    const p = periods[i]
-    if (p.isSilence) {
-      selected.add(i)
-      continue
-    }
-    if (p.importanceScore >= threshold) selected.add(i)
-    const prev = i > 0 ? periods[i - 1] : null
-    if (prev?.isSilence) selected.add(i)  // toujours inclure la reprise après un silence
-  }
-
-  // Garantir au moins le score le plus élevé
-  const topIdx = periods
-    .map((p, i) => ({ i, score: p.isSilence ? 0 : p.importanceScore }))
-    .sort((a, b) => b.score - a.score)[0]?.i
-  if (topIdx !== undefined) selected.add(topIdx)
-
-  return [...selected].sort((a, b) => a - b)
 }
 
 // ── Impact label ──────────────────────────────────────────────────────────────
@@ -248,14 +218,21 @@ function SubjectList({
 
 // ── Carte charnière (compacte, au-dessus de la frise) ─────────────────────────
 
+const REASON_LABEL: Record<EssentialMoment['reason'], string> = {
+  start:   'Début',
+  peak:    'Pic d’activité',
+  current: 'État actuel',
+}
+
 function CharnièreCard({
-  period, phase, styles, siteId, maxScore,
+  period, phase, styles, siteId, maxScore, reason,
 }: {
   period: EvolutionReadModel['periods'][number]
   phase: PhaseInfo
   styles: (typeof PHASE_STYLES)[PhaseType]
   siteId: string
   maxScore: number
+  reason: EssentialMoment['reason']
 }) {
   const pvLabel = period.pvNumbers.length === 0 ? null
     : period.pvNumbers.length === 1 ? `PV${period.pvNumbers[0]}`
@@ -266,6 +243,9 @@ function CharnièreCard({
   return (
     <div className={cn('flex-1 min-w-0 rounded-[18px] border p-4 shadow-sm', styles.cardBorder, styles.bg || 'bg-card')}>
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
+        <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+          {REASON_LABEL[reason]}
+        </span>
         <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide', styles.badge)}>
           {phase.label}
         </span>
@@ -569,21 +549,18 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline, na
   })
 
   const maxNonSilenceScore = Math.max(...readModel.periods.filter((p) => !p.isSilence).map((p) => p.importanceScore), 1)
-  const charnièreIdxs = selectCharnieres(readModel.periods, phases)
-
-  const activePeriods  = readModel.periods.filter((p) => !p.isSilence).length
-  const silencePeriods = readModel.periods.filter((p) => p.isSilence).length
+  // P3-2 « Essentiel » : début + maxima locaux + actuel (silences ni comptés ni forcés).
+  const essentialMoments = selectEssentialMoments(readModel.periods)
 
   return (
     <div className="space-y-4">
-      {/* ── 1. MOMENTS CHARNIÈRES ────────────────────────────────────────── */}
+      {/* ── 1. MOMENTS ESSENTIELS ────────────────────────────────────────── */}
       <section className="rounded-[22px] border bg-card p-5 shadow-sm">
         <div className="mb-4 flex items-baseline justify-between">
           <div>
             <h2 className="text-sm font-semibold">Moments qui ont changé ce chantier</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {readModel.totalRuns} PV · {activePeriods} période{activePeriods > 1 ? 's' : ''}
-              {silencePeriods > 0 && ` · ${silencePeriods} silence${silencePeriods > 1 ? 's' : ''}`}
+              {essentialMoments.length} moment{essentialMoments.length > 1 ? 's' : ''} essentiel{essentialMoments.length > 1 ? 's' : ''} · {readModel.totalRuns} PV
               {!narrative.deterministic && narrative.model && ' · narration IA'}
             </p>
           </div>
@@ -595,14 +572,15 @@ export function EvolutionView({ siteId, readModel, narrative, healthTimeline, na
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          {charnièreIdxs.map((idx: number) => (
+          {essentialMoments.map((m) => (
             <CharnièreCard
-              key={idx}
-              period={readModel.periods[idx]}
-              phase={phases[idx]}
-              styles={PHASE_STYLES[phases[idx].type]}
+              key={m.index}
+              period={readModel.periods[m.index]}
+              phase={phases[m.index]}
+              styles={PHASE_STYLES[phases[m.index].type]}
               siteId={siteId}
               maxScore={maxNonSilenceScore}
+              reason={m.reason}
             />
           ))}
         </div>

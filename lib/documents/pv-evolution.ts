@@ -56,6 +56,69 @@ export interface EvolutionNarrative {
   deterministic: boolean
 }
 
+// ── Sélection « Essentiel » (P3-2) ──────────────────────────────────────────────
+// « Essentiel » = les moments où la trajectoire change réellement de rythme, plus le
+// point de départ et l'état actuel. Population, sur les périodes ACTIVES uniquement :
+//   {première} ∪ {maxima locaux d'importanceScore} ∪ {dernière}
+// Déterministe, explicable, stable, ZÉRO nouveau score (réutilise importanceScore),
+// zéro LLM. Les SILENCES ne sont jamais des moments essentiels et ne forcent JAMAIS
+// la période suivante (contrairement à l'ancien selectCharnieres). Cap 8 = garde-fou
+// seulement : on ne complète JAMAIS artificiellement jusqu'à un minimum.
+//
+// Maximum local (règle explicite, plateaux traités) : on parcourt les périodes actives
+// par « runs » de scores égaux [i..j]. Le run est un pic si son voisin actif gauche est
+// strictement inférieur (ou bord) ET son voisin actif droit est strictement inférieur
+// (ou bord). Sur un plateau, on retient une SEULE période : la plus récente (index j).
+// Début et fin sont épinglés indépendamment (réunion d'ensembles → pas de doublon).
+
+export interface EssentialMoment {
+  /** Index dans `periods` (tableau complet, silences inclus) de la période retenue. */
+  index: number
+  /** Raison de sélection — une phrase par moment. Début/fin priment sur « pic ». */
+  reason: 'start' | 'peak' | 'current'
+}
+
+const ESSENTIAL_CAP = 8
+
+export function selectEssentialMoments(periods: EvolutionPeriod[]): EssentialMoment[] {
+  const active = periods.map((p, i) => ({ p, i })).filter((e) => !e.p.isSilence)
+  const n = active.length
+  if (n === 0) return []
+  const score = (k: number) => active[k].p.importanceScore
+
+  // Maxima locaux avec collapse de plateau (on garde la période la plus récente du run).
+  const peaks = new Set<number>()
+  let k = 0
+  while (k < n) {
+    let j = k
+    while (j + 1 < n && score(j + 1) === score(k)) j++ // run de scores égaux [k..j]
+    const leftLower = k === 0 || score(k - 1) < score(k)
+    const rightLower = j === n - 1 || score(j + 1) < score(j)
+    if (leftLower && rightLower) peaks.add(j)
+    k = j + 1
+  }
+
+  // Début + actuel toujours épinglés (indépendamment des pics).
+  const chosen = new Set<number>([0, n - 1, ...peaks])
+  let activeIdx = [...chosen].sort((a, b) => a - b)
+
+  // Garde-fou cap 8 : conserver les bornes, puis les pics internes les plus forts
+  // (score DESC, égalité → plus récent). Jamais de complétion vers un minimum.
+  if (activeIdx.length > ESSENTIAL_CAP) {
+    const endpoints = [0, n - 1]
+    const internal = activeIdx
+      .filter((x) => x !== 0 && x !== n - 1)
+      .sort((a, b) => score(b) - score(a) || b - a)
+      .slice(0, Math.max(0, ESSENTIAL_CAP - endpoints.length))
+    activeIdx = [...new Set([...endpoints, ...internal])].sort((a, b) => a - b)
+  }
+
+  const reasonOf = (x: number): EssentialMoment['reason'] =>
+    x === 0 ? 'start' : x === n - 1 ? 'current' : 'peak'
+
+  return activeIdx.map((x) => ({ index: active[x].i, reason: reasonOf(x) }))
+}
+
 // ── Constantes ────────────────────────────────────────────────────────────────
 
 const SILENCE_THRESHOLD_DAYS = 45  // gap > 45j → période de silence documentaire
