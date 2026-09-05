@@ -58,6 +58,8 @@ import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-
 import type { FreeAnswer, FreeAnswerContext, HistoryMessage, RecentChangeContext } from '@/lib/visits/copilot-free-answer'
 import { buildSiteActivityReadModel } from '@/lib/knowledge/site-activity-read-model'
 import { buildVisitPlan } from '@/lib/visits/visit-plan-builder'
+import { buildVisitCandidatePreview } from '@/lib/visits/visit-candidate-preview'
+import { buildNextVisitPlan, loadCandidateSubjectRefs } from '@/lib/visits/next-visit-plan'
 import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
 import { getSiteActorContext } from '@/lib/db/site-actor-responsibilities'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
@@ -2028,29 +2030,37 @@ export async function prepareCopilotAnswer(
     extra.actorContext = actorContext
   }
 
-  // Plan de visite : toujours définir visitPlanDetail pour intent plan_visite
-  // (même vide → le LLM sait que le plan humain est vide et peut distinguer
-  //  plan_utilisateur de recommandations_memoria)
+  // Plan de visite (WOW-2E) : toujours défini pour intent plan_visite (même vide →
+  // le LLM sait que le plan humain est vide et distingue plan_utilisateur de
+  // recommandations_memoria).
   //
-  // Deux sources, dans cet ordre : le moteur canonique d'attention d'abord, puis
-  // `pvToVerify`. Avant ce lot, seule la seconde alimentait le plan — un chantier
-  // suivi en visites terrain sans PV analysé (PETRO ATTITI) recevait donc une
-  // liste vide, et MemorIA demandait à l'utilisateur ce qu'il fallait vérifier
-  // au lieu de le lui dire. On lit `allAttention` et non `attention` pour la même
-  // raison qu'au-dessus (construction du contexte) : `rankBriefingAttention`
-  // écarte les `low` et rendrait le plan vide sur ce chantier précis.
+  // Population AUTORITATIVE = celle du Briefing et du seed (buildVisitCandidatePreview,
+  // object-first). Le Copilote raconte EXACTEMENT ce que David verra et retrouvera
+  // dans sa watchlist : mêmes source_kind/source_ref, même verificationMode, même
+  // mémoire WOW-2A′, même ordre, même cap. Aucune autre sélection n'ajoute de contrôle.
   //
-  // La projection elle-même (hiérarchie de visite, quoi vérifier, dernier état
-  // connu, changement depuis la dernière visite) vit dans `buildVisitPlan` :
-  // un item d'attention n'est pas un contrôle terrain, et le LLM ne peut pas
-  // inventer une hiérarchie métier qu'on ne lui fournit pas.
+  // buildVisitPlan (subject-first) devient une COUCHE D'ENRICHISSEMENT : il prête
+  // why/lastKnown/changeSinceLastVisit à un candidat SEULEMENT via un rattachement
+  // déterministe au même canonicalSubjectId. Il ne crée jamais d'item. Les signaux
+  // subject-first sans candidat objet (échéances, stagnation…) ne figurent donc
+  // plus ici — ils restent dans leurs autres surfaces produit.
   const needsPlan = safeIntent === 'next_visit'
   if (needsPlan) {
-    extra.visitPlanDetail = buildVisitPlan(
+    const candidates = await buildVisitCandidatePreview(siteId, null)
+    const subjectByRef = await loadCandidateSubjectRefs(siteId, candidates).catch(() => new Map<string, string>())
+    const controlByCs = new Map<string, { why: string; lastKnown: string | null; changeSinceLastVisit: string | null }>()
+    for (const c of buildVisitPlan(
       (briefing?.allAttention ?? []).filter((i) => isVisitPlanSignal(i.signal)),
       overview.pvToVerify,
       COPILOT_MAX_VISIT_PLAN,
-    )
+    )) {
+      // n'indexe que les VisitControl portant un vrai canonicalSubjectId (id = cs),
+      // jamais les `vp-N` sans rattachement.
+      if (subjectByRef.size > 0 && [...subjectByRef.values()].includes(c.id)) {
+        controlByCs.set(c.id, { why: c.why, lastKnown: c.lastKnown, changeSinceLastVisit: c.changeSinceLastVisit })
+      }
+    }
+    extra.visitPlanDetail = buildNextVisitPlan(candidates, subjectByRef, controlByCs)
   }
 
   // ── Prêt pour l'appel LLM ──────────────────────────────────────────────────

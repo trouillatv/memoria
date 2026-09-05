@@ -19,7 +19,7 @@ import { buildFallbackText } from './copilot-context'
 import { SPOKEN_PROMPT_RULES } from './copilot-answer'
 import { sanitizeSpokenText, spokenFromShortAnswer, buildSpokenFallback, SPOKEN_MAX_CHARS } from '@/lib/voice/spoken-answer'
 import type { ActorContext } from '@/lib/db/site-actor-responsibilities'
-import type { VisitControl } from './visit-plan-builder'
+import type { NextVisitPlanItem } from './next-visit-plan'
 import { buildSpokenPlanContract, isSpokenTextWithinPlanVoix } from './visit-plan-builder'
 import { frDayMonthYearLocal } from '@/lib/time/local-date'
 
@@ -30,12 +30,14 @@ export interface RecentChangeContext {
 }
 
 /**
- * Un point de `recommandations_memoria` n'est plus un sujet à regarder mais un
- * CONTRÔLE TERRAIN (quoi vérifier, pourquoi, dernier état connu, changement
- * depuis la dernière visite), construit par `buildVisitPlan`. Alias conservé :
- * c'est le nom sous lequel le contexte LLM le connaît.
+ * WOW-2E — un point de `recommandations_memoria` est un CANDIDAT DE VISITE
+ * object-first (même population que le Briefing et le seed) : source_kind +
+ * source_ref, verificationMode (« à constater » / « à demander·confirmer »),
+ * éventuellement enrichi (why / lastKnown / changeSinceLastVisit) quand un
+ * rattachement canonique déterministe existe. Alias conservé : c'est le nom sous
+ * lequel le contexte LLM le connaît.
  */
-export type VisitPlanItemContext = VisitControl
+export type VisitPlanItemContext = NextVisitPlanItem
 
 // `spokenText` est volontairement absent de ce schéma bloquant : produit par le
 // même appel LLM, il est validé à part sur l'objet brut. Un champ vocal trop

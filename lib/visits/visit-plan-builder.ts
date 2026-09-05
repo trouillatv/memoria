@@ -395,7 +395,13 @@ export interface SpokenPlanContract {
   resume: Array<{ id: string; label: string; tierLabel: string }>
 }
 
-export function buildSpokenPlanContract(controls: VisitControl[], maxSummarized = 3): SpokenPlanContract {
+// Le contrat oral n'a besoin que de {id, label, tierLabel} : type STRUCTUREL, pour
+// que VisitControl (subject-first) ET NextVisitPlanItem (object-first, WOW-2E)
+// satisfassent le contrat sans conversion. `tierLabel` d'un item object-first = le
+// libellé du mode (« À constater sur place » / « À demander / confirmer »).
+export type SpokenPlanControl = { id: string; label: string; tierLabel: string }
+
+export function buildSpokenPlanContract(controls: ReadonlyArray<SpokenPlanControl>, maxSummarized = 3): SpokenPlanContract {
   return {
     total: controls.length,
     resume: controls.slice(0, maxSummarized).map((c) => ({ id: c.id, label: c.label, tierLabel: c.tierLabel })),
@@ -410,7 +416,7 @@ export function buildSpokenPlanContract(controls: VisitControl[], maxSummarized 
  * Utilisé par D1 pour décider, PENDANT le streaming, si un `spokenText`
  * détecté peut partir en TTS ou doit attendre la réponse complète.
  */
-export function isSpokenTextWithinPlanVoix(spokenText: string, controls: VisitControl[]): boolean {
+export function isSpokenTextWithinPlanVoix(spokenText: string, controls: ReadonlyArray<SpokenPlanControl>): boolean {
   if (controls.length === 0) return true
   const contract = buildSpokenPlanContract(controls)
   const allowedLabels = new Set(contract.resume.map((r) => r.label))
