@@ -4,10 +4,10 @@
 // SiteReportPanel. Partagé mobile (/m/site), fiche site et fiche contrat.
 // Réunion site (siteId) OU réunion contrat (contractId, multi-sites).
 
-import { useState } from 'react'
 import { ClipboardList } from 'lucide-react'
 import { SiteReportPanel } from './SiteReportPanel'
 import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
+import { useControllableOpen } from '@/components/ui/use-controllable-open'
 
 interface Props {
   // Réunion site
@@ -21,10 +21,15 @@ interface Props {
   /** Reprise d'une réunion déjà commencée (carte « en attente » du Journal) :
    *  le panneau s'ouvre directement sur la réunion existante — jamais un double. */
   resumeReportId?: string | null
+  /** Mode contrôlé (barre d'actions mobile) — facultatif, cf. useControllableOpen. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Le parent porte déjà le déclencheur (ligne d'une feuille « Ajouter »). */
+  hideTrigger?: boolean
 }
 
-export function SiteReportLauncher({ siteId, siteName, contractId, contractName, variant = 'mobile', label, resumeReportId }: Props) {
-  const [open, setOpen] = useState(!!resumeReportId)
+export function SiteReportLauncher({ siteId, siteName, contractId, contractName, variant = 'mobile', label, resumeReportId, open: controlledOpen, onOpenChange, hideTrigger }: Props) {
+  const [open, setOpen] = useControllableOpen({ open: controlledOpen, onOpenChange, defaultOpen: !!resumeReportId })
   const reportType = contractId ? 'contract' : 'site'
 
   const buttonClass =
@@ -34,10 +39,12 @@ export function SiteReportLauncher({ siteId, siteName, contractId, contractName,
 
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={buttonClass}>
-        <ClipboardList className="h-4 w-4 text-sky-600" />
-        {label ?? (reportType === 'contract' ? 'Réunion de contrat' : 'Compte-rendu chantier')}
-      </button>
+      {!hideTrigger && (
+        <button type="button" onClick={() => setOpen(true)} className={buttonClass}>
+          <ClipboardList className="h-4 w-4 text-sky-600" />
+          {label ?? (reportType === 'contract' ? 'Réunion de contrat' : 'Compte-rendu chantier')}
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/80 backdrop-blur-sm p-3 sm:p-6">

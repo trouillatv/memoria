@@ -9,7 +9,7 @@
 // Doctrine : descriptif et calme. Les humains (équipes) n'apparaissent que comme
 // contexte, jamais avec un score. Aucun appel LLM — pure agrégation côté serveur.
 
-import { useRef, useState, useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import {
   Brain,
@@ -45,6 +45,7 @@ import { completeDeadlineAction, rescheduleDeadlineAction } from './views/planni
 import { closeActionAction, updateActionDetailsAction } from '@/app/(dashboard)/actions/actions'
 import { liftReserveAction } from './reserves/actions'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { useControllableOpen } from '@/components/ui/use-controllable-open'
 
 interface Props {
   /** Site fixé par le contexte (fiche site / mobile site). */
@@ -64,6 +65,11 @@ interface Props {
   /** Motif porté par le flux de lancement (« Pourquoi êtes-vous ici ? »). Depuis
    *  la fiche chantier il est absent → le panneau ouvre en Suivi et laisse choisir. */
   initialMotive?: VisitIntent
+  /** Mode contrôlé (barre d'actions mobile) — facultatif, cf. useControllableOpen. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Le parent porte déjà le déclencheur (ligne de la feuille « Préparer »). */
+  hideTrigger?: boolean
 }
 
 // Accent par motif (jeton couleur, pas une classe métier) : Suivi=bleu ·
@@ -116,8 +122,8 @@ function ageDaysLabel(iso: string | null): string | null {
   return `il y a ${days} j`
 }
 
-export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'visit', appearance = 'button', label, description, initialMotive }: Props) {
-  const [open, setOpen] = useState(false)
+export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'visit', appearance = 'button', label, description, initialMotive, open: controlledOpen, onOpenChange, hideTrigger }: Props) {
+  const [open, setOpen] = useControllableOpen({ open: controlledOpen, onOpenChange })
   // Motif de préparation (mode visite uniquement). Depuis la fiche : Suivi par
   // défaut + sélecteur ; depuis le flux de lancement : le motif choisi est porté.
   const [motive, setMotive] = useState<VisitIntent>(initialMotive ?? 'avancement')
@@ -169,6 +175,18 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
     if (siteId) loadBrief(siteId) // site fixe → charge direct ; sinon on attend la sélection
   }
 
+  // Mode contrôlé UNIQUEMENT : l'ouverture ne passe plus par `openPanel`, donc
+  // personne n'amorce le chargement. On le déclenche ici, et seulement ici — le
+  // chemin historique (déclencheur interne) reste strictement inchangé, sans
+  // double appel.
+  const isControlled = controlledOpen !== undefined
+  useEffect(() => {
+    if (!isControlled || !controlledOpen || !siteId) return
+    loadBrief(siteId)
+    // `loadBrief` porte déjà sa propre garde « déjà chargé pour ce site ».
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isControlled, controlledOpen, siteId])
+
   // D4 — après un « Vu » sur un signal du Débrief vivant : `brief` est un état
   // client, pas une page server-rendue, donc `router.refresh()` (pattern D3 dev)
   // ne s'applique pas ici. On recharge explicitement en contournant la garde
@@ -193,7 +211,7 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
 
   return (
     <>
-      {appearance === 'card' ? (
+      {hideTrigger ? null : appearance === 'card' ? (
         <button
           type="button"
           onClick={openPanel}

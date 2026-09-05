@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, type FormEvent } from 'react'
 import Link from 'next/link'
 import { Sparkles, Loader2, ExternalLink, SendHorizontal } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { useControllableOpen } from '@/components/ui/use-controllable-open'
 import {
   askCopilotFreeAction,
   type CopilotFreeResult,
@@ -47,13 +48,21 @@ export function CopilotMobileSheet({
   siteId,
   siteName,
   initialSubjectIds = [],
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
 }: {
   siteId: string
   siteName?: string
   initialSubjectIds?: string[]
+  /** Mode contrôlé (barre d'actions mobile) — facultatif, cf. useControllableOpen. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Le parent porte déjà le déclencheur (pilule « Demander »). */
+  hideTrigger?: boolean
 }) {
   const { openOrb, addPendingProposal, removePendingProposal, registerProposalViewHandler } = useVoiceOrb()
-  const [open, setOpen]                      = useState(false)
+  const [open, setOpen]                      = useControllableOpen({ open: controlledOpen, onOpenChange })
   const [messages, setMessages]              = useState<Msg[]>([])
   const [inputText, setInputText]            = useState('')
   const [loading, setLoading]                = useState(false)
@@ -342,21 +351,23 @@ export function CopilotMobileSheet({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-violet-300 bg-violet-50/50 px-4 py-3 text-left dark:border-violet-800/50 dark:bg-violet-950/10 active:opacity-70"
-      >
-        <Sparkles className="h-4 w-4 shrink-0 text-violet-500" />
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-violet-700 dark:text-violet-300">
-            Demander à MemorIA
-          </p>
-          <p className="text-[11px] text-violet-400 dark:text-violet-500">
-            Posez une question sur ce chantier…
-          </p>
-        </div>
-      </button>
+      {!hideTrigger && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-violet-300 bg-violet-50/50 px-4 py-3 text-left dark:border-violet-800/50 dark:bg-violet-950/10 active:opacity-70"
+        >
+          <Sparkles className="h-4 w-4 shrink-0 text-violet-500" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium text-violet-700 dark:text-violet-300">
+              Demander à MemorIA
+            </p>
+            <p className="text-[11px] text-violet-400 dark:text-violet-500">
+              Posez une question sur ce chantier…
+            </p>
+          </div>
+        </button>
+      )}
 
       <Sheet open={open} onOpenChange={closeSheet}>
         <SheetContent side="bottom" className="flex flex-col max-h-[90svh] rounded-t-2xl px-4 pb-safe-area-inset-bottom">

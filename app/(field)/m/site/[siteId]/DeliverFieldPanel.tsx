@@ -8,10 +8,23 @@ import { useRouter } from 'next/navigation'
 import { Truck, Camera, Check, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { recordDeliveryFieldAction } from './delivery-actions'
+import { useControllableOpen } from '@/components/ui/use-controllable-open'
 
-export function DeliverFieldPanel({ siteId }: { siteId: string }) {
+export function DeliverFieldPanel({
+  siteId,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
+}: {
+  siteId: string
+  /** Mode contrôlé (barre d'actions mobile) — facultatif, cf. useControllableOpen. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Le parent porte déjà le déclencheur (ligne d'une feuille « Ajouter »). */
+  hideTrigger?: boolean
+}) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useControllableOpen({ open: controlledOpen, onOpenChange })
   const [pending, startTransition] = useTransition()
   const [photoName, setPhotoName] = useState<string | null>(null)
   const formRef = useRef<HTMLFormElement>(null)
@@ -32,6 +45,7 @@ export function DeliverFieldPanel({ siteId }: { siteId: string }) {
   }
 
   if (!open) {
+    if (hideTrigger) return null
     return (
       <button type="button" onClick={() => setOpen(true)}
         className="h-full w-full inline-flex items-center justify-center gap-2 rounded-xl border bg-muted/30 shadow-sm text-foreground text-sm font-medium px-4 py-3.5 active:brightness-95 transition">

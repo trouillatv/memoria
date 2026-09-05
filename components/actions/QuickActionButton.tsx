@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { createQuickActionAction } from '@/app/(dashboard)/actions/actions'
+import { useControllableOpen } from '@/components/ui/use-controllable-open'
 
 interface Props {
   source: 'mobile_site' | 'desktop_site' | 'actions_list'
@@ -22,11 +23,16 @@ interface Props {
   /** Sélecteur de site (obligatoire) quand aucun site n'est fixé (/actions). */
   sites?: Array<{ id: string; name: string }>
   variant?: 'mobile' | 'desktop'
+  /** Mode contrôlé (barre d'actions mobile) — facultatif, cf. useControllableOpen. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Le parent porte déjà le déclencheur (ligne d'une feuille « Ajouter »). */
+  hideTrigger?: boolean
 }
 
-export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }: Props) {
+export function QuickActionButton({ source, siteId, sites, variant = 'desktop', open: controlledOpen, onOpenChange, hideTrigger }: Props) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useControllableOpen({ open: controlledOpen, onOpenChange })
   const [title, setTitle] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [selectedSite, setSelectedSite] = useState('')
@@ -172,7 +178,7 @@ export function QuickActionButton({ source, siteId, sites, variant = 'desktop' }
   // ce qui agrandissait la ligne — Vincent 2026-06-29.)
   return (
     <>
-      {trigger}
+      {!hideTrigger && trigger}
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-background/70 backdrop-blur-sm p-3 pt-[10vh] md:pt-[14vh]"

@@ -17,10 +17,23 @@ import { useRouter } from 'next/navigation'
 import { FileText, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { uploadSiteDocumentAction } from '@/app/(dashboard)/sites/[id]/site-add-actions'
+import { useControllableOpen } from '@/components/ui/use-controllable-open'
 
-export function AddDocumentPanel({ siteId }: { siteId: string }) {
+export function AddDocumentPanel({
+  siteId,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
+}: {
+  siteId: string
+  /** Mode contrôlé (barre d'actions mobile) — facultatif, cf. useControllableOpen. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Le parent porte déjà le déclencheur (ligne d'une feuille « Ajouter »). */
+  hideTrigger?: boolean
+}) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useControllableOpen({ open: controlledOpen, onOpenChange })
   const [fileName, setFileName] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
   const formRef = useRef<HTMLFormElement>(null)
@@ -56,6 +69,7 @@ export function AddDocumentPanel({ siteId }: { siteId: string }) {
   }
 
   if (!open) {
+    if (hideTrigger) return null
     return (
       <button
         type="button"

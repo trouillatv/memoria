@@ -18,12 +18,41 @@ import { addSiteNoteAction } from './note-actions'
 type CapturedPhoto = { blob: Blob; previewUrl: string } | null
 type Mode = 'idle' | 'choice' | 'note'
 
-export function SpontaneousCapturePanel({ siteId, siteName }: { siteId: string; siteName?: string }) {
+export function SpontaneousCapturePanel({
+  siteId,
+  siteName,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
+}: {
+  siteId: string
+  siteName?: string
+  /** Mode contrôlé (barre d'actions mobile) — facultatif. Ici l'ouverture n'est
+   *  pas un booléen interne mais une machine à 3 états : `open` vrai signifie
+   *  simplement « au moins l'étape choix ». La machine reste la SEULE vérité,
+   *  elle est juste DÉRIVÉE (aucun effet, aucune logique dupliquée). */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Le parent porte déjà le déclencheur (ligne d'une feuille « Ajouter »). */
+  hideTrigger?: boolean
+}) {
   const [mode, setMode] = useState<Mode>('idle')
   const [photo, setPhoto] = useState<CapturedPhoto>(null)
   const [note, setNote] = useState('')
   const [pending, startTransition] = useTransition()
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const isControlled = controlledOpen !== undefined
+  const effMode: Mode = isControlled
+    ? (controlledOpen ? (mode === 'idle' ? 'choice' : mode) : 'idle')
+    : mode
+
+  /** Retour à l'état de repos — et, en mode contrôlé, fermeture chez le parent. */
+  function close() {
+    setMode('idle')
+    setNote('')
+    onOpenChange?.(false)
+  }
 
   function openCamera() {
     inputRef.current?.click()
@@ -58,6 +87,7 @@ export function SpontaneousCapturePanel({ siteId, siteName }: { siteId: string; 
         })
         URL.revokeObjectURL(photo.previewUrl)
         setPhoto(null)
+        close()
         toast.success('Trace déposée', { duration: 1500 })
       } catch (err) {
         console.error('[queueSpontaneousPhoto]', err)
@@ -72,8 +102,7 @@ export function SpontaneousCapturePanel({ siteId, siteName }: { siteId: string; 
     startTransition(async () => {
       const r = await addSiteNoteAction({ siteId, body })
       if (r.ok) {
-        setNote('')
-        setMode('idle')
+        close()
         toast.success('Note déposée', { duration: 1500 })
       } else {
         toast.error(r.error)
@@ -118,14 +147,14 @@ export function SpontaneousCapturePanel({ siteId, siteName }: { siteId: string; 
   }
 
   // ── Overlay 2 : composer une note ──────────────────────────────────────────
-  if (mode === 'note') {
+  if (effMode === 'note') {
     return (
       <div className="fixed inset-x-0 bottom-0 p-4 bg-background border-t safe-bottom space-y-3">
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium inline-flex items-center gap-1.5">
             <StickyNote className="h-4 w-4" /> Note sur ce chantier
           </span>
-          <button type="button" onClick={() => { setMode('idle'); setNote('') }} disabled={pending} aria-label="Fermer" className="text-muted-foreground">
+          <button type="button" onClick={close} disabled={pending} aria-label="Fermer" className="text-muted-foreground">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -155,7 +184,7 @@ export function SpontaneousCapturePanel({ siteId, siteName }: { siteId: string; 
   }
 
   // ── État « choix » : Note / Photo ──────────────────────────────────────────
-  if (mode === 'choice') {
+  if (effMode === 'choice') {
     return (
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-2">
@@ -176,7 +205,7 @@ export function SpontaneousCapturePanel({ siteId, siteName }: { siteId: string; 
             Photo
           </button>
         </div>
-        <button type="button" onClick={() => setMode('idle')} className="w-full text-xs text-muted-foreground py-1">
+        <button type="button" onClick={close} className="w-full text-xs text-muted-foreground py-1">
           Annuler
         </button>
         <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={onFileChange} className="hidden" />
@@ -185,6 +214,10 @@ export function SpontaneousCapturePanel({ siteId, siteName }: { siteId: string; 
   }
 
   // ── État initial : carte légère (fond blanc, bordure légère, icône colorée) ──
+  // Piloté depuis la barre d'actions, le déclencheur est ailleurs : au repos ce
+  // composant ne doit rien occuper dans la page.
+  if (hideTrigger) return null
+
   return (
     <>
       <button

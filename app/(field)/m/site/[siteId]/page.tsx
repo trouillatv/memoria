@@ -7,13 +7,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { ensureTodayInterventionsForSites } from '@/lib/recurrence/ensure-today'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
-import { SpontaneousCapturePanel } from './SpontaneousCapturePanel'
 import { VisitLauncher } from './VisitLauncher'
 import { VisitBasket, type SubjectMemoryLite } from './VisitBasket'
 import { VisitObjectivePrompt } from './VisitObjectivePrompt'
 import { getActiveVisit, getStartedVisitById, buildSiteStatusSummary, buildSinceLastVisitDelta } from '@/lib/db/visits'
-import { getSiteCoverPhoto } from '@/lib/db/site-cover'
-import { SiteStatusCard } from './SiteStatusCard'
+import { getSiteIdentity } from '@/lib/db/site-cockpit'
+import { SiteHeroMobile } from './SiteHeroMobile'
+import { SiteKpiTiles } from './SiteKpiTiles'
 import { SinceLastVisitCard } from './SinceLastVisitCard'
 import { JustVisitedBanner } from './JustVisitedBanner'
 import { SitePresenceReminders } from './SitePresenceReminders'
@@ -26,13 +26,8 @@ import { NextStepCard } from './NextStepCard'
 import { buildVisitBrief } from '@/lib/db/site-visit-brief'
 import { VisitBriefCard } from './VisitBriefCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
-import { SiteReportLauncher } from './SiteReportLauncher'
-import { DeliverFieldPanel } from './DeliverFieldPanel'
-import { AddDocumentPanel } from './AddDocumentPanel'
-import { QuickActionButton } from '@/components/actions/QuickActionButton'
-import { SiteBriefButton } from '@/app/(dashboard)/sites/[id]/SiteBriefButton'
+import { SiteActionBar } from './SiteActionBar'
 import { ChefSiteView } from './ChefSiteView'
-import { CopilotMobileSheet } from './CopilotMobileSheet'
 import { ChevronRight } from 'lucide-react'
 import { Suspense } from 'react'
 import { SiteToTreatSection, SiteToTreatSkeleton } from './SiteToTreatSection'
@@ -138,11 +133,14 @@ export default async function FieldSitePage({
     return <ChefSiteView siteId={siteId} userId={user.id} userRole={user.role} />
   }
 
-  const pastVisitDays = await countDistinctVisitDays(user.id, siteId)
+  // Identité (logo client, nom client) + compteur de passage terrain + visite en
+  // cours : trois lectures indépendantes → un seul aller-retour parallèle.
+  const [pastVisitDays, identity, activeVisitFromQuery] = await Promise.all([
+    countDistinctVisitDays(user.id, siteId),
+    getSiteIdentity(siteId).catch(() => null),
+    getActiveVisit(siteId).catch(() => null),
+  ])
   const nthPassage = pastVisitDays + 1
-
-  // Visite en cours — chargée en priorité.
-  const activeVisitFromQuery = await getActiveVisit(siteId).catch(() => null)
   // Repli déterministe : si la relecture n'a pas (encore) retrouvé la visite mais
   // que l'URL porte l'id d'une visite qu'on vient de démarrer, on l'ouvre par id.
   const activeVisit =
@@ -238,31 +236,21 @@ export default async function FieldSitePage({
 
   const presenceReminders = await buildSitePresenceReminders(siteId, { limit: 3 }).catch(() => [])
 
-  // Photo principale du chantier (mig 243) — la vignette qui le représente.
-  // Pas pendant une visite en cours : l'écran de collecte reste épuré.
-  const cover = activeVisit ? null : await getSiteCoverPhoto(siteId).catch(() => null)
-
   return (
     <div className="max-w-md space-y-6 pb-32">
       {justVisited && <JustVisitedBanner />}
-      <header className="space-y-1">
-        <h1 className="text-xl font-semibold">
-          Bonjour {firstNameOf(user.full_name, user.email)}
-        </h1>
-      </header>
 
-      <section className="space-y-2">
-        {cover && (
-          <div className="overflow-hidden rounded-2xl border">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={cover.url} alt={`Photo du chantier ${site.name}`} className="h-40 w-full object-cover" />
-          </div>
-        )}
-        <div className="space-y-1">
-          <h2 className="text-2xl font-bold leading-tight">{site.name}</h2>
-          <p className="text-sm text-muted-foreground">{nthPassage}ᵉ passage</p>
-        </div>
-      </section>
+      {/* Hero chantier compact — identité MemorIA à l'entrée d'un chantier :
+          logo client prioritaire (sinon présence MemorIA), nom du chantier,
+          badge de passage terrain. Remplace l'ancien en-tête + la photo de
+          couverture (abandonnée en Phase 1 : le logo client porte l'identité). */}
+      <SiteHeroMobile
+        siteName={site.name}
+        clientName={identity?.clientName ?? null}
+        clientLogoUrl={identity?.clientLogoUrl ?? null}
+        nthPassage={nthPassage}
+        greetingName={firstNameOf(user.full_name, user.email)}
+      />
 
       {/* Visite ouverte → le PANIER (collecte focalisée, écran épuré). Sinon → la
           fiche « dossier vivant » : on COMPREND le chantier, on SE PRÉPARE, on AGIT. */}
@@ -295,8 +283,15 @@ export default async function FieldSitePage({
         </div>
       ) : (
         <div className="space-y-6">
-          {/* 1 — État du chantier */}
-          <SiteStatusCard cells={siteStatus} />
+          {/* 1 — État du chantier : 4 mini-KPI sur une ligne (même vérité, compact),
+              puis la TOOLBAR du chantier collée dessous. L'ordre porte la lecture :
+              je comprends le chantier → j'ai mes outils → je lis ce qui mérite mon
+              attention. La barre n'est pas une section du contenu : elle ne descend
+              donc jamais sous « À traiter » / « Sur place » / l'agenda. */}
+          <div className="space-y-2.5">
+            <SiteKpiTiles cells={siteStatus} />
+            <SiteActionBar siteId={siteId} siteName={site.name} resumeReportId={resumeReportId} />
+          </div>
 
           {/* 2 — À traiter : signaux d'intervention uniquement (propositions + actions en retard + sujet urgent). */}
           <Suspense fallback={<SiteToTreatSkeleton />}>
@@ -341,40 +336,6 @@ export default async function FieldSitePage({
 
           {/* 5 — Prochaine étape : agenda à venir (réunions, interventions, échéances). */}
           <NextStepCard steps={nextSteps} />
-
-          {/* ─── Zone d'action ─── */}
-          <section className="space-y-2.5">
-            <SiteBriefButton siteId={siteId} variant="mobile" mode="visit" />
-            <SiteBriefButton siteId={siteId} variant="mobile" mode="meeting" />
-          </section>
-
-          <Link
-            href={`/m/site/${siteId}/visites`}
-            className="flex items-center justify-between rounded-xl border bg-card px-4 py-3 shadow-sm active:brightness-95"
-          >
-            <div>
-              <p className="text-[14px] font-medium">Explorer le chantier</p>
-              <p className="text-[12px] text-muted-foreground">Visites · Réunions · Actions · Réserves · Mémoire · Documents</p>
-            </div>
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </Link>
-
-          {/* Demander à MemorIA — compact et secondaire. */}
-          <CopilotMobileSheet siteId={siteId} siteName={site.name} />
-
-          {/* Ajouter… — outils de création du lieu. */}
-          <section className="space-y-2 pt-3 border-t border-border/40">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Ajouter…
-            </h2>
-            <div className="grid grid-cols-2 gap-2">
-              <QuickActionButton source="mobile_site" siteId={siteId} variant="mobile" />
-              <SpontaneousCapturePanel siteId={siteId} siteName={site.name} />
-              <SiteReportLauncher siteId={siteId} siteName={site.name} variant="mobile" label="Compte-rendu" resumeReportId={resumeReportId} />
-              <DeliverFieldPanel siteId={siteId} />
-              <AddDocumentPanel siteId={siteId} />
-            </div>
-          </section>
 
           {/* Démarrer la visite — sticky. */}
           <div className="sticky bottom-20 z-30 drop-shadow-lg">
