@@ -22,9 +22,11 @@ import { deriveCanonicalAttentionItems } from '@/lib/knowledge/canonical-attenti
 import { CanonicalAttentionRow } from '@/components/site/CanonicalAttentionRow'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
+import { buildSiteWindowComparison, type WindowComparisonResult } from '@/lib/documents/pv-window-comparison'
 import { SubjectLifelineGrid } from './SubjectLifelineGrid'
 import { SyntheseView } from './SyntheseView'
 import { EvolutionView } from './EvolutionView'
+import { AvantApresView } from './AvantApresView'
 import { DependencyGraphView } from './DependencyGraphView'
 
 export const dynamic = 'force-dynamic'
@@ -32,7 +34,7 @@ export const dynamic = 'force-dynamic'
 // P2-3 — la vue « PV » (heatmap / ActivityMapView) a été retirée : c'était une 2e matrice sujet × PV,
 // moins expressive que Lignes de vie, dont le seul apport (objets métier) était une projection brute
 // obsolète (hors C2A). Les anciens deep-links `?view=heatmap` redirigent vers `lifelines`.
-type ViewKey = 'synthese' | 'lifelines' | 'evolution' | 'deps' | 'attention'
+type ViewKey = 'synthese' | 'avant-apres' | 'lifelines' | 'evolution' | 'deps' | 'attention'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -42,6 +44,8 @@ interface PageProps {
     theme?: string
     status?: string
     v2?: string
+    from?: string
+    to?: string
   }>
 }
 
@@ -57,7 +61,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const sp = await searchParams
   // P2-3 — compat non-cassante : l'ancien `?view=heatmap` (vue « PV » supprimée) redirige vers Lignes de vie.
   if (sp.view === 'heatmap') redirect(`/sites/${siteId}/historique?view=lifelines`)
-  const VALID_VIEWS: ViewKey[] = ['synthese', 'lifelines', 'evolution', 'deps', 'attention']
+  const VALID_VIEWS: ViewKey[] = ['synthese', 'avant-apres', 'lifelines', 'evolution', 'deps', 'attention']
   const view: ViewKey = (VALID_VIEWS.includes(sp.view as ViewKey) ? sp.view as ViewKey : 'synthese')
   const initialThread = sp.thread ?? null
   const initialTheme = sp.theme ?? null
@@ -142,6 +146,23 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     reportId: null,
   })))
 
+  // Avant / Après — comparaison NETTE entre deux bornes LIBREMENT choisies. Primitive dédiée
+  // (`buildSiteWindowComparison`) : elle COMPOSE la fenêtre ]from, to] au lieu de relire la
+  // transition locale du dernier PV. `getPvDelta` (adjacent-only) n'est PAS utilisé ici.
+  // Bornes par défaut : premier PV → dernier PV (« depuis le début du suivi »).
+  let windowComparison: WindowComparisonResult | null = null
+  if (view === 'avant-apres' && matrixRuns.length >= 2) {
+    const last = matrixRuns.length - 1
+    const idxOf = (id?: string) => (id ? matrixRuns.findIndex((r) => r.id === id) : -1)
+    // Bornes normalisées : `from` strictement antérieur à `to`, jamais un PV comparé à lui-même.
+    let fromIdx = idxOf(sp.from)
+    let toIdx = idxOf(sp.to)
+    if (fromIdx < 0 || fromIdx === last) fromIdx = 0
+    if (toIdx <= fromIdx) toIdx = last
+    if (toIdx <= fromIdx) fromIdx = 0
+    windowComparison = await buildSiteWindowComparison(siteId, matrixRuns[fromIdx].id, matrixRuns[toIdx].id).catch(() => null)
+  }
+
   // Delta entre les deux derniers PV (si ≥ 2) — P0 : occurrence-first (même vérité que
   // l'Aperçu #230 / Chronologie / Lignes de vie), catégories séparées, knowledge_fact gardé.
   let deltaData: { summary: OccurrencePvSummary; fromIdx: number; toIdx: number } | null = null
@@ -187,6 +208,17 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const watchlist = matrix ? computeWatchlist(matrix) : []
   const categories = matrix ? computeProgressByCategory(matrix) : []
   const totalSubjects = matrix?.rows.length ?? 0
+
+  // « Avant / Après » n'existe qu'avec au moins deux comptes rendus comparables : sur un chantier
+  // nourri uniquement par des visites natives (aucun PV importé), l'onglet est masqué plutôt que
+  // d'afficher une comparaison structurellement vide.
+  const tabs: Array<{ key: ViewKey; label: string }> = [
+    { key: 'synthese', label: 'Synthèse' },
+    ...(matrixRuns.length >= 2 ? [{ key: 'avant-apres' as ViewKey, label: 'Avant / Après' }] : []),
+    { key: 'attention', label: 'Attention' },
+    { key: 'evolution', label: 'Évolution' },
+    { key: 'lifelines', label: 'Lignes de vie' },
+  ]
 
   function viewHref(v: ViewKey) {
     const p = new URLSearchParams()
@@ -239,12 +271,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
               réel existera. La route ?view=deps reste fonctionnelle (deep-link), non discoverable.
               Voir docs/architecture/relations-p0-convergence.md. */}
           <nav className="mt-4 flex gap-1 rounded-xl bg-muted/40 p-1">
-            {([
-              { key: 'synthese',   label: 'Synthèse' },
-              { key: 'attention',  label: 'Attention' },
-              { key: 'evolution',  label: 'Évolution' },
-              { key: 'lifelines',  label: 'Lignes de vie' },
-            ] as const).map(({ key, label }) => (
+            {tabs.map(({ key, label }) => (
               <Link
                 key={key}
                 href={viewHref(key)}
@@ -271,6 +298,21 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             totalSubjects={totalSubjects}
             importantSubjects={importantSubjects}
           />
+        )}
+
+        {/* Avant / Après — comparaison nette entre deux moments choisis */}
+        {view === 'avant-apres' && (
+          windowComparison?.ok ? (
+            <AvantApresView siteId={siteId} data={windowComparison.data} />
+          ) : (
+            <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
+              <p className="font-medium">Comparaison impossible.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Il faut au moins deux comptes rendus importés, et la date d&apos;arrivée doit être
+                postérieure à la date de départ.
+              </p>
+            </section>
+          )
         )}
 
         {/* Attention — population complète des sujets qui demandent une action (#231) */}
