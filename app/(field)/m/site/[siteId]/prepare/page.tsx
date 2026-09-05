@@ -8,6 +8,7 @@ import { getActiveVisit, buildSiteStatusSummary } from '@/lib/db/visits'
 import { getSiteOverview, emptySiteOverview } from '@/lib/knowledge/site-overview'
 import { listActivePreparationItems } from '@/lib/db/visit-preparation'
 import { buildVisitBriefing } from '@/lib/knowledge/visit-briefing'
+import { buildVisitCandidatePreview, partitionByVerificationMode } from '@/lib/visits/visit-candidate-preview'
 import { SiteStatusCard } from '../SiteStatusCard'
 import { VisitLauncher } from '../VisitLauncher'
 import { VisitBriefClient } from './VisitBriefClient'
@@ -44,13 +45,28 @@ export default async function PrepareVisitPage({
     .maybeSingle()
   if (!site) notFound()
 
-  const [status, activeVisit, overview, rawPrepItems, briefing] = await Promise.all([
+  const [status, activeVisit, overview, rawPrepItems, briefing, candidates] = await Promise.all([
     buildSiteStatusSummary(siteId).catch(() => []),
     getActiveVisit(siteId).catch(() => null),
     getSiteOverview(siteId).catch(() => emptySiteOverview(siteId)),
     listActivePreparationItems(siteId, user.id).catch(() => []),
     buildVisitBriefing(siteId).catch(() => null),
+    // WOW-2D — population machine (motif inconnu en préparation → null). Identique
+    // à ce que startVisitAction seedera. Jamais bloquant.
+    buildVisitCandidatePreview(siteId, null).catch(() => []),
   ])
+
+  // « À constater / À demander » — sérialisation JSON-safe (sous-ensemble object-first).
+  const { field_check, ask_confirm } = partitionByVerificationMode(candidates)
+  const toView = (c: (typeof candidates)[number]) => ({
+    sourceKind: c.sourceKind,
+    sourceRef: c.sourceRef,
+    label: c.label,
+    reason: c.reason,
+    verificationMode: c.verificationMode,
+  })
+  const fieldCheckView = field_check.map(toView)
+  const askConfirmView = ask_confirm.map(toView)
 
   // Sérialisation JSON-safe pour le client component
   const prepItems: PrepItemSeed[] = rawPrepItems.map((p) => ({
@@ -86,8 +102,15 @@ export default async function PrepareVisitPage({
         </Link>
       </header>
 
-      {/* 0 — Briefing intelligent avant terrain */}
-      {briefing && <VisitBriefingBlock briefing={briefing} siteId={siteId} />}
+      {/* 0 — Briefing intelligent avant terrain (WOW-2D : À constater / À demander) */}
+      {briefing && (
+        <VisitBriefingBlock
+          briefing={briefing}
+          siteId={siteId}
+          fieldCheck={fieldCheckView}
+          askConfirm={askConfirmView}
+        />
+      )}
 
       {/* 1 — Confrontation échéances ↔ terrain */}
       <OverdueDeadlinesSection siteId={siteId} />

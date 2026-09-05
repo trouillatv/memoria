@@ -1,30 +1,32 @@
 import Link from 'next/link'
 import type { VisitBriefing } from '@/lib/knowledge/visit-briefing'
-import type { SiteAttentionItem, AttentionUrgency } from '@/lib/knowledge/site-attention-items'
 
-const URGENCY_DOT: Record<AttentionUrgency, string> = {
-  critical: 'bg-rose-500',
-  high:     'bg-amber-400',
-  medium:   'bg-sky-400',
-  low:      'bg-muted-foreground/40',
+/** Candidat de visite sérialisé pour le client (sous-ensemble de ObjectVisitCandidate). */
+export interface VisitCandidateView {
+  sourceKind: string
+  sourceRef: string
+  label: string
+  reason: string | null
+  verificationMode: 'field_check' | 'ask_confirm'
 }
 
-function AttentionRow({ item }: { item: SiteAttentionItem }) {
+/** Un geste de visite. PAS d'urgence : la pastille est neutre, le mode dit le geste
+ *  (constater / demander), jamais une priorité. reason = contexte, quand disponible. */
+function CandidateRow({ item }: { item: VisitCandidateView }) {
   return (
-    <Link href={item.href} className="flex items-start gap-3 py-2.5 active:opacity-60">
-      <span
-        className={`mt-1.5 h-2 w-2 flex-none rounded-full ${URGENCY_DOT[item.urgency]}`}
-        aria-hidden
-      />
+    <div className="flex items-start gap-3 py-2.5">
+      <span className="mt-1.5 h-2 w-2 flex-none rounded-full bg-muted-foreground/40" aria-hidden />
       <span className="min-w-0 flex-1">
         <span className="block text-[14px] font-medium leading-snug text-foreground">
-          {item.title}
+          {item.label}
         </span>
-        <span className="block text-[12px] leading-snug text-muted-foreground">
-          {item.reason}
-        </span>
+        {item.reason && (
+          <span className="block text-[12px] leading-snug text-muted-foreground">
+            {item.reason}
+          </span>
+        )}
       </span>
-    </Link>
+    </div>
   )
 }
 
@@ -36,14 +38,26 @@ function DeltaRow({ label, value, color }: { label: string; value: number; color
   )
 }
 
-export function VisitBriefingBlock({ briefing, siteId }: { briefing: VisitBriefing; siteId: string }) {
-  const { attention, delta, watchlistOpenCount } = briefing
+export function VisitBriefingBlock({
+  briefing,
+  siteId,
+  fieldCheck,
+  askConfirm,
+}: {
+  briefing: VisitBriefing
+  siteId: string
+  /** WOW-2D — population MACHINE object-first, identique à ce qui sera seedé. */
+  fieldCheck: VisitCandidateView[]
+  askConfirm: VisitCandidateView[]
+}) {
+  const { delta, watchlistOpenCount } = briefing
 
-  const hasAttention = attention.length > 0
+  const hasFieldCheck = fieldCheck.length > 0
+  const hasAskConfirm = askConfirm.length > 0
   const hasDelta = delta !== null
   const hasWatchlist = watchlistOpenCount > 0
 
-  if (!hasAttention && !hasDelta && !hasWatchlist) return null
+  if (!hasFieldCheck && !hasAskConfirm && !hasDelta && !hasWatchlist) return null
 
   const sinceLabel = delta
     ? new Date(delta.since).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
@@ -51,21 +65,35 @@ export function VisitBriefingBlock({ briefing, siteId }: { briefing: VisitBriefi
 
   return (
     <div className="space-y-5">
-      {/* ── Section 1 : À vérifier aujourd'hui ─────────────────────────────── */}
-      {hasAttention && (
+      {/* ── WOW-2D — À constater sur place (field_check) ────────────────────── */}
+      {hasFieldCheck && (
         <section className="space-y-1">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            À vérifier aujourd'hui
+            À constater sur place
           </h2>
           <div className="divide-y divide-foreground/[0.06] rounded-2xl border border-foreground/[0.06] bg-card px-4">
-            {attention.map((item, i) => (
-              <AttentionRow key={`${item.signal}-${i}`} item={item} />
+            {fieldCheck.map((item) => (
+              <CandidateRow key={`${item.sourceKind}-${item.sourceRef}`} item={item} />
             ))}
           </div>
         </section>
       )}
 
-      {/* ── Section 2 : Depuis votre dernière visite ────────────────────────── */}
+      {/* ── WOW-2D — À demander / confirmer (ask_confirm) ───────────────────── */}
+      {hasAskConfirm && (
+        <section className="space-y-1">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            À demander / confirmer
+          </h2>
+          <div className="divide-y divide-foreground/[0.06] rounded-2xl border border-foreground/[0.06] bg-card px-4">
+            {askConfirm.map((item) => (
+              <CandidateRow key={`${item.sourceKind}-${item.sourceRef}`} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Depuis votre dernière visite ────────────────────────────────────── */}
       {hasDelta && sinceLabel && (
         <section className="space-y-1">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

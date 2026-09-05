@@ -10,14 +10,11 @@ import { requireFieldAgent } from '@/lib/field/auth'
 import { requireOwned } from '@/lib/auth/ownership'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createVisit, endVisit, closeVisit, reopenVisit, getActiveVisit } from '@/lib/db/visits'
-import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
-import { buildWatchlistProposals, WATCHLIST_MAX, type WatchlistProposal } from '@/lib/visits/watchlist-proposals'
+import type { WatchlistProposal } from '@/lib/visits/watchlist-proposals'
 import { seedWatchlist } from '@/lib/db/visit-watchlist'
 import { consumePreparationItems } from '@/lib/db/visit-preparation'
 import { mergeProposals } from '@/lib/visits/watchlist-merge'
-import { filterSettledNotApplicable, proposalsNeedingFreshness } from '@/lib/visits/watchlist-not-applicable-memory'
-import { loadNotApplicableVerdicts, loadSourceChangedAt } from '@/lib/db/watchlist-not-applicable'
-import { deriveVisitCandidates } from '@/lib/visits/visit-candidates'
+import { buildVisitCandidatePreview } from '@/lib/visits/visit-candidate-preview'
 
 const MOTIVES = [
   'inspection', 'controle', 'reunion', 'avancement', 'reception',
@@ -68,36 +65,21 @@ export async function startVisitAction(
     // silencieuse (friction zéro), best-effort (ne bloque JAMAIS le démarrage).
     try {
       const motive = parsed.data.motive ?? null
-      const [signals, humanItems, verdicts] = await Promise.all([
-        buildSiteMemorySignals(parsed.data.site_id),
+      // WOW-2D : le seed consomme le read-model PARTAGÉ avec le Briefing. La
+      // population machine (WOW-2A′ mémoire → WOW-2B projection → top WATCHLIST_MAX,
+      // ordre historique) est identique à ce que David a vu en préparation. Le plan
+      // humain (human_prep) est fusionné ensuite, jamais mêlé à la population machine.
+      const [autoCandidates, humanItems] = await Promise.all([
+        buildVisitCandidatePreview(parsed.data.site_id, motive),
         consumePreparationItems(parsed.data.site_id, auth.userId, reportId).catch(() => []),
-        // Mémoire du verdict « sans objet » (WOW-2A′) : ne pas reposer une
-        // question déjà écartée sur une source qui n'a pas bougé.
-        loadNotApplicableVerdicts(parsed.data.site_id).catch(() => []),
       ])
-      // On construit SANS plafond, on retire ce qui a déjà été écarté, puis on
-      // plafonne : la mémoire libère des places au lieu de raccourcir la liste.
-      const proposals = buildWatchlistProposals(signals, motive, Number.MAX_SAFE_INTEGER)
-      const changedAt = await loadSourceChangedAt(
-        proposalsNeedingFreshness(proposals, motive, verdicts),
-      ).catch(() => new Map<string, string | null>())
-      // Mémoire WOW-2A′ AVANT projection : on écarte d'abord ce qui a déjà été
-      // déclaré « sans objet » (identité/motif/fraîcheur inchangés), puis on projette.
-      const kept = filterSettledNotApplicable(proposals, motive, verdicts, changedAt)
-      // WOW-2C : le seed consomme la projection terrain V1 (WOW-2B). Chaque point
-      // porte désormais un verificationMode (field_check | ask_confirm) dérivable de
-      // source_kind — donc AUCUNE colonne ni migration. Ordre HISTORIQUE conservé
-      // (pas de rankVisitCandidates) : verificationMode est une annotation, pas un
-      // moteur de tri tant qu'aucune donnée réelle ne justifie un autre ordre.
-      const autoProposals: WatchlistProposal[] = deriveVisitCandidates(kept)
-        .slice(0, WATCHLIST_MAX)
-        .map((c) => ({
-          label: c.label,
-          source_kind: c.sourceKind,
-          source_ref: c.sourceRef,
-          priority: c.priority,
-          reason: c.reason,
-        }))
+      const autoProposals: WatchlistProposal[] = autoCandidates.map((c) => ({
+        label: c.label,
+        source_kind: c.sourceKind,
+        source_ref: c.sourceRef,
+        priority: c.priority,
+        reason: c.reason,
+      }))
       await seedWatchlist({
         reportId,
         siteId: parsed.data.site_id,
