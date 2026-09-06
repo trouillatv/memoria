@@ -54,6 +54,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           actionsCount={actionsHealth.total}
           actionsCritical={actionsHealth.critique}
           orgs={orgsMeta}
+          showIntervenants={process.env.INTERVENANTS_PAGE_ENABLED === 'true'}
         />
         <div className="md:pl-60">
           <AppTopbar fullName={fullName} role={user.role} />
