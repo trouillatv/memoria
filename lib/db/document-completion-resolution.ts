@@ -215,13 +215,17 @@ export async function getEffectiveResolutionsByProposalBatch(
   const wanted = new Map(proofs.map((p) => [`${p.proofProposalId}␟${p.contextFingerprint}`, p.proofProposalId]))
   const sb = createAdminClient()
   const ids = [...new Set(proofs.map((p) => p.proofProposalId))]
-  const CHUNK = 100
-  for (let i = 0; i < ids.length; i += CHUNK) {
-    const { data } = await sb
-      .from('document_completion_resolution')
+  // P1-PERF-C2 — chunks 250 en Promise.all (étaient séquentiels par 100) ; sélection en
+  // mémoire inchangée, ordre sans effet.
+  const CHUNK = 250
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK))
+  for (const { data } of await Promise.all(chunks.map((c) =>
+    sb.from('document_completion_resolution')
       .select('id, proof_proposal_id, decision, confidence_class, selected_cbo_id, policy_version, context_fingerprint, resolved_at')
       .eq('policy_version', policyVersion)
-      .in('proof_proposal_id', ids.slice(i, i + CHUNK))
+      .in('proof_proposal_id', c),
+  ))) {
     for (const r of (data ?? []) as Array<{ id: string; proof_proposal_id: string; decision: string; confidence_class: string; selected_cbo_id: string | null; policy_version: string; context_fingerprint: string; resolved_at: string }>) {
       const proposalId = wanted.get(`${r.proof_proposal_id}␟${r.context_fingerprint}`)
       if (!proposalId) continue // fingerprint périmé → pas la décision effective (comme le .eq unitaire)

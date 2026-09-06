@@ -15,6 +15,7 @@ import 'server-only'
 //   - non_mentionné est un état CALCULÉ — jamais stocké.
 //   - Absence ≠ résolution. Le moteur observe, ne déduit pas.
 
+import { cache } from 'react'
 import type { DeltaTransition } from './pv-comparison'
 import { documentStatusToPvState } from './subject-state'
 import type { PvState } from './subject-state'
@@ -51,7 +52,15 @@ export function runEffectiveDate(run: RunRow): string {
  * canonique doit quand même apparaître dans les vues temporelles produit
  * (découverte Guillaume, P0-J.1/P1-A.1).
  */
-export async function canonicalRunsForSite(siteId: string): Promise<RunRow[]> {
+export const canonicalRunsForSite = cache(canonicalRunsForSiteUncached)
+
+/**
+ * P1-PERF-C1 — enveloppé dans React cache() : l'audit a mesuré 3 à 4 exécutions de cette
+ * paire (site_reports matérialisés + runs) par rendu, chaque appelant (matrice, nav,
+ * cells) refaisant la même lecture. Cache STRICTEMENT request-scoped (clé = siteId) :
+ * aucun TTL, aucune persistance ; hors contexte de requête (scripts batch), passthrough.
+ */
+async function canonicalRunsForSiteUncached(siteId: string): Promise<RunRow[]> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const { getMaterializedRunIdsForSite } = await import('@/lib/db/canonical-subject-historical-corpus-reconcile')
   const supabase = createAdminClient()
@@ -356,7 +365,13 @@ export async function getSiteHistoricalTimeline(siteId: string): Promise<SiteHis
  *
  * Tri par défaut : activité décroissante (dernier run avec présence réelle).
  */
-export async function getSiteSubjectMatrix(siteId: string): Promise<SiteSubjectMatrix> {
+export const getSiteSubjectMatrix = cache(getSiteSubjectMatrixUncached)
+
+/**
+ * P1-PERF-C1 — enveloppé dans React cache() : ~10 requêtes par exécution, partagée entre
+ * read-models d'une même page (Suivi, Debrief, Attention). Request-scoped pur, clé = siteId.
+ */
+async function getSiteSubjectMatrixUncached(siteId: string): Promise<SiteSubjectMatrix> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 

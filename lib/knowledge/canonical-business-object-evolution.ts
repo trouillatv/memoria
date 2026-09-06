@@ -263,6 +263,22 @@ export type CboReducedEntry = {
  * Déterministe et READ-ONLY. La complétion documentaire n'est émise que si (a) une résolution B
  * effective MATCH/HIGH existe pour le CBO ET (b) la nature C1C du libellé est one_shot+terminal.
  */
+// P1-PERF-C2 — lecture par chunks PARALLÈLES : même ensemble de lignes, mêmes filtres,
+// agrégation en Maps indépendantes de l'ordre. CHUNK 250 UUID ≈ 9,5 ko d'URL (marge
+// large sous les limites PostgREST/proxy — longueur réelle journalisée en recette).
+// Remplace les boucles de chunks séquentiels (~150 ms de RTT par chunk) mesurées P1-C.
+const CHUNK_PAR = 250
+async function fetchAllChunks<Row>(
+  ids: string[],
+  run: (chunk: string[]) => PromiseLike<{ data: Row[] | null }>,
+): Promise<Row[]> {
+  if (ids.length === 0) return []
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += CHUNK_PAR) chunks.push(ids.slice(i, i + CHUNK_PAR))
+  const results = await Promise.all(chunks.map((c) => run(c)))
+  return results.flatMap((r) => r.data ?? [])
+}
+
 export const loadCboReducedStates = cache(loadCboReducedStatesUncached)
 
 /**
@@ -279,7 +295,6 @@ async function loadCboReducedStatesUncached(
 ): Promise<Map<string, CboReducedEntry>> {
   const sb = createAdminClient()
   const out = new Map<string, CboReducedEntry>()
-  const CHUNK = 100
 
   // 1. CBO action du site (option : scopé à un sujet pour la fiche — évite une réduction site entière).
   let cboQuery = sb
@@ -297,39 +312,33 @@ async function loadCboReducedStatesUncached(
   // 2. Membership CBO → membres site_action (source d'INVENTAIRE : canonical_business_object_member).
   const memberIdsByCbo = new Map<string, string[]>()
   const allMemberIds = new Set<string>()
-  for (let i = 0; i < cboIds.length; i += CHUNK) {
-    const { data } = await sb
-      .from('canonical_business_object_member')
+  for (const r of await fetchAllChunks<{ canonical_business_object_id: string; member_entity_id: string }>(
+    cboIds,
+    (c) => sb.from('canonical_business_object_member')
       .select('canonical_business_object_id, member_entity_id, member_entity_type')
-      .in('canonical_business_object_id', cboIds.slice(i, i + CHUNK))
-      .eq('member_entity_type', 'site_action')
-    for (const r of (data ?? []) as Array<{ canonical_business_object_id: string; member_entity_id: string }>) {
-      const l = memberIdsByCbo.get(r.canonical_business_object_id) ?? []
-      l.push(r.member_entity_id); memberIdsByCbo.set(r.canonical_business_object_id, l)
-      allMemberIds.add(r.member_entity_id)
-    }
+      .in('canonical_business_object_id', c).eq('member_entity_type', 'site_action'),
+  )) {
+    const l = memberIdsByCbo.get(r.canonical_business_object_id) ?? []
+    l.push(r.member_entity_id); memberIdsByCbo.set(r.canonical_business_object_id, l)
+    allMemberIds.add(r.member_entity_id)
   }
 
   // 3. Résolution des membres → site_action vivant → report → document (id + date métier).
   //    Un membre sans site_action = DANGLING → absent de cette map → ignoré (jamais inventé).
   const actionInfo = new Map<string, { reportId: string | null }>()
-  const memberIdList = [...allMemberIds]
-  for (let i = 0; i < memberIdList.length; i += CHUNK) {
-    const { data } = await sb.from('site_actions').select('id, report_id').in('id', memberIdList.slice(i, i + CHUNK))
-    for (const a of (data ?? []) as Array<{ id: string; report_id: string | null }>) actionInfo.set(a.id, { reportId: a.report_id })
-  }
+  for (const a of await fetchAllChunks<{ id: string; report_id: string | null }>(
+    [...allMemberIds], (c) => sb.from('site_actions').select('id, report_id').in('id', c),
+  )) actionInfo.set(a.id, { reportId: a.report_id })
   const reportIds = [...new Set([...actionInfo.values()].map((a) => a.reportId).filter((x): x is string => !!x))]
   const reportDoc = new Map<string, string>()
-  for (let i = 0; i < reportIds.length; i += CHUNK) {
-    const { data } = await sb.from('site_reports').select('id, source_document_id').in('id', reportIds.slice(i, i + CHUNK))
-    for (const r of (data ?? []) as Array<{ id: string; source_document_id: string | null }>) if (r.source_document_id) reportDoc.set(r.id, r.source_document_id)
-  }
+  for (const r of await fetchAllChunks<{ id: string; source_document_id: string | null }>(
+    reportIds, (c) => sb.from('site_reports').select('id, source_document_id').in('id', c),
+  )) if (r.source_document_id) reportDoc.set(r.id, r.source_document_id)
   const docDate = new Map<string, string>()
   const docIds = [...new Set([...reportDoc.values()])]
-  for (let i = 0; i < docIds.length; i += CHUNK) {
-    const { data } = await sb.from('documents').select('id, effective_date').in('id', docIds.slice(i, i + CHUNK))
-    for (const d of (data ?? []) as Array<{ id: string; effective_date: string | null }>) if (d.effective_date) docDate.set(d.id, d.effective_date)
-  }
+  for (const d of await fetchAllChunks<{ id: string; effective_date: string | null }>(
+    docIds, (c) => sb.from('documents').select('id, effective_date').in('id', c),
+  )) if (d.effective_date) docDate.set(d.id, d.effective_date)
   // date métier + document source d'un membre (undefined si dangling ou chaîne incomplète).
   const memberBusiness = (memberId: string): { docId: string; date: string } | null => {
     const a = actionInfo.get(memberId); if (!a?.reportId) return null
@@ -340,13 +349,11 @@ async function loadCboReducedStatesUncached(
 
   // 4. Journal natif des membres vivants (site_action_events) — created EXCLU en aval par nativeKindOf.
   const journalByAction = new Map<string, Array<{ kind: string; occurredAt: string }>>()
-  const liveActionIds = [...actionInfo.keys()]
-  for (let i = 0; i < liveActionIds.length; i += CHUNK) {
-    const { data } = await sb.from('site_action_events').select('action_id, kind, occurred_at').in('action_id', liveActionIds.slice(i, i + CHUNK))
-    for (const e of (data ?? []) as Array<{ action_id: string; kind: string; occurred_at: string }>) {
-      const l = journalByAction.get(e.action_id) ?? []
-      l.push({ kind: e.kind, occurredAt: e.occurred_at }); journalByAction.set(e.action_id, l)
-    }
+  for (const e of await fetchAllChunks<{ action_id: string; kind: string; occurred_at: string }>(
+    [...actionInfo.keys()], (c) => sb.from('site_action_events').select('action_id, kind, occurred_at').in('action_id', c),
+  )) {
+    const l = journalByAction.get(e.action_id) ?? []
+    l.push({ kind: e.kind, occurredAt: e.occurred_at }); journalByAction.set(e.action_id, l)
   }
 
   // 5. Complétions documentaires EFFECTIVES (B HIGH, policy active) : date + document de la preuve.
@@ -358,13 +365,9 @@ async function loadCboReducedStatesUncached(
     ? allProofs.filter((p) => p.candidates.some((c) => cboIdSet.has(c.cboId)))
     : allProofs
   const proofDocByProposal = new Map<string, string | null>()
-  {
-    const propIds = proofs.map((p) => p.proof.proposalId)
-    for (let i = 0; i < propIds.length; i += CHUNK) {
-      const { data } = await sb.from('document_extraction_proposal').select('id, document_id').in('id', propIds.slice(i, i + CHUNK))
-      for (const p of (data ?? []) as Array<{ id: string; document_id: string | null }>) proofDocByProposal.set(p.id, p.document_id)
-    }
-  }
+  for (const p of await fetchAllChunks<{ id: string; document_id: string | null }>(
+    proofs.map((x) => x.proof.proposalId), (c) => sb.from('document_extraction_proposal').select('id, document_id').in('id', c),
+  )) proofDocByProposal.set(p.id, p.document_id)
   // P0-PERF-1 : lecture BATCH des résolutions effectives (même sélection policy + fingerprint
   // courant, appliquée en mémoire) — remplace le N+1 d'1 requête par preuve (92 sur RUS,
   // 234 sur OCEF Compostage) qui dominait le coût de chaque rendu.

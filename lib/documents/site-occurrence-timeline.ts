@@ -9,6 +9,7 @@ import 'server-only'
 // open → unknown → unknown → resolved. `isMentioned` reste exposé pour distinguer « état porté » (proven)
 // de « preuve observée à cet instant » (observedTriState).
 
+import { cache } from 'react'
 import type { PvState } from './subject-state'
 import { deriveCurrentResolvedState } from './subject-state'
 import { computeHistoryTransition, canonicalRunsForSite, runEffectiveDate } from './pv-history'
@@ -294,7 +295,16 @@ export interface SiteSubjectCells {
  * occurrences (state_status), PRÉSENCE depuis les propositions. Un acteur (aucune occurrence) n'a que
  * des cellules de présence (jamais d'événement d'état). Aucune proposition ne détermine l'état.
  */
-export async function buildSiteSubjectCells(siteId: string): Promise<SiteSubjectCells> {
+export const buildSiteSubjectCells = cache(buildSiteSubjectCellsUncached)
+
+/**
+ * P1-PERF-C1 — enveloppé dans React cache() : l'audit a mesuré 2 exécutions complètes
+ * (~7 requêtes chacune) par rendu de chaque read-model lourd — l'appel direct du
+ * read-model PLUS celui que getNavigableSubjectsForSite fait en interne. Cache
+ * STRICTEMENT request-scoped (clé = siteId) : aucun TTL, aucune persistance ; hors
+ * contexte de requête (scripts batch), passthrough.
+ */
+async function buildSiteSubjectCellsUncached(siteId: string): Promise<SiteSubjectCells> {
   const { createAdminClient } = await import('@/lib/supabase/admin')
   const supabase = createAdminClient()
 
@@ -313,8 +323,13 @@ export async function buildSiteSubjectCells(siteId: string): Promise<SiteSubject
   const props = (propsRaw ?? []) as P[]
   const threadIds = [...new Set(props.map((p) => p.subject_thread_id))]
   const t2c = new Map<string, string>()
-  for (let i = 0; i < threadIds.length; i += 200) {
-    const { data } = await supabase.from('subject_thread_identity').select('subject_thread_id, canonical_subject_id').in('subject_thread_id', threadIds.slice(i, i + 200))
+  // P1-PERF-C2 — chunks 250 en Promise.all (étaient 2 aller-retours séquentiels de 200) ;
+  // agrégat en Map, ordre sans effet.
+  const stiChunks: string[][] = []
+  for (let i = 0; i < threadIds.length; i += 250) stiChunks.push(threadIds.slice(i, i + 250))
+  for (const { data } of await Promise.all(stiChunks.map((c) =>
+    supabase.from('subject_thread_identity').select('subject_thread_id, canonical_subject_id').in('subject_thread_id', c),
+  ))) {
     for (const s of (data ?? []) as Array<{ subject_thread_id: string; canonical_subject_id: string }>) t2c.set(s.subject_thread_id, s.canonical_subject_id)
   }
   const presentByCsRun = new Map<string, Set<string>>()      // cs → runs présents (proposition)
@@ -330,8 +345,11 @@ export async function buildSiteSubjectCells(siteId: string): Promise<SiteSubject
   const allCs = new Set<string>([...presentByCsRun.keys(), ...occByCsRun.keys()])
   const csLabel = new Map<string, string>()
   const csIds = [...allCs]
-  for (let i = 0; i < csIds.length; i += 200) {
-    const { data } = await supabase.from('canonical_subject').select('id, label').in('id', csIds.slice(i, i + 200))
+  const csChunks: string[][] = []
+  for (let i = 0; i < csIds.length; i += 250) csChunks.push(csIds.slice(i, i + 250))
+  for (const { data } of await Promise.all(csChunks.map((c) =>
+    supabase.from('canonical_subject').select('id, label').in('id', c),
+  ))) {
     for (const c of (data ?? []) as Array<{ id: string; label: string }>) csLabel.set(c.id, c.label)
   }
 

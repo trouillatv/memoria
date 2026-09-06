@@ -293,15 +293,19 @@ export async function loadProposalProofs(siteId: string): Promise<Array<{ proof:
   const threadIds = [...threadToSubj.keys()]
   if (threadIds.length === 0) return []
 
-  const props: Array<{ id: string; subject_thread_id: string; label: string; description: string | null; source_excerpt: string | null; document_status: string | null; document_id: string | null }> = []
-  const CHUNK = 100
-  for (let i = 0; i < threadIds.length; i += CHUNK) {
-    const { data } = await sb.from('document_extraction_proposal')
+  // P1-PERF-C2 — chunks de 250 en Promise.all (4 aller-retours séquentiels mesurés sur
+  // RUS avec l'ancien chunk 100) : même ensemble de lignes, ordre sans effet (agrégat).
+  const CHUNK = 250
+  const chunks: string[][] = []
+  for (let i = 0; i < threadIds.length; i += CHUNK) chunks.push(threadIds.slice(i, i + CHUNK))
+  const chunkResults = await Promise.all(chunks.map((c) =>
+    sb.from('document_extraction_proposal')
       .select('id, subject_thread_id, label, description, source_excerpt, document_status, document_id')
-      .in('subject_thread_id', threadIds.slice(i, i + CHUNK))
-      .eq('proposal_family', PROPOSAL_PROOF_FAMILY).eq('document_status', PROPOSAL_PROOF_STATUS)
-    props.push(...((data ?? []) as typeof props))
-  }
+      .in('subject_thread_id', c)
+      .eq('proposal_family', PROPOSAL_PROOF_FAMILY).eq('document_status', PROPOSAL_PROOF_STATUS),
+  ))
+  const props: Array<{ id: string; subject_thread_id: string; label: string; description: string | null; source_excerpt: string | null; document_status: string | null; document_id: string | null }> = []
+  for (const { data } of chunkResults) props.push(...((data ?? []) as typeof props))
   if (props.length === 0) return []
 
   const subjIds = [...new Set(props.map((p) => threadToSubj.get(p.subject_thread_id)).filter((x): x is string => !!x))]
