@@ -35,6 +35,24 @@ describe('normalizeActionHistory — la chronologie ne raconte que les faits jou
     expect(e.detail).toBe('22 juillet 2026 → 25 juillet 2026')
   })
 
+  it('écartée (mig 385) : « Écartée » + motif en détail, commentaire en reason', () => {
+    const [e] = normalizeActionHistory([ev({ id: '1', kind: 'cancelled', occurred_at: '2026-09-06T00:00:00Z', after_value: { motif: 'doublon' }, reason: 'Déjà couvert ailleurs' })])
+    expect(e.line).toBe('Écartée')
+    expect(e.detail).toBe('Doublon')
+    expect(e.reason).toBe('Déjà couvert ailleurs')
+  })
+
+  it('vérifié toujours ouvert (mig 386) : observation, aucun détail d’état', () => {
+    const [e] = normalizeActionHistory([ev({ id: '1', kind: 'confirmed_open', occurred_at: '2026-09-06T00:00:00Z', reason: 'Toujours 2 RIA manquants' })])
+    expect(e.line).toBe('Vérifiée : toujours ouverte')
+    expect(e.detail).toBeNull()
+  })
+
+  it('RÉGRESSION 2026-09-06 : un kind inconnu ne fait JAMAIS planter la chronologie', () => {
+    const [e] = normalizeActionHistory([ev({ id: '1', kind: 'un_kind_futur' as ActionEventKind, occurred_at: '2026-09-06T00:00:00Z' })])
+    expect(e.line).toBe('Mise à jour')
+  })
+
   it('échéance fixée / retirée selon before/after null', () => {
     const fixed = normalizeActionHistory([ev({ id: '1', kind: 'due_date_changed', occurred_at: '2026-07-18T00:00:00Z', after_value: { date: '2026-08-01' } })])[0]
     expect(fixed.line).toBe('Échéance fixée')

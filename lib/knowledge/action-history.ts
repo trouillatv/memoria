@@ -6,6 +6,7 @@
 
 export type ActionEventKind =
   | 'created' | 'assigned' | 'unassigned' | 'due_date_changed' | 'completed' | 'reopened'
+  | 'cancelled' | 'confirmed_open'
 
 /** Une ligne brute du journal, telle que lue en base (JSONB déjà désérialisé). */
 export interface RawActionEvent {
@@ -13,9 +14,16 @@ export interface RawActionEvent {
   kind: ActionEventKind
   occurred_at: string
   actor_label: string | null
-  before_value: { label?: string | null; date?: string | null } | null
-  after_value: { label?: string | null; date?: string | null } | null
+  before_value: { label?: string | null; date?: string | null; status?: string | null } | null
+  after_value: { label?: string | null; date?: string | null; motif?: string | null; comment_is_system?: boolean } | null
   reason: string | null
+}
+
+const DISCARD_MOTIF_LABELS: Record<string, string> = {
+  doublon: 'Doublon',
+  non_applicable: 'Non applicable',
+  hors_perimetre: 'Hors périmètre',
+  autre: 'Autre',
 }
 
 export interface ActionHistoryEntry {
@@ -83,6 +91,18 @@ function labelAndDetail(e: RawActionEvent): { line: string; detail: string | nul
       return { line: 'Clôturée', detail: null }
     case 'reopened':
       return { line: 'Rouverte', detail: null }
+    case 'cancelled': {
+      // Écartée (mig 385) : le motif vit dans after_value.motif, le commentaire dans reason.
+      const motif = e.after_value?.motif ? DISCARD_MOTIF_LABELS[e.after_value.motif] ?? null : null
+      return { line: 'Écartée', detail: motif }
+    }
+    case 'confirmed_open':
+      // Vérifié : toujours ouvert (mig 386) — observation humaine, aucun changement d'état.
+      return { line: 'Vérifiée : toujours ouverte', detail: null }
+    default:
+      // Filet : un kind non encore libellé ne doit JAMAIS faire planter l'historique
+      // (régression 2026-09-06 : cancelled/confirmed_open ajoutés sans case → page /actions en 500).
+      return { line: 'Mise à jour', detail: null }
   }
 }
 
