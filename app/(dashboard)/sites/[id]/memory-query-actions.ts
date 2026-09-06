@@ -469,6 +469,9 @@ export async function askSiteMemoryAction(
     merged.set(`${h.type}:${h.id}`, {
       type: h.type, id: h.id, title: h.title, snippet: h.snippet,
       occurredAt: h.occurredAt, similarity: null, keyword: true, fts: h.rank,
+      // Mig 387 — un geste ouvre la FICHE DE L'ACTION porteuse (refId), qui
+      // raconte l'historique complet ; l'événement n'a pas d'adresse propre.
+      href: h.type === 'action_event' && h.refId ? `/sites/${siteId}/action/${h.refId}` : undefined,
     })
   }
 

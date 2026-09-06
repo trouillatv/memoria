@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import {  UserSquare, Search, Users, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock } from 'lucide-react'
+import {  UserSquare, Search, Users, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock, History } from 'lucide-react'
 import {
   askOrgMemoryAction,
   getOrgMemoryTermsAction,
@@ -56,6 +56,9 @@ const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof Stic
   blocage:          { label: 'Blocage',      Icon: Ban,           cls: 'bg-rose-50 text-rose-700 border-rose-200' },
   obligation:       { label: 'Obligation',   Icon: ClipboardCheck, cls: 'bg-slate-50 text-slate-700 border-slate-200' },
   subject:          { label: 'Sujet suivi',  Icon: GitBranch,     cls: 'bg-brand-50 text-brand-800 border-brand-200' },
+  // Mig 387 — le geste humain sur une action (clôturée / rouverte / écartée /
+  // vérifiée toujours ouverte). Sky, comme le geste « Vérifié » côté Actions.
+  action_event:     { label: 'Geste',        Icon: History,       cls: 'bg-sky-50 text-sky-700 border-sky-200' },
 }
 
 function fmtDate(iso: string | null): string {

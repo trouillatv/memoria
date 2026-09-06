@@ -35,6 +35,9 @@ export const HIT_LABEL_FR: Record<MemoryHitType, string> = {
   obligation: 'Obligation',
   subject: 'Sujet',
   document: 'Document',
+  // Mig 387 — un geste humain sur une action (clôturée / rouverte / écartée /
+  // vérifiée). Libellé en UN mot : les compteurs pluralisent par suffixe « s ».
+  action_event: 'Geste',
 }
 
 /**

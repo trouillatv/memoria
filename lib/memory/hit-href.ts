@@ -10,6 +10,8 @@ export interface HitLocation {
   id: string
   siteId: string | null
   subjectId?: string | null
+  /** Mig 387 — pour un 'action_event', l'id de l'ACTION porteuse. */
+  refId?: string | null
 }
 
 /**
@@ -50,6 +52,11 @@ export function memoryHitHref(hit: HitLocation): string {
   // défini, et le repli vers le chantier reste honnête jusque-là.
   if (hit.type === 'site_decision') return `/sites/${hit.siteId}/decision/${hit.id}`
   if (hit.type === 'site_action') return `/sites/${hit.siteId}/action/${hit.id}`
+  // Mig 387 — un GESTE sur une action (clôture, réouverture, écartement,
+  // vérification) ouvre la FICHE DE L'ACTION : c'est elle qui porte l'historique
+  // complet et l'état actuel. `refId` = l'action ; `id` = l'événement, qui n'a
+  // pas d'adresse propre. Sans refId, le repli standard (fil, puis chantier).
+  if (hit.type === 'action_event' && hit.refId) return `/sites/${hit.siteId}/action/${hit.refId}`
   // Lot 4 — la Réunion a son adresse. Elle ouvre la RÉUNION, pas le chantier qui
   // la contient ni l'espace de travail de son compte-rendu.
   if (hit.type === 'meeting') return `/sites/${hit.siteId}/reunion/${hit.id}`

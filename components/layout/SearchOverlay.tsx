@@ -8,9 +8,9 @@
 
 import { useState, useEffect, useTransition, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
+import {
   UserSquare, Search, Users, X, AlertTriangle, FileText, Camera, MapPin, ListTodo, FileCheck2,
-  ShieldCheck, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock } from 'lucide-react'
+  ShieldCheck, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock, History } from 'lucide-react'
 import { searchMemoryAction } from './search-action'
 import type { MemoryHit, MemoryHitType } from '@/lib/db/memory-search'
 import { memoryHitHref } from '@/lib/memory/hit-href'
@@ -40,6 +40,8 @@ const TYPE_ICON: Record<MemoryHitType, React.ComponentType<{ className?: string 
   obligation: ClipboardCheck,
   subject: GitBranch,
   document: BookOpen,
+  // Mig 387 — le geste humain sur une action.
+  action_event: History,
 }
 
 function formatDate(iso: string): string {

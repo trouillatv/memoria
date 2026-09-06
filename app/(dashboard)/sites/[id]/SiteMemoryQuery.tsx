@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock, History } from 'lucide-react'
 import {
   askSiteMemoryAction,
   getSiteMemoryTermsAction,
@@ -59,6 +59,8 @@ const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof Sti
   subject:          { label: 'Sujet suivi',   Icon: GitBranch,       cls: 'bg-brand-50 text-brand-800 border-brand-200' },
   // « Je cherche Vincent » → sa fiche. Icône Users, pas la clé des interventions.
   intervenant:      { label: 'Intervenant',   Icon: Users,           cls: 'bg-violet-50 text-violet-700 border-violet-200' },
+  // Mig 387 — le geste humain sur une action. Sky, comme « Vérifié » côté Actions.
+  action_event:     { label: 'Geste',         Icon: History,         cls: 'bg-sky-50 text-sky-700 border-sky-200' },
 }
 
 function fmtDate(iso: string | null): string {

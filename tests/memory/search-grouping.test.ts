@@ -35,6 +35,7 @@ const hit = (over: Partial<MemoryHit> = {}): MemoryHit => ({
   contractId: null,
   rank: 0.2,
   subjectId: null,
+  refId: null,
   ...over,
 })
 
@@ -163,6 +164,19 @@ describe('Un objet qui a une adresse s’ouvre LUI-MÊME', () => {
       .toBe('/sites/s1/reserve/res-1')
   })
 
+  it('un geste (mig 387) ouvre la FICHE DE L’ACTION porteuse, jamais l’événement', () => {
+    // `id` = l'événement (unique) ; `refId` = l'action, seule à avoir une adresse.
+    expect(memoryHitHref(hit({ type: 'action_event', id: 'evt-1', refId: 'act-7' })))
+      .toBe('/sites/s1/action/act-7')
+  })
+
+  it('un geste sans refId garde le repli standard (fil, puis chantier) — jamais d’URL inventée', () => {
+    expect(memoryHitHref(hit({ type: 'action_event', id: 'evt-1', subjectId: 'sub-9' })))
+      .toBe('/sites/s1/subjects/sub-9')
+    expect(memoryHitHref(hit({ type: 'action_event', id: 'evt-1' })))
+      .toBe('/sites/s1')
+  })
+
   it('une réunion ouvre la réunion, pas le chantier qui la contient', () => {
     // Lot 4. Application directe de la règle de modélisation : un conteneur est
     // un contexte, jamais un écran de substitution.
@@ -205,7 +219,7 @@ describe('Chaque nature de trace porte un nom de chantier, pas un nom de table',
       'observation', 'anomaly', 'site_note', 'intervention', 'photo',
       'site_action', 'site_decision', 'meeting_decision', 'site_reserve',
       'report_document', 'knowledge', 'blocage', 'obligation', 'subject', 'document',
-      'intervenant', 'meeting',
+      'intervenant', 'meeting', 'action_event',
     ]
     for (const t of types) {
       expect(HIT_LABEL_FR[t]).toBeTruthy()

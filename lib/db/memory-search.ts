@@ -35,6 +35,11 @@ export type MemoryHitType =
   // Mig 204 — le texte extrait des DOCUMENTS. Les LITIGES en sont exclus, à la
   // source (index partiel + filtre SQL) : jamais dans l'écran seulement.
   | 'document'
+  // Mig 387 — le GESTE HUMAIN sur une action (clôturée / rouverte / écartée /
+  // vérifiée toujours ouverte). La trace durable existait (site_action_events,
+  // mig 221) mais la recherche ne la lisait pas. `id` = l'événement ;
+  // `refId` = l'action, qui porte l'historique complet et l'état actuel.
+  | 'action_event'
 
 export interface MemoryHit {
   type: MemoryHitType
@@ -48,6 +53,10 @@ export interface MemoryHit {
   /** Le fil auquel ce fait est rattaché, s'il l'est. C'est lui qui transforme
    *  une liste de résultats en histoire (« on avait déjà vu cette fuite ? »). */
   subjectId: string | null
+  /** Mig 387 — l'objet PORTEUR quand le hit est un événement : pour un
+   *  'action_event', l'id de l'ACTION (l'événement n'a pas d'adresse propre,
+   *  sa place est dans l'historique de sa fiche). Null pour tous les autres. */
+  refId: string | null
 }
 
 export interface SearchMemoryOptions {
@@ -82,6 +91,7 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
     contract_id: string | null
     rank: number
     subject_id: string | null
+    ref_id: string | null
   }
   const rpcParams = {
     p_q: q,
@@ -115,6 +125,7 @@ export async function searchMemory(opts: SearchMemoryOptions): Promise<MemoryHit
     contractId: row.contract_id,
     rank: row.rank,
     subjectId: row.subject_id ?? null,
+    refId: row.ref_id ?? null,
   }))
 }
 

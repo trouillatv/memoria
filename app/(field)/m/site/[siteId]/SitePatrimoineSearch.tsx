@@ -6,9 +6,9 @@
 // Déterministe, zéro IA. Cf. searchPatrimoineAction.
 
 import { useEffect, useState, useTransition } from 'react'
-import { 
+import {
   UserSquare, Search, Users, Camera, Pencil, AlertTriangle, ListTodo, Gavel, FileText, Wrench, X,
-  Eye, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock,
+  Eye, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock, History,
 } from 'lucide-react'
 import { searchPatrimoineAction, type SearchPatrimoineResult } from './patrimoine-actions'
 import type { MemoryHitType } from '@/lib/db/memory-search'
@@ -33,6 +33,9 @@ const META: Record<MemoryHitType, { label: string; Icon: typeof Camera; cls: str
   obligation: { label: 'Obligations', Icon: ClipboardCheck, cls: 'text-slate-600', ring: 'bg-slate-100 dark:bg-slate-800/60' },
   subject: { label: 'Sujets suivis', Icon: GitBranch, cls: 'text-brand-700', ring: 'bg-brand-100 dark:bg-brand-950/40' },
   document: { label: 'Documents', Icon: BookOpen, cls: 'text-indigo-600', ring: 'bg-indigo-100 dark:bg-indigo-950/40' },
+  // Mig 387 — gestes humains sur les actions (hors GROUP_ORDER : jamais rendu
+  // ici, mais le Record est exhaustif par type).
+  action_event: { label: 'Gestes', Icon: History, cls: 'text-sky-600', ring: 'bg-sky-100 dark:bg-sky-950/40' },
 }
 
 export function SitePatrimoineSearch({ siteId, suggestions }: { siteId: string; suggestions: string[] }) {
