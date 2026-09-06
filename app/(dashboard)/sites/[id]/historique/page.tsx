@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { SiteChantierNav } from '../SiteChantierNav'
-import { getSiteHistoricalTimeline, getSiteSubjectMatrix } from '@/lib/documents/pv-history'
+import { getSiteHistoricalTimeline, getSiteSubjectMatrix, canonicalRunsForSite, runEffectiveDate } from '@/lib/documents/pv-history'
+import { suiviLoadPlan } from '@/lib/documents/suivi-view-plan'
 import { buildOccurrencePvSummary, type OccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 import { getSiteNativeOccurrencesBySubject, getCanonicalSubjectLabelsByIds, buildNativeEvolutionData } from '@/lib/db/canonical-subject-life'
@@ -69,11 +70,19 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const initialTheme = sp.theme ?? null
   const debugV2 = sp.v2 === '1' && view === 'evolution'
 
-  const [site, matrix, timeline, importantSubjects] = await Promise.all([
+  // P1-PERF-B — émondage du faux tronc commun (audit 2026-09-06). Chaque clic d'onglet
+  // re-rend la page entière : seul le VRAI tronc du shell (identité, runs légers,
+  // occurrences natives pour les compteurs) est inconditionnel ; matrice / timeline /
+  // sujets importants / delta sont conditionnés à la vue qui les affiche (suiviLoadPlan).
+  const plan = suiviLoadPlan(view)
+  const [site, matrix, timeline, importantSubjects, nativeOccurrences, runsLite] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
-    getSiteSubjectMatrix(siteId).catch(() => null),
-    getSiteHistoricalTimeline(siteId).catch(() => ({ siteId, snapshots: [] })),
-    getImportantSubjects(siteId).catch(() => []),
+    plan.matrix ? getSiteSubjectMatrix(siteId).catch(() => null) : null,
+    plan.timeline ? getSiteHistoricalTimeline(siteId).catch(() => ({ siteId, snapshots: [] })) : { siteId, snapshots: [] },
+    plan.importantSubjects ? getImportantSubjects(siteId).catch(() => []) : [],
+    getSiteNativeOccurrencesBySubject(siteId).catch(() => ({})),
+    // Runs légers pour les vues rendues sans matrice — même source et même tri que matrix.runs.
+    plan.matrix ? null : canonicalRunsForSite(siteId).catch(() => []),
   ])
 
   const depsGraph = view === 'deps'
@@ -87,8 +96,6 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     ? await deriveCanonicalAttentionItems(siteId).catch(() => [])
     : []
 
-  // nativeOccurrences chargé pour tous les onglets (header + lifelines + évolution)
-  const nativeOccurrences = await getSiteNativeOccurrencesBySubject(siteId).catch(() => ({}))
   const suggestedCounts = view === 'lifelines'
     ? await getSuggestedLinkCountsBySite(siteId).catch(() => ({}))
     : {}
@@ -132,7 +139,11 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
 
   if (!site) redirect(`/sites/${siteId}`)
 
-  const totalRuns = timeline.snapshots.length
+  // Runs canoniques du shell : depuis la matrice quand elle est chargée, sinon la source légère.
+  const matrixRuns = matrix?.runs
+    ?? (runsLite ?? []).map((r) => ({ id: r.id, documentId: r.document_id, effectiveDate: runEffectiveDate(r) }))
+  // Même vérité qu'avant (1 document = 1 snapshot = 1 run canonique) sans payer la timeline.
+  const totalRuns = matrixRuns.length
 
   // Résumé des occurrences natives pour le header — comptage par dates distinctes (un report = un événement)
   const nativeVisitDates = new Set<string>()
@@ -148,8 +159,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const nativeVisitCount = nativeVisitDates.size
   const nativeMeetingCount = nativeMeetingDates.size
 
-  // Métadonnées enrichies : dates réelles des PV + reportId pour les liens
-  const matrixRuns = matrix?.runs ?? []
+  // Métadonnées enrichies : dates réelles des PV + reportId pour les liens (tronc léger conservé)
   const runs = await getRunsMeta(matrixRuns).catch(() => matrixRuns.map((r) => ({
     runId: r.id,
     documentId: r.documentId,
@@ -177,7 +187,9 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   // Delta entre les deux derniers PV (si ≥ 2) — P0 : occurrence-first (même vérité que
   // l'Aperçu #230 / Chronologie / Lignes de vie), catégories séparées, knowledge_fact gardé.
   let deltaData: { summary: OccurrencePvSummary; fromIdx: number; toIdx: number } | null = null
-  if (timeline.snapshots.length >= 2) {
+  // P1-PERF-B : le delta (2,1 s / 18 req) n'est affiché que par la Synthèse — plus jamais
+  // calculé pour les autres vues.
+  if (plan.deltaSummary && timeline.snapshots.length >= 2) {
     const fromSnap = timeline.snapshots[timeline.snapshots.length - 2]
     const toSnap   = timeline.snapshots[timeline.snapshots.length - 1]
     try {
@@ -196,13 +208,24 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   const subjectLabelMap: Record<string, string> = Object.fromEntries(
     (matrix?.rows ?? []).map((row) => [row.canonicalSubjectId, row.canonicalLabel])
   )
-  // Labels des sujets 100% natifs (absents de la matrice PV) — évite l'affichage d'UUID
+  // Labels des sujets absents de la matrice — évite l'affichage d'UUID. P1-PERF-B :
+  // seules Lignes de vie et Évolution affichent ces labels ; Évolution (rendue sans
+  // matrice) récupère aussi les labels canoniques des sujets de son read-model via la
+  // même requête batchée — jamais de mini-matrice parallèle.
   const nativeOnlyIds = Object.keys(nativeOccurrences).filter((id) => !subjectLabelMap[id])
-  if (nativeOnlyIds.length > 0) {
-    const nativeLabels = await getCanonicalSubjectLabelsByIds(nativeOnlyIds).catch(() => ({}))
-    Object.assign(subjectLabelMap, nativeLabels)
+  if (plan.canonicalLabels) {
+    const wanted = new Set(nativeOnlyIds)
+    if (evolutionData) {
+      for (const p of evolutionData.readModel.periods)
+        for (const f of [...p.appeared, ...p.reopened, ...p.aggravated, ...p.resolved, ...p.stillOpen])
+          if (!subjectLabelMap[f.canonicalSubjectId]) wanted.add(f.canonicalSubjectId)
+    }
+    if (wanted.size > 0) {
+      const labels = await getCanonicalSubjectLabelsByIds([...wanted]).catch(() => ({}))
+      Object.assign(subjectLabelMap, labels)
+    }
   }
-  const nativeEventsForEvolution = Object.entries(nativeOccurrences)
+  const nativeEventsForEvolution = view !== 'evolution' ? [] : Object.entries(nativeOccurrences)
     .flatMap(([csId, occs]) =>
       occs
         .filter((o) => !lastPvDate || o.date > lastPvDate)
