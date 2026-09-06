@@ -14,9 +14,18 @@
 import Link from 'next/link'
 import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle, Search, X } from 'lucide-react'
+import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle, Search, X, MoreHorizontal, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { closeActionAction, reopenActionAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, reopenActionAction, discardActionAction } from '@/app/(dashboard)/actions/actions'
+
+/** Motifs fermés du geste « Écarter » (miroir de DiscardMotif côté serveur). */
+type DiscardMotifUi = 'doublon' | 'non_applicable' | 'hors_perimetre' | 'autre'
+const DISCARD_MOTIF_LABELS: Record<DiscardMotifUi, string> = {
+  doublon: 'Doublon',
+  non_applicable: 'Non applicable',
+  hors_perimetre: 'Hors périmètre',
+  autre: 'Autre',
+}
 import { filterPilotageSubjects, countByFilter, type ActionsFilter } from '@/lib/knowledge/actions-filter'
 import type { PilotageSubject, PilotageCbo } from '@/lib/knowledge/actions-pilotage'
 import type { CanonicalDisplayState } from '@/lib/documents/subject-state'
@@ -36,7 +45,7 @@ const CBO_STATE: Record<CboComputedCurrentState, { label: string; color: string 
   documentary_reopened:  { label: 'Réouvert (documentaire)', color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
   native_completed:      { label: 'Terminé',                 color: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' },
   native_reopened:       { label: 'Réouvert',                color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
-  native_cancelled:      { label: 'Annulé',                  color: 'bg-muted text-muted-foreground' },
+  native_cancelled:      { label: 'Écarté',                  color: 'bg-muted text-muted-foreground' },
   conforme_at:           { label: 'Conforme (ponctuel)',     color: 'bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300' },
   unknown:               { label: 'À qualifier',             color: 'bg-muted text-muted-foreground' },
   conflict:              { label: 'Signaux contradictoires', color: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300' },
@@ -64,7 +73,7 @@ function provenanceOf(c: PilotageCbo): string | null {
   switch (c.computedCurrentState) {
     case 'native_completed':      return `Marquée traitée manuellement${at ? ` le ${at}` : ''}`
     case 'native_reopened':       return `Rouverte manuellement${at ? ` le ${at}` : ''}`
-    case 'native_cancelled':      return `Annulée manuellement${at ? ` le ${at}` : ''}`
+    case 'native_cancelled':      return `Écartée manuellement${at ? ` le ${at}` : ''}`
     case 'documentary_completed': return `Terminée d'après un PV${at ? ` du ${at}` : ''}`
     case 'documentary_reopened':  return `Rouverte d'après un PV${at ? ` du ${at}` : ''}`
     case 'conforme_at':           return `Constatée conforme${at ? ` le ${at}` : ''}`
@@ -76,12 +85,15 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
   const cs = CBO_STATE[cbo.computedCurrentState]
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [mode, setMode] = useState<null | 'treat' | 'reopen'>(null)
+  const [mode, setMode] = useState<null | 'menu' | 'treat' | 'reopen' | 'discard'>(null)
   const [comment, setComment] = useState('')
+  const [motif, setMotif] = useState<DiscardMotifUi | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const canTreat = cbo.active && !!cbo.targetActionId
   const canReopen = cbo.computedCurrentState === 'native_completed' && !!cbo.targetActionId
+  // Réactiver = défaire un écart humain (Écarter est réversible — mig 385).
+  const canReactivate = cbo.computedCurrentState === 'native_cancelled' && !!cbo.targetActionId
   const hasDivergence = cbo.documentaryDivergences.length > 0
   const provenance = provenanceOf(cbo)
 
@@ -107,6 +119,17 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
       setMode(null); setComment(''); router.refresh()
     })
   }
+  function submitDiscard() {
+    if (!cbo.targetActionId || !motif || comment.trim().length === 0) return
+    setError(null)
+    const fd = new FormData()
+    fd.set('id', cbo.targetActionId); fd.set('site_id', siteId); fd.set('motif', motif); fd.set('comment', comment.trim())
+    startTransition(async () => {
+      const r = await discardActionAction(fd)
+      if (!r.ok) { setError(r.error); return }
+      setMode(null); setComment(''); setMotif(null); router.refresh()
+    })
+  }
 
   return (
     <li className="rounded-lg border px-2.5 py-1.5">
@@ -120,13 +143,35 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
             <Check className="h-3 w-3" /> Marquer comme traitée
           </button>
         )}
+        {canTreat && (mode === null || mode === 'menu') && (
+          <button type="button" aria-label="Autres gestes" onClick={() => { setMode(mode === 'menu' ? null : 'menu'); setError(null) }}
+            className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/60">
+            <MoreHorizontal className="h-3 w-3" />
+          </button>
+        )}
         {canReopen && mode === null && (
           <button type="button" onClick={() => { setMode('reopen'); setError(null) }}
             className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium hover:bg-orange-50 hover:text-orange-700 hover:border-orange-200 dark:hover:bg-orange-950/40">
             <RotateCcw className="h-3 w-3" /> Réouvrir
           </button>
         )}
+        {canReactivate && mode === null && (
+          <button type="button" onClick={() => { setMode('reopen'); setError(null) }}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium hover:bg-orange-50 hover:text-orange-700 hover:border-orange-200 dark:hover:bg-orange-950/40">
+            <RotateCcw className="h-3 w-3" /> Réactiver
+          </button>
+        )}
       </div>
+
+      {/* Menu ••• — gestes secondaires (Écarter aujourd'hui ; Requalifier… plus tard). */}
+      {mode === 'menu' && (
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <button type="button" onClick={() => { setMode('discard'); setError(null) }}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-red-50 hover:text-red-700 hover:border-red-200 dark:hover:bg-red-950/40">
+            <XCircle className="h-3 w-3" /> Écarter…
+          </button>
+        </div>
+      )}
 
       {/* Provenance (lue de C2A) */}
       {provenance && mode === null && (
@@ -159,10 +204,39 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
         </div>
       )}
 
-      {/* Confirmation « Réouvrir » — motif facultatif */}
+      {/* Écarter — motif fermé OBLIGATOIRE + commentaire OBLIGATOIRE. Jamais un « traité ». */}
+      {mode === 'discard' && (
+        <div className="mt-2 space-y-1.5 rounded-md bg-muted/40 p-2">
+          <p className="text-[11px] font-medium">Écarter cet objet du pilotage ?</p>
+          <p className="text-[11px] text-muted-foreground">Il ne sera pas marqué « traité » : il sera écarté, avec motif — et réactivable.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(Object.entries(DISCARD_MOTIF_LABELS) as Array<[DiscardMotifUi, string]>).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setMotif(k)} disabled={pending}
+                className={cn('rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                  motif === k ? 'border-red-300 bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300' : 'text-muted-foreground hover:bg-muted/60')}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} disabled={pending}
+            placeholder={motif === 'autre' ? 'Motif précis (obligatoire)' : 'Pourquoi cet écart ? (obligatoire)'} rows={2} maxLength={1000}
+            className="w-full rounded border bg-background px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-ring" />
+          {error && <p className="text-[11px] text-red-600">{error}</p>}
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={submitDiscard} disabled={pending || !motif || comment.trim().length === 0}
+              className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
+              {pending && <Loader2 className="h-3 w-3 animate-spin" />} Écarter
+            </button>
+            <button type="button" onClick={() => { setMode(null); setComment(''); setMotif(null); setError(null) }} disabled={pending}
+              className="rounded-md border px-2.5 py-1 text-[11px] hover:bg-muted/60 disabled:opacity-50">Annuler</button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation « Réouvrir / Réactiver » — motif facultatif */}
       {mode === 'reopen' && (
         <div className="mt-2 space-y-1.5 rounded-md bg-muted/40 p-2">
-          <p className="text-[11px] font-medium">Réouvrir cette obligation ?</p>
+          <p className="text-[11px] font-medium">{canReactivate ? 'Réactiver cette obligation écartée ?' : 'Réouvrir cette obligation ?'}</p>
           <textarea value={comment} onChange={(e) => setComment(e.target.value)} disabled={pending}
             placeholder="Motif (facultatif)" rows={2} maxLength={1000}
             className="w-full rounded border bg-background px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-ring" />
@@ -185,7 +259,8 @@ const FILTERS: Array<{ key: ActionsFilter; label: string }> = [
   { key: 'all', label: 'Tous' },
   { key: 'open', label: 'Ouverts' },
   { key: 'reopened', label: 'Réouverts' },
-  { key: 'treated', label: 'Traités' },
+  // « Terminés » et non « Traités » : le filtre regroupe traités ET écartés (terminaux).
+  { key: 'treated', label: 'Terminés' },
 ]
 
 export function ActionsPilotageClient({ subjects, siteId }: { subjects: PilotageSubject[]; siteId: string }) {

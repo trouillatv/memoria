@@ -504,12 +504,28 @@ export async function setSiteActionSnooze(id: string, reason: string | null): Pr
   if (error) throw error
 }
 
-export async function cancelSiteAction(id: string): Promise<void> {
+/** Motifs fermés du geste « Écarter » — validés aussi EN BASE (fn_cancel_action). */
+export type DiscardMotif = 'doublon' | 'non_applicable' | 'hors_perimetre' | 'autre'
+
+/**
+ * ÉCARTER une action du backlog opérationnel — geste lifecycle PROPRE (mig 385) :
+ * mutation + événement `cancelled` (motif + commentaire + acteur + date) atomiques,
+ * append-only. Remplace l'ancien `cancelSiteAction` (UPDATE brut sans trace) qui
+ * était exactement le raccourci que le journal interdit. Écarter ≠ Traiter.
+ */
+export async function discardSiteAction(
+  id: string,
+  motif: DiscardMotif,
+  comment: string,
+  actorId?: string | null,
+): Promise<void> {
   const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('site_actions')
-    .update({ status: 'cancelled' })
-    .eq('id', id)
+  const { error } = await supabase.rpc('fn_cancel_action', {
+    p_id: id,
+    p_actor_id: actorId ?? null,
+    p_motif: motif,
+    p_comment: comment,
+  })
   if (error) throw error
 }
 

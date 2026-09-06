@@ -50,6 +50,14 @@ describe('reduceCboLifecycle — 10 scénarios', () => {
     const r = reduceCboLifecycle([ev('doc_open', '2025-03-27'), ev('native_cancelled', '2025-07-01')])
     expect(r.computedCurrentState).toBe('native_cancelled')
   })
+  it('8bis. ÉCARTER (mig 385) : open → cancelled = terminal ; puis RÉACTIVER (reopened) → actif', () => {
+    // Le geste Écarter écrit un event natif `cancelled` ; sa réversibilité passe par
+    // `reopened` (fn_reopen_action étendu). Aucune nouvelle heuristique : séquençage pur.
+    const ecarte = reduceCboLifecycle([ev('doc_open', '2025-03-27'), ev('native_cancelled', '2026-09-06')])
+    expect(ecarte.computedCurrentState).toBe('native_cancelled')
+    const reactive = reduceCboLifecycle([ev('doc_open', '2025-03-27'), ev('native_cancelled', '2026-09-06'), ev('native_reopened', '2026-09-07')])
+    expect(reactive.computedCurrentState).toBe('native_reopened') // actif à nouveau — l'histoire conservée
+  })
   it('9. import rétroactif (completion insérée hors ordre) → recomposé par date métier', () => {
     const outOfOrder = reduceCboLifecycle([ev('doc_open', '2025-03-27'), ev('doc_open', '2026-01-10'), ev('doc_completion', '2025-05-23')])
     const inOrder = reduceCboLifecycle([ev('doc_open', '2025-03-27'), ev('doc_completion', '2025-05-23'), ev('doc_open', '2026-01-10')])

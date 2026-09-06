@@ -13,7 +13,7 @@ import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { requireSiteWriteAccess, requireSiteActionWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
-import { createSiteAction, updateSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, cancelSiteAction, markSiteActionPlanned, reopenSiteAction } from '@/lib/db/site-actions'
+import { createSiteAction, updateSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, discardSiteAction, markSiteActionPlanned, reopenSiteAction, type DiscardMotif } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
@@ -383,17 +383,34 @@ export async function planActionAction(
   }
 }
 
-export async function cancelActionAction(
-  id: string,
-  siteId?: string,
+const DISCARD_MOTIFS = ['doublon', 'non_applicable', 'hors_perimetre', 'autre'] as const
+
+/**
+ * ÉCARTER — « cet objet ne doit pas être piloté » (doublon, non applicable, hors
+ * périmètre, autre). Jamais un Traité : le geste écrit un événement `cancelled`
+ * append-only avec motif + commentaire + acteur (mig 385), réversible (Réactiver
+ * = reopenActionAction, qui accepte désormais un écart). L'ancien chemin brut
+ * (UPDATE status sans trace) a été supprimé.
+ */
+export async function discardActionAction(
+  formData: FormData,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!IdSchema.safeParse(id).success) return { ok: false, error: 'Action invalide' }
+  const id = formData.get('id')
+  if (typeof id !== 'string' || !IdSchema.safeParse(id).success) return { ok: false, error: 'Action invalide' }
+  const siteId = typeof formData.get('site_id') === 'string' ? (formData.get('site_id') as string) : undefined
+  const motif = formData.get('motif')
+  if (typeof motif !== 'string' || !(DISCARD_MOTIFS as readonly string[]).includes(motif)) {
+    return { ok: false, error: 'Motif requis' }
+  }
+  const cParsed = CommentSchema.safeParse(formData.get('comment'))
+  if (!cParsed.success) return { ok: false, error: cParsed.error.issues[0]?.message ?? 'Commentaire requis' }
+
   const access = await requireSiteActionWriteAccess(id)
   if (!access.ok) return access
   try {
-    await cancelSiteAction(id)
+    await discardSiteAction(id, motif as DiscardMotif, cParsed.data, access.userId)
   } catch {
-    return { ok: false, error: 'Échec de la mise à jour' }
+    return { ok: false, error: 'Échec de l’écart' }
   }
   revalidateActionSurfaces(siteId)
   return { ok: true }
