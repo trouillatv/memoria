@@ -70,6 +70,17 @@ export interface HistoricalCorpusReconcileResult {
   finalByFamily: HistoricalReconcileFamilyStat[]
   /** Union des canonical_subject touchés (rattachés ou créés) sur tous les passages. */
   touchedCanonicalSubjectIds: string[]
+  /**
+   * Phase 3 (Point de suivi) — correctif fenêtre d'orphelinage temporelle (P0-1E
+   * Section F, Correctif 2) : runIds dont AU MOINS un thread a reçu une identité
+   * (matchedExisting ou created) pendant CETTE invocation. Comme cette fonction
+   * balaie tous les runs du chantier à chaque passage, un run déjà matérialisé
+   * (donc dont ensureHistoricalPdfOccurrences a déjà tourné) peut voir un de ses
+   * threads résolu tardivement ici — sans ce signal, son occurrence ne serait
+   * jamais posée. L'appelant doit rattraper ces runs (hors le run en cours de
+   * traitement, dont l'occurrence est posée par le flux normal juste après).
+   */
+  runIdsWithNewIdentity: string[]
 }
 
 function emptyStat(family: DocumentProposalFamily): HistoricalReconcileFamilyStat {
@@ -90,6 +101,7 @@ export async function reconcileHistoricalCorpusForSite(params: {
   const { siteId, runIds, maxPasses = 8 } = params
 
   const touchedCanonicalSubjectIds = new Set<string>()
+  const runIdsWithNewIdentity = new Set<string>()
   let totalCreated = 0
   let totalMatched = 0
   let pass = 0
@@ -116,10 +128,13 @@ export async function reconcileHistoricalCorpusForSite(params: {
     for (const runId of runIds) {
       const result = await reconcileHistoricalPvCanonicalSubjects({ runId, siteId })
       for (const id of result.touchedCanonicalSubjectIds) touchedCanonicalSubjectIds.add(id)
+      let runWrites = 0
       for (const s of result.byFamily) {
         addStat(s)
-        passWrites += s.created + s.matchedExisting
+        runWrites += s.created + s.matchedExisting
       }
+      passWrites += runWrites
+      if (runWrites > 0) runIdsWithNewIdentity.add(runId)
     }
 
     finalByFamily = [...passStats.values()]
@@ -141,5 +156,6 @@ export async function reconcileHistoricalCorpusForSite(params: {
     totalMatched,
     finalByFamily,
     touchedCanonicalSubjectIds: [...touchedCanonicalSubjectIds],
+    runIdsWithNewIdentity: [...runIdsWithNewIdentity],
   }
 }

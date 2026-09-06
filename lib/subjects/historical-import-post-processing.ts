@@ -7,6 +7,7 @@ import {
 } from '@/lib/db/canonical-subject-historical-corpus-reconcile'
 import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
 import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
+import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-historical-occurrence'
 import { attachHistoricalReportEntitiesToCanonicalBusinessObjects } from '@/lib/db/canonical-business-object-attach'
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
 import { resolveSiteDocumentCompletionsByProposal } from '@/lib/knowledge/document-completion-resolver'
@@ -44,6 +45,71 @@ async function getTouchedCanonicalSubjectIdsForRun(
     .eq('site_id', siteId)
     .in('subject_thread_id', threadIds)
   return [...new Set((identities ?? []).map((row) => row.canonical_subject_id as string))]
+}
+
+/**
+ * Phase 3 (programme Point de suivi) — correctif de la fenêtre d'orphelinage
+ * temporelle (P0-1E Section F, Correctif 2). `reconcileHistoricalCorpusForSite`
+ * balaie TOUS les runs du chantier à chaque appel : un thread appartenant à un
+ * rapport déjà matérialisé (dont ensureHistoricalPdfOccurrences a déjà tourné,
+ * scopé à son seul run) peut recevoir son identité canonique tardivement, lors
+ * du traitement d'un rapport ultérieur. Sans ce rattrapage ciblé, son occurrence
+ * n'est plus jamais posée (étalon `80105e6d`). Best-effort, additif, idempotent
+ * (même index cso_historical_pdf_uniq) : ne crée ni run, ni site_report, ne
+ * rejoue jamais materialize_historical_visit, ne touche ni actions, ni
+ * décisions, ni échéances.
+ */
+async function catchUpOrphanedHistoricalOccurrences(
+  sb: ReturnType<typeof createAdminClient>,
+  siteId: string,
+  orphanedRunIds: string[],
+): Promise<void> {
+  if (orphanedRunIds.length === 0) return
+
+  const { data: reports } = await sb
+    .from('site_reports')
+    .select('id, extraction_run_id, started_at, source_document_id')
+    .eq('site_id', siteId)
+    .in('extraction_run_id', orphanedRunIds)
+
+  const typedReports = (reports ?? []) as Array<{
+    id: string
+    extraction_run_id: string | null
+    started_at: string | null
+    source_document_id: string | null
+  }>
+
+  // Un rapport historique (origin=import) n'a jamais started_at renseigné — la date
+  // de visite vient du document source (mêmes règles que review-actions.ts pour le
+  // rapport courant : effective_date, jamais la date du PV lui-même).
+  const docIds = [...new Set(typedReports.map((r) => r.source_document_id).filter((id): id is string => !!id))]
+  const docEffectiveDate = new Map<string, string | null>()
+  if (docIds.length > 0) {
+    const { data: docs } = await sb.from('documents').select('id, effective_date').in('id', docIds)
+    for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) {
+      docEffectiveDate.set(d.id, d.effective_date)
+    }
+  }
+
+  for (const report of typedReports) {
+    if (!report.extraction_run_id) continue
+    const visitDate = report.started_at ?? (report.source_document_id ? docEffectiveDate.get(report.source_document_id) : null)
+    if (!visitDate) continue
+    try {
+      await ensureHistoricalPdfOccurrences({
+        runId: report.extraction_run_id,
+        siteId,
+        siteReportId: report.id,
+        visitDate: visitDate.slice(0, 10),
+      })
+    } catch (err) {
+      console.error(
+        '[historical-import-post-processing] catch-up occurrences failed:',
+        report.id,
+        err instanceof Error ? err.message : String(err),
+      )
+    }
+  }
 }
 
 /**
@@ -95,6 +161,9 @@ export async function runHistoricalImportPostProcessing(
         )
       }
       touchedCanonicalSubjectIds = corpusResult.touchedCanonicalSubjectIds
+
+      const orphanedRunIds = corpusResult.runIdsWithNewIdentity.filter((id) => id !== runId)
+      await catchUpOrphanedHistoricalOccurrences(sb, siteId, orphanedRunIds)
 
       await projectCanonicalSubjectSafely({
         siteId,
