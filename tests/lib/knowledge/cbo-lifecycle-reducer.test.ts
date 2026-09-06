@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest'
 import {
-  reduceCboLifecycle, deriveCboNature, assembleCboEvents,
+  reduceCboLifecycle, deriveCboNature, assembleCboEvents, nativeKindOf,
   deriveCanonicalSubjectCboState, activeObjectsTotalForState,
   type CboLifecycleEvent, type CboMemberProvenance, type CboCompletionProof, type CboNativeJournalEvent,
   type CboReducedState,
@@ -58,6 +58,17 @@ describe('reduceCboLifecycle — 10 scénarios', () => {
     const reactive = reduceCboLifecycle([ev('doc_open', '2025-03-27'), ev('native_cancelled', '2026-09-06'), ev('native_reopened', '2026-09-07')])
     expect(reactive.computedCurrentState).toBe('native_reopened') // actif à nouveau — l'histoire conservée
   })
+  it('8ter. « Vérifié : toujours ouvert » (confirmed_open, mig 386) : NEUTRE par construction', () => {
+    // Une vérification humaine n'est ni une progression ni un changement d'état :
+    // le réducteur ne la voit pas (nativeKindOf → null), l'état courant est identique.
+    expect(nativeKindOf('confirmed_open')).toBeNull()
+    const membre: CboMemberProvenance[] = [{ memberId: 'm1', docId: 'd1', date: '2025-03-27' }]
+    const sans = assembleCboEvents('X', membre, [], [])
+    const avec = assembleCboEvents('X', membre, [], [{ kind: 'confirmed_open', occurredAt: '2026-09-06' }])
+    expect(reduceCboLifecycle(avec.events).computedCurrentState).toBe(reduceCboLifecycle(sans.events).computedCurrentState)
+    expect(reduceCboLifecycle(avec.events).stateBasis).toEqual(reduceCboLifecycle(sans.events).stateBasis)
+  })
+
   it('9. import rétroactif (completion insérée hors ordre) → recomposé par date métier', () => {
     const outOfOrder = reduceCboLifecycle([ev('doc_open', '2025-03-27'), ev('doc_open', '2026-01-10'), ev('doc_completion', '2025-05-23')])
     const inOrder = reduceCboLifecycle([ev('doc_open', '2025-03-27'), ev('doc_completion', '2025-05-23'), ev('doc_open', '2026-01-10')])

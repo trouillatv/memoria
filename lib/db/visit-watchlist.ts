@@ -100,12 +100,44 @@ export async function setWatchlistItemState(
   id: string,
   state: WatchlistItemState,
   note?: string | null,
+  actorId?: string | null,
 ): Promise<void> {
   const supabase = createAdminClient()
   const patch: Record<string, unknown> = { state, updated_at: new Date().toISOString() }
   if (note !== undefined) patch.note = note
   const { error } = await supabase.from('visit_watchlist_item').update(patch).eq('id', id)
   if (error) throw error
+
+  // ── PONT VERS LE LIFECYCLE DURABLE (mig 386, audit Debrief 2026-09-06) ──────
+  // « still_open » dit : « j'ai vérifié pendant cette visite, toujours pas réglé ».
+  // Quand la source du point résout EXPLICITEMENT vers une action durable
+  // (source_kind='action_overdue' → source_ref = site_actions.id — jamais de
+  // matching flou, jamais de canonical→action deviné), la MÊME observation est
+  // écrite dans le journal durable de l'action (confirmed_open, provenance
+  // visite). Idempotent par watchlist_item (retry / changement d'avis dans la
+  // même visite = une seule vérification). Le geste de visite ne doit JAMAIS
+  // échouer parce que le pont est impossible : tout échec est avalé.
+  if (state === 'still_open') {
+    try {
+      const { data } = await supabase
+        .from('visit_watchlist_item')
+        .select('source_kind, source_ref, note, report_id')
+        .eq('id', id)
+        .maybeSingle()
+      const item = data as { source_kind: string | null; source_ref: string | null; note: string | null; report_id: string | null } | null
+      if (item?.source_kind === 'action_overdue' && item.source_ref) {
+        const { confirmSiteActionOpen } = await import('@/lib/db/site-actions')
+        await confirmSiteActionOpen(
+          item.source_ref,
+          (note ?? item.note)?.trim() || null, // null → constat SYSTÈME marqué comme tel en base
+          actorId ?? null,
+          { source: 'visit_watchlist', reportId: item.report_id, watchlistItemId: id },
+        )
+      }
+    } catch {
+      // Pont best-effort : action non active, source disparue, etc. — la watchlist reste la vérité de session.
+    }
+  }
 }
 
 /** Lit les points de contrôle et leurs preuves pour injection dans le débrief IA.

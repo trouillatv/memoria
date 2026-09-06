@@ -35,6 +35,12 @@ export interface PilotageCbo {
   documentaryDivergences: string[]
   /** P3-Actions-Lot1 — membre site_action déterministe portant le geste humain close/reopen. */
   targetActionId: string | null
+  /** « Vérifié : toujours ouvert » (mig 386) — dernière VÉRIFICATION HUMAINE, dérivée du
+   *  journal append-only (jamais une colonne mutable). Distincte de lastMeaningfulChangeAt :
+   *  constater la persistance n'est pas une progression. */
+  lastHumanVerifiedAt?: string | null
+  lastHumanVerifiedBy?: string | null
+  lastHumanVerifiedComment?: string | null
 }
 
 /** Niveau 3 — une formulation documentaire BRUTE (site_actions) rattachée au sujet. ARCHIVE, jamais
@@ -246,5 +252,27 @@ export async function getSiteActionsPilotage(siteId: string): Promise<SiteAction
     l.push({ id: a.id, title: a.title ?? '(sans titre)', status: a.status, dueDate: a.due_date, reportId: a.report_id, ...provenanceOf(a.report_id) })
     formulationsBySubject.set(a.canonical_subject_id, l)
   }
-  return assembleActionsPilotage(ctxById, reduced.values(), rawRows.length, formulationsBySubject)
+  const pilotage = assembleActionsPilotage(ctxById, reduced.values(), rawRows.length, formulationsBySubject)
+
+  // « Vérifié : toujours ouvert » — dernière vérification humaine par action, dérivée du
+  // journal (1 requête batchée site-wide). Neutre pour C2A ; restitution seulement.
+  const { data: confirms } = await sb.from('site_action_events')
+    .select('action_id, occurred_at, actor_label, reason, after_value')
+    .eq('site_id', siteId).eq('kind', 'confirmed_open')
+    .order('occurred_at', { ascending: false })
+  const lastConfirmByAction = new Map<string, { at: string; by: string | null; comment: string | null }>()
+  for (const e of (confirms ?? []) as Array<{ action_id: string; occurred_at: string; actor_label: string | null; reason: string | null; after_value: { comment_is_system?: boolean } | null }>) {
+    if (lastConfirmByAction.has(e.action_id)) continue
+    // Un constat SYSTÈME (fallback du pont visite) n'est JAMAIS restitué comme un
+    // commentaire rédigé par l'utilisateur : le fait (date + auteur) suffit.
+    const comment = e.after_value?.comment_is_system ? null : e.reason
+    lastConfirmByAction.set(e.action_id, { at: e.occurred_at, by: e.actor_label, comment })
+  }
+  for (const s of pilotage.subjects) {
+    for (const c of s.cbos) {
+      const v = c.targetActionId ? lastConfirmByAction.get(c.targetActionId) : undefined
+      if (v) { c.lastHumanVerifiedAt = v.at; c.lastHumanVerifiedBy = v.by; c.lastHumanVerifiedComment = v.comment }
+    }
+  }
+  return pilotage
 }

@@ -14,9 +14,9 @@
 import Link from 'next/link'
 import { useState, useTransition, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle, Search, X, MoreHorizontal, XCircle } from 'lucide-react'
+import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle, Search, X, MoreHorizontal, XCircle, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { closeActionAction, reopenActionAction, discardActionAction } from '@/app/(dashboard)/actions/actions'
+import { closeActionAction, reopenActionAction, discardActionAction, confirmActionOpenAction } from '@/app/(dashboard)/actions/actions'
 
 /** Motifs fermés du geste « Écarter » (miroir de DiscardMotif côté serveur). */
 type DiscardMotifUi = 'doublon' | 'non_applicable' | 'hors_perimetre' | 'autre'
@@ -85,7 +85,7 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
   const cs = CBO_STATE[cbo.computedCurrentState]
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [mode, setMode] = useState<null | 'menu' | 'treat' | 'reopen' | 'discard'>(null)
+  const [mode, setMode] = useState<null | 'menu' | 'treat' | 'reopen' | 'discard' | 'confirm'>(null)
   const [comment, setComment] = useState('')
   const [motif, setMotif] = useState<DiscardMotifUi | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -115,6 +115,17 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
     fd.set('id', cbo.targetActionId); fd.set('site_id', siteId); fd.set('reason', comment.trim())
     startTransition(async () => {
       const r = await reopenActionAction(fd)
+      if (!r.ok) { setError(r.error); return }
+      setMode(null); setComment(''); router.refresh()
+    })
+  }
+  function submitConfirmOpen() {
+    if (!cbo.targetActionId || comment.trim().length === 0) return
+    setError(null)
+    const fd = new FormData()
+    fd.set('id', cbo.targetActionId); fd.set('site_id', siteId); fd.set('comment', comment.trim())
+    startTransition(async () => {
+      const r = await confirmActionOpenAction(fd)
       if (!r.ok) { setError(r.error); return }
       setMode(null); setComment(''); router.refresh()
     })
@@ -163,9 +174,13 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
         )}
       </div>
 
-      {/* Menu ••• — gestes secondaires (Écarter aujourd'hui ; Requalifier… plus tard). */}
+      {/* Menu ••• — gestes secondaires (Requalifier… viendra plus tard). */}
       {mode === 'menu' && (
-        <div className="mt-1.5 flex items-center gap-1.5">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={() => { setMode('confirm'); setError(null) }}
+            className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-sky-50 hover:text-sky-700 hover:border-sky-200 dark:hover:bg-sky-950/40">
+            <Eye className="h-3 w-3" /> Vérifié : toujours ouvert…
+          </button>
           <button type="button" onClick={() => { setMode('discard'); setError(null) }}
             className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-red-50 hover:text-red-700 hover:border-red-200 dark:hover:bg-red-950/40">
             <XCircle className="h-3 w-3" /> Écarter…
@@ -173,9 +188,38 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
         </div>
       )}
 
+      {/* « Vérifié : toujours ouvert » — observation humaine datée, AUCUN changement d'état. */}
+      {mode === 'confirm' && (
+        <div className="mt-2 space-y-1.5 rounded-md bg-muted/40 p-2">
+          <p className="text-[11px] font-medium">Vérifié : toujours ouvert</p>
+          <p className="text-[11px] text-muted-foreground">L&apos;objet reste à traiter — vous enregistrez une vérification, pas un changement d&apos;état.</p>
+          <textarea value={comment} onChange={(e) => setComment(e.target.value)} disabled={pending}
+            placeholder="Qu'avez-vous constaté lors de la vérification ? (obligatoire)" rows={2} maxLength={1000}
+            className="w-full rounded border bg-background px-2 py-1 text-xs outline-none focus:ring-2 focus:ring-ring" />
+          {error && <p className="text-[11px] text-red-600">{error}</p>}
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={submitConfirmOpen} disabled={pending || comment.trim().length === 0}
+              className="inline-flex items-center gap-1 rounded-md bg-sky-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-sky-700 disabled:opacity-50">
+              {pending && <Loader2 className="h-3 w-3 animate-spin" />} Confirmer toujours ouvert
+            </button>
+            <button type="button" onClick={() => { setMode(null); setComment(''); setError(null) }} disabled={pending}
+              className="rounded-md border px-2.5 py-1 text-[11px] hover:bg-muted/60 disabled:opacity-50">Annuler</button>
+          </div>
+        </div>
+      )}
+
       {/* Provenance (lue de C2A) */}
       {provenance && mode === null && (
         <p className="mt-0.5 text-[11px] text-muted-foreground">{provenance}</p>
+      )}
+
+      {/* Dernière vérification humaine (mig 386) — dérivée du journal, jamais un état. */}
+      {cbo.lastHumanVerifiedAt && cbo.active && mode === null && (
+        <p className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-sky-700 dark:text-sky-400"
+           title={cbo.lastHumanVerifiedComment ?? undefined}>
+          <Eye className="h-3 w-3 shrink-0" />
+          Vérifié toujours ouvert le {frDate(cbo.lastHumanVerifiedAt)}{cbo.lastHumanVerifiedBy ? ` par ${cbo.lastHumanVerifiedBy}` : ''}
+        </p>
       )}
 
       {/* Divergence documentaire après clôture humaine — factuel + CTA réouvrir */}

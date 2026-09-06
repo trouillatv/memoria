@@ -25,7 +25,9 @@ export async function setWatchlistItemStateAction(
   const parsed = stateSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
   try {
-    await setWatchlistItemState(parsed.data.item_id, parsed.data.state, parsed.data.note ?? undefined)
+    // L'acteur est transmis pour le pont durable « still_open → confirmed_open »
+    // (mig 386) : la vérification terrain est un geste humain attribué.
+    await setWatchlistItemState(parsed.data.item_id, parsed.data.state, parsed.data.note ?? undefined, auth.userId)
     return { ok: true }
   } catch {
     return { ok: false, error: 'Échec' }

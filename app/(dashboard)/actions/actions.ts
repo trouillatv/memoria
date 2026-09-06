@@ -13,7 +13,7 @@ import { getCurrentUserWithProfile, getOrgId } from '@/lib/db/users'
 import { requireSiteWriteAccess, requireSiteActionWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logUsageEvent } from '@/lib/db/usage-events'
-import { createSiteAction, updateSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, discardSiteAction, markSiteActionPlanned, reopenSiteAction, type DiscardMotif } from '@/lib/db/site-actions'
+import { createSiteAction, updateSiteAction, markSiteActionDone, markSiteActionProgress, setSiteActionSnooze, discardSiteAction, confirmSiteActionOpen, markSiteActionPlanned, reopenSiteAction, type DiscardMotif } from '@/lib/db/site-actions'
 import { listMissionsBySite, createMission } from '@/lib/db/missions'
 import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
@@ -381,6 +381,31 @@ export async function planActionAction(
   } catch {
     return { ok: false, error: 'Échec de la planification' }
   }
+}
+
+/**
+ * « VÉRIFIÉ : TOUJOURS OUVERT » — enregistrer qu'un humain a revérifié l'objet et
+ * qu'il reste à traiter. Ni progression, ni réouverture : une observation datée.
+ * Refusé en base sur un objet non actif (rouvrir/réactiver d'abord).
+ */
+export async function confirmActionOpenAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const id = formData.get('id')
+  if (typeof id !== 'string' || !IdSchema.safeParse(id).success) return { ok: false, error: 'Action invalide' }
+  const siteId = typeof formData.get('site_id') === 'string' ? (formData.get('site_id') as string) : undefined
+  const cParsed = CommentSchema.safeParse(formData.get('comment'))
+  if (!cParsed.success) return { ok: false, error: cParsed.error.issues[0]?.message ?? 'Commentaire requis' }
+
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
+  try {
+    await confirmSiteActionOpen(id, cParsed.data, access.userId)
+  } catch {
+    return { ok: false, error: 'Échec de l’enregistrement de la vérification' }
+  }
+  revalidateActionSurfaces(siteId)
+  return { ok: true }
 }
 
 const DISCARD_MOTIFS = ['doublon', 'non_applicable', 'hors_perimetre', 'autre'] as const

@@ -504,6 +504,31 @@ export async function setSiteActionSnooze(id: string, reason: string | null): Pr
   if (error) throw error
 }
 
+/**
+ * « VÉRIFIÉ : TOUJOURS OUVERT » (mig 386) — nouvelle observation humaine datée :
+ * « je viens de vérifier, c'est toujours à traiter ». AUCUNE mutation d'état — un
+ * événement `confirmed_open` append-only (commentaire obligatoire en base, objet
+ * actif requis, anti double-clic 10 s). Invisible au réducteur C2A par construction
+ * (nativeKindOf → null) : il enrichit l'histoire, ne remplace jamais l'état.
+ */
+export async function confirmSiteActionOpen(
+  id: string,
+  comment: string | null,
+  actorId?: string | null,
+  provenance?: { source: 'manual_action_page' | 'visit_watchlist'; reportId?: string | null; watchlistItemId?: string | null },
+): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase.rpc('fn_confirm_action_open', {
+    p_id: id,
+    p_actor_id: actorId ?? null,
+    p_comment: comment,
+    p_source: provenance?.source ?? 'manual_action_page',
+    p_report_id: provenance?.reportId ?? null,
+    p_watchlist_item_id: provenance?.watchlistItemId ?? null,
+  })
+  if (error) throw error
+}
+
 /** Motifs fermés du geste « Écarter » — validés aussi EN BASE (fn_cancel_action). */
 export type DiscardMotif = 'doublon' | 'non_applicable' | 'hors_perimetre' | 'autre'
 
