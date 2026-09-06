@@ -294,15 +294,26 @@ export function ActionsPilotageClient({ subjects, siteId }: { subjects: Pilotage
                       {s.formulationPvCount > 0 && ` dans ${s.formulationPvCount} PV`}
                       <ChevronRight className="h-3 w-3 transition-transform group-open/hist:rotate-90" />
                     </summary>
-                    <ul className="border-t px-3 py-2 space-y-1">
+                    <ul className="border-t px-3 py-2 space-y-1.5">
+                      {/* P0-UX — chaque formulation porte sa provenance : date métier + PV cliquable.
+                          Ordre : du PV le plus récent au plus ancien (trié par le read-model). */}
                       {s.formulations.map((f) => (
                         <li key={f.id} className="text-xs text-muted-foreground">
-                          <span className="text-foreground">{f.title}</span>
+                          {(f.pvLabel || f.pvDate) && (
+                            f.pvHref ? (
+                              <Link href={f.pvHref} className="font-medium text-primary hover:underline">
+                                {f.pvLabel ?? 'Source'}{f.pvDate && ` · ${frDate(f.pvDate)}`} ↗
+                              </Link>
+                            ) : (
+                              <span className="font-medium">{f.pvLabel}{f.pvDate && ` · ${frDate(f.pvDate)}`}</span>
+                            )
+                          )}
+                          <span className={f.pvLabel || f.pvDate ? 'block text-foreground' : 'text-foreground'}>{f.title}</span>
                           {f.dueDate && <span> · échéance {frDate(f.dueDate)}</span>}
                         </li>
                       ))}
                     </ul>
-                    <p className="px-3 pb-2 text-[11px] text-muted-foreground/70">Formulations telles que détectées dans les PV (preuves documentaires), regroupées par ce sujet.</p>
+                    <p className="px-3 pb-2 text-[11px] text-muted-foreground/70">Formulations telles que détectées dans les PV (preuves documentaires), regroupées par ce sujet — du plus récent au plus ancien.</p>
                   </details>
                 )}
               </div>

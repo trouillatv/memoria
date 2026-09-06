@@ -19,6 +19,7 @@ import { loadCboReducedStates } from '@/lib/knowledge/canonical-business-object-
 import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-evolution'
 import { isActiveCboState, isTerminalCboState, type CboComputedCurrentState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import type { CanonicalDisplayState } from '@/lib/documents/subject-state'
+import { canonicalRunsForSite } from '@/lib/documents/pv-history'
 
 /** Niveau 2 — un objet métier durable (CBO action) et son état C2A autoritatif. */
 export interface PilotageCbo {
@@ -37,13 +38,22 @@ export interface PilotageCbo {
 }
 
 /** Niveau 3 — une formulation documentaire BRUTE (site_actions) rattachée au sujet. ARCHIVE, jamais
- *  une charge opérationnelle courante : `status` reste un statut brut de preuve, pas un état durable. */
+ *  une charge opérationnelle courante : `status` reste un statut brut de preuve, pas un état durable.
+ *  P0-UX (Vincent 2026-09-06) : chaque formulation porte SA provenance — date métier du PV,
+ *  libellé (« PV 8 »), lien vers la source — car MemorIA repose sur la preuve. */
 export interface PilotageFormulation {
   id: string
   title: string
   status: string
   dueDate: string | null
   reportId: string | null
+  /** Date MÉTIER du PV source (documents.effective_date) — null si introuvable. */
+  pvDate: string | null
+  /** Libellé court de la source : « PV 8 » (numérotation = ordre des runs canoniques,
+   *  la même que Suivi/Lignes de vie), sinon « Réunion » / « Visite ». */
+  pvLabel: string | null
+  /** Lien vers la source (convention fiche sujet : PDF→/documents, visite→/visites, réunion→/reunion). */
+  pvHref: string | null
 }
 
 /** Niveau 1 — un sujet canonique porteur d'actions, avec le résumé de ses CBO. */
@@ -143,7 +153,10 @@ export function assembleActionsPilotage(
     const activeCount = cbos.filter((c) => c.active).length
     const completedCount = cbos.filter((c) => c.terminal).length
     const ctx = subjectCtxById.get(subjectId)
-    const formulations = formulationsBySubject.get(subjectId) ?? []
+    // Provenance d'abord : du PV le plus récent au plus ancien (dates métier), les
+    // formulations sans date en fin — on lit l'histoire à rebours, comme la fiche sujet.
+    const formulations = [...(formulationsBySubject.get(subjectId) ?? [])].sort((a, b) =>
+      (b.pvDate ?? '').localeCompare(a.pvDate ?? '') || a.title.localeCompare(b.title))
     subjects.push({
       canonicalSubjectId: subjectId,
       label: ctx?.title ?? entries[0]?.label ?? '(sujet)',
@@ -184,21 +197,53 @@ type RawFormulationRow = { id: string; title: string | null; status: string; due
 
 export async function getSiteActionsPilotage(siteId: string): Promise<SiteActionsPilotage> {
   const sb = createAdminClient()
-  const [nav, reduced, rawRows] = await Promise.all([
+  const [nav, reduced, rawRows, runs] = await Promise.all([
     getNavigableSubjectsForSite(siteId).catch(() => []),
     loadCboReducedStates(siteId).catch(() => new Map<string, CboReducedEntry>()),
     sb.from('site_actions').select('id, title, status, due_date, report_id, canonical_subject_id').eq('site_id', siteId)
       .then((r) => (r.data ?? []) as RawFormulationRow[], () => [] as RawFormulationRow[]),
+    // Numérotation PV = ordre des runs canoniques (la même que Suivi/Lignes de vie). cache() C1.
+    canonicalRunsForSite(siteId).catch(() => []),
   ])
   const ctxById = new Map<string, PilotageSubjectContext>(
     nav.map((n) => [n.canonicalSubjectId, { canonicalSubjectId: n.canonicalSubjectId, title: n.title, displayState: n.displayState, lastMeaningfulChangeAt: n.lastMeaningfulChangeAt, pvCount: n.pvCount }]),
   )
+
+  // P0-UX — provenance des formulations : report → (origin, run, document) → date métier,
+  // n° de PV, lien source. 2 requêtes batchées, jamais une par formulation.
+  const pvNumberByRun = new Map<string, number>(runs.map((r, i) => [r.id, i + 1]))
+  const reportIds = [...new Set(rawRows.map((a) => a.report_id).filter((x): x is string => !!x))]
+  type ReportRow = { id: string; origin: string | null; extraction_run_id: string | null; source_document_id: string | null }
+  const reports = new Map<string, ReportRow>()
+  if (reportIds.length > 0) {
+    const { data } = await sb.from('site_reports').select('id, origin, extraction_run_id, source_document_id').in('id', reportIds)
+    for (const r of (data ?? []) as ReportRow[]) reports.set(r.id, r)
+  }
+  const docIds = [...new Set([...reports.values()].map((r) => r.source_document_id).filter((x): x is string => !!x))]
+  const docDate = new Map<string, string>()
+  if (docIds.length > 0) {
+    const { data } = await sb.from('documents').select('id, effective_date').in('id', docIds)
+    for (const d of (data ?? []) as Array<{ id: string; effective_date: string | null }>) if (d.effective_date) docDate.set(d.id, d.effective_date)
+  }
+  const provenanceOf = (reportId: string | null): Pick<PilotageFormulation, 'pvDate' | 'pvLabel' | 'pvHref'> => {
+    const r = reportId ? reports.get(reportId) : undefined
+    if (!r) return { pvDate: null, pvLabel: null, pvHref: null }
+    const pvDate = r.source_document_id ? docDate.get(r.source_document_id) ?? null : null
+    if (r.source_document_id) {
+      const n = r.extraction_run_id ? pvNumberByRun.get(r.extraction_run_id) : undefined
+      return { pvDate, pvLabel: n ? `PV ${n}` : 'PV', pvHref: `/documents/${r.source_document_id}` }
+    }
+    // Report natif (convention fiche sujet) : réunion → /reunion, sinon visite → /visites.
+    const isMeeting = (r.origin ?? '').includes('meeting')
+    return { pvDate, pvLabel: isMeeting ? 'Réunion' : 'Visite', pvHref: `/sites/${siteId}/${isMeeting ? 'reunion' : 'visites'}/${r.id}` }
+  }
+
   // N3 — formulations documentaires brutes groupées par sujet (archive ; jamais un état).
   const formulationsBySubject = new Map<string, PilotageFormulation[]>()
   for (const a of rawRows) {
     if (!a.canonical_subject_id) continue
     const l = formulationsBySubject.get(a.canonical_subject_id) ?? []
-    l.push({ id: a.id, title: a.title ?? '(sans titre)', status: a.status, dueDate: a.due_date, reportId: a.report_id })
+    l.push({ id: a.id, title: a.title ?? '(sans titre)', status: a.status, dueDate: a.due_date, reportId: a.report_id, ...provenanceOf(a.report_id) })
     formulationsBySubject.set(a.canonical_subject_id, l)
   }
   return assembleActionsPilotage(ctxById, reduced.values(), rawRows.length, formulationsBySubject)

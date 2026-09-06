@@ -77,13 +77,21 @@ describe('assembleActionsPilotage — KPI + hiérarchie sujet→CBO', () => {
 
   it('N3 — formulations documentaires attachées au sujet + compte de PV distincts', () => {
     const formulations = new Map([['s1', [
-      { id: 'f1', title: 'Reprendre X', status: 'open', dueDate: null, reportId: 'pv1' },
-      { id: 'f2', title: 'Reprendre X (bis)', status: 'open', dueDate: '2025-07-10', reportId: 'pv2' },
-      { id: 'f3', title: 'X encore', status: 'open', dueDate: null, reportId: 'pv1' },
+      { id: 'f1', title: 'Reprendre X', status: 'open', dueDate: null, reportId: 'pv1', pvDate: null, pvLabel: null, pvHref: null },
+      { id: 'f2', title: 'Reprendre X (bis)', status: 'open', dueDate: '2025-07-10', reportId: 'pv2', pvDate: null, pvLabel: null, pvHref: null },
+      { id: 'f3', title: 'X encore', status: 'open', dueDate: null, reportId: 'pv1', pvDate: null, pvLabel: null, pvHref: null },
     ]]])
     const p = assembleActionsPilotage(new Map([ctx('s1', 'X', 'open')]), [entry('c1', 's1', 'A', 'open')], 3, formulations)
     expect(p.subjects[0].formulations).toHaveLength(3)
     expect(p.subjects[0].formulationPvCount).toBe(2) // pv1, pv2 distincts
     expect(p.kpi.historicalFormulations).toBe(3)
+  })
+
+  it('P0-UX — les formulations sont triées du PV le plus récent au plus ancien, sans-date en fin', () => {
+    const f = (id: string, pvDate: string | null) =>
+      ({ id, title: id, status: 'open', dueDate: null, reportId: id, pvDate, pvLabel: pvDate ? 'PV' : null, pvHref: null })
+    const formulations = new Map([['s1', [f('ancien', '2025-12-03'), f('sans-date', null), f('recent', '2026-07-22'), f('milieu', '2026-02-19')]]])
+    const p = assembleActionsPilotage(new Map([ctx('s1', 'X', 'open')]), [entry('c1', 's1', 'A', 'open')], 4, formulations)
+    expect(p.subjects[0].formulations.map((x) => x.id)).toEqual(['recent', 'milieu', 'ancien', 'sans-date'])
   })
 })
