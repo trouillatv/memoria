@@ -455,3 +455,137 @@ export async function loadActiveActionCboBySubject(
   for (const [subjId, states] of bySubject) out.set(subjId, deriveCanonicalSubjectCboState(states))
   return out
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6C.1.A — Point de suivi : CBO site_reserve/site_deadline « aussi vrais qu'un CBO action ».
+//
+// Mandat Vincent (2026-09-07) : les tracked_point fondés sur un CBO réserve/échéance doivent avoir
+// un derivedState fondé sur leur CBO réel, via le CboReducedState EXISTANT — aucun nouveau reducer
+// Point spécifique. Fonction SÉPARÉE et strictement additive : loadCboReducedStates (ci-dessus) et
+// ses deux dérivés (loadCboReducedBySubject, loadActiveActionCboBySubject) restent scopés
+// object_type='site_action' et INCHANGÉS — ils sont consommés par P0-2/Actions/Debrief/Briefing/nav
+// qui présument tous un CBO ACTION (cf. deriveCanonicalSubjectCboState, « SEULE contribution
+// action »). Élargir leur population aurait silencieusement changé activeObjectsTotal (P0-2).
+//
+// Même moteur PUR (assembleCboEvents + reduceCboLifecycle), deux canaux déjà génériques :
+//   - doc_open(T) = chaque membre (site_reserve/site_deadlines) daté par report → document.
+//   - doc_completion(T) = résolutions B EFFECTIVES (MATCH/HIGH), même mécanisme que loadCboReducedStates
+//     (getEffectiveResolutionsByProposalBatch n'est pas filtré par object_type).
+// AUCUN journal natif : ni site_reserve ni site_deadlines n'ont de table d'événements équivalente à
+// site_action_events → natives=[] toujours. Ce n'est pas une lacune inventée ici : reserves-pilotage.ts
+// documente déjà « aucun lifecycle réserve » comme frontière figée (V1-3) ; on ne la lève pas, on
+// réduit seulement ce qui est authentiquement connu (ouverture documentaire + complétion documentaire).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NON_ACTION_OBJECT_TYPES = ['site_reserve', 'site_deadline'] as const
+type NonActionObjectType = (typeof NON_ACTION_OBJECT_TYPES)[number]
+
+export const loadNonActionCboReducedStates = cache(loadNonActionCboReducedStatesUncached)
+
+async function loadNonActionCboReducedStatesUncached(siteId: string): Promise<Map<string, CboReducedEntry>> {
+  const sb = createAdminClient()
+  const out = new Map<string, CboReducedEntry>()
+
+  const { data: cboRows } = await sb
+    .from('canonical_business_object')
+    .select('id, label, canonical_subject_id')
+    .eq('site_id', siteId)
+    .in('object_type', [...NON_ACTION_OBJECT_TYPES])
+  const cbos = (cboRows ?? []) as Array<{ id: string; label: string; canonical_subject_id: string | null }>
+  if (cbos.length === 0) return out
+  const cboIds = cbos.map((c) => c.id)
+  const subjByCbo = new Map(cbos.map((c) => [c.id, c.canonical_subject_id]))
+  const cboIdSet = new Set(cboIds)
+
+  // Membership CBO → membres site_reserve/site_deadlines.
+  const memberIdsByCbo = new Map<string, string[]>()
+  const reserveIds = new Set<string>()
+  const deadlineIds = new Set<string>()
+  for (const r of await fetchAllChunks<{ canonical_business_object_id: string; member_entity_id: string; member_entity_type: string }>(
+    cboIds,
+    (c) => sb.from('canonical_business_object_member')
+      .select('canonical_business_object_id, member_entity_id, member_entity_type')
+      .in('canonical_business_object_id', c).in('member_entity_type', [...NON_ACTION_OBJECT_TYPES]),
+  )) {
+    const l = memberIdsByCbo.get(r.canonical_business_object_id) ?? []
+    l.push(r.member_entity_id); memberIdsByCbo.set(r.canonical_business_object_id, l)
+    if ((r.member_entity_type as NonActionObjectType) === 'site_reserve') reserveIds.add(r.member_entity_id)
+    else deadlineIds.add(r.member_entity_id)
+  }
+
+  // Résolution membres → report_id (site_reserve/site_deadlines partagent la même chaîne
+  // report_id → site_reports.source_document_id → documents.effective_date que site_action).
+  const memberReportId = new Map<string, string | null>()
+  for (const r of await fetchAllChunks<{ id: string; report_id: string | null }>(
+    [...reserveIds], (c) => sb.from('site_reserve').select('id, report_id').in('id', c),
+  )) memberReportId.set(r.id, r.report_id)
+  for (const d of await fetchAllChunks<{ id: string; report_id: string | null }>(
+    [...deadlineIds], (c) => sb.from('site_deadlines').select('id, report_id').in('id', c),
+  )) memberReportId.set(d.id, d.report_id)
+
+  const reportIds = [...new Set([...memberReportId.values()].filter((x): x is string => !!x))]
+  const reportDoc = new Map<string, string>()
+  for (const r of await fetchAllChunks<{ id: string; source_document_id: string | null }>(
+    reportIds, (c) => sb.from('site_reports').select('id, source_document_id').in('id', c),
+  )) if (r.source_document_id) reportDoc.set(r.id, r.source_document_id)
+  const docDate = new Map<string, string>()
+  const docIds = [...new Set([...reportDoc.values()])]
+  for (const d of await fetchAllChunks<{ id: string; effective_date: string | null }>(
+    docIds, (c) => sb.from('documents').select('id, effective_date').in('id', c),
+  )) if (d.effective_date) docDate.set(d.id, d.effective_date)
+
+  const memberBusiness = (memberId: string): { docId: string; date: string } | null => {
+    const reportId = memberReportId.get(memberId); if (!reportId) return null
+    const docId = reportDoc.get(reportId); if (!docId) return null
+    const date = docDate.get(docId); if (!date) return null
+    return { docId, date }
+  }
+
+  // Complétions documentaires EFFECTIVES — même mécanisme générique que loadCboReducedStates,
+  // restreint aux CBO site_reserve/site_deadline de ce site.
+  const highByCbo = new Map<string, Array<{ date: string | null; proposalId: string; docId: string | null }>>()
+  const allProofs = await loadProposalProofs(siteId)
+  const proofs = allProofs.filter((p) => p.candidates.some((c) => cboIdSet.has(c.cboId)))
+  const proofDocByProposal = new Map<string, string | null>()
+  for (const p of await fetchAllChunks<{ id: string; document_id: string | null }>(
+    proofs.map((x) => x.proof.proposalId), (c) => sb.from('document_extraction_proposal').select('id, document_id').in('id', c),
+  )) proofDocByProposal.set(p.id, p.document_id)
+  const effByProposal = await getEffectiveResolutionsByProposalBatch(
+    proofs.map((it) => ({
+      proofProposalId: it.proof.proposalId,
+      contextFingerprint: computeProofContextFingerprint(it.proof, it.candidates),
+    })),
+    ACTIVE_POLICY_VERSION,
+  )
+  for (const it of proofs) {
+    const eff = effByProposal.get(it.proof.proposalId) ?? null
+    if (!eff || eff.decision !== 'MATCH' || eff.confidenceClass !== 'HIGH' || !eff.selectedCboId) continue
+    if (!cboIdSet.has(eff.selectedCboId)) continue
+    const l = highByCbo.get(eff.selectedCboId) ?? []
+    l.push({ date: it.proof.effectiveDate ?? null, proposalId: it.proof.proposalId, docId: proofDocByProposal.get(it.proof.proposalId) ?? null })
+    highByCbo.set(eff.selectedCboId, l)
+  }
+
+  // Réduction — même moteur générique. natives=[] toujours (aucun journal natif pour ces types).
+  for (const cbo of cbos) {
+    const memberIds = memberIdsByCbo.get(cbo.id) ?? []
+    const members: CboMemberProvenance[] = memberIds.map((memberId) => {
+      const biz = memberBusiness(memberId)
+      return { memberId, docId: biz?.docId ?? null, date: biz?.date ?? null }
+    })
+    const completions: CboCompletionProof[] = (highByCbo.get(cbo.id) ?? []).map((h) => ({ proposalId: h.proposalId, docId: h.docId, date: h.date }))
+    const natives: CboNativeJournalEvent[] = []
+
+    const asm = assembleCboEvents(cbo.label, members, completions, natives)
+    const reduced = reduceCboLifecycle(asm.events)
+    out.set(cbo.id, {
+      cboId: cbo.id, canonicalSubjectId: subjByCbo.get(cbo.id) ?? null, label: cbo.label, nature: asm.nature, reduced,
+      documentaryHighCount: asm.documentaryHighCount, suppressedByNature: asm.suppressedByNature,
+      docOpenCount: asm.docOpenCount, membersSharedWithCompletionDoc: asm.membersSharedWithCompletionDoc,
+      // Aucun geste natif possible sur réserve/échéance dans ce lot (pas de journal) → jamais de cible.
+      targetActionId: null,
+    })
+  }
+
+  return out
+}

@@ -41,7 +41,7 @@ import {
   type PointTrajectoryEvent,
 } from './tracked-point-lifecycle-reducer'
 import type { MembershipRail } from './tracked-point-membership-candidates'
-import { loadCboReducedStates } from './canonical-business-object-evolution'
+import { loadCboReducedStates, loadNonActionCboReducedStates } from './canonical-business-object-evolution'
 import { PROPOSAL_PROOF_FAMILY, PROPOSAL_PROOF_STATUS } from './document-completion-resolver'
 
 const FETCH_CHUNK_SIZE = 100
@@ -431,9 +431,18 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
   }
 
   // Réutilise le reducer CBO existant, gelé — ne recalcule jamais un verdict CBO ici.
-  // Limitation documentée : ne couvre que object_type='site_action' ; un tracked_point_id
-  // pointant vers un autre object_type serait silencieusement absent de cette Map.
-  const cboReduced = await loadCboReducedStates(siteId)
+  // 6C.1.A (mandat Vincent 2026-09-07) : un Point doit voir son CBO réel quel que soit son
+  // object_type (site_action, site_reserve, site_deadline) — union de deux Maps, chacune scopée
+  // à son propre object_type. loadCboReducedStates reste site_action-only et INCHANGÉ (ses autres
+  // consommateurs — P0-2/Actions/Debrief/Briefing/nav — présument tous un CBO action) ;
+  // loadNonActionCboReducedStates (fonction séparée) couvre site_reserve/site_deadline avec le
+  // même moteur de réduction. Les deux Maps sont disjointes par construction (object_type exclusif
+  // au niveau de la requête CBO) → l'union ne peut jamais écraser une entrée par une autre.
+  const [cboReducedAction, cboReducedNonAction] = await Promise.all([
+    loadCboReducedStates(siteId),
+    loadNonActionCboReducedStates(siteId),
+  ])
+  const cboReduced = new Map([...cboReducedAction, ...cboReducedNonAction])
 
   const readModelPoints: PointReadModelEntry[] = points.map((point) => {
     const cboIds = cboIdsByPoint.get(point.id) ?? []
