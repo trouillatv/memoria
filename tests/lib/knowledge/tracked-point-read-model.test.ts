@@ -3,8 +3,12 @@ import {
   projectTrackedPoint,
   deriveSubjectPointReadModel,
   projectPendingIdentityCandidates,
+  selectEligibleProposalIds,
+  assemblePointDocumentaryEvents,
   type TrackedPointRow,
   type PendingIdentityCandidateRow,
+  type PointMembershipRow,
+  type PointDocProposalProvenance,
 } from '@/lib/knowledge/tracked-point-read-model'
 import type { PointLifecycleEvent, PointCboMember } from '@/lib/knowledge/tracked-point-lifecycle-reducer'
 import type { CboComputedCurrentState } from '@/lib/knowledge/cbo-lifecycle-reducer'
@@ -204,5 +208,154 @@ describe('tracked-point-read-model — projectTrackedPoint', () => {
     }
     const [projected] = projectPendingIdentityCandidates([orphanRow])
     expect(projected.source).toBe('resolution_without_known_problem')
+  })
+})
+
+describe('tracked-point-read-model — bridge HARD membership → événements documentaires (6B.1)', () => {
+  const proposal = (over: Partial<PointDocProposalProvenance> = {}): PointDocProposalProvenance => ({
+    proposalId: 'proposal-1',
+    proposalFamily: 'knowledge_fact',
+    documentStatus: 'done',
+    date: '2026-01-10',
+    ...over,
+  })
+
+  it('F8 — sans membership la preuve est ignorée ; avec membership HARD elle est consommée, et un CBO natif resté open produit une divergence', () => {
+    const proposalsByThread = new Map([['thread-1', ['proposal-1']]])
+    const point = basePoint({ id: 'f8-bridge' })
+
+    const noMembers: PointMembershipRow[] = []
+    const eligibleWithout = selectEligibleProposalIds(noMembers, proposalsByThread)
+    expect(eligibleWithout.size).toBe(0)
+    const docsWithout = assemblePointDocumentaryEvents([proposal()].filter((p) => eligibleWithout.has(p.proposalId)))
+    expect(docsWithout).toEqual([])
+    const openEntry = projectTrackedPoint(point, [cbo('open')], [], [], docsWithout)
+    expect(openEntry.derivedState).toBe('open')
+    expect(openEntry.hasDocumentaryDivergence).toBe(false)
+
+    const members: PointMembershipRow[] = [
+      { subjectThreadId: 'thread-1', scope: 'thread', proposalIds: null, status: 'active' },
+    ]
+    const eligibleWith = selectEligibleProposalIds(members, proposalsByThread)
+    expect(eligibleWith.has('proposal-1')).toBe(true)
+    const docsWith = assemblePointDocumentaryEvents([proposal()])
+    expect(docsWith).toEqual([
+      { kind: 'resolution_signal', attestedAt: '2026-01-10', eventAt: '2026-01-10', source: 'proposal:proposal-1' },
+    ])
+
+    const divergentEntry = projectTrackedPoint(point, [cbo('open')], ['thread-1'], [], docsWith)
+    expect(divergentEntry.derivedState).toBe('open')
+    expect(divergentEntry.hasDocumentaryDivergence).toBe(true)
+  })
+
+  it('proposal_set — deux propositions du même thread, une seule ciblée par le membership, isolation prouvée', () => {
+    const proposalsByThread = new Map([['thread-2', ['prop-a', 'prop-b']]])
+    const members: PointMembershipRow[] = [
+      { subjectThreadId: 'thread-2', scope: 'proposal_set', proposalIds: ['prop-a'], status: 'active' },
+    ]
+    const eligible = selectEligibleProposalIds(members, proposalsByThread)
+    expect(eligible).toEqual(new Set(['prop-a']))
+    expect(eligible.has('prop-b')).toBe(false)
+
+    const provenance: PointDocProposalProvenance[] = [
+      { proposalId: 'prop-a', proposalFamily: 'knowledge_fact', documentStatus: 'done', date: '2026-02-01' },
+      { proposalId: 'prop-b', proposalFamily: 'knowledge_fact', documentStatus: 'done', date: '2026-02-02' },
+    ].filter((p) => eligible.has(p.proposalId))
+    const docs = assemblePointDocumentaryEvents(provenance)
+    expect(docs).toEqual([
+      { kind: 'resolution_signal', attestedAt: '2026-02-01', eventAt: '2026-02-01', source: 'proposal:prop-a' },
+    ])
+  })
+
+  it('retired — un membership status=retired ne contribue jamais, quel que soit son scope', () => {
+    const proposalsByThread = new Map([['thread-3', ['prop-c']]])
+    const retiredThread: PointMembershipRow[] = [
+      { subjectThreadId: 'thread-3', scope: 'thread', proposalIds: null, status: 'retired' },
+    ]
+    expect(selectEligibleProposalIds(retiredThread, proposalsByThread).size).toBe(0)
+
+    const retiredProposalSet: PointMembershipRow[] = [
+      { subjectThreadId: 'thread-3', scope: 'proposal_set', proposalIds: ['prop-c'], status: 'retired' },
+    ]
+    expect(selectEligibleProposalIds(retiredProposalSet, proposalsByThread).size).toBe(0)
+  })
+
+  it('candidate — un candidat pending ou accepted sans tracked_point_member HARD ne modifie jamais la projection', () => {
+    const proposalsByThread = new Map([['thread-4', ['prop-d']]])
+    const noMembers: PointMembershipRow[] = []
+    const eligible = selectEligibleProposalIds(noMembers, proposalsByThread)
+    expect(eligible.size).toBe(0)
+
+    const point = basePoint({ id: 'candidate-bridge' })
+    const before = projectTrackedPoint(point, [cbo('open')], [], [], [])
+
+    const candidateRows: PendingIdentityCandidateRow[] = [
+      {
+        id: 'candidate-accepted',
+        siteId: 'site-1',
+        candidateTraceThreadId: 'thread-4',
+        candidatePointId: point.id,
+        reason: 'accepté par un humain',
+        rail: 'strong_containment',
+        status: 'accepted',
+      },
+    ]
+    projectPendingIdentityCandidates(candidateRows) // calculé, jamais consommé ci-dessous
+
+    const provenance: PointDocProposalProvenance[] = [...eligible].map((id) => ({
+      proposalId: id,
+      proposalFamily: 'knowledge_fact',
+      documentStatus: 'done',
+      date: '2026-01-01',
+    }))
+    const after = projectTrackedPoint(point, [cbo('open')], [], [], assemblePointDocumentaryEvents(provenance))
+    expect(after).toEqual(before)
+  })
+
+  it('trajectory — open_signal puis resolution_signal puis open_signal reconstruisent open → resolved → reopened', () => {
+    const provenance: PointDocProposalProvenance[] = [
+      { proposalId: 'p-open', proposalFamily: 'action', documentStatus: 'open', date: '2026-01-01' },
+      { proposalId: 'p-resolved', proposalFamily: 'knowledge_fact', documentStatus: 'done', date: '2026-02-01' },
+      { proposalId: 'p-reopened', proposalFamily: 'action', documentStatus: 'open', date: '2026-03-01' },
+    ]
+    const docs = assemblePointDocumentaryEvents(provenance)
+    expect(docs).toEqual([
+      { kind: 'open_signal', attestedAt: '2026-01-01', eventAt: '2026-01-01', source: 'proposal:p-open' },
+      { kind: 'resolution_signal', attestedAt: '2026-02-01', eventAt: '2026-02-01', source: 'proposal:p-resolved' },
+      { kind: 'open_signal', attestedAt: '2026-03-01', eventAt: '2026-03-01', source: 'proposal:p-reopened' },
+    ])
+
+    const point = basePoint({ id: 'trajectory-bridge' })
+    const entry = projectTrackedPoint(point, [], [], [], docs)
+    expect(entry.derivedState).toBe('reopened')
+    expect(entry.trajectory.map((t) => t.kind)).toEqual(['open_signal', 'resolution_signal', 'open_signal'])
+  })
+
+  it('déduplication — une même proposition atteinte par deux memberships (thread + proposal_set) ne produit qu\'une seule contribution', () => {
+    const proposalsByThread = new Map([['thread-5', ['prop-e']]])
+    const members: PointMembershipRow[] = [
+      { subjectThreadId: 'thread-5', scope: 'thread', proposalIds: null, status: 'active' },
+      { subjectThreadId: 'thread-5', scope: 'proposal_set', proposalIds: ['prop-e'], status: 'active' },
+    ]
+    const eligible = selectEligibleProposalIds(members, proposalsByThread)
+    expect(eligible).toEqual(new Set(['prop-e']))
+
+    const provenance: PointDocProposalProvenance[] = [...eligible].map((id) => ({
+      proposalId: id,
+      proposalFamily: 'knowledge_fact',
+      documentStatus: 'done',
+      date: '2026-04-01',
+    }))
+    // Renforce explicitement : même provenance dupliquée, simulant deux chemins de résolution
+    // convergeant vers la même proposition (déduplication sur proposalId, jamais sur texte).
+    const withDuplicate = [...provenance, ...provenance]
+    const docs = assemblePointDocumentaryEvents(withDuplicate)
+    expect(docs).toHaveLength(1)
+    expect(docs[0]).toEqual({
+      kind: 'resolution_signal',
+      attestedAt: '2026-04-01',
+      eventAt: '2026-04-01',
+      source: 'proposal:prop-e',
+    })
   })
 })
