@@ -1,0 +1,144 @@
+{
+  "mandate": "Phase 6E.2B étape 2/4 — préflight + simulation READ-ONLY (0 écriture)",
+  "generatedAt": "2026-09-07T19:40:47.225Z",
+  "witness": {
+    "candidateId": "da09c952-ebab-4c25-a7d8-8facb9fa0588",
+    "sourceThreadId": "472d86e3-8765-473b-9582-5fd9e146c19e",
+    "targetPointId": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+    "candidateScope": "thread",
+    "candidateStatus": "pending"
+  },
+  "sourceProof": {
+    "threadProposals": [
+      {
+        "id": "82850e84-2622-4dad-abde-55a7a7a888fd",
+        "proposal_family": "observation",
+        "label": "RIA à vérifier",
+        "document_id": "2d5ff091-0136-4535-9829-d7b7f4d8f49b",
+        "subject_thread_id": "472d86e3-8765-473b-9582-5fd9e146c19e"
+      }
+    ],
+    "famillesPresentes": [
+      "observation"
+    ],
+    "distinctPendingTargetsForThread": [
+      "f1f377fc-e003-44cf-8aba-8050507c1db6"
+    ],
+    "founderCheck": [],
+    "hardMemberCheckElsewhere": []
+  },
+  "targetBefore": {
+    "row": {
+      "id": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+      "label": "Vérifier la dotation des RIA",
+      "status": "active",
+      "identityStatus": "CONFIRMED",
+      "foundingKind": "cbo"
+    },
+    "entry": {
+      "id": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "ownerCanonicalSubjectId": "e130d02d-c8e4-4c07-8f30-f49786386efb",
+      "label": "Vérifier la dotation des RIA",
+      "status": "active",
+      "mergedIntoId": null,
+      "canonicalPointId": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+      "identityStatus": "CONFIRMED",
+      "derivedState": "open",
+      "foundingKind": "cbo",
+      "foundingSource": "canonical_business_object",
+      "hasUpstreamDefect": false,
+      "cboIds": [
+        "60dd1e1e-b0cd-4a2e-9a83-507b6b412385"
+      ],
+      "hardMemberThreadIds": [
+        "f6a26c7c-3350-4a18-a864-0ec8be84389c",
+        "ca6348ca-534e-4f41-9d99-41e511253516"
+      ],
+      "latestMeaningfulEventAt": "2026-02-19",
+      "trajectory": [
+        {
+          "effectiveAt": "2025-03-27",
+          "basis": "explicit_event_date",
+          "kind": "open_signal",
+          "source": "proposal:0661d714-4f1b-40ac-930b-d4559a82a9e8"
+        },
+        {
+          "effectiveAt": "2026-02-19",
+          "basis": "explicit_event_date",
+          "kind": "open_signal",
+          "source": "proposal:979634cc-b6ce-4a3e-acca-95f08a1a519f"
+        }
+      ],
+      "stateBasis": [
+        "open_signal@2026-02-19"
+      ],
+      "markers": [],
+      "documentaryDivergences": [],
+      "conflicts": [],
+      "toConfirm": false,
+      "closedByDecision": false,
+      "awaitingDecision": false,
+      "hasDocumentaryDivergence": false,
+      "hasConflict": false
+    }
+  },
+  "simulatedAfter": {
+    "entry": {
+      "id": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "ownerCanonicalSubjectId": "e130d02d-c8e4-4c07-8f30-f49786386efb",
+      "label": "Vérifier la dotation des RIA",
+      "status": "active",
+      "mergedIntoId": null,
+      "canonicalPointId": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+      "identityStatus": "CONFIRMED",
+      "derivedState": "open",
+      "foundingKind": "cbo",
+      "foundingSource": "canonical_business_object",
+      "hasUpstreamDefect": false,
+      "cboIds": [
+        "60dd1e1e-b0cd-4a2e-9a83-507b6b412385"
+      ],
+      "hardMemberThreadIds": [
+        "f6a26c7c-3350-4a18-a864-0ec8be84389c",
+        "ca6348ca-534e-4f41-9d99-41e511253516",
+        "472d86e3-8765-473b-9582-5fd9e146c19e"
+      ],
+      "latestMeaningfulEventAt": "2026-02-19",
+      "trajectory": [
+        {
+          "effectiveAt": "2025-03-27",
+          "basis": "explicit_event_date",
+          "kind": "open_signal",
+          "source": "proposal:0661d714-4f1b-40ac-930b-d4559a82a9e8"
+        },
+        {
+          "effectiveAt": "2026-02-19",
+          "basis": "explicit_event_date",
+          "kind": "open_signal",
+          "source": "proposal:979634cc-b6ce-4a3e-acca-95f08a1a519f"
+        }
+      ],
+      "stateBasis": [
+        "open_signal@2026-02-19"
+      ],
+      "markers": [],
+      "documentaryDivergences": [],
+      "conflicts": [],
+      "toConfirm": false,
+      "closedByDecision": false,
+      "awaitingDecision": false,
+      "hasDocumentaryDivergence": false,
+      "hasConflict": false
+    },
+    "simulationError": null
+  },
+  "verdict": {
+    "abort": false,
+    "reasons": [],
+    "notes": [
+      "aucun nouvel événement documentaire (document_status de la proposition source ≠ 'open') — attendu, pas un échec : la preuve structurelle (hardMemberThreadIds) est le critère qui compte ici"
+    ]
+  }
+}

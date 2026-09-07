@@ -1,0 +1,14 @@
+{
+  "generatedAt": "2026-09-07T19:41:28.978Z",
+  "abort": false,
+  "candidateId": "da09c952-ebab-4c25-a7d8-8facb9fa0588",
+  "targetPointId": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+  "sourceThreadId": "472d86e3-8765-473b-9582-5fd9e146c19e",
+  "result": {
+    "ok": true,
+    "alreadyAssociated": false,
+    "targetPointId": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+    "sourceThreadId": "472d86e3-8765-473b-9582-5fd9e146c19e",
+    "memberId": "98d4baba-2a2c-4da9-b431-55662768b036"
+  }
+}

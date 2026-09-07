@@ -1,0 +1,87 @@
+{
+  "mandate": "Phase 6E.2B étape 4/4 — recette post-acceptation + idempotence (READ-ONLY sauf rejeu, 0 écriture supplémentaire attendue)",
+  "generatedAt": "2026-09-07T19:42:33.761Z",
+  "checks": {
+    "newMembership": [
+      {
+        "id": "98d4baba-2a2c-4da9-b431-55662768b036",
+        "tracked_point_id": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+        "subject_thread_id": "472d86e3-8765-473b-9582-5fd9e146c19e",
+        "scope": "thread",
+        "status": "active",
+        "evidence_grade": "HARD",
+        "created_at": "2026-09-07T19:41:28.856338+00:00"
+      }
+    ],
+    "candidateAfter": {
+      "id": "da09c952-ebab-4c25-a7d8-8facb9fa0588",
+      "status": "accepted",
+      "resolved_at": "2026-09-07T19:41:28.856338+00:00",
+      "candidate_point_id": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+      "subject_thread_id": "472d86e3-8765-473b-9582-5fd9e146c19e"
+    },
+    "sourceProposalsAfter": [
+      {
+        "id": "82850e84-2622-4dad-abde-55a7a7a888fd",
+        "proposal_family": "observation",
+        "subject_thread_id": "472d86e3-8765-473b-9582-5fd9e146c19e",
+        "document_id": "2d5ff091-0136-4535-9829-d7b7f4d8f49b",
+        "label": "RIA à vérifier"
+      }
+    ],
+    "targetReadModelAfter": {
+      "id": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+      "label": "Vérifier la dotation des RIA",
+      "derivedState": "open",
+      "cboIds": [
+        "60dd1e1e-b0cd-4a2e-9a83-507b6b412385"
+      ],
+      "hardMemberThreadIds": [
+        "f6a26c7c-3350-4a18-a864-0ec8be84389c",
+        "ca6348ca-534e-4f41-9d99-41e511253516",
+        "472d86e3-8765-473b-9582-5fd9e146c19e"
+      ],
+      "hasConflict": false,
+      "hasDocumentaryDivergence": false
+    },
+    "otherWitnessCandidates": [
+      {
+        "id": "bc099e2c-134d-4e0c-bcfd-90485c05bfaa",
+        "status": "pending",
+        "resolved_at": null,
+        "candidate_point_id": "b4c5f755-7d3d-4317-9e58-a7ef63f2c122",
+        "subject_thread_id": "ce6f09ac-8fab-45f1-bce0-e983fb8bde7e"
+      },
+      {
+        "id": "2b11a6bd-0947-478c-a2b9-00aa122392bf",
+        "status": "pending",
+        "resolved_at": null,
+        "candidate_point_id": "51204798-58d5-46c7-9d65-22cf0bd57506",
+        "subject_thread_id": "7c8042f7-29a0-4d6c-95ce-20493eadc898"
+      },
+      {
+        "id": "ba9095ba-df47-4c22-8a4f-1ac962bec3e0",
+        "status": "pending",
+        "resolved_at": null,
+        "candidate_point_id": "8ca97f01-85f1-4d98-bb27-2bfa77c978b8",
+        "subject_thread_id": "495fb112-6cbb-4d77-9072-b39133403c10"
+      }
+    ],
+    "crossPointCheck": [
+      {
+        "id": "98d4baba-2a2c-4da9-b431-55662768b036",
+        "tracked_point_id": "f1f377fc-e003-44cf-8aba-8050507c1db6"
+      }
+    ],
+    "idempotencyReplay": {
+      "ok": true,
+      "alreadyAssociated": true,
+      "targetPointId": "f1f377fc-e003-44cf-8aba-8050507c1db6",
+      "sourceThreadId": "472d86e3-8765-473b-9582-5fd9e146c19e",
+      "memberId": "98d4baba-2a2c-4da9-b431-55662768b036"
+    },
+    "membershipCountAfterReplay": 1
+  },
+  "failures": [],
+  "verdict": "PASS"
+}
