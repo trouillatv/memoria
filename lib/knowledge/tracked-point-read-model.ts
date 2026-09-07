@@ -43,6 +43,7 @@ import {
 import type { MembershipRail } from './tracked-point-membership-candidates'
 import { loadCboReducedStates, loadNonActionCboReducedStates } from './canonical-business-object-evolution'
 import { PROPOSAL_PROOF_FAMILY, PROPOSAL_PROOF_STATUS } from './document-completion-resolver'
+import { buildPointMergeComponents, resolveCanonicalPointId, type MergeGraphPoint } from './tracked-point-merge'
 
 const FETCH_CHUNK_SIZE = 100
 
@@ -62,6 +63,7 @@ export type TrackedPointRow = {
   foundingSource: string | null
   foundingReference: string | null
   hasUpstreamDefect: boolean
+  createdAt: string
 }
 
 export type PointReadModelEntry = {
@@ -71,6 +73,10 @@ export type PointReadModelEntry = {
   label: string
   status: TrackedPointStatus
   mergedIntoId: string | null
+  // canonicalPointId (Phase 6E.1A) : égal à `id` pour un Point actif/retired ; sinon la
+  // cible résolue via resolveCanonicalPointId (potentiellement multi-hop A→B→C). Un Point
+  // merged reste ainsi toujours résoluble même une fois exclu des listes actives.
+  canonicalPointId: string
   identityStatus: TrackedPointIdentityStatus
   derivedState: PointComputedCurrentState
   foundingKind: TrackedPointFoundingKind
@@ -123,12 +129,17 @@ export type PendingIdentityCandidate = PendingIdentityCandidateRow & {
 
 // projectTrackedPoint est pure : aucun paramètre de type PendingIdentityCandidate n'existe
 // dans sa signature, par construction un candidat ne peut jamais influencer son résultat.
+//
+// canonicalPointId (Phase 6E.1A) : paramètre optionnel, défaut point.id — préserve tous les
+// appels existants à 5 arguments (tests gelés d'avant 6E.1A) inchangés. loadTrackedPointReadModel
+// le fournit explicitement, résolu via resolveCanonicalPointId sur l'ensemble du site.
 export function projectTrackedPoint(
   point: TrackedPointRow,
   cboMembers: PointCboMember[],
   hardMemberThreadIds: string[],
   decisions: PointLifecycleEvent[] = [],
   docs: PointLifecycleEvent[] = [],
+  canonicalPointId: string = point.id,
 ): PointReadModelEntry {
   const reduced = reduceTrackedPointLifecycle(decisions, docs, cboMembers)
   const latestMeaningfulEventAt =
@@ -143,6 +154,7 @@ export function projectTrackedPoint(
     label: point.label,
     status: point.status,
     mergedIntoId: point.mergedIntoId,
+    canonicalPointId,
     identityStatus: point.identityStatus,
     derivedState: reduced.computedCurrentState,
     foundingKind: point.foundingKind,
@@ -298,6 +310,7 @@ async function fetchAllChunks<T>(
 
 export type TrackedPointReadModelResult = {
   points: PointReadModelEntry[]
+  mergedPoints: PointReadModelEntry[]
   bySubject: Map<string, SubjectPointReadModel>
   pendingIdentityCandidates: PendingIdentityCandidate[]
 }
@@ -308,7 +321,7 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
   const { data: pointRows, error: pointsError } = await supabase
     .from('tracked_point')
     .select(
-      'id, site_id, canonical_subject_id, label, status, merged_into_id, identity_status, founding_kind, founding_source, founding_reference, has_upstream_defect',
+      'id, site_id, canonical_subject_id, label, status, merged_into_id, identity_status, founding_kind, founding_source, founding_reference, has_upstream_defect, created_at',
     )
     .eq('site_id', siteId)
 
@@ -317,7 +330,7 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
   if (!pointRows || pointRows.length === 0) {
     // Aucun Point n'existe encore pour ce site (attendu en 6B, aucune écriture n'a eu lieu) :
     // collections vides, pas une erreur à masquer.
-    return { points: [], bySubject: new Map(), pendingIdentityCandidates: [] }
+    return { points: [], mergedPoints: [], bySubject: new Map(), pendingIdentityCandidates: [] }
   }
 
   const points: TrackedPointRow[] = pointRows.map((r) => ({
@@ -332,9 +345,24 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
     foundingSource: r.founding_source,
     foundingReference: r.founding_reference,
     hasUpstreamDefect: r.has_upstream_defect,
+    createdAt: r.created_at,
   }))
 
   const pointIds = points.map((p) => p.id)
+
+  // Phase 6E.1A — graphe de fusion du site. Un Point non-merged forme son propre composant
+  // singleton (couverture totale garantie par buildPointMergeComponents) : le canonique de
+  // chaque Point actif/retired est lui-même tant qu'aucun merge réel n'existe.
+  const mergeGraphPoints: MergeGraphPoint[] = points.map((p) => ({
+    id: p.id,
+    siteId: p.siteId,
+    status: p.status,
+    mergedIntoId: p.mergedIntoId,
+    identityStatus: p.identityStatus,
+    createdAt: p.createdAt,
+  }))
+  const mergeComponents = buildPointMergeComponents(mergeGraphPoints)
+  const pointsById = new Map(points.map((p) => [p.id, p]))
 
   const memberRows = await fetchAllChunks(pointIds, async (chunk) => {
     const { data, error } = await supabase
@@ -444,17 +472,27 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
   ])
   const cboReduced = new Map([...cboReducedAction, ...cboReducedNonAction])
 
-  const readModelPoints: PointReadModelEntry[] = points.map((point) => {
-    const cboIds = cboIdsByPoint.get(point.id) ?? []
+  // buildEvidenceForPointIds : agrège cboMembers/hardMemberThreadIds/docs sur un ENSEMBLE de
+  // tracked_point.id (un seul id pour un Point non fusionné ; le composant entier — canonique
+  // + descendants merged — pour un Point canonique, Phase 6E.1A). Déduplication par Set : un
+  // même CBO ou thread ne peut jamais compter deux fois même s'il apparaît via deux membres du
+  // composant.
+  function buildEvidenceForPointIds(memberPointIds: string[]): {
+    cboMembers: PointCboMember[]
+    hardMemberThreadIds: string[]
+    docs: PointLifecycleEvent[]
+  } {
+    const cboIds = [...new Set(memberPointIds.flatMap((id) => cboIdsByPoint.get(id) ?? []))]
     const cboMembers: PointCboMember[] = cboIds
       .map((cboId) => {
         const entry = cboReduced.get(cboId)
         return entry ? { cboId, reduced: entry.reduced } : null
       })
       .filter((m): m is PointCboMember => m !== null)
-    const hardMemberThreadIds = threadsByPoint.get(point.id) ?? []
 
-    const members = membersByPoint.get(point.id) ?? []
+    const hardMemberThreadIds = [...new Set(memberPointIds.flatMap((id) => threadsByPoint.get(id) ?? []))]
+
+    const members = memberPointIds.flatMap((id) => membersByPoint.get(id) ?? [])
     const eligibleProposalIds = selectEligibleProposalIds(members, proposalsByThread)
     const provenance: PointDocProposalProvenance[] = [...eligibleProposalIds]
       .map((id) => proposalById.get(id))
@@ -467,8 +505,30 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
       }))
     const docs = assemblePointDocumentaryEvents(provenance)
 
-    return projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs)
-  })
+    return { cboMembers, hardMemberThreadIds, docs }
+  }
+
+  // Phase 6E.1A — un Point status='merged' est exclu des listes actives (readModelPoints)
+  // mais reste individuellement résoluble (mergedPoints), avec sa PROPRE évidence non agrégée
+  // (l'évidence agrégée vit désormais sur son canonique, ci-dessous). Un Point canonique
+  // (non-merged) agrège l'évidence de tout son composant de fusion — lui-même seul tant
+  // qu'aucun merge réel n'existe (couverture totale garantie par buildPointMergeComponents).
+  const readModelPoints: PointReadModelEntry[] = []
+  const mergedPoints: PointReadModelEntry[] = []
+
+  for (const point of points) {
+    if (point.status === 'merged') {
+      const { cboMembers, hardMemberThreadIds, docs } = buildEvidenceForPointIds([point.id])
+      const canonicalPointId = resolveCanonicalPointId(point.id, pointsById)
+      mergedPoints.push(projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, canonicalPointId))
+      continue
+    }
+
+    const component = mergeComponents.get(point.id)
+    const memberPointIds = component ? component.memberPointIds : [point.id]
+    const { cboMembers, hardMemberThreadIds, docs } = buildEvidenceForPointIds(memberPointIds)
+    readModelPoints.push(projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, point.id))
+  }
 
   const bySubject = new Map<string, SubjectPointReadModel>()
   const pointsBySubject = new Map<string, PointReadModelEntry[]>()
@@ -503,5 +563,5 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
     })),
   )
 
-  return { points: readModelPoints, bySubject, pendingIdentityCandidates }
+  return { points: readModelPoints, mergedPoints, bySubject, pendingIdentityCandidates }
 }

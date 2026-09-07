@@ -1,0 +1,364 @@
+{
+  "mandate": "Phase 6E.1A — Audit READ-ONLY projection identity_candidate -> paires Point<->Point (0 écriture)",
+  "generatedAt": "2026-09-07T11:02:32.145Z",
+  "inputCounts": {
+    "points": 329,
+    "activeMemberships": 380,
+    "candidates": 268,
+    "pendingCandidates": 268
+  },
+  "derivedPairs": {
+    "total": 95,
+    "reciprocal": 68,
+    "totalCandidatesConsumed": 179,
+    "bySite": {
+      "OCEF": 10,
+      "FAE": 13,
+      "RUS": 43,
+      "2C93": 29
+    }
+  },
+  "baselineComparison": {
+    "expectedPairs": 95,
+    "expectedReciprocal": 68,
+    "matchesBaseline": true
+  },
+  "clusters": {
+    "totalComponents": 43,
+    "sizeHistogram": {
+      "2": 24,
+      "3+": 19
+    },
+    "clustersOfThreeOrMore": [
+      [
+        "04393fb9-341c-4098-b3a9-5dc552758881",
+        "069602c7-ae8e-4088-b1a4-05d1d93124e9",
+        "dbf02445-509f-4de1-870a-334c1a8aa80a",
+        "e4b1c4bf-9bb9-45fe-b923-5e094abe6219"
+      ],
+      [
+        "117457d9-44b0-4531-8bab-4b5de0269908",
+        "b8a37970-f1dd-4def-8a72-345ff7b83fee",
+        "e6db6a31-babb-4f9e-acda-bf7fea8e2e52"
+      ],
+      [
+        "13b5ed4d-d898-4247-9468-8eec125295f6",
+        "bcd447e4-3ac6-498b-9006-81bab02b3330",
+        "ca5cfbc8-12eb-4de2-83d9-41aec90c2bb4",
+        "e04be193-55af-4b8d-8792-f1a8a37777c6"
+      ],
+      [
+        "169f95e5-6fdf-46b2-9c35-1a1e94a00648",
+        "51e7f538-7547-4454-8a2b-60eeb0f46fd7",
+        "55e14aa1-d309-4ca5-aec9-ebcc87b34069",
+        "a6e95fe6-3d4d-4d8c-8ef0-d7faa9a628d8",
+        "df111fa1-3528-437e-a5fa-da4adcb3ad98"
+      ],
+      [
+        "18673ca9-fd8e-4612-bf7b-426785843f40",
+        "18c0d2f1-f41f-4afb-88e2-c2efba9fccea",
+        "e91034c9-f121-43b2-9c65-09cfddc59555"
+      ],
+      [
+        "22d331e9-1982-48d0-a943-3c07caad0218",
+        "3e53c78f-4d5c-4c00-bd52-288ce722cec4",
+        "b179e3d4-da6b-49a7-9732-0e3493896eba",
+        "e50069c0-e44d-4801-94d1-7a707022a7e4"
+      ],
+      [
+        "2a48fb32-2fb1-40be-9c27-0ecc15387488",
+        "8d875c1f-552a-4426-a48e-521480096040",
+        "c7f846b9-1a37-4218-9141-bfcc8071edfc"
+      ],
+      [
+        "2e2e331c-62c4-4e47-9da3-e7b2471f012c",
+        "7dcd2d12-9fd2-47d9-97cf-dab4c759c7a3",
+        "81e5b254-3848-4712-8d25-7d5c151a1b54",
+        "bb38e4e3-ea0f-40b9-a9eb-fc7108735947",
+        "e79a0932-34db-4fb3-b352-7a0085a55b62",
+        "fb572559-2d6c-4005-9b20-fed0e6b2d25f"
+      ],
+      [
+        "3050c416-1cf4-40d4-9ea2-d8856adc3608",
+        "f2198d3a-8234-4abf-a79d-72c606a0b19c",
+        "f8a638e6-6c4e-4155-98d2-e5841dc55c70"
+      ],
+      [
+        "3545b936-26b9-4456-a4d5-57028b0f88e7",
+        "a6524ba5-8060-4d80-8e87-eed5b2a4f27d",
+        "f61a9aec-ca1b-4aa4-a5f3-f1e78db09b8e"
+      ],
+      [
+        "38b15de6-dc2b-4a7f-a739-a0f8fab4068d",
+        "b0a08c0f-b389-438f-9c1a-20ef50d43d35",
+        "cc975a5e-0bb8-40a8-a0cd-83028c69d77b",
+        "f342997d-47b0-4ea4-89eb-8ec7473e593a"
+      ],
+      [
+        "42af0f79-26af-4d80-a369-a1380bf61a34",
+        "5f39bfa7-5089-42f0-a0d5-71391f0a4b5c",
+        "b0b105c9-0d05-42ad-bbc9-91c083d7a3f9"
+      ],
+      [
+        "68f320e1-77f5-4c38-9d1b-56a4ac82d199",
+        "7c08550f-b1e4-423a-9be6-0943c54280ad",
+        "e193ff5f-e629-48fa-9b5c-697fa725c7be"
+      ],
+      [
+        "72e58bf4-cfa5-49c9-809d-0415ddc9532e",
+        "90a1a995-4105-4aad-9e34-4b5b47d4df3c",
+        "9cc28c94-75f3-438a-9260-45546a38103f"
+      ],
+      [
+        "81cf3b71-009b-43d0-9f34-92ecc6449854",
+        "b4507f16-9471-42cf-bfd6-0ea7af7456de",
+        "e8bd20ef-d540-4c5c-8312-b2d0c11b1905"
+      ],
+      [
+        "8f4bd92c-539b-4f08-a8f4-c2b2aabd12ca",
+        "e66cda3c-129c-4803-81a8-fa942bc4c504",
+        "f7321861-ba70-4392-8f44-6eeba2feff95"
+      ],
+      [
+        "9414941d-0ca0-4d0d-819e-81bf50a85116",
+        "be63b77a-0331-429e-9765-6c5f0b1e7e39",
+        "c4b67455-61e1-474a-926d-428514ab6360",
+        "d75e93de-3732-4435-80a1-978d5890925c",
+        "e8917a74-998a-4320-9e95-af444c51af41"
+      ],
+      [
+        "95e90ac6-a168-4ca6-9037-dc4297e8ca7a",
+        "c12bc2c2-b8e5-4ea3-951e-aecc6ce36277",
+        "d3b6e0c1-e4c9-4e0b-a6d2-62274b19b4eb"
+      ],
+      [
+        "c783b93e-3ddd-4c51-9b0c-2ed2b480567a",
+        "f2b5af62-4f66-4903-9429-bb666fefb8a2",
+        "fa2c3d75-c563-43e5-a3ba-bc37fc6b128e"
+      ]
+    ]
+  },
+  "samplePairs": [
+    {
+      "pairKey": "04393fb9-341c-4098-b3a9-5dc552758881~069602c7-ae8e-4088-b1a4-05d1d93124e9",
+      "pointAId": "04393fb9-341c-4098-b3a9-5dc552758881",
+      "pointBId": "069602c7-ae8e-4088-b1a4-05d1d93124e9",
+      "siteId": "06c62e48-c488-4787-b322-0581c36b83c8",
+      "candidateIds": [
+        "0b7678e9-ddb3-421f-a1e2-7b76b2065814",
+        "29d81025-876b-4d06-8ec1-7abc4bcf6b10",
+        "186a6d00-8faf-4552-88a7-0102253b7f88"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "04393fb9-341c-4098-b3a9-5dc552758881~dbf02445-509f-4de1-870a-334c1a8aa80a",
+      "pointAId": "04393fb9-341c-4098-b3a9-5dc552758881",
+      "pointBId": "dbf02445-509f-4de1-870a-334c1a8aa80a",
+      "siteId": "06c62e48-c488-4787-b322-0581c36b83c8",
+      "candidateIds": [
+        "f92379f5-9306-4a9a-9efb-9e3a9c70e38b",
+        "0cba8ef6-5a16-470c-841e-f70a6d015cc9",
+        "79751192-34d6-4a01-af89-2257e39aac0d"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "04393fb9-341c-4098-b3a9-5dc552758881~e4b1c4bf-9bb9-45fe-b923-5e094abe6219",
+      "pointAId": "04393fb9-341c-4098-b3a9-5dc552758881",
+      "pointBId": "e4b1c4bf-9bb9-45fe-b923-5e094abe6219",
+      "siteId": "06c62e48-c488-4787-b322-0581c36b83c8",
+      "candidateIds": [
+        "2609c803-d5d3-494b-9e2b-085526f50db4"
+      ],
+      "reciprocal": false
+    },
+    {
+      "pairKey": "069602c7-ae8e-4088-b1a4-05d1d93124e9~dbf02445-509f-4de1-870a-334c1a8aa80a",
+      "pointAId": "069602c7-ae8e-4088-b1a4-05d1d93124e9",
+      "pointBId": "dbf02445-509f-4de1-870a-334c1a8aa80a",
+      "siteId": "06c62e48-c488-4787-b322-0581c36b83c8",
+      "candidateIds": [
+        "a4dbea79-84e4-4349-9cd7-c38a3c742f39",
+        "b6bf451c-ca3a-43bd-99a6-a08d4c39f8f2",
+        "113a2f22-da7b-4b0d-8266-bc8117844ae6"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "069602c7-ae8e-4088-b1a4-05d1d93124e9~e4b1c4bf-9bb9-45fe-b923-5e094abe6219",
+      "pointAId": "069602c7-ae8e-4088-b1a4-05d1d93124e9",
+      "pointBId": "e4b1c4bf-9bb9-45fe-b923-5e094abe6219",
+      "siteId": "06c62e48-c488-4787-b322-0581c36b83c8",
+      "candidateIds": [
+        "aa632ca8-71c4-488a-b70b-eea28f7dfe30"
+      ],
+      "reciprocal": false
+    },
+    {
+      "pairKey": "0ccdda29-d53c-47cc-8e7d-d9db5d161762~d047cd99-2b00-4436-92ef-98724fc3f169",
+      "pointAId": "0ccdda29-d53c-47cc-8e7d-d9db5d161762",
+      "pointBId": "d047cd99-2b00-4436-92ef-98724fc3f169",
+      "siteId": "fae6149d-f490-4b8e-b1fa-34f0ce8a32b4",
+      "candidateIds": [
+        "d33b6d28-5962-4600-bcfe-f2b3ead3e066",
+        "26834377-32d9-4dec-9e7c-be7682ce4351"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "10e84253-2919-44bc-ae74-08ef9bbb9e3a~91466b91-7b9f-4614-b9ab-d01ef5e4489f",
+      "pointAId": "10e84253-2919-44bc-ae74-08ef9bbb9e3a",
+      "pointBId": "91466b91-7b9f-4614-b9ab-d01ef5e4489f",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "c6df04c1-74ab-48d3-8dcd-6acb8fc97002",
+        "1bb5a125-fe39-4d4a-8cd3-1de495271464"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "117457d9-44b0-4531-8bab-4b5de0269908~e6db6a31-babb-4f9e-acda-bf7fea8e2e52",
+      "pointAId": "117457d9-44b0-4531-8bab-4b5de0269908",
+      "pointBId": "e6db6a31-babb-4f9e-acda-bf7fea8e2e52",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "1f2bdf0b-bb70-4ed6-87c9-14fc09faa174",
+        "3e03c745-9205-411f-abe2-00fb7355c9e9"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "12d57fd3-727c-45f8-af76-cdf26e34feee~99b8497f-a742-4ff1-af01-707bca9fb88a",
+      "pointAId": "12d57fd3-727c-45f8-af76-cdf26e34feee",
+      "pointBId": "99b8497f-a742-4ff1-af01-707bca9fb88a",
+      "siteId": "2c939e67-e986-4635-86a0-638cda870480",
+      "candidateIds": [
+        "6d0954be-707d-47e5-b430-dfb1b228c790",
+        "b4c585dd-d7f9-4d41-a04b-5346724b6f6c",
+        "3dc5b476-cd65-4574-b1f3-25c835014c6c",
+        "f2102754-9720-45f9-9287-3d7b674ae6d4"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "13b5ed4d-d898-4247-9468-8eec125295f6~bcd447e4-3ac6-498b-9006-81bab02b3330",
+      "pointAId": "13b5ed4d-d898-4247-9468-8eec125295f6",
+      "pointBId": "bcd447e4-3ac6-498b-9006-81bab02b3330",
+      "siteId": "fae6149d-f490-4b8e-b1fa-34f0ce8a32b4",
+      "candidateIds": [
+        "2cb0ec0e-8071-4757-b39d-fa9349bd88d6",
+        "99366ab2-9c9b-4bba-86b4-95d6f485ef9a"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "13b5ed4d-d898-4247-9468-8eec125295f6~ca5cfbc8-12eb-4de2-83d9-41aec90c2bb4",
+      "pointAId": "13b5ed4d-d898-4247-9468-8eec125295f6",
+      "pointBId": "ca5cfbc8-12eb-4de2-83d9-41aec90c2bb4",
+      "siteId": "fae6149d-f490-4b8e-b1fa-34f0ce8a32b4",
+      "candidateIds": [
+        "68ab4896-3ccd-438c-be0f-c70ff765078e",
+        "6b2f7254-3196-45b4-a21f-758abe40608c"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "13b5ed4d-d898-4247-9468-8eec125295f6~e04be193-55af-4b8d-8792-f1a8a37777c6",
+      "pointAId": "13b5ed4d-d898-4247-9468-8eec125295f6",
+      "pointBId": "e04be193-55af-4b8d-8792-f1a8a37777c6",
+      "siteId": "fae6149d-f490-4b8e-b1fa-34f0ce8a32b4",
+      "candidateIds": [
+        "f9e67b50-abbc-4b36-b5da-a63e74e145d9",
+        "4bb488ef-a883-49b7-b519-64761079d94f"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "169f95e5-6fdf-46b2-9c35-1a1e94a00648~df111fa1-3528-437e-a5fa-da4adcb3ad98",
+      "pointAId": "169f95e5-6fdf-46b2-9c35-1a1e94a00648",
+      "pointBId": "df111fa1-3528-437e-a5fa-da4adcb3ad98",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "5c637ac3-c5fe-4a97-8611-fdb97fcc3ae6"
+      ],
+      "reciprocal": false
+    },
+    {
+      "pairKey": "179bbeb1-7e9a-48d2-8491-7a40294fac40~6b9bd03e-ff3c-45df-be18-dd9a0ee0cc61",
+      "pointAId": "179bbeb1-7e9a-48d2-8491-7a40294fac40",
+      "pointBId": "6b9bd03e-ff3c-45df-be18-dd9a0ee0cc61",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "e6506a54-4285-4d47-ad2d-08adb477fe1e",
+        "16a323a5-46a3-44d8-9302-eacc724f9c09"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "18673ca9-fd8e-4612-bf7b-426785843f40~18c0d2f1-f41f-4afb-88e2-c2efba9fccea",
+      "pointAId": "18673ca9-fd8e-4612-bf7b-426785843f40",
+      "pointBId": "18c0d2f1-f41f-4afb-88e2-c2efba9fccea",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "5e70b077-e920-4ec4-8ea4-16826f96543e",
+        "66b7bbe7-ef7d-4993-8919-8b4d47d4ea82"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "18673ca9-fd8e-4612-bf7b-426785843f40~e91034c9-f121-43b2-9c65-09cfddc59555",
+      "pointAId": "18673ca9-fd8e-4612-bf7b-426785843f40",
+      "pointBId": "e91034c9-f121-43b2-9c65-09cfddc59555",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "44f181aa-a8bf-4ccc-8f16-fa73010506f5"
+      ],
+      "reciprocal": false
+    },
+    {
+      "pairKey": "2134a08b-ff42-4083-9107-bd2ab92e6a0c~5dab5d81-cbde-42f3-a7d9-ea9b3a2b0641",
+      "pointAId": "2134a08b-ff42-4083-9107-bd2ab92e6a0c",
+      "pointBId": "5dab5d81-cbde-42f3-a7d9-ea9b3a2b0641",
+      "siteId": "06c62e48-c488-4787-b322-0581c36b83c8",
+      "candidateIds": [
+        "e0461471-8454-4ea8-adaa-81d871a0170a",
+        "4d642cc6-fa90-41ba-b9b8-7b86e1940144",
+        "d04c35c1-370a-4e34-a6be-c32fb3e905a2",
+        "97c8dfb0-e315-42cb-bea8-2b85522a1eea"
+      ],
+      "reciprocal": true
+    },
+    {
+      "pairKey": "22d331e9-1982-48d0-a943-3c07caad0218~3e53c78f-4d5c-4c00-bd52-288ce722cec4",
+      "pointAId": "22d331e9-1982-48d0-a943-3c07caad0218",
+      "pointBId": "3e53c78f-4d5c-4c00-bd52-288ce722cec4",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "47339c0c-63ca-4839-8580-af4cf7f45f36"
+      ],
+      "reciprocal": false
+    },
+    {
+      "pairKey": "22d331e9-1982-48d0-a943-3c07caad0218~b179e3d4-da6b-49a7-9732-0e3493896eba",
+      "pointAId": "22d331e9-1982-48d0-a943-3c07caad0218",
+      "pointBId": "b179e3d4-da6b-49a7-9732-0e3493896eba",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "bfbd6384-7ec8-4da9-ba71-58e1a74ab72e"
+      ],
+      "reciprocal": false
+    },
+    {
+      "pairKey": "22d331e9-1982-48d0-a943-3c07caad0218~e50069c0-e44d-4801-94d1-7a707022a7e4",
+      "pointAId": "22d331e9-1982-48d0-a943-3c07caad0218",
+      "pointBId": "e50069c0-e44d-4801-94d1-7a707022a7e4",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "candidateIds": [
+        "02cf9fe5-7d74-470a-b8dd-c4262ef787f8",
+        "4ae56502-3037-49bb-b9a7-80905e7ecf0f"
+      ],
+      "reciprocal": true
+    }
+  ]
+}
