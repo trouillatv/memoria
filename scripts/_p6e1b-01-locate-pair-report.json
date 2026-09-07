@@ -1,0 +1,186 @@
+{
+  "generatedAt": "2026-09-07T16:08:05.857Z",
+  "baseline": {
+    "points": 199,
+    "memberships": 216,
+    "candidates": 73,
+    "pairs": 43
+  },
+  "extincteursPoints": [
+    {
+      "id": "853ced88-88cf-40ff-9e81-84b287e8401a",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Vérifier la dotation des extincteurs",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "e4be4110-ea90-4f08-926f-be2a294614e3",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Transmettre le listing et le plan des extincteurs",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "9c4d51fd-a36c-4dcc-8b6a-755abecd36a7",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Listing et plan des extincteurs à transmettre",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "3132f0f1-0301-44fb-80a9-e8b66c6be987",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "d75e93de-3732-4435-80a1-978d5890925c",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Mettre à jour le plan avec les tableaux électriques pour vérifier la dotation en extincteurs",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "9269db0f-2b17-4f22-b6c5-65c5c0bde315",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "be63b77a-0331-429e-9765-6c5f0b1e7e39",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Mettre à jour le plan avec prise en compte des modifications d'aménagement, des tableaux électriques et des extincteurs (CO2) rajoutés",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "e131add0-109e-4bfb-8714-538905308615",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "9414941d-0ca0-4d0d-819e-81bf50a85116",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Mettre à jour le plan avec les tableaux électriques pour vérifier la dotation extincteur (CO2)",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "6c3a4dc9-eafb-452c-a797-8fa03c8db36f",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "e8917a74-998a-4320-9e95-af444c51af41",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Mettre à jour le plan avec les modifications d'aménagement, les tableaux électriques et extincteurs (CO2) rajoutés",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "57eea651-78f6-4469-86e8-e72307002650",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "9cc28c94-75f3-438a-9260-45546a38103f",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Plan des extincteurs à mettre à jour et intégrer les aménagements produits frais/surgelés",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "ed778d6f-910e-41de-af9d-d32191bdcd66",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "72e58bf4-cfa5-49c9-809d-0415ddc9532e",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Mettre à jour le plan des extincteurs",
+      "identity_status": "CONFIRMED",
+      "founding_kind": "cbo",
+      "founding_reference": "12a98425-cb00-4d93-b294-60abb9a10486",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "90b6aa3d-7538-410c-83fc-de68dfcfc937",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Extincteurs non conformes",
+      "identity_status": "PROVISIONAL",
+      "founding_kind": "trackable_condition",
+      "founding_reference": "de778c74-6245-4f09-b16f-e7e0e3f6796e",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "e0fcd57d-498c-4a69-b1da-3da41ce384ee",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "2 extincteurs manquants sur 13 attendus dans la zone hyper",
+      "identity_status": "PROVISIONAL",
+      "founding_kind": "trackable_condition",
+      "founding_reference": "f9badee7-1e06-4017-b592-a5b6db4eb6e3",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    },
+    {
+      "id": "90a1a995-4105-4aad-9e34-4b5b47d4df3c",
+      "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "status": "active",
+      "merged_into_id": null,
+      "label": "Plan des extincteurs à mettre à jour et intégrer les aménagements produits frais/surgelés",
+      "identity_status": "PROVISIONAL",
+      "founding_kind": "trackable_condition",
+      "founding_reference": "af824a35-7cff-4768-bc00-334630f4fbd9#orphan",
+      "created_at": "2026-09-07T08:13:17.036695+00:00"
+    }
+  ],
+  "pointA": {
+    "id": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+    "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+    "status": "active",
+    "merged_into_id": null,
+    "label": "Transmettre le listing et le plan des extincteurs",
+    "identity_status": "CONFIRMED",
+    "founding_kind": "cbo",
+    "founding_reference": "9c4d51fd-a36c-4dcc-8b6a-755abecd36a7",
+    "created_at": "2026-09-07T08:13:17.036695+00:00"
+  },
+  "pointB": {
+    "id": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+    "site_id": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+    "status": "active",
+    "merged_into_id": null,
+    "label": "Listing et plan des extincteurs à transmettre",
+    "identity_status": "CONFIRMED",
+    "founding_kind": "cbo",
+    "founding_reference": "3132f0f1-0301-44fb-80a9-e8b66c6be987",
+    "created_at": "2026-09-07T08:13:17.036695+00:00"
+  },
+  "checks": {
+    "componentSizeIsTwo": true,
+    "componentMembers": [
+      "70deb7d1-28bc-4d28-ac76-de464b6855de",
+      "fc35e0d1-8acc-4748-9fee-7a5b16f9db02"
+    ],
+    "noThirdCandidateTarget": true,
+    "neitherConflicted": true,
+    "sameSite": true,
+    "bothActive": true,
+    "noExistingMergedIntoId": true,
+    "pairFound": true,
+    "pairCandidateIds": [
+      "21b5f9e9-71d7-489d-b927-5766ba625718",
+      "6e827b2b-9ae9-4c25-80bc-bd3ab2d5802c"
+    ],
+    "pairReciprocal": true
+  },
+  "canonicalTargetId": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+  "canonicalError": null,
+  "eligible": true
+}

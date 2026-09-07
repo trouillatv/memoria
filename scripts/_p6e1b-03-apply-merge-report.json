@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-09-07T16:17:37.335Z",
+  "abort": false,
+  "pointAId": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+  "pointBId": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+  "candidateIds": [
+    "21b5f9e9-71d7-489d-b927-5766ba625718",
+    "6e827b2b-9ae9-4c25-80bc-bd3ab2d5802c"
+  ],
+  "rpcResult": {
+    "source": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+    "target": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+    "sourceLabel": "Transmettre le listing et le plan des extincteurs",
+    "targetLabel": "Listing et plan des extincteurs à transmettre",
+    "candidatesAccepted": 2
+  }
+}

@@ -1,0 +1,240 @@
+{
+  "mandate": "Phase 6E.1B étape 2/4 — préflight + simulation READ-ONLY (0 écriture)",
+  "generatedAt": "2026-09-07T16:14:14.102Z",
+  "pair": {
+    "pointAId": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+    "pointBId": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+    "canonicalTargetId": "70deb7d1-28bc-4d28-ac76-de464b6855de"
+  },
+  "before": {
+    "pointA": {
+      "row": {
+        "id": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+        "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+        "canonicalSubjectId": "562ec779-d08c-41ee-b45d-c29296fd623d",
+        "label": "Transmettre le listing et le plan des extincteurs",
+        "status": "active",
+        "mergedIntoId": null,
+        "identityStatus": "CONFIRMED",
+        "foundingKind": "cbo",
+        "foundingSource": "canonical_business_object",
+        "foundingReference": "9c4d51fd-a36c-4dcc-8b6a-755abecd36a7",
+        "hasUpstreamDefect": false,
+        "createdAt": "2026-09-07T08:13:17.036695+00:00"
+      },
+      "entry": {
+        "id": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+        "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+        "ownerCanonicalSubjectId": "562ec779-d08c-41ee-b45d-c29296fd623d",
+        "label": "Transmettre le listing et le plan des extincteurs",
+        "status": "active",
+        "mergedIntoId": null,
+        "canonicalPointId": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+        "identityStatus": "CONFIRMED",
+        "derivedState": "open",
+        "foundingKind": "cbo",
+        "foundingSource": "canonical_business_object",
+        "hasUpstreamDefect": false,
+        "cboIds": [
+          "9c4d51fd-a36c-4dcc-8b6a-755abecd36a7"
+        ],
+        "hardMemberThreadIds": [
+          "2b9071f7-7232-472a-ba3b-8f538d4cb38e"
+        ],
+        "latestMeaningfulEventAt": "2026-02-19",
+        "trajectory": [
+          {
+            "effectiveAt": "2025-03-27",
+            "basis": "explicit_event_date",
+            "kind": "open_signal",
+            "source": "proposal:e7fcec56-6c93-4cc9-8023-624710e34355"
+          },
+          {
+            "effectiveAt": "2026-02-19",
+            "basis": "explicit_event_date",
+            "kind": "open_signal",
+            "source": "proposal:d0e9ee6c-e888-46e5-b711-209c9fe0856c"
+          }
+        ],
+        "stateBasis": [
+          "open_signal@2026-02-19"
+        ],
+        "markers": [],
+        "documentaryDivergences": [],
+        "conflicts": [],
+        "toConfirm": false,
+        "closedByDecision": false,
+        "awaitingDecision": false,
+        "hasDocumentaryDivergence": false,
+        "hasConflict": false
+      }
+    },
+    "pointB": {
+      "row": {
+        "id": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+        "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+        "canonicalSubjectId": "562ec779-d08c-41ee-b45d-c29296fd623d",
+        "label": "Listing et plan des extincteurs à transmettre",
+        "status": "active",
+        "mergedIntoId": null,
+        "identityStatus": "CONFIRMED",
+        "foundingKind": "cbo",
+        "foundingSource": "canonical_business_object",
+        "foundingReference": "3132f0f1-0301-44fb-80a9-e8b66c6be987",
+        "hasUpstreamDefect": false,
+        "createdAt": "2026-09-07T08:13:17.036695+00:00"
+      },
+      "entry": {
+        "id": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+        "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+        "ownerCanonicalSubjectId": "562ec779-d08c-41ee-b45d-c29296fd623d",
+        "label": "Listing et plan des extincteurs à transmettre",
+        "status": "active",
+        "mergedIntoId": null,
+        "canonicalPointId": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+        "identityStatus": "CONFIRMED",
+        "derivedState": "open",
+        "foundingKind": "cbo",
+        "foundingSource": "canonical_business_object",
+        "hasUpstreamDefect": false,
+        "cboIds": [
+          "3132f0f1-0301-44fb-80a9-e8b66c6be987"
+        ],
+        "hardMemberThreadIds": [
+          "2b9071f7-7232-472a-ba3b-8f538d4cb38e"
+        ],
+        "latestMeaningfulEventAt": null,
+        "trajectory": [],
+        "stateBasis": [],
+        "markers": [],
+        "documentaryDivergences": [],
+        "conflicts": [],
+        "toConfirm": false,
+        "closedByDecision": false,
+        "awaitingDecision": false,
+        "hasDocumentaryDivergence": false,
+        "hasConflict": false
+      }
+    },
+    "componentSize": 1,
+    "pairsTouchingAOrB": [
+      {
+        "pairKey": "70deb7d1-28bc-4d28-ac76-de464b6855de~fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+        "pointAId": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+        "pointBId": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+        "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+        "candidateIds": [
+          "21b5f9e9-71d7-489d-b927-5766ba625718",
+          "6e827b2b-9ae9-4c25-80bc-bd3ab2d5802c"
+        ],
+        "reciprocal": true
+      }
+    ]
+  },
+  "simulatedAfter": {
+    "canonicalEntry": {
+      "id": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "ownerCanonicalSubjectId": "562ec779-d08c-41ee-b45d-c29296fd623d",
+      "label": "Listing et plan des extincteurs à transmettre",
+      "status": "active",
+      "mergedIntoId": null,
+      "canonicalPointId": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+      "identityStatus": "CONFIRMED",
+      "derivedState": "open",
+      "foundingKind": "cbo",
+      "foundingSource": "canonical_business_object",
+      "hasUpstreamDefect": false,
+      "cboIds": [
+        "9c4d51fd-a36c-4dcc-8b6a-755abecd36a7",
+        "3132f0f1-0301-44fb-80a9-e8b66c6be987"
+      ],
+      "hardMemberThreadIds": [
+        "2b9071f7-7232-472a-ba3b-8f538d4cb38e"
+      ],
+      "latestMeaningfulEventAt": "2026-02-19",
+      "trajectory": [
+        {
+          "effectiveAt": "2025-03-27",
+          "basis": "explicit_event_date",
+          "kind": "open_signal",
+          "source": "proposal:e7fcec56-6c93-4cc9-8023-624710e34355"
+        },
+        {
+          "effectiveAt": "2026-02-19",
+          "basis": "explicit_event_date",
+          "kind": "open_signal",
+          "source": "proposal:d0e9ee6c-e888-46e5-b711-209c9fe0856c"
+        }
+      ],
+      "stateBasis": [
+        "open_signal@2026-02-19"
+      ],
+      "markers": [],
+      "documentaryDivergences": [],
+      "conflicts": [],
+      "toConfirm": false,
+      "closedByDecision": false,
+      "awaitingDecision": false,
+      "hasDocumentaryDivergence": false,
+      "hasConflict": false
+    },
+    "mergedEntryForA": {
+      "id": "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+      "siteId": "bebcdf12-fec0-44d8-858b-249ddea02db4",
+      "ownerCanonicalSubjectId": "562ec779-d08c-41ee-b45d-c29296fd623d",
+      "label": "Transmettre le listing et le plan des extincteurs",
+      "status": "merged",
+      "mergedIntoId": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+      "canonicalPointId": "70deb7d1-28bc-4d28-ac76-de464b6855de",
+      "identityStatus": "CONFIRMED",
+      "derivedState": "open",
+      "foundingKind": "cbo",
+      "foundingSource": "canonical_business_object",
+      "hasUpstreamDefect": false,
+      "cboIds": [
+        "9c4d51fd-a36c-4dcc-8b6a-755abecd36a7"
+      ],
+      "hardMemberThreadIds": [
+        "2b9071f7-7232-472a-ba3b-8f538d4cb38e"
+      ],
+      "latestMeaningfulEventAt": "2026-02-19",
+      "trajectory": [
+        {
+          "effectiveAt": "2025-03-27",
+          "basis": "explicit_event_date",
+          "kind": "open_signal",
+          "source": "proposal:e7fcec56-6c93-4cc9-8023-624710e34355"
+        },
+        {
+          "effectiveAt": "2026-02-19",
+          "basis": "explicit_event_date",
+          "kind": "open_signal",
+          "source": "proposal:d0e9ee6c-e888-46e5-b711-209c9fe0856c"
+        }
+      ],
+      "stateBasis": [
+        "open_signal@2026-02-19"
+      ],
+      "markers": [],
+      "documentaryDivergences": [],
+      "conflicts": [],
+      "toConfirm": false,
+      "closedByDecision": false,
+      "awaitingDecision": false,
+      "hasDocumentaryDivergence": false,
+      "hasConflict": false
+    },
+    "componentMemberIds": [
+      "fc35e0d1-8acc-4748-9fee-7a5b16f9db02",
+      "70deb7d1-28bc-4d28-ac76-de464b6855de"
+    ],
+    "pairsTouchingCanonical": [],
+    "selfPairStillPresent": false,
+    "simulationError": null
+  },
+  "verdict": {
+    "abort": false,
+    "reasons": []
+  }
+}
