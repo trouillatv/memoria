@@ -85,4 +85,6 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/db/document-completion-persist-atomic.test.ts',
   'tests/lib/db/document-completion-proposal-proof.test.ts',
   'tests/lib/db/tracked-point-pending-trace-constraints.test.ts',
+  'tests/lib/db/merge-tracked-points-guards.test.ts',
+  'tests/lib/db/tracked-point-consolidation.test.ts',
 ]
