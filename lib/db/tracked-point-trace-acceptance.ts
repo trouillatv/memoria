@@ -133,3 +133,68 @@ export async function acceptTraceIdentityCandidate(params: {
     memberId: result.memberId,
   } as AcceptTraceIdentityCandidateResult
 }
+
+export type RejectTraceIdentityCandidateResult =
+  | { ok: true; alreadyResolved: boolean; candidateId: string }
+  | { ok: false; error: string }
+
+// rejectTraceIdentityCandidate : décision humaine "pas ce Point" pour EXACTEMENT le candidat
+// désigné — jamais ses éventuels frères (même source, autre target). Phase 6E.2C, Build 3 :
+// contrairement à l'acceptation (migration 393, RPC transactionnelle avec insertion de
+// membership), un rejet ne touche que la ligne candidate elle-même — zéro membership, zéro
+// effet reducer. Un simple UPDATE mono-ligne gardé par `WHERE status='pending'` est atomique
+// par construction (pas de RPC/migration nécessaire ici, à la différence de l'acceptation) :
+// un appelant concurrent qui perd la course affecte 0 ligne, jamais une double écriture.
+//
+// Rejeter un candidat déjà ACCEPTED est un échec explicite, jamais un no-op silencieux : la
+// membership existante n'est pas remise en cause par ce module (aucun effet sur le reducer).
+export async function rejectTraceIdentityCandidate(params: {
+  siteId: string
+  candidateId: string
+  actorUserId: string
+}): Promise<RejectTraceIdentityCandidateResult> {
+  const db = createAdminClient()
+  const { siteId, candidateId, actorUserId } = params
+
+  if (!UUID_RE.test(candidateId)) {
+    return { ok: false, error: 'INVALID_CANDIDATE_ID' }
+  }
+
+  const { data: candidateRow, error: candErr } = await db
+    .from('tracked_point_identity_candidate')
+    .select('id, site_id, status')
+    .eq('id', candidateId)
+    .maybeSingle()
+  if (candErr) throw candErr
+  if (!candidateRow) return { ok: false, error: 'CANDIDATE_NOT_FOUND' }
+  if (candidateRow.site_id !== siteId) return { ok: false, error: 'SITE_MISMATCH' }
+  if (candidateRow.status === 'rejected') return { ok: true, alreadyResolved: true, candidateId }
+  if (candidateRow.status === 'accepted') {
+    return { ok: false, error: 'ALREADY_ACCEPTED: candidate a déjà une membership associée, rejet impossible' }
+  }
+
+  const { data: updated, error: updErr } = await db
+    .from('tracked_point_identity_candidate')
+    .update({ status: 'rejected', resolved_at: new Date().toISOString(), resolved_by: actorUserId })
+    .eq('id', candidateId)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle()
+  if (updErr) throw updErr
+  if (updated) return { ok: true, alreadyResolved: false, candidateId }
+
+  // Course perdue entre le SELECT et l'UPDATE gardé (0 ligne affectée ne peut venir que d'un
+  // autre appel ayant fait sortir le candidat de 'pending' entre-temps) : ne jamais deviner
+  // l'issue, relire l'état réel avant de répondre.
+  const { data: afterRace, error: raceErr } = await db
+    .from('tracked_point_identity_candidate')
+    .select('status')
+    .eq('id', candidateId)
+    .single()
+  if (raceErr) throw raceErr
+  if (afterRace.status === 'rejected') return { ok: true, alreadyResolved: true, candidateId }
+  return {
+    ok: false,
+    error: `ALREADY_ACCEPTED: candidate status=${afterRace.status} après course concurrente, rejet impossible`,
+  }
+}

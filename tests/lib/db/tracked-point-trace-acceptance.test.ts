@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { randomUUID } from 'node:crypto'
-import { acceptTraceIdentityCandidate } from '@/lib/db/tracked-point-trace-acceptance'
+import { acceptTraceIdentityCandidate, rejectTraceIdentityCandidate } from '@/lib/db/tracked-point-trace-acceptance'
 
 const TAG = `__test_6e2b_trace_acceptance_${Math.floor(Date.now() / 1000)}__`
 
@@ -17,6 +17,7 @@ let orgId: string
 let clientId: string
 let siteId: string
 let otherSiteId: string
+let adminUserId: string
 const createdDocumentIds: string[] = []
 const createdRunIds: string[] = []
 
@@ -102,6 +103,10 @@ beforeAll(async () => {
     .select('id').single()
   if (sErr2) throw sErr2
   otherSiteId = (site2 as { id: string }).id
+
+  const { data: admin } = await db.from('users').select('id').eq('role', 'admin').limit(1).maybeSingle()
+  if (!admin) throw new Error('Aucun user admin — seed requis')
+  adminUserId = (admin as { id: string }).id
 })
 
 afterAll(async () => {
@@ -248,5 +253,126 @@ describe('acceptTraceIdentityCandidate', () => {
       .eq('tracked_point_id', target)
       .eq('subject_thread_id', threadX)
     expect(membersAfterReplay).toHaveLength(1)
+  })
+})
+
+describe('rejectTraceIdentityCandidate', () => {
+  it('INVALID_CANDIDATE_ID sur un id mal formé', async () => {
+    const result = await rejectTraceIdentityCandidate({ siteId, candidateId: 'not-a-uuid', actorUserId: adminUserId })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('INVALID_CANDIDATE_ID')
+  })
+
+  it('CANDIDATE_NOT_FOUND sur un id inexistant', async () => {
+    const result = await rejectTraceIdentityCandidate({ siteId, candidateId: randomUUID(), actorUserId: adminUserId })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('CANDIDATE_NOT_FOUND')
+  })
+
+  it('SITE_MISMATCH cross-site : candidat d\'un autre site que celui demandé', async () => {
+    const otherPoint = await makePoint({}, otherSiteId)
+    const db = createAdminClient()
+    const { data, error } = await db
+      .from('tracked_point_identity_candidate')
+      .insert({ site_id: otherSiteId, candidate_point_id: otherPoint, subject_thread_id: randomUUID(), scope: 'thread', reason: 'test' })
+      .select('id').single()
+    if (error) throw error
+    const cand = (data as { id: string }).id
+
+    const result = await rejectTraceIdentityCandidate({ siteId, candidateId: cand, actorUserId: adminUserId })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('SITE_MISMATCH')
+  })
+
+  it('rejette exactement le candidat visé — les frères de la même source restent pending', async () => {
+    const db = createAdminClient()
+    const threadX = randomUUID()
+    const targetA = await makePoint()
+    const targetB = await makePoint()
+    const targetC = await makePoint()
+    const candA = await makeCandidate({ candidate_point_id: targetA, subject_thread_id: threadX, scope: 'thread' })
+    const candB = await makeCandidate({ candidate_point_id: targetB, subject_thread_id: threadX, scope: 'thread' })
+    const candC = await makeCandidate({ candidate_point_id: targetC, subject_thread_id: threadX, scope: 'thread' })
+
+    const result = await rejectTraceIdentityCandidate({ siteId, candidateId: candA, actorUserId: adminUserId })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+    expect(result.alreadyResolved).toBe(false)
+    expect(result.candidateId).toBe(candA)
+
+    const { data: rows } = await db
+      .from('tracked_point_identity_candidate')
+      .select('id, status, resolved_at')
+      .in('id', [candA, candB, candC])
+    const byId = new Map((rows as Array<{ id: string; status: string; resolved_at: string | null }>).map((r) => [r.id, r]))
+    expect(byId.get(candA)?.status).toBe('rejected')
+    expect(byId.get(candA)?.resolved_at).toBeTruthy()
+    expect(byId.get(candB)?.status).toBe('pending')
+    expect(byId.get(candB)?.resolved_at).toBeFalsy()
+    expect(byId.get(candC)?.status).toBe('pending')
+    expect(byId.get(candC)?.resolved_at).toBeFalsy()
+
+    // Aucune membership créée par un rejet.
+    const { data: members } = await db
+      .from('tracked_point_member')
+      .select('id')
+      .eq('subject_thread_id', threadX)
+    expect(members ?? []).toHaveLength(0)
+  })
+
+  it('idempotence : rejeter un candidat déjà rejected renvoie alreadyResolved=true sans 2e écriture', async () => {
+    const db = createAdminClient()
+    const target = await makePoint()
+    const cand = await makeCandidate({ candidate_point_id: target, subject_thread_id: randomUUID(), scope: 'thread' })
+
+    const first = await rejectTraceIdentityCandidate({ siteId, candidateId: cand, actorUserId: adminUserId })
+    expect(first.ok).toBe(true)
+    if (!first.ok) throw new Error('attendu un succès')
+    expect(first.alreadyResolved).toBe(false)
+
+    const { data: afterFirst } = await db
+      .from('tracked_point_identity_candidate')
+      .select('resolved_at')
+      .eq('id', cand)
+      .single()
+    const resolvedAtAfterFirst = (afterFirst as { resolved_at: string }).resolved_at
+
+    const second = await rejectTraceIdentityCandidate({ siteId, candidateId: cand, actorUserId: adminUserId })
+    expect(second.ok).toBe(true)
+    if (!second.ok) throw new Error('attendu un succès idempotent')
+    expect(second.alreadyResolved).toBe(true)
+
+    const { data: afterSecond } = await db
+      .from('tracked_point_identity_candidate')
+      .select('resolved_at')
+      .eq('id', cand)
+      .single()
+    expect((afterSecond as { resolved_at: string }).resolved_at).toBe(resolvedAtAfterFirst)
+  })
+
+  it('ALREADY_ACCEPTED : rejeter un candidat déjà accepted échoue explicitement, sans toucher la membership', async () => {
+    const db = createAdminClient()
+    const threadX = randomUUID()
+    const { documentId, extractionRunId } = await makeDocumentAndRun()
+    await makeProposal(threadX, 'observation', documentId, extractionRunId)
+    const target = await makePoint()
+    const cand = await makeCandidate({ candidate_point_id: target, subject_thread_id: threadX, scope: 'thread' })
+
+    const accepted = await acceptTraceIdentityCandidate({ siteId, candidateId: cand })
+    expect(accepted.ok).toBe(true)
+
+    const result = await rejectTraceIdentityCandidate({ siteId, candidateId: cand, actorUserId: adminUserId })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/ALREADY_ACCEPTED/)
+
+    const { data: candRow } = await db.from('tracked_point_identity_candidate').select('status').eq('id', cand).single()
+    expect((candRow as { status: string }).status).toBe('accepted')
+
+    const { data: members } = await db
+      .from('tracked_point_member')
+      .select('id')
+      .eq('tracked_point_id', target)
+      .eq('subject_thread_id', threadX)
+    expect(members).toHaveLength(1)
   })
 })
