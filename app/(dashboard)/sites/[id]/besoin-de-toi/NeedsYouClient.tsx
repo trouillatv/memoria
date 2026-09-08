@@ -90,6 +90,28 @@ function formatPvOptionDate(dateOnly: string): string {
   return `${d}/${m}/${y}`
 }
 
+// Correctif UX (retour Vincent) : à priorité égale, l'ordre d'origine groupe les questions par
+// catégorie (la file serveur arrive triée duplicate_points d'abord) — "Tous" affichait alors une
+// première page quasi identique au filtre "Identité" seul. Round-robin déterministe par catégorie
+// (ordre MEMORIA_NEEDS_YOU_CATEGORY_ORDER), en conservant l'ordre relatif au sein de chaque
+// catégorie. Sans effet quand `list` ne contient qu'une seule catégorie (filtre précis actif).
+export function interleaveByCategory(list: MemoriaNeedsYouQuestion[]): MemoriaNeedsYouQuestion[] {
+  const byCategory = new Map<MemoriaNeedsYouCategory, MemoriaNeedsYouQuestion[]>()
+  for (const q of list) {
+    const bucket = byCategory.get(q.category)
+    if (bucket) bucket.push(q)
+    else byCategory.set(q.category, [q])
+  }
+  const queues = MEMORIA_NEEDS_YOU_CATEGORY_ORDER.map((c) => byCategory.get(c) ?? [])
+  const result: MemoriaNeedsYouQuestion[] = []
+  for (let i = 0; result.length < list.length; i++) {
+    for (const queue of queues) {
+      if (i < queue.length) result.push(queue[i])
+    }
+  }
+  return result
+}
+
 export function NeedsYouClient({
   siteId,
   questions,
@@ -189,12 +211,12 @@ export function NeedsYouClient({
   const sorted = useMemo(() => {
     if (sortMode === 'priority') {
       // Tri réel (6E.4A.4) : ordre de palier calculé par computeQuestionPriority, jamais un score
-      // additionné. Array.prototype.sort est stable (ES2019+) : à palier égal, l'ordre d'origine
-      // (déjà déterministe côté serveur) est conservé — pas de départage supplémentaire nécessaire.
-      return [...priorityFilteredQuestions].sort(
-        (a, b) =>
-          MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(a)) -
-          MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(b)),
+      // additionné. À palier égal, l'ordre d'origine groupait par catégorie (file serveur groupée
+      // par type) — interleaveByCategory départage en round-robin déterministe plutôt que de
+      // laisser la stabilité du sort reproduire ce groupement (retour Vincent : "Tous" doit être
+      // une inbox mixte, pas un doublon visuel du premier filtre catégorie).
+      return MEMORIA_NEEDS_YOU_PRIORITY_ORDER.flatMap((tier) =>
+        interleaveByCategory(priorityFilteredQuestions.filter((q) => computeQuestionPriority(q) === tier)),
       )
     }
     return [...priorityFilteredQuestions].sort((a, b) => {
