@@ -42,24 +42,35 @@ export async function getSiteChronicle(siteId: string, opts: { limit?: number } 
   const [memEvents, decRes, resRes, docs, enrichments] = await Promise.all([
     getSiteMemoryTimeline(siteId, { limit }).catch(() => [] as SiteMemoryEvent[]),
     sb.from('site_decisions').select('id, titre, description, date_decision, created_at, subject_id').eq('site_id', siteId).order('created_at', { ascending: false }).limit(limit),
-    sb.from('site_reserve').select('id, label, location, status, created_at, subject_id').eq('site_id', siteId).order('created_at', { ascending: false }).limit(limit),
+    sb.from('site_reserve').select('id, label, location, status, created_at, canonical_subject_id').eq('site_id', siteId).order('created_at', { ascending: false }).limit(limit),
     listDocumentsForTarget('site', siteId).catch(() => []),
     getSiteRecentEnrichments(siteId, 20).catch(() => []),
   ])
 
-  // Noms des sujets rattachés (décisions/réserves) — le Journal NOMME le sujet et
-  // pointe vers son histoire. Pont vers le graphe métier, posé sans le construire.
+  // Noms des sujets rattachés — le Journal NOMME le sujet et pointe vers son
+  // histoire. Décisions : `site_decisions` n'a pas de colonne canonique, reste
+  // sur `subjects` (legacy). Réserves : `canonical_subject_id` (mig 347) est la
+  // route de vérité prouvée pour RUS/OCEF (même correctif que reserve-fiche.ts,
+  // commit c918de52) — aucun fallback : une réserve orpheline reste sans sujet.
   const decRows = (decRes.data ?? []) as Array<{ id: string; titre: string; description: string | null; date_decision: string | null; created_at: string; subject_id: string | null }>
-  const resRows = (resRes.data ?? []) as Array<{ id: string; label: string; location: string | null; created_at: string; subject_id: string | null }>
+  const resRows = (resRes.data ?? []) as Array<{ id: string; label: string; location: string | null; created_at: string; canonical_subject_id: string | null }>
   const subjectIds = new Set<string>()
   for (const d of decRows) if (d.subject_id) subjectIds.add(d.subject_id)
-  for (const r of resRows) if (r.subject_id) subjectIds.add(r.subject_id)
   const subjectName = new Map<string, string>()
   if (subjectIds.size > 0) {
     const { data: subs } = await sb.from('subjects').select('id, name').in('id', [...subjectIds])
     for (const s of (subs ?? []) as Array<{ id: string; name: string }>) subjectName.set(s.id, s.name)
   }
   const subjectHref = (sid: string) => `/sites/${siteId}/subjects/${sid}`
+
+  const canonicalSubjectIds = new Set<string>()
+  for (const r of resRows) if (r.canonical_subject_id) canonicalSubjectIds.add(r.canonical_subject_id)
+  const canonicalSubjectName = new Map<string, string>()
+  if (canonicalSubjectIds.size > 0) {
+    const { data: csubs } = await sb.from('canonical_subject').select('id, label').in('id', [...canonicalSubjectIds])
+    for (const s of (csubs ?? []) as Array<{ id: string; label: string }>) canonicalSubjectName.set(s.id, s.label)
+  }
+  const canonicalSubjectHref = (sid: string) => `/sites/${siteId}/historique/sujets/${sid}`
 
   const events: ChronicleEvent[] = []
 
@@ -78,7 +89,7 @@ export async function getSiteChronicle(siteId: string, opts: { limit?: number } 
   }
 
   for (const r of resRows) {
-    events.push({ id: `res-${r.id}`, category: 'reserve', date: r.created_at, title: r.label, detail: r.location, href: r.subject_id ? subjectHref(r.subject_id) : `/sites/${siteId}/reserves`, subjectIds: r.subject_id ? [r.subject_id] : undefined, subjectLabel: r.subject_id ? subjectName.get(r.subject_id) ?? null : null, source: 'site_reserve' })
+    events.push({ id: `res-${r.id}`, category: 'reserve', date: r.created_at, title: r.label, detail: r.location, href: r.canonical_subject_id ? canonicalSubjectHref(r.canonical_subject_id) : `/sites/${siteId}/reserves`, subjectIds: r.canonical_subject_id ? [r.canonical_subject_id] : undefined, subjectLabel: r.canonical_subject_id ? canonicalSubjectName.get(r.canonical_subject_id) ?? null : null, source: 'site_reserve' })
   }
 
   for (const doc of docs) {
