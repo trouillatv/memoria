@@ -73,7 +73,7 @@ export async function getSiteReserveFiche(siteId: string, reserveId: string): Pr
     getOrgIdsOfUser(),
     db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle(),
     db.from('site_reserve')
-      .select('id, label, location, issued_by, issued_on, status, lifted_at, lift_note, subject_id, photo_before_path, photo_after_path, report_id')
+      .select('id, label, location, issued_by, issued_on, status, lifted_at, lift_note, canonical_subject_id, photo_before_path, photo_after_path, report_id')
       .eq('id', reserveId).eq('site_id', siteId).maybeSingle(),
     db.from('site_actions')
       .select('id, title, status').eq('reserve_id', reserveId).eq('site_id', siteId)
@@ -88,7 +88,7 @@ export async function getSiteReserveFiche(siteId: string, reserveId: string): Pr
     id: string; label: string; location: string | null
     issued_by: string | null; issued_on: string | null
     status: 'open' | 'lifted'; lifted_at: string | null; lift_note: string | null
-    subject_id: string | null
+    canonical_subject_id: string | null
     photo_before_path: string | null; photo_after_path: string | null
     report_id: string | null
   } | null
@@ -111,11 +111,11 @@ export async function getSiteReserveFiche(siteId: string, reserveId: string): Pr
     }))
 
   let sujet: ReserveFicheData['sujet'] = null
-  if (r.subject_id) {
-    const { data } = await db.from('subjects')
-      .select('name').eq('id', r.subject_id).eq('site_id', siteId).maybeSingle()
-    const s = data as { name: string | null } | null
-    if (s?.name) sujet = { nom: s.name, href: `/sites/${siteId}/subjects/${r.subject_id}` }
+  if (r.canonical_subject_id) {
+    const { data } = await db.from('canonical_subject')
+      .select('label').eq('id', r.canonical_subject_id).maybeSingle()
+    const s = data as { label: string | null } | null
+    if (s?.label) sujet = { nom: s.label, href: `/sites/${siteId}/historique/sujets/${r.canonical_subject_id}` }
   }
 
   const levee = r.status === 'lifted'
