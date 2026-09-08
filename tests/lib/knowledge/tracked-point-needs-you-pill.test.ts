@@ -59,7 +59,7 @@ describe('computeMemoriaNeedsYouPill', () => {
     const result = computeMemoriaNeedsYouPill(
       summary({ totalCount: 6, latestPvCount: 6, historicalCount: 0, questions }),
     )
-    expect(result).toEqual({ tone: 'default', priorityCount: 0, label: 'MemorIA · 6 questions sur le dernier PV' })
+    expect(result).toEqual({ tone: 'default', priorityCount: 0, importantCount: 0, label: 'MemorIA · 6 questions sur le dernier PV' })
   })
 
   it('activite PV recente + un seul signal -> singulier "question"', () => {
@@ -69,11 +69,11 @@ describe('computeMemoriaNeedsYouPill', () => {
     expect(result?.label).toBe('MemorIA · 1 question sur le dernier PV')
   })
 
-  it('activite PV recente + priorite reelle -> gabarit priorite avec compte PRIORITAIRE', () => {
+  it('activite PV recente + PRIORITAIRE -> gabarit prioritaire, prime sur IMPORTANT', () => {
     const questions = [
       duplicatePointsQuestion('a', 'reopened', 'resolved'),
       duplicatePointsQuestion('b', 'conflict', 'open'),
-      duplicatePointsQuestion('c', 'resolved', 'resolved'),
+      duplicatePointsQuestion('c', 'open', 'resolved'),
     ]
     const result = computeMemoriaNeedsYouPill(
       summary({ totalCount: 6, latestPvCount: 6, historicalCount: 0, questions }),
@@ -81,23 +81,45 @@ describe('computeMemoriaNeedsYouPill', () => {
     expect(result).toEqual({
       tone: 'priority',
       priorityCount: 2,
+      importantCount: 1,
+      label: 'MemorIA · 2 prioritaires · 6 sur le dernier PV',
+    })
+  })
+
+  it('une seule PRIORITAIRE -> singulier "prioritaire"', () => {
+    const questions = [duplicatePointsQuestion('a', 'reopened', 'resolved')]
+    const result = computeMemoriaNeedsYouPill(
+      summary({ totalCount: 6, latestPvCount: 6, historicalCount: 5, questions }),
+    )
+    expect(result?.label).toBe('MemorIA · 1 prioritaire · 6 sur le dernier PV')
+  })
+
+  it('activite PV recente + IMPORTANT sans PRIORITAIRE -> gabarit important', () => {
+    const questions = [duplicatePointsQuestion('a', 'open', 'resolved'), duplicatePointsQuestion('b', 'open', 'resolved')]
+    const result = computeMemoriaNeedsYouPill(
+      summary({ totalCount: 6, latestPvCount: 6, historicalCount: 0, questions }),
+    )
+    expect(result).toEqual({
+      tone: 'important',
+      priorityCount: 0,
+      importantCount: 2,
       label: 'MemorIA · 2 importantes · 6 sur le dernier PV',
     })
   })
 
-  it('une seule priorite -> singulier "importante"', () => {
-    const questions = [duplicatePointsQuestion('a', 'reopened', 'resolved')]
+  it('une seule IMPORTANT -> singulier "importante"', () => {
+    const questions = [duplicatePointsQuestion('a', 'open', 'resolved')]
     const result = computeMemoriaNeedsYouPill(
       summary({ totalCount: 6, latestPvCount: 6, historicalCount: 5, questions }),
     )
     expect(result?.label).toBe('MemorIA · 1 importante · 6 sur le dernier PV')
   })
 
-  it('aucune activite PV recente -> gabarit historique discret, jamais de total brut', () => {
+  it('aucune activite PV recente, aucune priorite -> gabarit historique discret, jamais de total brut', () => {
     const result = computeMemoriaNeedsYouPill(
       summary({ totalCount: 38, latestPvCount: 0, historicalCount: 38, questions: [] }),
     )
-    expect(result).toEqual({ tone: 'historical', priorityCount: 0, label: '38 clarifications historiques' })
+    expect(result).toEqual({ tone: 'historical', priorityCount: 0, importantCount: 0, label: '38 clarifications historiques' })
   })
 
   it('historique + un seul element -> singulier', () => {
@@ -105,5 +127,31 @@ describe('computeMemoriaNeedsYouPill', () => {
       summary({ totalCount: 1, latestPvCount: 0, historicalCount: 1, questions: [] }),
     )
     expect(result?.label).toBe('1 clarification historique')
+  })
+
+  it('aucune activite PV recente mais PRIORITAIRE ancien -> reste visible, jamais masque en historique', () => {
+    const questions = [duplicatePointsQuestion('a', 'reopened', 'resolved')]
+    const result = computeMemoriaNeedsYouPill(
+      summary({ totalCount: 5, latestPvCount: 0, historicalCount: 5, questions }),
+    )
+    expect(result).toEqual({
+      tone: 'priority',
+      priorityCount: 1,
+      importantCount: 0,
+      label: 'MemorIA · 1 prioritaire à clarifier',
+    })
+  })
+
+  it('aucune activite PV recente mais IMPORTANT ancien (sans PRIORITAIRE) -> gabarit important', () => {
+    const questions = [duplicatePointsQuestion('a', 'open', 'resolved'), duplicatePointsQuestion('b', 'open', 'resolved'), duplicatePointsQuestion('c', 'open', 'resolved')]
+    const result = computeMemoriaNeedsYouPill(
+      summary({ totalCount: 5, latestPvCount: 0, historicalCount: 5, questions }),
+    )
+    expect(result).toEqual({
+      tone: 'important',
+      priorityCount: 0,
+      importantCount: 3,
+      label: 'MemorIA · 3 importantes à clarifier',
+    })
   })
 })

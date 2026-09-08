@@ -8,6 +8,7 @@ import type { MemoriaNeedsYouPill as PillData } from '@/lib/knowledge/tracked-po
 const TONE_CLS: Record<PillData['tone'], string> = {
   default: 'border-violet-200 bg-violet-50/60 text-violet-900 dark:border-violet-900/40 dark:bg-violet-950/20 dark:text-violet-100',
   priority: 'border-rose-200 bg-rose-50/70 text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/25 dark:text-rose-100',
+  important: 'border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/25 dark:text-amber-100',
   historical: 'border-border bg-muted/30 text-muted-foreground',
 }
 

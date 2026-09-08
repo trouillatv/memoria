@@ -53,7 +53,7 @@ export default async function FieldSiteBesoinDeToiPage({ params }: { params: Pro
         <h1 className="text-xl font-semibold">🧠 MemorIA a besoin de toi</h1>
         <p className="text-sm text-muted-foreground">
           {summary.totalCount > 0
-            ? `${summary.totalCount} point${summary.totalCount > 1 ? 's' : ''} à clarifier pour garder la mémoire du chantier fiable.`
+            ? `${summary.totalCount} question${summary.totalCount > 1 ? 's' : ''} à clarifier pour garder la mémoire du chantier fiable.`
             : 'Rien à clarifier pour le moment — la mémoire du chantier est à jour.'}
         </p>
       </header>
