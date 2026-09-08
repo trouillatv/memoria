@@ -90,4 +90,5 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/db/tracked-point-consolidation.test.ts',
   'tests/lib/db/tracked-point-trace-acceptance.test.ts',
   'tests/lib/db/tracked-point-confirm-trackability.test.ts',
+  'tests/lib/db/tracked-point-pending-resolution.test.ts',
 ]
