@@ -6,13 +6,22 @@
 // le terme cherché. Cette migration ajoute une 19e CTE sans toucher aux 18
 // existantes.
 //
+// FIX_REQUIRED post-review (checkpoint 6e3c83a0) : la dédup applicative de
+// memory-search.ts n'opère que sur `id`, jamais sémantiquement — une
+// canonical_subject_occurrence et son équivalent legacy ne sont donc PAS
+// dédupliqués. Or >98 % des occurrences historical_pdf sont déjà représentées
+// dans le corpus legacy. Périmètre resserré à field_visit SEUL : c'est le
+// canal neuf réellement non garanti par le legacy, celui qui crée le trou de
+// vérité. historical_pdf/meeting/copilot restent hors index de cette CTE.
+//
 // La migration n'est PAS appliquée à la base à l'écriture de ce test (gate de
 // revue avant écriture) : on ne peut donc pas encore prouver le comportement
 // contre une vraie exécution SQL. Ce fichier suit le précédent
 // `tests/doctrine/search-litige-exclusion.test.ts` — un TRIPWIRE qui lit le
-// texte de la migration et vérifie structurellement les 5 garanties exigées :
+// texte de la migration et vérifie structurellement les garanties exigées :
 //
-//   1. field_visit sans équivalent legacy → trouvable (source_kind couvert) ;
+//   1. field_visit → trouvable, ET SEUL (historical_pdf/meeting/copilot
+//      explicitement exclus du filtre source_kind) ;
 //   2. les 18 CTE legacy sont copiées BYTE FOR BYTE depuis la migration 387 →
 //      aucune régression, aucune explosion de doublons (rien n'y change) ;
 //   3. isolation org/site : les trois mêmes gardes p_contract_id/p_site_id/
@@ -48,12 +57,17 @@ describe('🔎 Mig 398 — la preuve canonique entre dans la recherche', () => {
   it('GARANTIE 1 — field_visit fait partie du périmètre indexé (sans lui, le trou du mandat n’est pas fermé)', () => {
     const cte = /canonical_occurrence_hits as \([\s\S]*?\n  \)/.exec(SQL_398)?.[0] ?? ''
     expect(cte).not.toBe('')
-    expect(cte).toMatch(/co\.source_kind in \('field_visit', 'meeting', 'historical_pdf'\)/)
+    expect(cte).toMatch(/co\.source_kind = 'field_visit'/)
   })
 
-  it('« copilot » est explicitement exclu — source_ref_id éphémère, aucune destination durable', () => {
+  it('GARANTIE 1B — historical_pdf/meeting/copilot sont explicitement EXCLUS de cette CTE (dédup applicative par id seul, insuffisante contre la redondance legacy mesurée >98 %)', () => {
     const cte = /canonical_occurrence_hits as \([\s\S]*?\n  \)/.exec(SQL_398)?.[0] ?? ''
+    expect(cte).not.toBe('')
+    expect(cte).not.toMatch(/'historical_pdf'/)
+    expect(cte).not.toMatch(/'meeting'/)
     expect(cte).not.toMatch(/'copilot'/)
+    // pas de forme `in (...)` avec plusieurs valeurs : un seul source_kind, une égalité stricte
+    expect(cte).not.toMatch(/co\.source_kind in \(/)
   })
 
   it('GARANTIE 2 — les 18 CTE existantes sont BYTE FOR BYTE identiques à la migration 387 (aucune régression legacy possible)', () => {

@@ -42,10 +42,13 @@ export type MemoryHitType =
   | 'action_event'
   // Mig 398 — la PREUVE CANONIQUE (canonical_subject_occurrence) : un fait
   // résolu et attribué à un sujet canonique, cherchable même sans aucun
-  // équivalent legacy (ex. field_visit). `id` = l'occurrence (pas d'adresse
-  // propre) ; `refId` = source_ref_id = site_reports.id, qui ouvre la fiche de
-  // compte-rendu existante. Restreint à field_visit/meeting/historical_pdf :
-  // 'copilot' est exclu (source_ref_id éphémère, aucune destination durable).
+  // équivalent legacy. `id` = l'occurrence (pas d'adresse propre) ; `refId` =
+  // source_ref_id = site_reports.id, qui ouvre la fiche de compte-rendu
+  // existante. Restreint à field_visit SEUL : c'est le seul canal sans
+  // garantie d'équivalent legacy indexé. historical_pdf/meeting sont exclus
+  // (dédup applicative par id seul, insuffisante contre la redondance >98 %
+  // mesurée avec le corpus legacy) ; 'copilot' est exclu (source_ref_id
+  // éphémère, aucune destination durable).
   | 'canonical_occurrence'
 
 export interface MemoryHit {

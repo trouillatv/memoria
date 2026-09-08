@@ -9,24 +9,37 @@
 --
 -- ⚠️ DESTINATION UI (doctrine du lot) : une occurrence n'a pas d'adresse propre
 -- (ce n'est pas un objet consultable seul dans l'app). Son `ref_id` = son
--- `source_ref_id`, qui vaut TOUJOURS site_reports.id pour les 3 source_kind
--- retenus ici (field_visit, meeting, historical_pdf — confirmé par lecture du
--- code : canonical-subject-historical-occurrence.ts pour historical_pdf, la
--- doctrine mig 292 pour meeting via site_reports.origin). Le hit route donc vers
--- la fiche de compte-rendu déjà existante et déjà prouvée pour le type
--- 'meeting' (/sites/{siteId}/reunion/{reportId}) — même précédent que
--- action_event_hits qui expose ref_id = l'action quand l'événement lui-même n'a
--- pas d'adresse. `subject_id` reste NULL : `canonical_subject_id` vit dans un
--- espace d'identifiants différent de `subjects.id` (legacy) et
--- operational_subject_id (mig 287) est vérifié 0/1151 peuplé en production —
--- fabriquer un subject_id ici serait un mensonge. Câblage TS (memory-search.ts,
--- hit-href.ts, search-grouping.ts, SearchOverlay.tsx, SitePatrimoineSearch.tsx)
--- fait dans le même lot.
+-- `source_ref_id`, qui vaut TOUJOURS site_reports.id pour field_visit (confirmé
+-- par lecture du code : canonical-subject-historical-occurrence.ts /
+-- doctrine de capture terrain). Le hit route donc vers la fiche de
+-- compte-rendu déjà existante et déjà prouvée pour le type 'meeting'
+-- (/sites/{siteId}/reunion/{reportId}) — même précédent que action_event_hits
+-- qui expose ref_id = l'action quand l'événement lui-même n'a pas d'adresse.
+-- `subject_id` reste NULL : `canonical_subject_id` vit dans un espace
+-- d'identifiants différent de `subjects.id` (legacy) et operational_subject_id
+-- (mig 287) est vérifié 0/1151 peuplé en production — fabriquer un subject_id
+-- ici serait un mensonge. Câblage TS (memory-search.ts, hit-href.ts,
+-- search-grouping.ts, SearchOverlay.tsx, SitePatrimoineSearch.tsx) fait dans
+-- le même lot.
 --
--- ⚠️ PÉRIMÈTRE source_kind : 'copilot' est EXCLU. Son source_ref_id est un UUID
--- éphémère généré côté client (mig 326), non adossé à une table durable —
--- aucune destination cohérente ne peut être produite, donc aucune route n'est
--- inventée pour ce canal (volume négligeable, ~0,2 % des lignes échantillonnées).
+-- ⚠️ PÉRIMÈTRE source_kind — restreint à field_visit SEUL (correctif FIX_REQUIRED
+-- post-review) :
+--
+--   - field_visit EST LE PÉRIMÈTRE : c'est le canal neuf, réellement non
+--     garanti d'avoir un équivalent legacy indexé — exactement le trou de
+--     vérité que POINT VERIFY / l'audit MEMORY-SEARCH TRUTH a mis en évidence.
+--   - historical_pdf et meeting sont EXCLUS de ce lot : la review du checkpoint
+--     a montré que la déduplication applicative de memory-search.ts n'opère
+--     que sur `id` (jamais sémantique) — une canonical_subject_occurrence et
+--     son équivalent legacy ont des id distincts et NE SONT PAS dédupliqués.
+--     Or l'audit a établi que >98 % des occurrences historical_pdf sont déjà
+--     représentées ailleurs dans le corpus legacy (meeting_hits/pv_hits/
+--     document_hits...) : les indexer ici polluerait le top 50 de doublons
+--     sémantiques sans ajouter de vérité nouvelle. Réouverture possible une
+--     fois une dédup sémantique réelle disponible — non inventée dans ce lot.
+--   - 'copilot' reste EXCLU : son source_ref_id est un UUID éphémère généré
+--     côté client (mig 326), non adossé à une table durable — aucune
+--     destination cohérente ne peut être produite.
 --
 -- ⚠️ DÉDUPLICATION : aucun anti-join contre les 18 CTE existants. L'occurrence
 -- indexe le texte RÉSOLU et attribué à un sujet canonique (label/note), un objet
@@ -35,7 +48,9 @@
 -- précédent que observation_hits et meeting_hits qui coexistent déjà sans
 -- anti-join alors qu'ils dérivent parfois du même site_reports. La déduplication
 -- de présentation reste celle déjà en place côté memory-search.ts (id distinct
--- par ligne, jamais un doublon strict).
+-- par ligne, jamais un doublon strict) — insuffisante pour historical_pdf/
+-- meeting (cf. ci-dessus), suffisante pour field_visit qui n'a pas cette
+-- redondance de masse mesurée.
 --
 -- ⚠️ Texte indexé : label + note (corps de la proposition résolue). Rien
 -- d'autre n'existe sur cette table qui soit un texte humain cherchable
@@ -492,12 +507,14 @@ as $$
   -- ── MIG 398 : LA PREUVE CANONIQUE (canonical_subject_occurrence) ──────────
   --
   -- Texte indexé : label + note (contenu résolu et attribué au sujet
-  -- canonique). source_kind restreint à field_visit/meeting/historical_pdf —
-  -- les seuls dont source_ref_id est garanti pointer vers un site_reports.id
-  -- vivant (cf. doctrine en tête de fichier). ref_id ouvre la fiche de
-  -- compte-rendu existante, jamais une adresse inventée. subject_id reste
-  -- NULL : canonical_subject_id n'est jamais recopié dans une colonne qui,
-  -- partout ailleurs dans cette RPC, désigne exclusivement subjects.id (legacy).
+  -- canonique). source_kind restreint à field_visit SEUL — le canal neuf sans
+  -- garantie d'équivalent legacy indexé (cf. doctrine en tête de fichier).
+  -- historical_pdf/meeting/copilot restent hors périmètre (redondance de
+  -- masse mesurée pour les deux premiers, destination absente pour le
+  -- troisième). ref_id ouvre la fiche de compte-rendu existante, jamais une
+  -- adresse inventée. subject_id reste NULL : canonical_subject_id n'est
+  -- jamais recopié dans une colonne qui, partout ailleurs dans cette RPC,
+  -- désigne exclusivement subjects.id (legacy).
   ,canonical_occurrence_hits as (
     select
       'canonical_occurrence'::text as type,
@@ -515,7 +532,7 @@ as $$
     from public.canonical_subject_occurrence co
     join public.sites s on s.id = co.site_id
     cross join query q
-    where co.source_kind in ('field_visit', 'meeting', 'historical_pdf')
+    where co.source_kind = 'field_visit'
       and to_tsvector('public.french_unaccent', concat_ws(' ', co.label, coalesce(co.note, ''))) @@ q.tsq
       and coalesce(co.event_date, co.effective_date)::timestamptz
             > now() - (q.days_window || ' days')::interval
