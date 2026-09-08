@@ -14,7 +14,7 @@ import type { CandidatePointPair } from '@/lib/knowledge/tracked-point-merge'
 import type { TrackedPointConsolidationPointDetail } from '@/lib/db/tracked-point-consolidation'
 
 function detail(id: string, overrides: Partial<TrackedPointConsolidationPointDetail> = {}): TrackedPointConsolidationPointDetail {
-  return { id, label: `point ${id}`, status: 'active', identityStatus: 'PROVISIONAL', ...overrides }
+  return { id, label: `point ${id}`, status: 'active', identityStatus: 'PROVISIONAL', createdAt: '2026-01-01T00:00:00Z', ...overrides }
 }
 
 function pair(pointAId: string, pointBId: string, candidateIds: string[], overrides: Partial<CandidatePointPair> = {}): CandidatePointPair {
@@ -132,5 +132,48 @@ describe('buildConsolidationQueue', () => {
     expect(queue.totalPairs).toBe(0)
     expect(queue.entries).toEqual([])
     expect(queue.complexComponentCount).toBe(0)
+  })
+
+  // 6E.4C — la direction prévue réutilise chooseCanonicalMergeTarget telle quelle (la même
+  // fonction que consolidateTrackedPoints appelle en écriture) : aucun second moteur ici.
+  describe('predictedTargetPointId/predictedSourcePointId (6E.4C)', () => {
+    it('CONFIRMED gagne sur PROVISIONAL, quel que soit le sens de la paire', () => {
+      const points = new Map([
+        ['a', detail('a', { identityStatus: 'PROVISIONAL' })],
+        ['b', detail('b', { identityStatus: 'CONFIRMED' })],
+      ])
+      const pairs = [pair('a', 'b', ['cand-1'])]
+
+      const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map(), new Map())
+
+      expect(queue.entries[0].predictedTargetPointId).toBe('b')
+      expect(queue.entries[0].predictedSourcePointId).toBe('a')
+    })
+
+    it('à statut d\'identité égal, le createdAt le plus ancien gagne', () => {
+      const points = new Map([
+        ['a', detail('a', { identityStatus: 'PROVISIONAL', createdAt: '2026-02-01T00:00:00Z' })],
+        ['b', detail('b', { identityStatus: 'PROVISIONAL', createdAt: '2026-01-01T00:00:00Z' })],
+      ])
+      const pairs = [pair('a', 'b', ['cand-1'])]
+
+      const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map(), new Map())
+
+      expect(queue.entries[0].predictedTargetPointId).toBe('b')
+      expect(queue.entries[0].predictedSourcePointId).toBe('a')
+    })
+
+    it('CONFLICTED d\'un côté : direction non déterminable, reste null (jamais devinée)', () => {
+      const points = new Map([
+        ['a', detail('a', { identityStatus: 'CONFLICTED' })],
+        ['b', detail('b', { identityStatus: 'CONFIRMED' })],
+      ])
+      const pairs = [pair('a', 'b', ['cand-1'])]
+
+      const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map(), new Map())
+
+      expect(queue.entries[0].predictedTargetPointId).toBeNull()
+      expect(queue.entries[0].predictedSourcePointId).toBeNull()
+    })
   })
 })

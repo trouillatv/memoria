@@ -50,6 +50,8 @@ function consolidationEntry(pairId: string): ConsolidationQueueEntry {
     reciprocal: false,
     componentId: 'a',
     componentSize: 2,
+    predictedTargetPointId: null,
+    predictedSourcePointId: null,
   }
 }
 

@@ -34,6 +34,8 @@ function duplicatePointsQuestion(id: string, derivedStateA: string | null, deriv
       reciprocal: false,
       componentId: 'component-1',
       componentSize: 2,
+      predictedTargetPointId: null,
+      predictedSourcePointId: null,
     },
   } as MemoriaNeedsYouQuestion
 }

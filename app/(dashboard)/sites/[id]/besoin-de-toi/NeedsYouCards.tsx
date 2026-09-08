@@ -17,6 +17,13 @@ import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, type MemoriaNeedsYouCategory } from 
 import { MEMORIA_NEEDS_YOU_PRIORITY_LABEL, type MemoriaNeedsYouPriority } from '@/lib/knowledge/tracked-point-needs-you-priority'
 import type { PendingResolutionTargetingMode } from '@/lib/knowledge/tracked-point-pending-resolution-queue'
 import type { PointProofView } from '@/lib/knowledge/tracked-point-consolidation-queue'
+import {
+  duplicatePointsImpact,
+  attachInformationImpact,
+  confirmTrackabilityImpact,
+  assignResolutionImpact,
+  clarifyEvidenceImpact,
+} from '@/lib/knowledge/tracked-point-needs-you-impact'
 
 // Palette réutilisée telle quelle depuis MemoryReviewPanel.KIND_TONE (border-*-200 bg-*-50
 // text-*-700) — aucune nouvelle couleur, simple ré-application par catégorie 6E.4A pour que
@@ -244,6 +251,25 @@ function clarifyEvidenceRationale(entry: Extract<MemoriaNeedsYouQuestion, { cate
   return `${lead}, mais MemorIA ne sait pas laquelle permet de trancher ${topic}. Choisis celle(s) qui font vraiment foi.`
 }
 
+// ImpactPreview (6E.4C) — "Ce qui va changer" avant une confirmation structurante : rendu
+// uniquement à partir de textes produits par lib/knowledge/tracked-point-needs-you-impact.ts,
+// eux-mêmes dérivés des mutations réelles des actions serveur déjà utilisées par 6E.4A. Même
+// convention visuelle neutre que SourceExcerpt/PointProofDisclosure (jamais le ton violet du
+// panneau de confirmation, pour rester réutilisable sur les 5 teintes de carte).
+function ImpactPreview({ items }: { items: string[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="rounded-lg border border-dashed bg-muted/30 px-2.5 py-2 text-[12px] text-foreground/80">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">Ce qui va changer</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-4">
+        {items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function CardShell({ category, title, children }: { category: MemoriaNeedsYouCategory; title: string; children: React.ReactNode }) {
   const tone = CATEGORY_TONE[category]
   const Icon = CATEGORY_ICON[category]
@@ -358,6 +384,7 @@ function DuplicatePointsCard({
       {confirmingMerge ? (
         <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/50 px-2.5 py-2 dark:border-violet-900/40 dark:bg-violet-950/20">
           <p className="text-[12px] text-foreground/80">Réunir ces deux suivis ? Leur historique sera présenté comme un seul suivi.</p>
+          <ImpactPreview items={duplicatePointsImpact(entry)} />
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -439,6 +466,7 @@ function AttachInformationCard({
               </p>
             )}
           </div>
+          <ImpactPreview items={attachInformationImpact(entry.targets[0].label ?? 'Suivi sans libellé')} />
           <ErrorLine error={error} />
           <div className="flex flex-wrap gap-2 pt-1">
             <button type="button" className={btnPrimary} disabled={pending} onClick={() => dispatchAccept(entry.targets[0].candidateId)}>
@@ -478,6 +506,13 @@ function AttachInformationCard({
               )
             })}
           </div>
+          {selectedCandidateId && (
+            <ImpactPreview
+              items={attachInformationImpact(
+                entry.targets.find((t) => t.candidateId === selectedCandidateId)?.label ?? 'Suivi sans libellé',
+              )}
+            />
+          )}
           <ErrorLine error={error} />
           <div className="flex flex-wrap gap-2 pt-1">
             <button
@@ -523,6 +558,7 @@ function ConfirmTrackabilityCard({
         importedAt={entry.sourceDate}
       />
       {entry.subjectLabel && <p className="text-[11px] text-muted-foreground">À propos de : {entry.subjectLabel}</p>}
+      <ImpactPreview items={confirmTrackabilityImpact()} />
       <ErrorLine error={error} />
       <div className="flex flex-wrap gap-2 pt-1">
         <button
@@ -657,6 +693,7 @@ function AssignResolutionCard({
         )}
       </div>
 
+      {selected && <ImpactPreview items={assignResolutionImpact(selected.label)} />}
       <ErrorLine error={error} />
       <div className="flex flex-wrap gap-2 pt-1">
         <button
@@ -738,6 +775,7 @@ function ClarifyEvidenceCard({
           )
         })}
       </div>
+      {selectedIds.size > 0 && <ImpactPreview items={clarifyEvidenceImpact(selectedIds.size)} />}
       <ErrorLine error={error} />
       <div className="flex flex-wrap gap-2 pt-1">
         <button

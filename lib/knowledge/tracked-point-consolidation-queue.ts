@@ -20,9 +20,12 @@ import {
 } from '@/lib/knowledge/tracked-point-read-model'
 import {
   computeConnectedComponents,
+  chooseCanonicalMergeTarget,
+  PointMergeAmbiguousCanonicalError,
   type CandidatePointPair,
   type TrackedPointMergeStatus,
   type TrackedPointMergeIdentityStatus,
+  type MergeGraphPoint,
 } from '@/lib/knowledge/tracked-point-merge'
 
 // PointProofView (6E.4B/A2, mandat Vincent 2026-09-08) : preuve documentaire RÉELLE d'un Point —
@@ -69,6 +72,14 @@ export type ConsolidationQueueEntry = {
   reciprocal: boolean
   componentId: string
   componentSize: number
+  // predictedTargetPointId/predictedSourcePointId (6E.4C) : direction PRÉVUE de la fusion,
+  // recalculée avec chooseCanonicalMergeTarget — la même fonction que consolidateTrackedPoints
+  // appelle en écriture, jamais un second moteur. C'est une PRÉDICTION affichée avant clic :
+  // consolidateTrackedPoints recharge l'état vivant et recalcule à nouveau au moment du clic,
+  // seule cette dernière exécution fait foi. Null quand identityStatus=CONFLICTED des deux côtés
+  // (direction non déterminable) — jamais devinée.
+  predictedTargetPointId: string | null
+  predictedSourcePointId: string | null
 }
 
 export type ConsolidationQueue = {
@@ -125,16 +136,51 @@ export function buildConsolidationQueue(
     }
   }
 
-  const entries: ConsolidationQueueEntry[] = pairs.map((pair) => ({
-    pairId: pair.pairKey,
-    siteId: pair.siteId,
-    pointA: side(pair.pointAId),
-    pointB: side(pair.pointBId),
-    candidateIds: pair.candidateIds,
-    reciprocal: pair.reciprocal,
-    componentId: componentIdByPointId.get(pair.pointAId) ?? pair.pointAId,
-    componentSize: componentSizeByPointId.get(pair.pointAId) ?? 2,
-  }))
+  // toMergeGraphPoint (6E.4C) : reconstruit le MergeGraphPoint minimal requis par
+  // chooseCanonicalMergeTarget (id/identityStatus/createdAt seuls, cf. tracked-point-merge.ts) à
+  // partir du même pointDetailsById que side() ci-dessus. mergedIntoId:null est exact ici — les
+  // deux extrémités d'une CandidatePointPair sont déjà des points canoniques actifs
+  // (resolveCanonicalPointId/deriveCandidatePointPairs les résolvent en amont).
+  const toMergeGraphPoint = (pointId: string): MergeGraphPoint | null => {
+    const detail = pointDetailsById.get(pointId)
+    if (!detail) return null
+    return {
+      id: detail.id,
+      siteId,
+      status: detail.status,
+      mergedIntoId: null,
+      identityStatus: detail.identityStatus,
+      createdAt: detail.createdAt,
+    }
+  }
+
+  const entries: ConsolidationQueueEntry[] = pairs.map((pair) => {
+    const pointAGraph = toMergeGraphPoint(pair.pointAId)
+    const pointBGraph = toMergeGraphPoint(pair.pointBId)
+    let predictedTargetPointId: string | null = null
+    let predictedSourcePointId: string | null = null
+    if (pointAGraph && pointBGraph) {
+      try {
+        predictedTargetPointId = chooseCanonicalMergeTarget(pointAGraph, pointBGraph)
+        predictedSourcePointId = predictedTargetPointId === pointAGraph.id ? pointBGraph.id : pointAGraph.id
+      } catch (e) {
+        if (!(e instanceof PointMergeAmbiguousCanonicalError)) throw e
+        // CONFLICTED des deux côtés : direction non déterminable, reste null (jamais devinée).
+      }
+    }
+    return {
+      pairId: pair.pairKey,
+      siteId: pair.siteId,
+      pointA: side(pair.pointAId),
+      pointB: side(pair.pointBId),
+      candidateIds: pair.candidateIds,
+      reciprocal: pair.reciprocal,
+      componentId: componentIdByPointId.get(pair.pointAId) ?? pair.pointAId,
+      componentSize: componentSizeByPointId.get(pair.pointAId) ?? 2,
+      predictedTargetPointId,
+      predictedSourcePointId,
+    }
+  })
 
   const complexComponentCount = components.filter((members) => members.length > 2).length
 

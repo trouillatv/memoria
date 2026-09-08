@@ -38,6 +38,11 @@ export type TrackedPointConsolidationPointDetail = {
   label: string
   status: MergeGraphPoint['status']
   identityStatus: MergeGraphPoint['identityStatus']
+  // createdAt (6E.4C) : issu de la même ligne rawPoints que mergeGraphPoints ci-dessus — jamais
+  // une requête séparée. Seul usage : reconstituer un MergeGraphPoint pour la prévisualisation
+  // d'impact (tracked-point-consolidation-queue.ts), en appelant chooseCanonicalMergeTarget telle
+  // quelle, jamais un second calcul de direction.
+  createdAt: string
 }
 
 export type TrackedPointConsolidationData = {
@@ -119,7 +124,7 @@ export async function loadTrackedPointConsolidationData(siteId: string): Promise
   const pointDetailsById = new Map<string, TrackedPointConsolidationPointDetail>(
     (rawPoints ?? []).map((p) => [
       p.id,
-      { id: p.id, label: p.label, status: p.status, identityStatus: p.identity_status },
+      { id: p.id, label: p.label, status: p.status, identityStatus: p.identity_status, createdAt: p.created_at },
     ]),
   )
 
