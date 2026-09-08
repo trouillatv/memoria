@@ -168,6 +168,11 @@ export function VisitBasket({
   const [questionCaptureId, setQuestionCaptureId] = useState<string | null>(null)
   const [verifIndex, setVerifIndex] = useState(0)
   const [verifNote, setVerifNote] = useState('')
+  // Recherche locale dans les points déjà chargés (correctif Vincent, POINT VERIFY
+  // MIGRATION) : un chantier avec plus d'une centaine de points suivis reste
+  // navigable au clavier plutôt qu'au Précédent/Suivant seul. Aucun backend,
+  // aucun scoring — un filtre texte sur verifyTargets tel quel.
+  const [verifSearch, setVerifSearch] = useState('')
   const touchStartX = useRef<number | null>(null)
   const [busy, startBusy] = useTransition()
   const [recording, setRecording] = useState(false)
@@ -662,6 +667,7 @@ export function VisitBasket({
     const firstTodo = verifyTargets.findIndex((t) => !verifiedTargetKeys.has(targetKey(t)))
     setVerifIndex(firstTodo >= 0 ? firstTodo : 0)
     setVerifNote('')
+    setVerifSearch('')
     setOverlay('verify')
   }
   function gotoVerif(i: number) {
@@ -669,6 +675,14 @@ export function VisitBasket({
     setVerifIndex(i)
     setVerifNote('')
   }
+  const verifSearchResults = (() => {
+    const q = verifSearch.trim().toLowerCase()
+    if (q.length < 1) return []
+    return verifyTargets
+      .map((t, i) => ({ target: t, index: i }))
+      .filter(({ target }) => target.name.toLowerCase().includes(q))
+      .slice(0, 20)
+  })()
   function saveVerification() {
     const target = verifyTargets[verifIndex]
     if (!target) return
@@ -1449,6 +1463,34 @@ export function VisitBasket({
                     style={{ width: `${verifyTargets.length ? (verifiedTargetKeys.size / verifyTargets.length) * 100 : 0}%` }} />
                 </div>
               </div>
+
+              {/* Recherche locale (correctif Vincent) : chantiers à nombreux points suivis
+                  — filtre sur les points déjà chargés, sans nouvel appel serveur. */}
+              {verifyTargets.length > 8 && (
+                <div className="space-y-1.5">
+                  <input
+                    type="text" value={verifSearch} onChange={(e) => setVerifSearch(e.target.value)}
+                    placeholder={`Rechercher parmi les ${verifyTargets.length} points…`}
+                    className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  {verifSearch.trim().length > 0 && (
+                    <div className="max-h-48 overflow-y-auto rounded-lg border divide-y">
+                      {verifSearchResults.length === 0 ? (
+                        <p className="px-3 py-2 text-xs text-muted-foreground">Aucun point ne correspond.</p>
+                      ) : (
+                        verifSearchResults.map(({ target, index }) => (
+                          <button key={target.id} type="button"
+                            onClick={() => { gotoVerif(index); setVerifSearch('') }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted/60">
+                            {verifiedTargetKeys.has(targetKey(target)) && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-700" />}
+                            <span className="min-w-0 flex-1 truncate">{target.name}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Le point courant */}
               <div className="rounded-xl border bg-background p-3 space-y-2">

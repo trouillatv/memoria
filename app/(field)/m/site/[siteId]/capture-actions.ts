@@ -523,6 +523,12 @@ export async function drainLightCaptureAction(
   const report = await getSiteReport(d.report_id)
   if (!report) return { ok: false, error: 'Visite introuvable', drop: true }
 
+  // Invariant de site (POINT VERIFY MIGRATION, correctif Vincent) : le report_id
+  // vient du client au même titre que site_id — vérifier que la visite ciblée
+  // appartient bien au chantier déclaré, sinon une capture pourrait s'écrire
+  // avec un tracked_point du site A rattaché à une visite du site B.
+  if (report.site_id !== d.site_id) return { ok: false, error: 'Visite hors chantier', drop: true }
+
   try {
     const captureId = await addVisitCapture({
       reportId: d.report_id,

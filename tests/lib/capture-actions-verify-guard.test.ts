@@ -34,7 +34,7 @@ vi.mock('@/lib/ai/normalize-caption', () => ({ normalizeCaptionWithLLM: vi.fn() 
 vi.mock('@/lib/db/captured-knowledge', () => ({ addCapturedKnowledge: vi.fn() }))
 vi.mock('@/app/(field)/m/site/[siteId]/report-actions', () => ({ uploadReportAttachmentAction: vi.fn() }))
 
-const getSiteReport = vi.fn(async () => ({ id: 'report-1', tenant_id: 'tenant-1' }))
+const getSiteReport = vi.fn(async () => ({ id: 'report-1', tenant_id: 'tenant-1', site_id: 'site-1' }))
 const findVisitCaptureIdByClientUuid = vi.fn(async () => null as string | null)
 const addVisitCapture = vi.fn(async () => 'capture-1')
 
@@ -76,7 +76,7 @@ function baseInput(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  getSiteReport.mockResolvedValue({ id: REPORT_ID, tenant_id: 'tenant-1' } as never)
+  getSiteReport.mockResolvedValue({ id: REPORT_ID, tenant_id: 'tenant-1', site_id: SITE_ID } as never)
   findVisitCaptureIdByClientUuid.mockResolvedValue(null)
   addVisitCapture.mockResolvedValue('capture-1')
   trackedPointRow.mockReturnValue({ data: null, error: null })
@@ -132,6 +132,17 @@ describe('drainLightCaptureAction — invariant de site (mandat point 3, fail cl
     trackedPointRow.mockReturnValue({ data: null, error: new Error('boom') })
     const result = await drainLightCaptureAction(baseInput({ tracked_point_id: POINT_ID }))
     expect(result).toEqual({ ok: false, error: 'Échec de la capture' })
+    expect(addVisitCapture).not.toHaveBeenCalled()
+  })
+
+  it('report d\'un AUTRE chantier que le payload, Point du même chantier que le payload → condamné (correctif Vincent)', async () => {
+    // Piège : point.site_id === d.site_id (A) passe la garde tracked_point, mais
+    // report.site_id === B ≠ d.site_id (A) — sans le second contrôle, la capture
+    // s'écrirait sur un report du site B avec un tracked_point du site A.
+    trackedPointRow.mockReturnValue({ data: { id: POINT_ID, site_id: SITE_ID }, error: null })
+    getSiteReport.mockResolvedValue({ id: REPORT_ID, tenant_id: 'tenant-1', site_id: OTHER_SITE_ID } as never)
+    const result = await drainLightCaptureAction(baseInput({ site_id: SITE_ID, tracked_point_id: POINT_ID }))
+    expect(result).toEqual({ ok: false, error: 'Visite hors chantier', drop: true })
     expect(addVisitCapture).not.toHaveBeenCalled()
   })
 })
