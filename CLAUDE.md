@@ -915,55 +915,126 @@ In particular:
 
 ---
 
-## 25. CHECKPOINT GITHUB À CHAQUE HARD STOP IMPORTANT
+## 25. REVIEW CHATGPT — RAPPORT + GITHUB EN UN SEUL GATE
 
-Vincent utilise ChatGPT comme reviewer/superviseur d'architecture entre les étapes Claude Code.
+Vincent utilise ChatGPT comme reviewer/superviseur après les HARD STOP importants.
 
-À chaque HARD STOP important, lorsqu'un lot cohérent de code est CODÉ / COMPILÉ / TESTÉ, Claude doit créer un commit et le pousser sur GitHub afin que ChatGPT puisse examiner le code réel et le diff avant de donner le GO suivant.
+Il ne doit pas y avoir deux étapes de validation successives :
 
-Cela s'applique notamment :
-- avant application d'une migration ou mutation de données ;
-- avant une étape architecturale suivante ;
-- lorsqu'un lot codé attend un arbitrage Vincent/ChatGPT ;
-- lorsqu'un risque ou une limite découverte nécessite une décision.
+rapport Claude
+→ validation ChatGPT
+→ commit GitHub
+→ deuxième validation ChatGPT
 
-Un commit/push de checkpoint N'AUTORISE JAMAIS l'application d'une migration ni une écriture en base.
+Ce workflow est INTERDIT.
+
+Le workflow attendu est :
+
+Claude code
+→ tests / typecheck / lint / build pertinents
+→ checkpoint GitHub du code réel
+→ Claude produit son rapport HARD STOP avec le SHA
+→ Vincent transmet CE MÊME rapport à ChatGPT
+→ ChatGPT analyse simultanément :
+     1. le rapport Claude
+     2. le diff GitHub du SHA
+→ UN SEUL verdict
+
+À chaque HARD STOP important avec code
+
+Avant de produire sa réponse finale, Claude doit :
+
+1. terminer le code cohérent du lot ;
+2. exécuter les vérifications prévues ;
+3. stage uniquement les fichiers du lot ;
+4. créer et pousser un checkpoint GitHub ;
+5. inclure le SHA dans son rapport HARD STOP.
+
+ChatGPT pourra alors contrôler le code GitHub pendant l'analyse du rapport, et non dans une deuxième étape.
+
+Le checkpoint n'est pas un GO métier
+
+Le fait de commit/push sert uniquement à rendre le code visible au reviewer.
+
+Cela n'autorise jamais automatiquement :
+
+application d'une migration ;
+
+écriture ou correction de données ;
+
+backfill ;
+
+déploiement volontaire ;
+
+traitement massif ;
+
+poursuite d'une étape soumise à arbitrage.
 
 Exemple :
 
-code + migration préparés
-→ tests/typecheck/lint/build PASS
-→ commit + push checkpoint
-→ HARD STOP — REVIEW READY
-→ review ChatGPT/Vincent
-→ seulement ensuite éventuel GO DB
+migration SQL écrite mais NON appliquée
++ code terminé
++ tests PASS
++ checkpoint GitHub
++ rapport Claude avec SHA
+→ Vincent transmet le rapport à ChatGPT
+→ ChatGPT lit rapport + GitHub dans le même tour
+→ GO APPLY MIGRATION ou FIX_REQUIRED
 
-Staging strict :
-- git add explicite fichier par fichier ;
-- jamais git add -A ;
-- ne jamais inclure le travail concurrent ;
-- ne jamais reset/checkout/stash/clean le travail d'une autre session.
-
-Si le lot ne peut pas être isolé proprement :
-HARD STOP — CHECKPOINT BLOCKED BY CONCURRENT WORK.
-
-Si le code n'est pas pushable seul :
-HARD STOP — NON PUSHABLE.
-
-À chaque checkpoint fournir :
+Rapport attendu
 
 HARD STOP — REVIEW READY
+
 SHA:
 branche:
-verify:pushable:
-fichiers du commit:
+
+objectif du lot:
+fichiers du checkpoint:
+
 tests:
 typecheck:
 lint:
 build:
-migration créée:
-migration appliquée:
-écritures DB réalisées:
-risques / décisions restantes:
 
-Si CLAUDE.md est déjà modifié par une autre session et ne peut pas être isolé sans conflit, ne pas l'écraser. Le signaler et poursuivre uniquement le checkpoint POINT VERIFY si celui-ci est isolable.
+migration:
+  créée:
+  appliquée:
+
+écritures DB:
+
+résultats métier / témoins:
+
+risques / limites:
+décisions attendues:
+
+Staging
+
+Toujours :
+
+fichiers explicites uniquement ;
+
+jamais git add -A ;
+
+ne jamais incorporer les changements concurrents ;
+
+ne jamais reset / checkout / clean / stash le travail d'une autre session.
+
+Si un checkpoint propre est impossible à cause de travail concurrent :
+
+HARD STOP — CHECKPOINT BLOCKED BY CONCURRENT WORK
+
+et expliquer pourquoi.
+
+Audit READ-ONLY
+
+Si aucun code n'a été créé ou modifié, aucun commit artificiel n'est nécessaire.
+
+Claude produit simplement :
+
+HARD STOP — AUDIT ONLY
+
+Important
+
+Après avoir produit le checkpoint et son rapport, Claude attend le verdict unique de Vincent/ChatGPT.
+
+Il ne demande pas d'abord un GO pour committer, puis un second GO pour continuer.
