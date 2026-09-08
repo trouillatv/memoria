@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Clock,
   Footprints,
+  HelpCircle,
   ListTodo,
   RefreshCw,
   ShieldAlert,
@@ -37,7 +38,7 @@ import { SiteAttentionSection, SiteAttentionSkeleton } from './SiteAttentionSect
 export async function SiteOverviewTab({ siteId }: { siteId: string }) {
   const overview = await getSiteOverview(siteId).catch(() => emptySiteOverview(siteId))
   const {
-    actions, actionsPilotage, reservesPilotage, nextEvent, reserves, blockages, activity, synthesis,
+    actions, actionsPilotage, reservesPilotage, memoriaNeedsYou, nextEvent, reserves, blockages, activity, synthesis,
     pvActivity,
   } = overview
   // La synthèse de la dernière visite est l'endroit où l'on confirme les propositions.
@@ -47,6 +48,45 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
 
   return (
     <main className="space-y-4">
+      {/* 6E.4A — "MemorIA a besoin de toi" : file agrégée des 5 read-models 6E (identité,
+          rattachement, situations à suivre, résolutions, preuve) composée en langage métier par
+          lib/knowledge/tracked-point-needs-you-summary.ts. Silence total si vide, comme les
+          propositions plus bas — ce n'est jamais un compteur affiché à zéro. Aucun vocabulaire DB
+          (proposal_set, identity_candidate, PROVISIONAL) ne doit apparaître ici. */}
+      {memoriaNeedsYou.totalCount > 0 && (
+        <section aria-labelledby="memoria-besoin-de-toi" className="rounded-[18px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/40">
+              <HelpCircle className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+            </span>
+            <div className="min-w-0">
+              <h2 id="memoria-besoin-de-toi" className="text-sm font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-200">
+                MemorIA a besoin de toi
+              </h2>
+              <p className="text-base font-semibold">
+                {memoriaNeedsYou.totalCount} point{memoriaNeedsYou.totalCount > 1 ? 's' : ''} à clarifier
+              </p>
+            </div>
+            <Link
+              href={`/sites/${siteId}/besoin-de-toi`}
+              className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
+            >
+              Tout voir <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+          <ul className="mt-3 space-y-1.5">
+            {memoriaNeedsYou.categories.filter((c) => c.count > 0).map((c) => (
+              <li key={c.category} className="flex items-center gap-2 text-sm text-foreground/90">
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-100 px-1.5 text-[11px] font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                  {c.count}
+                </span>
+                <span>{c.label}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section aria-labelledby="etat-du-chantier" className="space-y-3">
         <h2 id="etat-du-chantier" className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           État du chantier

@@ -68,6 +68,12 @@ import { buildOccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
 import { getActionsPilotageKpi, type PilotageKpi } from '@/lib/knowledge/actions-pilotage'
 import { getSiteReservesPilotage, type ReservesPilotageKpi } from '@/lib/knowledge/reserves-pilotage'
+import {
+  loadMemoriaNeedsYouSummary,
+  MEMORIA_NEEDS_YOU_CATEGORY_ORDER,
+  MEMORIA_NEEDS_YOU_CATEGORY_LABELS,
+  type MemoriaNeedsYouSummary,
+} from '@/lib/knowledge/tracked-point-needs-you-summary'
 
 const TOP = 3
 const HISTORY_LIMIT = 5
@@ -239,6 +245,10 @@ export interface SiteOverview {
    *  lifecycle : `durableReserves` n'est PAS « N ouvertes » (pas d'état calculé). `reserves.open`
    *  (brut) reste pour les consommateurs existants. */
   reservesPilotage: ReservesPilotageKpi
+  /** 6E.4A — file agrégée "MemorIA a besoin de toi" (5 read-models 6E composés en langage
+   *  métier, cf. lib/knowledge/tracked-point-needs-you-summary.ts). AUCUN vocabulaire DB
+   *  (proposal_set, identity_candidate, PROVISIONAL) ne doit fuir au-delà de ce type. */
+  memoriaNeedsYou: MemoriaNeedsYouSummary
   attention: { level: AttentionLevel; reasons: AttentionReason[] }
   nextEvent: OverviewEvent | null
   recentChanges: OverviewChange[]
@@ -448,6 +458,12 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
     actions: { proposed: [], confirmed: [], completedRecent: [], priority: [], summary: { proposed: 0, active: 0, planned: 0, overdue: 0, week: 0, undated: 0, completed: 0 } },
     actionsPilotage: { subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 },
     reservesPilotage: { subjectsWithReserves: 0, durableReserves: 0, occurrences: 0 },
+    memoriaNeedsYou: {
+      siteId,
+      totalCount: 0,
+      categories: MEMORIA_NEEDS_YOU_CATEGORY_ORDER.map((category) => ({ category, label: MEMORIA_NEEDS_YOU_CATEGORY_LABELS[category], count: 0 })),
+      questions: [],
+    },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
     recentChanges: [],
@@ -593,6 +609,13 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   const actionsPilotage: PilotageKpi = await getActionsPilotageKpi(siteId).catch(() => ({ subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 }))
   // V1-3 — KPI « Réserves durables » (occurrences → CBO réserve, sans lifecycle). Best-effort.
   const reservesPilotage: ReservesPilotageKpi = await getSiteReservesPilotage(siteId).then((r) => r.kpi, () => ({ subjectsWithReserves: 0, durableReserves: 0, occurrences: 0 }))
+  // 6E.4A — file agrégée « MemorIA a besoin de toi » (5 read-models 6E, composition pure sans écriture). Best-effort.
+  const memoriaNeedsYou: MemoriaNeedsYouSummary = await loadMemoriaNeedsYouSummary(siteId).catch(() => ({
+    siteId,
+    totalCount: 0,
+    categories: MEMORIA_NEEDS_YOU_CATEGORY_ORDER.map((category) => ({ category, label: MEMORIA_NEEDS_YOU_CATEGORY_LABELS[category], count: 0 })),
+    questions: [],
+  }))
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──
   // Déduplication V1 : même subject_thread_id = une seule entrée opérationnelle.
@@ -770,6 +793,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     actions,
     actionsPilotage,
     reservesPilotage,
+    memoriaNeedsYou,
     attention: { level: attentionLevelOf(reasons), reasons },
     nextEvent: nextEvent
       ? { id: nextEvent.id, kind: nextEvent.kind, title: nextEvent.title, startsAt: nextEvent.startsAt, detail: nextEvent.detail ?? null, href: nextEvent.href ?? null }

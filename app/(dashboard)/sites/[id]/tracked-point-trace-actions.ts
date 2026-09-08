@@ -1,12 +1,12 @@
 'use server'
 
-// Phase 6E.2C — Build 4 : server actions TRACE_TO_POINT, préparées mais non consommées par
-// aucun écran dans ce lot ("aucune nouvelle UI dans ce lot si on veut garder les phases
-// propres" — Vincent). Même squelette que tracked-point-consolidation-actions.ts (Point↔Point) :
-// validation zod, requireSiteWriteAccess(siteId, 'managerOrAdmin'), délégation immédiate au
-// wrapper métier. Pas de revalidatePath ici faute de page réelle à invalider.
+// Phase 6E.2C — Build 4 : server actions TRACE_TO_POINT, consommées par la carte "Cette
+// information concerne-t-elle ce suivi ?" (6E.4A, /sites/[id]/besoin-de-toi). Même squelette que
+// tracked-point-consolidation-actions.ts (Point↔Point) : validation zod,
+// requireSiteWriteAccess(siteId, 'managerOrAdmin'), délégation immédiate au wrapper métier.
 
 import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import {
   acceptTraceIdentityCandidate,
@@ -28,7 +28,12 @@ export async function acceptTraceIdentityCandidateAction(rawInput: unknown): Pro
   const access = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
   if (!access.ok) return { ok: false, error: access.error }
 
-  return acceptTraceIdentityCandidate({ siteId, candidateId })
+  const result = await acceptTraceIdentityCandidate({ siteId, candidateId })
+  if (result.ok) {
+    revalidatePath(`/sites/${siteId}/besoin-de-toi`)
+    revalidatePath(`/sites/${siteId}`)
+  }
+  return result
 }
 
 export async function rejectTraceIdentityCandidateAction(rawInput: unknown): Promise<RejectTraceIdentityCandidateResult> {
@@ -39,5 +44,10 @@ export async function rejectTraceIdentityCandidateAction(rawInput: unknown): Pro
   const access = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
   if (!access.ok) return { ok: false, error: access.error }
 
-  return rejectTraceIdentityCandidate({ siteId, candidateId, actorUserId: access.userId })
+  const result = await rejectTraceIdentityCandidate({ siteId, candidateId, actorUserId: access.userId })
+  if (result.ok) {
+    revalidatePath(`/sites/${siteId}/besoin-de-toi`)
+    revalidatePath(`/sites/${siteId}`)
+  }
+  return result
 }

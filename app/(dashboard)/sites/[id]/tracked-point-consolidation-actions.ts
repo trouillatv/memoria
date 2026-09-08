@@ -2,9 +2,8 @@
 
 // Phase 6E.1C — server actions générique pour la consolidation Point↔Point (déliverables 5/6).
 //
-// Aucun écran ne consomme encore ces actions (déliverable 7 : pas de livraison UI dans ce
-// lot) — pas de revalidatePath ici faute de page réelle à invalider ; à ajouter au moment où
-// une surface consomme lib/knowledge/tracked-point-consolidation-queue.ts.
+// Consommé par la carte "Ces deux suivis sont-ils les mêmes ?" (6E.4A,
+// lib/knowledge/tracked-point-consolidation-queue.ts → /sites/[id]/besoin-de-toi).
 //
 // requireSiteWriteAccess(siteId, 'managerOrAdmin') : consolidation/rejet d'identité durable,
 // même niveau de rôle que les autres opérations d'identité sensibles du domaine chantier —
@@ -12,6 +11,7 @@
 // chef d'équipe.
 
 import { z } from 'zod'
+import { revalidatePath } from 'next/cache'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import {
   consolidateTrackedPoints,
@@ -33,7 +33,12 @@ export async function consolidateTrackedPointsAction(rawInput: unknown): Promise
   const access = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
   if (!access.ok) return { ok: false, error: access.error }
 
-  return consolidateTrackedPoints({ siteId, pairId })
+  const result = await consolidateTrackedPoints({ siteId, pairId })
+  if (result.ok) {
+    revalidatePath(`/sites/${siteId}/besoin-de-toi`)
+    revalidatePath(`/sites/${siteId}`)
+  }
+  return result
 }
 
 export async function rejectPointIdentityPairAction(rawInput: unknown): Promise<RejectPointIdentityPairResult> {
@@ -44,5 +49,10 @@ export async function rejectPointIdentityPairAction(rawInput: unknown): Promise<
   const access = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
   if (!access.ok) return { ok: false, error: access.error }
 
-  return rejectPointIdentityPair({ siteId, pairId, actorUserId: access.userId })
+  const result = await rejectPointIdentityPair({ siteId, pairId, actorUserId: access.userId })
+  if (result.ok) {
+    revalidatePath(`/sites/${siteId}/besoin-de-toi`)
+    revalidatePath(`/sites/${siteId}`)
+  }
+  return result
 }
