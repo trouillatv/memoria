@@ -28,6 +28,7 @@ function cap(over: Partial<VisitCaptureRow> = {}): VisitCaptureRow {
     transcript_status: null,
     attachment_id: null,
     subject_id: null,
+    tracked_point_id: null,
     triage_intent: null,
     suite_status: null,
     starred: false,

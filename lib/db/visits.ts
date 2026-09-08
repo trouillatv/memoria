@@ -405,7 +405,7 @@ export async function listActiveVisitsForUser(userId: string, limit = 5): Promis
         // Dernier élément : « où je me suis arrêté » (avec le libellé).
         supabase
           .from('visit_capture')
-          .select('kind, body, subject_id, starred, created_at')
+          .select('kind, body, subject_id, tracked_point_id, starred, created_at')
           .eq('report_id', r.id)
           .neq('status', 'discarded')
           .order('created_at', { ascending: false })
@@ -427,14 +427,18 @@ export async function listActiveVisitsForUser(userId: string, limit = 5): Promis
         if (row.starred) starred++
       }
 
-      const lastRow = last as { kind: VisitCaptureKind; body: string | null; subject_id: string | null; starred: boolean; created_at: string } | null
+      const lastRow = last as { kind: VisitCaptureKind; body: string | null; subject_id: string | null; tracked_point_id: string | null; starred: boolean; created_at: string } | null
       let lastCapture: ActiveVisitSummary['lastCapture'] = null
       if (lastRow) {
-        // Nom du point suivi seulement si le dernier geste est une vérification.
+        // Nom du point suivi seulement si le dernier geste est une vérification
+        // (subject legacy OU tracked_point, mig 397 — jamais les deux à la fois).
         let subjectName: string | null = null
         if (lastRow.kind === 'verification' && lastRow.subject_id) {
           const { data: subj } = await supabase.from('subjects').select('name').eq('id', lastRow.subject_id).maybeSingle()
           subjectName = (subj as { name: string } | null)?.name ?? null
+        } else if (lastRow.kind === 'verification' && lastRow.tracked_point_id) {
+          const { data: pt } = await supabase.from('tracked_point').select('label').eq('id', lastRow.tracked_point_id).maybeSingle()
+          subjectName = (pt as { label: string } | null)?.label ?? null
         }
         lastCapture = {
           kind: lastRow.kind,
@@ -628,11 +632,12 @@ export async function buildVisitImpact(reportId: string): Promise<VisitImpact | 
     return count ?? 0
   }
 
-  const [captureRes, reserves, actions, touchedRes] = await Promise.all([
+  const [captureRes, reserves, actions, touchedRes, touchedPointRes] = await Promise.all([
     supabase.from('visit_capture').select('kind').eq('report_id', reportId).neq('status', 'discarded'),
     countWindow('site_reserve'),
     countWindow('site_actions'),
     supabase.from('visit_capture').select('subject_id').eq('report_id', reportId).not('subject_id', 'is', null).neq('status', 'discarded'),
+    supabase.from('visit_capture').select('tracked_point_id').eq('report_id', reportId).not('tracked_point_id', 'is', null).neq('status', 'discarded'),
   ])
 
   const kinds = (captureRes.data ?? []) as Array<{ kind: string }>
@@ -642,11 +647,19 @@ export async function buildVisitImpact(reportId: string): Promise<VisitImpact | 
   const subjectIds = [...new Set(
     ((touchedRes.data ?? []) as Array<{ subject_id: string | null }>).map((r) => r.subject_id).filter((x): x is string => !!x),
   )]
+  const pointIds = [...new Set(
+    ((touchedPointRes.data ?? []) as Array<{ tracked_point_id: string | null }>).map((r) => r.tracked_point_id).filter((x): x is string => !!x),
+  )]
   let touchedSubjects: string[] = []
   if (subjectIds.length > 0) {
-    const { data: subs } = await supabase.from('subjects').select('name').in('id', subjectIds).limit(4)
-    touchedSubjects = ((subs ?? []) as Array<{ name: string }>).map((s) => s.name)
+    const { data: subs } = await supabase.from('subjects').select('name').in('id', subjectIds)
+    touchedSubjects.push(...((subs ?? []) as Array<{ name: string }>).map((s) => s.name))
   }
+  if (pointIds.length > 0) {
+    const { data: pts } = await supabase.from('tracked_point').select('label').in('id', pointIds)
+    touchedSubjects.push(...((pts ?? []) as Array<{ label: string }>).map((p) => p.label))
+  }
+  touchedSubjects = touchedSubjects.slice(0, 4)
 
   return {
     added: { photos, notes, reserves, actions },

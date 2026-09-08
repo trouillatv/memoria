@@ -51,6 +51,7 @@ function makeCapture(overrides: Partial<VisitCaptureRow>): VisitCaptureRow {
     transcript_status: null,
     attachment_id: null,
     subject_id: null,
+    tracked_point_id: null,
     triage_intent: 'memoire',
     suite_status: null,
     starred: false,

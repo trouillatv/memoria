@@ -27,7 +27,8 @@ import {
 } from '@/lib/db/subjects'
 import { getSubjectRelations } from '@/lib/db/subject-relations'
 import { listCapturedKnowledgeBySubject, type CapturedKnowledgeRow } from '@/lib/db/captured-knowledge'
-import { listVisitCapturesBySubject, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { listVisitCapturesBySubject, listVisitCapturesByTrackedPointIds, type VisitCaptureRow } from '@/lib/db/visit-captures'
+import { loadTrackedPointReadModel, resolveTrackedPointIdsForSubject } from '@/lib/knowledge/tracked-point-read-model'
 
 export type OpenLoopKind = 'action' | 'reserve' | 'obligation' | 'promise'
 export interface OpenLoop { kind: OpenLoopKind; label: string }
@@ -75,17 +76,27 @@ export interface LivingDossier {
  * dérivations sont DÉTERMINISTES (zéro IA).
  */
 export async function getLivingDossier(siteId: string, subjectId: string): Promise<LivingDossier | null> {
-  const [identity, thread, timeline, insights, relations, capturedKnowledge, visitCaptures] = await Promise.all([
+  const [identity, thread, timeline, insights, relations, capturedKnowledge, subjectVisitCaptures, linkedPointIds] = await Promise.all([
     getSiteIdentity(siteId),
     getSubjectThread(subjectId),
-    getSubjectTimeline(subjectId),
+    getSubjectTimeline(subjectId, siteId),
     getSubjectInsights(subjectId),
     getSubjectRelations(subjectId),
     listCapturedKnowledgeBySubject(subjectId).catch(() => []),
     listVisitCapturesBySubject(subjectId).catch(() => []),
+    resolveTrackedPointIdsForSubject(siteId, subjectId).catch(() => []),
   ])
 
   if (!identity || !thread || thread.subject.site_id !== siteId) return null
+
+  // Points suivis (mig 397, mandat A) : un Point rattaché à ce sujet legacy via
+  // canonical_subject_id peut porter des captures 'tracked_point_id'-only (jamais
+  // subject_id). Sans cette union elles seraient invisibles ici alors que visibles
+  // dans listVisitTouchedDossiers — élargi au composant de fusion entier (mandat B).
+  const pointVisitCaptures = linkedPointIds.length > 0
+    ? await listVisitCapturesByTrackedPointIds(linkedPointIds).catch(() => [])
+    : []
+  const visitCaptures = [...subjectVisitCaptures, ...pointVisitCaptures]
 
   // ── openLoops : tout ce qui reste OUVERT sur ce point ──
   const openLoops: OpenLoop[] = []
@@ -159,29 +170,56 @@ export async function listVisitTouchedDossiers(reportId: string): Promise<VisitT
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('visit_capture')
-    .select('subject_id')
+    .select('subject_id, tracked_point_id, site_id')
     .eq('report_id', reportId)
-    .not('subject_id', 'is', null)
     .neq('status', 'discarded')
-  const ids = [...new Set(
-    ((data ?? []) as Array<{ subject_id: string | null }>).map((r) => r.subject_id).filter((x): x is string => !!x),
-  )]
-  if (ids.length === 0) return []
+  const rows = (data ?? []) as Array<{ subject_id: string | null; tracked_point_id: string | null; site_id: string }>
+  const ids = [...new Set(rows.map((r) => r.subject_id).filter((x): x is string => !!x))]
+  const pointIds = [...new Set(rows.map((r) => r.tracked_point_id).filter((x): x is string => !!x))]
+  const siteId = rows[0]?.site_id ?? null
 
-  const { data: subjRows } = await supabase.from('subjects').select('id, name').in('id', ids)
-  const nameById = new Map(((subjRows ?? []) as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]))
-  const insightsList = await Promise.all(ids.map((id) => getSubjectInsights(id).catch(() => null)))
+  const subjectDossiers: VisitTouchedDossier[] = []
+  if (ids.length > 0) {
+    const { data: subjRows } = await supabase.from('subjects').select('id, name').in('id', ids)
+    const nameById = new Map(((subjRows ?? []) as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]))
+    const insightsList = await Promise.all(ids.map((id) => getSubjectInsights(id).catch(() => null)))
+    ids.forEach((id, i) => {
+      const ins = insightsList[i]
+      subjectDossiers.push({
+        id,
+        name: nameById.get(id) ?? '—',
+        state: ins?.state ?? 'ouvert',
+        cause: ins?.cause?.text ?? null,
+        openActions: ins?.openActions ?? 0,
+        openReserves: ins?.openReserves ?? 0,
+        openQuestion: ins?.openQuestion ?? null,
+      })
+    })
+  }
 
-  return ids.map((id, i) => {
-    const ins = insightsList[i]
-    return {
-      id,
-      name: nameById.get(id) ?? '—',
-      state: ins?.state ?? 'ouvert',
-      cause: ins?.cause?.text ?? null,
-      openActions: ins?.openActions ?? 0,
-      openReserves: ins?.openReserves ?? 0,
-      openQuestion: ins?.openQuestion ?? null,
+  // Points suivis (mig 397) : pas de moteur d'insights (cause/openActions/
+  // openReserves/openQuestion) équivalent à computeSubjectInsights — construire
+  // cet équivalent est un chantier séparé (cf. HARD STOP POINT VERIFY MIGRATION).
+  // On expose ici uniquement ce que le read-model calcule réellement : le libellé
+  // et l'état dérivé (open/reopened/conflict/unknown/resolved), sans inventer de cause.
+  const pointDossiers: VisitTouchedDossier[] = []
+  if (pointIds.length > 0 && siteId) {
+    const { points } = await loadTrackedPointReadModel(siteId)
+    const byId = new Map(points.map((p) => [p.id, p]))
+    for (const pid of pointIds) {
+      const p = byId.get(pid)
+      if (!p) continue
+      pointDossiers.push({
+        id: p.id,
+        name: p.label,
+        state: p.derivedState,
+        cause: null,
+        openActions: 0,
+        openReserves: 0,
+        openQuestion: null,
+      })
     }
-  })
+  }
+
+  return [...subjectDossiers, ...pointDossiers]
 }

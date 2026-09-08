@@ -565,3 +565,35 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
 
   return { points: readModelPoints, mergedPoints, bySubject, pendingIdentityCandidates }
 }
+
+// resolveTrackedPointIdsForSubject (Point Verify Migration, mandat Vincent A+B) : les Points
+// canoniques dont canonical_subject_id === subjectId, ÉLARGIS à leur composant de fusion entier
+// via buildPointMergeComponents (même primitive que loadTrackedPointReadModel ci-dessus, aucune
+// deuxième traversée). Garantit l'invariant de fusion : une capture physiquement attachée à un
+// Point A fusionné dans B reste retrouvable en lisant B, sans jamais réécrire l'attache de A.
+// Retourne [] si le sujet ne possède aucun Point (chantier encore purement legacy).
+export async function resolveTrackedPointIdsForSubject(siteId: string, subjectId: string): Promise<string[]> {
+  const supabase = createAdminClient()
+  const { data: rows, error } = await supabase
+    .from('tracked_point')
+    .select('id, site_id, status, merged_into_id, canonical_subject_id')
+    .eq('site_id', siteId)
+  if (error) throw new Error(`resolveTrackedPointIdsForSubject: tracked_point — ${error.message}`)
+  if (!rows || rows.length === 0) return []
+
+  const mergePoints: MergeGraphPoint[] = (rows as Array<{ id: string; site_id: string; status: TrackedPointStatus; merged_into_id: string | null }>).map(
+    (r) => ({ id: r.id, siteId: r.site_id, status: r.status, mergedIntoId: r.merged_into_id, identityStatus: 'PROVISIONAL', createdAt: '' }),
+  )
+  const components = buildPointMergeComponents(mergePoints)
+
+  const canonicalIdsOwnedBySubject = (rows as Array<{ id: string; status: TrackedPointStatus; canonical_subject_id: string | null }>)
+    .filter((r) => r.status !== 'merged' && r.canonical_subject_id === subjectId)
+    .map((r) => r.id)
+
+  const memberIds = new Set<string>()
+  for (const canonicalId of canonicalIdsOwnedBySubject) {
+    const component = components.get(canonicalId)
+    for (const id of component?.memberPointIds ?? [canonicalId]) memberIds.add(id)
+  }
+  return [...memberIds]
+}

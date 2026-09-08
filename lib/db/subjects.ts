@@ -11,6 +11,8 @@ import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { listDocumentsForTarget } from '@/lib/db/documents'
 import { getSubjectImpactCounts, type SubjectImpact } from '@/lib/db/subject-relations'
 import { normalizeSubjectName, subjectDedupKey } from '@/lib/db/subject-doctrine'
+import { listVisitCapturesByTrackedPointIds } from '@/lib/db/visit-captures'
+import { resolveTrackedPointIdsForSubject } from '@/lib/knowledge/tracked-point-read-model'
 import type { DbSubject, SubjectStatus, DbSiteAction, DbSiteReportProposal } from '@/types/db'
 
 export type SubjectCriticality = 'basse' | 'moyenne' | 'haute'
@@ -661,8 +663,12 @@ export async function getSubjectLinkageHealth(siteId: string): Promise<SubjectLi
 }
 
 /** HISTORIQUE CHRONOLOGIQUE d'un sujet — l'histoire complète, tous objets fusionnés et
- *  datés, situés à leur réunion (Vincent : « CR12 décision · CR14 promesse · … »). */
-export async function getSubjectTimeline(subjectId: string): Promise<SubjectEvent[]> {
+ *  datés, situés à leur réunion (Vincent : « CR12 décision · CR14 promesse · … »).
+ *  `siteId` (Point Verify Migration, mandat A) : REQUIS, pas optionnel — sans lui, les
+ *  captures de visite rattachées à un Point suivi (jamais subject_id) resteraient
+ *  invisibles ici, un gap silencieux qu'un paramètre facultatif aurait permis de
+ *  réintroduire par simple oubli à un futur appelant. */
+export async function getSubjectTimeline(subjectId: string, siteId: string): Promise<SubjectEvent[]> {
   const supabase = createAdminClient()
   const [{ data: decisions }, { data: actions }, { data: reserves }, { data: crDecisions }, { data: anomI }, { data: anomA }, { data: obligations }, documents] = await Promise.all([
     supabase.from('site_decisions').select('id, titre, statut, date_decision, echeance, report_id').eq('subject_id', subjectId),
@@ -739,15 +745,23 @@ export async function getSubjectTimeline(subjectId: string): Promise<SubjectEven
     promise: 'promesse', risk: 'risque', attention: "point d'attention",
     missing_document: 'document manquant', context: 'contexte', other: 'à retenir',
   }
-  const [{ data: knowledge }, { data: captures }] = await Promise.all([
+  const [{ data: knowledge }, { data: subjectCaptures }, linkedPointIds] = await Promise.all([
     supabase.from('captured_knowledge').select('id, title, kind, created_at').eq('subject_id', subjectId),
     supabase.from('visit_capture').select('id, kind, body, created_at').eq('subject_id', subjectId).neq('status', 'discarded'),
+    resolveTrackedPointIdsForSubject(siteId, subjectId).catch(() => []),
   ])
   for (const k of (knowledge ?? []) as Array<{ title: string; kind: string; created_at: string }>) {
     events.push({ date: k.created_at.slice(0, 10), kind: 'knowledge', label: k.title,
       meta: `à retenir · ${KNOWLEDGE_FR[k.kind] ?? k.kind}`, reportLabel: null })
   }
-  for (const c of (captures ?? []) as Array<{ kind: string; body: string | null; created_at: string }>) {
+  // Points suivis (mig 397, mandat A) : captures 'tracked_point_id'-only (jamais subject_id)
+  // rattachées à un Point de ce sujet, élargi à son composant de fusion (mandat B).
+  const pointCaptures = linkedPointIds.length > 0 ? await listVisitCapturesByTrackedPointIds(linkedPointIds).catch(() => []) : []
+  const captures = [
+    ...((subjectCaptures ?? []) as Array<{ kind: string; body: string | null; created_at: string }>),
+    ...pointCaptures.map((c) => ({ kind: c.kind, body: c.body, created_at: c.created_at })),
+  ]
+  for (const c of captures) {
     const body = c.body?.trim() || null
     const label =
       c.kind === 'verification' ? `Vérification${body ? ` : ${body}` : ''}`

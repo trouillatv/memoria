@@ -62,6 +62,10 @@ export interface VisitCaptureRow {
   transcript_status: CaptureTranscriptStatus | null
   attachment_id: string | null
   subject_id: string | null
+  /** Point suivi (mig 397) — cible d'une vérification quand le chantier n'a
+   *  plus de subjects legacy actifs. Jamais renseigné en même temps que
+   *  subject_id (garde XOR côté capture-actions.ts, pas de dual-write). */
+  tracked_point_id: string | null
   triage_intent: CaptureTriageIntent
   /** Cycle de la proposition de suite au débrief (mig 183) : null=à proposer,
    *  'done'=matérialisée/rattachée, 'ignored'=écartée. */
@@ -119,8 +123,11 @@ export interface AddVisitCaptureInput {
   transcriptStatus?: CaptureTranscriptStatus | null
   /** Pour 'photo'/'vocal' : la pièce dans site_report_attachments. */
   attachmentId?: string | null
-  /** Pour 'verification' : le point suivi recontrôlé. */
+  /** Pour 'verification' (legacy subjects) : le sujet recontrôlé. */
   subjectId?: string | null
+  /** Pour 'verification' (mig 397) : le tracked_point recontrôlé. XOR avec
+   *  subjectId — jamais les deux, validé en amont par capture-actions.ts. */
+  trackedPointId?: string | null
   /** Identité idempotente d'un dépôt offline-first (mig 177). Si une capture
    *  existe déjà pour ce client_uuid, on la retourne au lieu d'en créer une 2ᵉ. */
   clientUuid?: string | null
@@ -191,6 +198,7 @@ export async function addVisitCapture(input: AddVisitCaptureInput): Promise<stri
       transcript_status: input.transcriptStatus ?? null,
       attachment_id: input.attachmentId ?? null,
       subject_id: input.subjectId ?? null,
+      tracked_point_id: input.trackedPointId ?? null,
       client_uuid: input.clientUuid ?? null,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
@@ -241,7 +249,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('report_id', reportId)
     .is('hidden_at', null) // masque un original ARCHIVÉ (remplacé par sa version annotée, mig 185)
     .order('captured_at', { ascending: true, nullsFirst: true })
@@ -250,13 +258,46 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   return (data ?? []) as VisitCaptureRow[]
 }
 
-/** Les captures de visite rattachées à un point suivi — pour le dossier vivant. */
+/** Les captures de visite rattachées à un subject legacy (mig 124/165) — pour le dossier vivant. */
 export async function listVisitCapturesBySubject(subjectId: string): Promise<VisitCaptureRow[]> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('subject_id', subjectId)
+    .neq('status', 'discarded')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as VisitCaptureRow[]
+}
+
+/** Les captures de visite rattachées à un tracked_point (mig 397) — équivalent
+ *  Point de listVisitCapturesBySubject pour le dossier vivant. Rattachement
+ *  physique seul : la résolution vers un Point fusionné cible (canonicalPointId)
+ *  est la responsabilité de l'appelant (buildPointMergeComponents), jamais de ce loader. */
+export async function listVisitCapturesByTrackedPoint(trackedPointId: string): Promise<VisitCaptureRow[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_capture')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .eq('tracked_point_id', trackedPointId)
+    .neq('status', 'discarded')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as VisitCaptureRow[]
+}
+
+/** Les captures de visite rattachées à un ENSEMBLE de tracked_point (mig 397) —
+ *  batch de listVisitCapturesByTrackedPoint pour lire un composant de fusion entier
+ *  (Point canonique + ses membres mergés) en un seul aller-retour. Même contrat :
+ *  résolution du composant = responsabilité de l'appelant (buildPointMergeComponents). */
+export async function listVisitCapturesByTrackedPointIds(trackedPointIds: string[]): Promise<VisitCaptureRow[]> {
+  if (trackedPointIds.length === 0) return []
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('visit_capture')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .in('tracked_point_id', trackedPointIds)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -271,7 +312,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -289,7 +330,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -322,7 +363,7 @@ export async function listGeolocatedCapturesBySite(siteId: string, limit = 1000)
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('visit_capture')
-    .select('id, kind, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, created_at, body, report_id, subject_id')
+    .select('id, kind, lat, lng, gps_accuracy_m, corrected_lat, corrected_lng, created_at, body, report_id, subject_id, tracked_point_id')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .not('lat', 'is', null)
@@ -333,12 +374,21 @@ export async function listGeolocatedCapturesBySite(siteId: string, limit = 1000)
     id: string; kind: VisitCaptureKind; lat: number | null; lng: number | null
     gps_accuracy_m: number | null; corrected_lat: number | null; corrected_lng: number | null
     created_at: string; body: string | null; report_id: string; subject_id: string | null
+    tracked_point_id: string | null
   }>).filter((r) => isMappableVisualCapture(r.kind))
   const subjectIds = [...new Set(rows.map((r) => r.subject_id).filter((x): x is string => !!x))]
+  const pointIds = [...new Set(rows.map((r) => r.tracked_point_id).filter((x): x is string => !!x))]
   const nameById = new Map<string, string>()
   if (subjectIds.length > 0) {
     const { data: subs } = await supabase.from('subjects').select('id, name').in('id', subjectIds)
     for (const s of (subs ?? []) as Array<{ id: string; name: string }>) nameById.set(s.id, s.name)
+  }
+  // subject_name porte aussi le libellé d'un tracked_point (mig 397) : même
+  // rôle d'affichage sur la carte des observations, jamais les deux à la fois
+  // (XOR posé à l'écriture par capture-actions.ts).
+  if (pointIds.length > 0) {
+    const { data: pts } = await supabase.from('tracked_point').select('id, label').in('id', pointIds)
+    for (const p of (pts ?? []) as Array<{ id: string; label: string }>) nameById.set(p.id, p.label)
   }
   return rows.flatMap((r) => {
     const pos = resolveEffectivePosition({
@@ -348,7 +398,8 @@ export async function listGeolocatedCapturesBySite(siteId: string, limit = 1000)
     return [{
       id: r.id, kind: r.kind, lat: pos.lat, lng: pos.lng, positionSource: pos.source,
       gpsAccuracyM: r.gps_accuracy_m, created_at: r.created_at, body: r.body,
-      report_id: r.report_id, subject_name: r.subject_id ? nameById.get(r.subject_id) ?? null : null,
+      report_id: r.report_id,
+      subject_name: (r.subject_id ?? r.tracked_point_id) ? nameById.get((r.subject_id ?? r.tracked_point_id)!) ?? null : null,
     }]
   })
 }
@@ -378,7 +429,7 @@ export async function listSiteViewpointRows(siteId: string): Promise<VisitCaptur
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -396,7 +447,7 @@ export async function listSitePhotoCaptures(siteId: string, limit = 500): Promis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')

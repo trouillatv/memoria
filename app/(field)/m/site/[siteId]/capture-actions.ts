@@ -469,6 +469,7 @@ const lightDrainSchema = z.object({
   kind: z.enum(['note', 'verification', 'position']),
   body: z.string().trim().max(2000).optional(),
   subject_id: z.string().uuid().optional(),
+  tracked_point_id: z.string().uuid().optional(),
   ...coords,
 })
 
@@ -488,8 +489,29 @@ export async function drainLightCaptureAction(
   // Exigences par geste — une entry qui ne les remplit pas est condamnée
   // (elle ne deviendra jamais valide en re-tentant).
   if (d.kind === 'note' && (!d.body || d.body.length < 1)) return { ok: false, error: 'Note vide', drop: true }
-  if (d.kind === 'verification' && !d.subject_id) return { ok: false, error: 'Point suivi manquant', drop: true }
+  if (d.kind === 'verification' && !d.subject_id && !d.tracked_point_id) {
+    return { ok: false, error: 'Point suivi manquant', drop: true }
+  }
+  if (d.kind === 'verification' && d.subject_id && d.tracked_point_id) {
+    return { ok: false, error: 'Cible de vérification ambiguë', drop: true }
+  }
   if (d.kind === 'position' && (d.lat == null || d.lng == null)) return { ok: false, error: 'Position manquante', drop: true }
+
+  // Invariant de site (POINT VERIFY MIGRATION, point 3) : jamais de recherche par nom, jamais
+  // de confiance dans le client — le tracked_point ciblé doit appartenir au chantier de la
+  // visite, sinon la capture est condamnée (fail closed, pas de retry possible).
+  if (d.tracked_point_id) {
+    const db = createAdminClient()
+    const { data: point, error: pointErr } = await db
+      .from('tracked_point')
+      .select('id, site_id')
+      .eq('id', d.tracked_point_id)
+      .maybeSingle()
+    if (pointErr) return { ok: false, error: 'Échec de la capture' }
+    if (!point || point.site_id !== d.site_id) {
+      return { ok: false, error: 'Point suivi hors chantier', drop: true }
+    }
+  }
 
   // Idempotence en tête : réponse perdue puis re-drain → on renvoie l'existant.
   try {
@@ -508,6 +530,7 @@ export async function drainLightCaptureAction(
       kind: d.kind,
       body: d.body ?? null,
       subjectId: d.subject_id ?? null,
+      trackedPointId: d.tracked_point_id ?? null,
       clientUuid: d.client_uuid,
       lat: d.lat ?? null,
       lng: d.lng ?? null,

@@ -58,8 +58,11 @@ export interface QueuedVisitCapture {
   mimeType?: string
   /** Texte du geste léger : corps de la note, constat de vérification. */
   body?: string
-  /** Point suivi visé par une vérification. */
+  /** Sujet legacy (subjects, mig 124/165) visé par une vérification. XOR avec
+   *  trackedPointId — jamais les deux (garde côté drainLightCaptureAction). */
   subjectId?: string
+  /** Point suivi (tracked_point, mig 397) visé par une vérification. */
+  trackedPointId?: string
   /** Reprise d'un point de repère (mig 195) — photo cadrée sur le fantôme. */
   viewpointOf?: string
   /** Position ponctuelle OPT-IN de l'observation (jamais une trace). */

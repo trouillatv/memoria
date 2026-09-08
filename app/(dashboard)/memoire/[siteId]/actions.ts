@@ -303,7 +303,7 @@ export async function getSubjectMemoryTimelineAction(
   const rows = (subjects ?? []) as Array<{ id: string; name: string }>
   const match = rows.find((r) => r.name.toLowerCase() === term.toLowerCase()) ?? rows[0]
   if (match) {
-    const events = await getSubjectTimeline(match.id).catch(() => [])
+    const events = await getSubjectTimeline(match.id, siteId).catch(() => [])
     const items: SiteMemoryTimelineItem[] = events
       .map((e) => ({ date: e.date, kind: e.kind, label: e.label, meta: e.reportLabel ?? e.meta }))
       .filter((i) => i.date)

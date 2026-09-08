@@ -131,6 +131,7 @@ export function useVisitCaptureUploader(opts?: {
               kind: item.kind as 'note' | 'verification' | 'position',
               body: item.body,
               subject_id: item.subjectId,
+              tracked_point_id: item.trackedPointId,
               lat: item.lat ?? undefined,
               lng: item.lng ?? undefined,
               accuracy: item.accuracy ?? undefined,

@@ -26,6 +26,7 @@ import { NextStepCard } from './NextStepCard'
 import { buildVisitBrief } from '@/lib/db/site-visit-brief'
 import { VisitBriefCard } from './VisitBriefCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
+import { listVerifyEligiblePointsForSite } from '@/lib/knowledge/tracked-point-verify-eligibility'
 import { SiteActionBar } from './SiteActionBar'
 import { ChefSiteView } from './ChefSiteView'
 import { loadMemoriaNeedsYouSummary } from '@/lib/knowledge/tracked-point-needs-you-summary'
@@ -179,6 +180,9 @@ export default async function FieldSitePage({
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
   let visitSubjects: Awaited<ReturnType<typeof listOpenSiteSubjectsLite>> = []
+  // Points suivis éligibles à une vérification terrain (mig 397, Policy 4) — même
+  // panier que les sujets legacy, cf. lib/knowledge/tracked-point-verify-eligibility.ts.
+  let visitTrackedPoints: Awaited<ReturnType<typeof listVerifyEligiblePointsForSite>> = []
   let visitCaptures: Awaited<ReturnType<typeof listVisitCaptures>> = []
   // Mémoire LITE par sujet (read-only) — surfacée au moment où on vérifie un point :
   // « voilà ce qu'on sait déjà dessus ». Une seule requête (listSubjectsBySite).
@@ -188,8 +192,9 @@ export default async function FieldSitePage({
   let visitViewpoints: Array<{ anchorId: string; label: string | null; lastUrl: string | null; shots: number }> = []
   let visitWatchlist: Awaited<ReturnType<typeof listWatchlist>> = []
   if (activeVisit) {
-    const [subs, caps, summaries, vpRows, watch] = await Promise.all([
+    const [subs, points, caps, summaries, vpRows, watch] = await Promise.all([
       listOpenSiteSubjectsLite(siteId).catch(() => []),
+      listVerifyEligiblePointsForSite(siteId).catch(() => []),
       listVisitCaptures(activeVisit.id).catch(() => []),
       listSubjectsBySite(siteId).catch(() => []),
       listSiteViewpointRows(siteId).catch(() => []),
@@ -197,6 +202,7 @@ export default async function FieldSitePage({
     ])
     visitWatchlist = watch
     visitSubjects = subs
+    visitTrackedPoints = points
     visitCaptures = caps
     const chains = groupViewpointChains(vpRows)
     if (chains.length > 0) {
@@ -284,6 +290,7 @@ export default async function FieldSitePage({
             userId={user.id}
             startedAt={activeVisit.started_at}
             subjects={visitSubjects}
+            trackedPoints={visitTrackedPoints}
             subjectMemory={subjectMemory}
             initialCaptures={visitCaptures}
             viewpoints={visitViewpoints}

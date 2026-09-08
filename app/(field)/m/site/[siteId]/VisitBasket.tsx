@@ -76,6 +76,10 @@ export type SubjectMemoryLite = {
   criticality: string
 }
 
+// Point suivi éligible à une vérification terrain (mig 397, Policy 4) — seuls
+// les champs consommés par ce composant (cf. lib/knowledge/tracked-point-verify-eligibility.ts).
+export type VerifyTrackedPointLite = { pointId: string; label: string }
+
 // Une capture déposée localement, en attente de confirmation serveur (Lot B,
 // étendu PR-2 aux gestes légers). previewUrl = objectURL pour la vignette
 // photo/vidéo (null sinon). body = texte d'une note / constat de vérification.
@@ -86,6 +90,7 @@ type PendingCapture = {
   takenAt: number
   body?: string
   subjectId?: string
+  trackedPointId?: string
 }
 
 /**
@@ -101,6 +106,7 @@ export function VisitBasket({
   userId,
   startedAt,
   subjects,
+  trackedPoints = [],
   subjectMemory,
   initialCaptures,
   viewpoints = [],
@@ -115,6 +121,9 @@ export function VisitBasket({
   userId: string
   startedAt: string | null
   subjects: Array<{ id: string; name: string }>
+  /** Points suivis (tracked_point, mig 397) éligibles à une vérification — même
+   *  geste que les sujets legacy, cible distincte (XOR posé côté serveur). */
+  trackedPoints?: VerifyTrackedPointLite[]
   subjectMemory: Record<string, SubjectMemoryLite>
   initialCaptures: VisitCaptureRow[]
   /** Points de repère du chantier (mig 195) : séries « même cadrage » à reprendre. */
@@ -246,6 +255,15 @@ export function VisitBasket({
   }
 
   const subjectName = (id: string | null) => subjects.find((s) => s.id === id)?.name ?? 'point suivi'
+  const pointName = (id: string | null) => trackedPoints.find((p) => p.pointId === id)?.label ?? 'point suivi'
+  // Cible de vérification unifiée (mig 397, POINT VERIFY MIGRATION) : sujet legacy
+  // OU tracked_point — même parcours séquentiel, jamais les deux pour une même
+  // capture (XOR posé côté serveur dans drainLightCaptureAction).
+  const verifyTargets: Array<{ id: string; name: string; kind: 'subject' | 'point' }> = [
+    ...subjects.map((s) => ({ id: s.id, name: s.name, kind: 'subject' as const })),
+    ...trackedPoints.map((p) => ({ id: p.pointId, name: p.label, kind: 'point' as const })),
+  ]
+  const targetKey = (t: { id: string; kind: 'subject' | 'point' } | undefined) => (t ? `${t.kind}:${t.id}` : '')
   const kept = captures.filter((c) => c.status !== 'discarded')
   // Compteurs clairs par type — « 3 photos · 1 vidéo » plutôt qu'une liste.
   const mediaCount = {
@@ -286,9 +304,11 @@ export function VisitBasket({
   // Points suivis déjà vérifiés pendant CETTE visite (progression + ✓). Dérivé des
   // captures confirmées ET des vérifications encore en file (hors-ligne, la ✓
   // s'affiche quand même — la donnée est en sécurité localement).
-  const verifiedSubjectIds = new Set([
-    ...kept.filter((c) => c.kind === 'verification' && c.subject_id).map((c) => c.subject_id as string),
-    ...visiblePending.filter((p) => p.kind === 'verification' && p.subjectId).map((p) => p.subjectId as string),
+  const verifiedTargetKeys = new Set<string>([
+    ...kept.filter((c) => c.kind === 'verification' && c.subject_id).map((c) => `subject:${c.subject_id}`),
+    ...kept.filter((c) => c.kind === 'verification' && c.tracked_point_id).map((c) => `point:${c.tracked_point_id}`),
+    ...visiblePending.filter((p) => p.kind === 'verification' && p.subjectId).map((p) => `subject:${p.subjectId}`),
+    ...visiblePending.filter((p) => p.kind === 'verification' && p.trackedPointId).map((p) => `point:${p.trackedPointId}`),
   ])
 
   // Chrono de la visite.
@@ -359,6 +379,7 @@ export function VisitBasket({
             takenAt: e.takenAt,
             body: e.body,
             subjectId: e.subjectId,
+            trackedPointId: e.trackedPointId,
           }))
         return additions.length ? [...prev, ...additions] : prev
       })
@@ -572,14 +593,14 @@ export function VisitBasket({
   // Fini la note perdue en sous-sol sur un toast d'erreur invisible.
   function enqueueLight(
     kind: 'note' | 'verification' | 'position',
-    payload: { body?: string; subjectId?: string; lat?: number | null; lng?: number | null },
+    payload: { body?: string; subjectId?: string; trackedPointId?: string; lat?: number | null; lng?: number | null },
     opts?: { withPosition?: boolean },
   ) {
     const clientUuid = crypto.randomUUID()
     // 1) Optimiste, SYNCHRONE : la ligne apparaît dans la timeline sur-le-champ.
     setPending((prev) => [...prev, {
       clientUuid, kind, previewUrl: null, takenAt: Date.now(),
-      body: payload.body, subjectId: payload.subjectId,
+      body: payload.body, subjectId: payload.subjectId, trackedPointId: payload.trackedPointId,
     }])
     // 2) Persistance locale + position (opt-in) en tâche de fond — jamais bloquant.
     ;(async () => {
@@ -588,6 +609,7 @@ export function VisitBasket({
         clientUuid, userId, reportId, siteId, siteName, kind,
         body: payload.body,
         subjectId: payload.subjectId,
+        trackedPointId: payload.trackedPointId,
         lat: payload.lat ?? pos?.lat ?? null,
         lng: payload.lng ?? pos?.lng ?? null,
         accuracy: pos?.accuracy ?? null,
@@ -637,24 +659,25 @@ export function VisitBasket({
   // de revenir à la liste. MÉTIER INCHANGÉ : même capture de vérification ; aucun
   // statut conforme/non-conforme, aucun constat ici (gated, cf. [[visite-trois-temps]]).
   function openVerify() {
-    const firstTodo = subjects.findIndex((s) => !verifiedSubjectIds.has(s.id))
+    const firstTodo = verifyTargets.findIndex((t) => !verifiedTargetKeys.has(targetKey(t)))
     setVerifIndex(firstTodo >= 0 ? firstTodo : 0)
     setVerifNote('')
     setOverlay('verify')
   }
   function gotoVerif(i: number) {
-    if (i < 0 || i >= subjects.length) return
+    if (i < 0 || i >= verifyTargets.length) return
     setVerifIndex(i)
     setVerifNote('')
   }
   function saveVerification() {
-    const subject = subjects[verifIndex]
-    if (!subject) return
-    enqueueLight('verification', { subjectId: subject.id, body: verifNote.trim() || undefined })
+    const target = verifyTargets[verifIndex]
+    if (!target) return
+    if (target.kind === 'subject') enqueueLight('verification', { subjectId: target.id, body: verifNote.trim() || undefined })
+    else enqueueLight('verification', { trackedPointId: target.id, body: verifNote.trim() || undefined })
     toast.success('Point vérifié', { duration: 1000 })
     setVerifNote('')
     // Fluide : on enchaîne sur le point suivant s'il en reste.
-    if (verifIndex < subjects.length - 1) setVerifIndex(verifIndex + 1)
+    if (verifIndex < verifyTargets.length - 1) setVerifIndex(verifIndex + 1)
   }
 
   // ── Position ───────────────────────────────────────────────────────────────
@@ -803,7 +826,10 @@ export function VisitBasket({
       // Dès qu'il est transcrit, le vocal SE LIT (ce qui a été dit), il ne se nomme plus.
       case 'vocal': return c.body?.trim() ? `« ${c.body.trim()} »` : 'Mémo vocal'
       case 'note': return c.body ?? 'Note'
-      case 'verification': return `${subjectName(c.subject_id)}${c.body ? ` — ${c.body}` : ''}`
+      case 'verification': {
+        const name = c.subject_id ? subjectName(c.subject_id) : c.tracked_point_id ? pointName(c.tracked_point_id) : 'point suivi'
+        return `${name}${c.body ? ` — ${c.body}` : ''}`
+      }
       case 'position': return 'Position enregistrée'
     }
   }
@@ -857,7 +883,7 @@ export function VisitBasket({
         <GestureButton icon={<Pencil className="h-5 w-5" />} label="Note" disabled={busy} onClick={() => setOverlay('note')} />
         {/* F10 : sans point suivi, « Vérifier » n'a rien à offrir — grisé plutôt
             qu'un cul-de-sac. */}
-        <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy || subjects.length === 0} onClick={openVerify} />
+        <GestureButton icon={<Target className="h-5 w-5" />} label="Vérifier" disabled={busy || verifyTargets.length === 0} onClick={openVerify} />
       </div>
       {/* « À vérifier · N » (mig 196) — accès COMPACT à la liste de contrôle de
           cette visite. Jamais affichée en permanence : un tap l'ouvre, on décide,
@@ -1048,7 +1074,7 @@ export function VisitBasket({
                       : p.kind === 'video' ? 'Vidéo'
                       : p.kind === 'vocal' ? 'Mémo vocal'
                       : p.kind === 'note' ? (p.body ?? 'Note')
-                      : p.kind === 'verification' ? `Point vérifié — ${subjectName(p.subjectId ?? null)}`
+                      : p.kind === 'verification' ? `Point vérifié — ${p.subjectId ? subjectName(p.subjectId) : pointName(p.trackedPointId ?? null)}`
                       : 'Position'}
                     <span className="mt-0.5 flex items-center gap-1 text-[11px]">
                       {st === 'uploading' ? (
@@ -1398,7 +1424,7 @@ export function VisitBasket({
           Ergonomie pure ; aucun changement de données ni de métier. */}
       {overlay === 'verify' && (
         <Overlay title="Vérifier les points suivis" icon={<Target className="h-4 w-4" />} onClose={() => { setOverlay('none'); setVerifNote('') }}>
-          {subjects.length === 0 ? (
+          {verifyTargets.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">Aucun point suivi sur ce chantier pour l&apos;instant.</p>
           ) : (
             <div
@@ -1415,12 +1441,12 @@ export function VisitBasket({
               {/* Compteur + barre de progression */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span className="tabular-nums">{verifIndex + 1} / {subjects.length}</span>
-                  <span className="tabular-nums">{verifiedSubjectIds.size} / {subjects.length} vérifiés</span>
+                  <span className="tabular-nums">{verifIndex + 1} / {verifyTargets.length}</span>
+                  <span className="tabular-nums">{verifiedTargetKeys.size} / {verifyTargets.length} vérifiés</span>
                 </div>
                 <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                   <div className="h-full rounded-full bg-emerald-600 transition-all"
-                    style={{ width: `${subjects.length ? (verifiedSubjectIds.size / subjects.length) * 100 : 0}%` }} />
+                    style={{ width: `${verifyTargets.length ? (verifiedTargetKeys.size / verifyTargets.length) * 100 : 0}%` }} />
                 </div>
               </div>
 
@@ -1428,15 +1454,19 @@ export function VisitBasket({
               <div className="rounded-xl border bg-background p-3 space-y-2">
                 <div className="flex items-start gap-2">
                   <Target className="h-4 w-4 shrink-0 mt-0.5 text-emerald-700/80" />
-                  <p className="min-w-0 flex-1 text-sm font-medium leading-snug">{subjects[verifIndex]?.name}</p>
-                  {verifiedSubjectIds.has(subjects[verifIndex]?.id) && (
+                  <p className="min-w-0 flex-1 text-sm font-medium leading-snug">{verifyTargets[verifIndex]?.name}</p>
+                  {verifiedTargetKeys.has(targetKey(verifyTargets[verifIndex])) && (
                     <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-medium text-emerald-700">
                       <Check className="h-3.5 w-3.5" /> vérifié
                     </span>
                   )}
                 </div>
-                {/* La mémoire du point — « ce qu'on sait déjà » au moment d'agir. */}
-                <SubjectMemoryBlock mem={subjectMemory[subjects[verifIndex]?.id ?? '']} />
+                {/* La mémoire du point — « ce qu'on sait déjà » au moment d'agir.
+                    Uniquement pour les sujets legacy : aucun moteur d'insights
+                    équivalent pour un tracked_point dans ce lot (cf. HARD STOP). */}
+                {verifyTargets[verifIndex]?.kind === 'subject' && (
+                  <SubjectMemoryBlock mem={subjectMemory[verifyTargets[verifIndex]?.id ?? '']} />
+                )}
                 <textarea
                   value={verifNote} onChange={(e) => setVerifNote(e.target.value)} rows={2} maxLength={2000}
                   placeholder="Constat (facultatif)…"
@@ -1445,8 +1475,8 @@ export function VisitBasket({
                 <button type="button" onClick={saveVerification} disabled={busy}
                   className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-foreground text-background font-medium text-sm py-2.5 disabled:opacity-50">
                   <Check className="h-4 w-4" />
-                  {verifIndex >= subjects.length - 1 ? 'Valider' : 'Valider et suivant'}
-                  {verifIndex < subjects.length - 1 && <ChevronRight className="h-4 w-4" />}
+                  {verifIndex >= verifyTargets.length - 1 ? 'Valider' : 'Valider et suivant'}
+                  {verifIndex < verifyTargets.length - 1 && <ChevronRight className="h-4 w-4" />}
                 </button>
               </div>
 
@@ -1456,7 +1486,7 @@ export function VisitBasket({
                   className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm disabled:opacity-40">
                   <ChevronLeft className="h-4 w-4" /> Précédent
                 </button>
-                <button type="button" onClick={() => gotoVerif(verifIndex + 1)} disabled={verifIndex >= subjects.length - 1}
+                <button type="button" onClick={() => gotoVerif(verifIndex + 1)} disabled={verifIndex >= verifyTargets.length - 1}
                   className="inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-sm disabled:opacity-40">
                   Suivant <ChevronRight className="h-4 w-4" />
                 </button>
