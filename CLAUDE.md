@@ -912,3 +912,58 @@ In particular:
 - a partial sentinel run is not task completion;
 - notify me immediately on a genuine blocker, failed gate or decision requiring my input;
 - when an instruction says HARD STOP, reaching that HARD STOP is task completion and should trigger the mobile notification.
+
+---
+
+## 25. CHECKPOINT GITHUB À CHAQUE HARD STOP IMPORTANT
+
+Vincent utilise ChatGPT comme reviewer/superviseur d'architecture entre les étapes Claude Code.
+
+À chaque HARD STOP important, lorsqu'un lot cohérent de code est CODÉ / COMPILÉ / TESTÉ, Claude doit créer un commit et le pousser sur GitHub afin que ChatGPT puisse examiner le code réel et le diff avant de donner le GO suivant.
+
+Cela s'applique notamment :
+- avant application d'une migration ou mutation de données ;
+- avant une étape architecturale suivante ;
+- lorsqu'un lot codé attend un arbitrage Vincent/ChatGPT ;
+- lorsqu'un risque ou une limite découverte nécessite une décision.
+
+Un commit/push de checkpoint N'AUTORISE JAMAIS l'application d'une migration ni une écriture en base.
+
+Exemple :
+
+code + migration préparés
+→ tests/typecheck/lint/build PASS
+→ commit + push checkpoint
+→ HARD STOP — REVIEW READY
+→ review ChatGPT/Vincent
+→ seulement ensuite éventuel GO DB
+
+Staging strict :
+- git add explicite fichier par fichier ;
+- jamais git add -A ;
+- ne jamais inclure le travail concurrent ;
+- ne jamais reset/checkout/stash/clean le travail d'une autre session.
+
+Si le lot ne peut pas être isolé proprement :
+HARD STOP — CHECKPOINT BLOCKED BY CONCURRENT WORK.
+
+Si le code n'est pas pushable seul :
+HARD STOP — NON PUSHABLE.
+
+À chaque checkpoint fournir :
+
+HARD STOP — REVIEW READY
+SHA:
+branche:
+verify:pushable:
+fichiers du commit:
+tests:
+typecheck:
+lint:
+build:
+migration créée:
+migration appliquée:
+écritures DB réalisées:
+risques / décisions restantes:
+
+Si CLAUDE.md est déjà modifié par une autre session et ne peut pas être isolé sans conflit, ne pas l'écraser. Le signaler et poursuivre uniquement le checkpoint POINT VERIFY si celui-ci est isolable.
