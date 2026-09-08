@@ -195,6 +195,10 @@ function DuplicatePointsCard({
   error?: string
   runAction: QuestionCardProps['runAction']
 }) {
+  // overmerge > undermerge en toxicité (doctrine identité) : les deux issues doivent avoir le
+  // même poids visuel — aucun CTA ne pousse implicitement vers la fusion — et « même suivi »
+  // passe par une confirmation explicite avant d'écrire quoi que ce soit (Vincent 2026-09-08).
+  const [confirmingMerge, setConfirmingMerge] = useState(false)
   return (
     <CardShell category="duplicate_points" title="Ces deux suivis sont-ils les mêmes ?">
       {entry.componentSize > 2 && (
@@ -225,24 +229,38 @@ function DuplicatePointsCard({
         })}
       </div>
       <ErrorLine error={error} />
-      <div className="flex flex-wrap gap-2 pt-1">
-        <button
-          type="button"
-          className={btnPrimary}
-          disabled={pending}
-          onClick={() => runAction(() => import('../tracked-point-consolidation-actions').then((m) => m.consolidateTrackedPointsAction({ siteId, pairId: entry.pairId })))}
-        >
-          Oui, c&apos;est le même suivi
-        </button>
-        <button
-          type="button"
-          className={btnSecondary}
-          disabled={pending}
-          onClick={() => runAction(() => import('../tracked-point-consolidation-actions').then((m) => m.rejectPointIdentityPairAction({ siteId, pairId: entry.pairId })))}
-        >
-          Non, ce sont deux suivis différents
-        </button>
-      </div>
+      {confirmingMerge ? (
+        <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/50 px-2.5 py-2 dark:border-violet-900/40 dark:bg-violet-950/20">
+          <p className="text-[12px] text-foreground/80">Réunir ces deux suivis ? Leur historique sera présenté comme un seul suivi.</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={pending}
+              onClick={() => runAction(() => import('../tracked-point-consolidation-actions').then((m) => m.consolidateTrackedPointsAction({ siteId, pairId: entry.pairId })))}
+            >
+              Confirmer la fusion
+            </button>
+            <button type="button" className={btnSecondary} disabled={pending} onClick={() => setConfirmingMerge(false)}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button type="button" className={btnSecondary} disabled={pending} onClick={() => setConfirmingMerge(true)}>
+            C&apos;est le même suivi
+          </button>
+          <button
+            type="button"
+            className={btnSecondary}
+            disabled={pending}
+            onClick={() => runAction(() => import('../tracked-point-consolidation-actions').then((m) => m.rejectPointIdentityPairAction({ siteId, pairId: entry.pairId })))}
+          >
+            Ce sont deux suivis différents
+          </button>
+        </div>
+      )}
     </CardShell>
   )
 }

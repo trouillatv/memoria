@@ -25,7 +25,7 @@ type FilterValue = 'all' | MemoriaNeedsYouCategory
 // faible importance, Récent ≠ important") : l'un filtre (PriorityFilterValue), l'autre trie
 // (SortMode) — jamais fusionnés dans un seul contrôle.
 type SortMode = 'priority' | 'recent' | 'oldest'
-type PriorityFilterValue = 'all' | 'PRIORITAIRE' | 'IMPORTANT' | 'A_CLARIFIER'
+type PriorityFilterValue = 'all' | 'PRIORITAIRE' | 'IMPORTANT' | 'A_CLARIFIER' | 'HISTORIQUE'
 
 // 6E.4A.6 — Charge cognitive : n'afficher qu'un lot de cartes à la fois plutôt que toute la file
 // (une file de 152 questions rendues d'un coup est le problème signalé, pas juste un style de
@@ -48,8 +48,9 @@ const PRIORITY_FILTER_LABELS: Record<PriorityFilterValue, string> = {
   PRIORITAIRE: 'Prioritaires',
   IMPORTANT: 'Importantes',
   A_CLARIFIER: 'À clarifier',
+  HISTORIQUE: 'Historiques',
 }
-const PRIORITY_FILTER_ORDER: PriorityFilterValue[] = ['all', 'PRIORITAIRE', 'IMPORTANT', 'A_CLARIFIER']
+const PRIORITY_FILTER_ORDER: PriorityFilterValue[] = ['all', 'PRIORITAIRE', 'IMPORTANT', 'A_CLARIFIER', 'HISTORIQUE']
 
 // Vérité temporelle (6E.4A.1) : le tri "Plus récent" doit classer par date métier (PV/visite,
 // `*DocumentEffectiveDate`) — jamais par date d'import (`sourceDate`/`createdAt`), sinon un vieux
