@@ -35,7 +35,7 @@ const PAGE_SIZE = 20
 
 const FILTER_LABELS: Record<FilterValue, string> = {
   all: 'Tous',
-  duplicate_points: 'Identité',
+  duplicate_points: 'Même suivi ?',
   attach_information: 'À rattacher',
   confirm_trackability: 'À suivre',
   assign_resolution: 'Résolutions',
