@@ -79,6 +79,7 @@ export type TraceIdentitySourceProposal = {
   documentType: string | null
   documentEffectiveDate: string | null
   sourcePage: number | null
+  sourceExcerpt: string | null
   createdAt: string | null
 }
 
@@ -96,6 +97,11 @@ export type TraceIdentitySourceEntry = {
   sourceDocumentType: string | null
   sourceDocumentEffectiveDate: string | null
   sourcePage: number | null
+  // sourceExcerpt/hasVerbatimExcerpt (6E.4B/A1-A2, mandat Vincent 2026-09-08) : distingue une
+  // citation réelle (source_excerpt persisté, jamais modifié après insertion) d'un label
+  // reformulé par l'extraction — jamais présenté comme une citation quand ce n'en est pas une.
+  sourceExcerpt: string | null
+  hasVerbatimExcerpt: boolean
   sourceDate: string | null
   targets: TraceIdentityTarget[]
   targetCount: number
@@ -210,6 +216,7 @@ export function buildTraceIdentityQueue(
 
     const sourceProposals = proposalsByThreadId.get(sourceThreadId) ?? []
     const firstProposal = sourceProposals[0] ?? null
+    const sourceExcerpt = firstProposal?.sourceExcerpt ?? null
 
     entries.push({
       sourceKey: sourceThreadId,
@@ -222,6 +229,8 @@ export function buildTraceIdentityQueue(
       sourceDocumentType: firstProposal?.documentType ?? null,
       sourceDocumentEffectiveDate: firstProposal?.documentEffectiveDate ?? null,
       sourcePage: firstProposal?.sourcePage ?? null,
+      sourceExcerpt,
+      hasVerbatimExcerpt: sourceExcerpt !== null,
       sourceDate: firstProposal?.createdAt ?? null,
       targets,
       targetCount: targets.length,
@@ -289,7 +298,7 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
-    .select('id, subject_thread_id, proposal_family, label, document_id, source_page, created_at')
+    .select('id, subject_thread_id, proposal_family, label, document_id, source_page, source_excerpt, created_at')
     .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
   if (propErr) throw propErr
 
@@ -321,6 +330,7 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
       documentType: doc?.document_type ?? null,
       documentEffectiveDate: doc?.effective_date ?? null,
       sourcePage: p.source_page ?? null,
+      sourceExcerpt: p.source_excerpt?.trim() || null,
       createdAt: p.created_at,
     })
     proposalsByThreadId.set(p.subject_thread_id, list)

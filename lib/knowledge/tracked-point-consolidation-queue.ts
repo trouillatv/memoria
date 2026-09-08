@@ -12,13 +12,37 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadTrackedPointConsolidationData, type TrackedPointConsolidationPointDetail } from '@/lib/db/tracked-point-consolidation'
-import { loadTrackedPointReadModel, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
+import {
+  loadTrackedPointReadModel,
+  selectEligibleProposalIds,
+  type PointReadModelEntry,
+  type PointMembershipRow,
+} from '@/lib/knowledge/tracked-point-read-model'
 import {
   computeConnectedComponents,
   type CandidatePointPair,
   type TrackedPointMergeStatus,
   type TrackedPointMergeIdentityStatus,
 } from '@/lib/knowledge/tracked-point-merge'
+
+// PointProofView (6E.4B/A2, mandat Vincent 2026-09-08) : preuve documentaire RÉELLE d'un Point —
+// résolue via ses memberships HARD/actifs → document_extraction_proposal, JAMAIS via
+// canonical_business_object (un CBO est une obligation métier, pas une preuve ; cboCount reste
+// un compteur d'obligations, distinct de proofCount). Un seul chemin de provenance existe
+// aujourd'hui (HARD membership), d'où provenanceKind toujours 'hard_membership' — pas un champ
+// mort, juste pas encore de second cas réel à distinguer.
+export type PointProofView = {
+  proposalId: string
+  documentId: string
+  documentFilename: string | null
+  documentType: string | null
+  effectiveDate: string | null
+  sourcePage: number | null
+  sourceExcerpt: string | null
+  extractedLabel: string
+  hasVerbatimExcerpt: boolean
+  provenanceKind: 'hard_membership'
+}
 
 export type ConsolidationQueuePointSide = {
   id: string
@@ -32,6 +56,8 @@ export type ConsolidationQueuePointSide = {
   lastAppearanceAt: string | null
   cboCount: number
   hardMemberCount: number
+  proofs: PointProofView[]
+  proofCount: number
 }
 
 export type ConsolidationQueueEntry = {
@@ -63,6 +89,7 @@ export function buildConsolidationQueue(
   hardMemberCountByPointId: Map<string, number>,
   readModelByPointId: Map<string, PointReadModelEntry>,
   subjectLabelBySubjectId: Map<string, string | null>,
+  proofsByPointId: Map<string, { proofs: PointProofView[]; totalCount: number }>,
 ): ConsolidationQueue {
   const components = computeConnectedComponents(pairs.map((p) => ({ a: p.pointAId, b: p.pointBId })))
   const componentIdByPointId = new Map<string, string>()
@@ -80,6 +107,7 @@ export function buildConsolidationQueue(
     if (!detail) throw new Error(`buildConsolidationQueue: point introuvable ${pointId}`)
     const readModel = readModelByPointId.get(pointId)
     const subjectId = readModel?.ownerCanonicalSubjectId ?? null
+    const proofEntry = proofsByPointId.get(pointId)
     return {
       id: detail.id,
       label: detail.label,
@@ -92,6 +120,8 @@ export function buildConsolidationQueue(
       lastAppearanceAt: readModel?.latestMeaningfulEventAt ?? null,
       cboCount: cboCountByPointId.get(pointId) ?? 0,
       hardMemberCount: hardMemberCountByPointId.get(pointId) ?? 0,
+      proofs: proofEntry?.proofs ?? [],
+      proofCount: proofEntry?.totalCount ?? 0,
     }
   }
 
@@ -112,6 +142,121 @@ export function buildConsolidationQueue(
 }
 
 const NIL_UUID = '00000000-0000-0000-0000-000000000000'
+const PROOF_DISPLAY_CAP = 3
+
+// loadPointProofsByPointId (6E.4B/A2) : résout les preuves documentaires réelles d'un ensemble de
+// Points — memberships HARD/actifs → document_extraction_proposal (même chemin que
+// loadTrackedPointReadModel, selectEligibleProposalIds réutilisé tel quel). Requête séparée du
+// read-model partagé : n'élargit pas PointReadModelEntry (consommé par la fiche sujet/Debrief,
+// hors périmètre de ce lot). Aucune date résolue → sourcePage/effectiveDate à null, jamais une
+// date fabriquée. Plafonné à PROOF_DISPLAY_CAP par Point ; totalCount reste le compte réel non
+// tronqué pour permettre "Voir N autres" côté UI.
+async function loadPointProofsByPointId(
+  db: ReturnType<typeof createAdminClient>,
+  pointIds: string[],
+): Promise<Map<string, { proofs: PointProofView[]; totalCount: number }>> {
+  const result = new Map<string, { proofs: PointProofView[]; totalCount: number }>()
+  if (pointIds.length === 0) return result
+
+  const { data: memberRows, error: memberErr } = await db
+    .from('tracked_point_member')
+    .select('tracked_point_id, subject_thread_id, scope, proposal_ids')
+    .in('tracked_point_id', pointIds)
+    .eq('status', 'active')
+    .eq('evidence_grade', 'HARD')
+  if (memberErr) throw memberErr
+
+  const membersByPoint = new Map<string, PointMembershipRow[]>()
+  for (const row of memberRows ?? []) {
+    const list = membersByPoint.get(row.tracked_point_id) ?? []
+    list.push({
+      subjectThreadId: row.subject_thread_id,
+      scope: (row.scope ?? 'thread') as PointMembershipRow['scope'],
+      proposalIds: row.proposal_ids,
+      status: 'active',
+    })
+    membersByPoint.set(row.tracked_point_id, list)
+  }
+
+  const allThreadIds = [
+    ...new Set((memberRows ?? []).filter((r) => (r.scope ?? 'thread') === 'thread').map((r) => r.subject_thread_id)),
+  ]
+  const allExplicitProposalIds = [
+    ...new Set((memberRows ?? []).filter((r) => r.scope === 'proposal_set').flatMap((r) => r.proposal_ids ?? [])),
+  ]
+
+  type ProofProposalRow = {
+    id: string
+    subject_thread_id: string | null
+    label: string
+    source_excerpt: string | null
+    source_page: number | null
+    document_id: string
+  }
+
+  const [threadResult, explicitResult] = await Promise.all([
+    db
+      .from('document_extraction_proposal')
+      .select('id, subject_thread_id, label, source_excerpt, source_page, document_id')
+      .in('subject_thread_id', allThreadIds.length > 0 ? allThreadIds : [NIL_UUID]),
+    db
+      .from('document_extraction_proposal')
+      .select('id, subject_thread_id, label, source_excerpt, source_page, document_id')
+      .in('id', allExplicitProposalIds.length > 0 ? allExplicitProposalIds : [NIL_UUID]),
+  ])
+  if (threadResult.error) throw threadResult.error
+  if (explicitResult.error) throw explicitResult.error
+  const threadProposals = (threadResult.data ?? []) as ProofProposalRow[]
+  const explicitProposals = (explicitResult.data ?? []) as ProofProposalRow[]
+
+  const proposalsByThread = new Map<string, string[]>()
+  for (const row of threadProposals) {
+    if (!row.subject_thread_id) continue
+    const list = proposalsByThread.get(row.subject_thread_id) ?? []
+    list.push(row.id)
+    proposalsByThread.set(row.subject_thread_id, list)
+  }
+
+  const proposalById = new Map<string, ProofProposalRow>()
+  for (const row of [...threadProposals, ...explicitProposals]) proposalById.set(row.id, row)
+
+  const docIds = [...new Set([...proposalById.values()].map((p) => p.document_id))]
+  const { data: docRows, error: docErr } = await db
+    .from('documents')
+    .select('id, filename, document_type, effective_date')
+    .in('id', docIds.length > 0 ? docIds : [NIL_UUID])
+  if (docErr) throw docErr
+  const docById = new Map((docRows ?? []).map((d) => [d.id, d]))
+
+  for (const pointId of pointIds) {
+    const members = membersByPoint.get(pointId) ?? []
+    const eligibleProposalIds = selectEligibleProposalIds(members, proposalsByThread)
+    const allProofs: PointProofView[] = [...eligibleProposalIds]
+      .map((id) => proposalById.get(id))
+      .filter((p): p is ProofProposalRow => p !== undefined)
+      .map((p) => {
+        const doc = docById.get(p.document_id)
+        const excerpt = p.source_excerpt?.trim() || null
+        return {
+          proposalId: p.id,
+          documentId: p.document_id,
+          documentFilename: doc?.filename ?? null,
+          documentType: doc?.document_type ?? null,
+          effectiveDate: doc?.effective_date ?? null,
+          sourcePage: p.source_page,
+          sourceExcerpt: excerpt,
+          extractedLabel: p.label,
+          hasVerbatimExcerpt: excerpt !== null,
+          provenanceKind: 'hard_membership' as const,
+        }
+      })
+      .sort((a, b) => (b.effectiveDate ?? '').localeCompare(a.effectiveDate ?? ''))
+
+    result.set(pointId, { proofs: allProofs.slice(0, PROOF_DISPLAY_CAP), totalCount: allProofs.length })
+  }
+
+  return result
+}
 
 export async function loadConsolidationQueue(siteId: string): Promise<ConsolidationQueue> {
   const db = createAdminClient()
@@ -162,6 +307,8 @@ export async function loadConsolidationQueue(siteId: string): Promise<Consolidat
     for (const s of rawSubjects ?? []) subjectLabelBySubjectId.set(s.id, s.label)
   }
 
+  const proofsByPointId = await loadPointProofsByPointId(db, pointIds)
+
   return buildConsolidationQueue(
     siteId,
     pairs,
@@ -170,5 +317,6 @@ export async function loadConsolidationQueue(siteId: string): Promise<Consolidat
     hardMemberCountByPointId,
     readModelByPointId,
     subjectLabelBySubjectId,
+    proofsByPointId,
   )
 }

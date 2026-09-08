@@ -31,6 +31,8 @@ function pointSide(id: string): ConsolidationQueuePointSide {
     lastAppearanceAt: null,
     cboCount: 0,
     hardMemberCount: 0,
+    proofs: [],
+    proofCount: 0,
   }
 }
 
@@ -67,6 +69,8 @@ function traceIdentityEntry(sourceKey: string): TraceIdentitySourceEntry {
     sourceDocumentType: null,
     sourceDocumentEffectiveDate: null,
     sourcePage: null,
+    sourceExcerpt: null,
+    hasVerbatimExcerpt: false,
     sourceDate: null,
     targets: [],
     targetCount: 1,
@@ -99,6 +103,8 @@ function trackabilityEntry(
     sourceDate: null,
     sourceDocumentId: null,
     sourceDocumentFilename: null,
+    sourceExcerpt: null,
+    hasVerbatimExcerpt: false,
     actionable,
     ...overrides,
   }
@@ -125,6 +131,8 @@ function resolutionEntry(
     sourceDate: null,
     sourceDocumentId: null,
     sourceDocumentFilename: null,
+    sourceExcerpt: null,
+    hasVerbatimExcerpt: false,
     knownIdentityTargets: [],
     sameSubjectSuggestions: [],
     targetingMode: actionable ? 'SEARCH_REQUIRED' : 'EVIDENCE_SCOPE_UNRESOLVED',

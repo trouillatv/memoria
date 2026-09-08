@@ -37,7 +37,7 @@ describe('buildConsolidationQueue', () => {
     ])
     const pairs = [pair('a', 'b', ['cand-1'])]
 
-    const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map())
+    const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map(), new Map())
 
     expect(queue.totalPairs).toBe(1)
     expect(queue.entries).toHaveLength(1)
@@ -56,7 +56,7 @@ describe('buildConsolidationQueue', () => {
     ])
     const pairs = [pair('a', 'b', ['cand-ab']), pair('b', 'c', ['cand-bc'])]
 
-    const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map())
+    const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map(), new Map())
 
     expect(queue.totalPairs).toBe(2)
     expect(queue.entries.map((e) => e.pairId).sort()).toEqual(['a~b', 'b~c'])
@@ -75,8 +75,8 @@ describe('buildConsolidationQueue', () => {
     const pairsInOrder = [pair('a', 'b', ['cand-ab']), pair('b', 'c', ['cand-bc'])]
     const pairsReversed = [pair('b', 'c', ['cand-bc']), pair('a', 'b', ['cand-ab'])]
 
-    const queueA = buildConsolidationQueue('site-1', pairsInOrder, points, new Map(), new Map(), new Map(), new Map())
-    const queueB = buildConsolidationQueue('site-1', pairsReversed, points, new Map(), new Map(), new Map(), new Map())
+    const queueA = buildConsolidationQueue('site-1', pairsInOrder, points, new Map(), new Map(), new Map(), new Map(), new Map())
+    const queueB = buildConsolidationQueue('site-1', pairsReversed, points, new Map(), new Map(), new Map(), new Map(), new Map())
 
     const idsA = new Set(queueA.entries.map((e) => e.componentId))
     const idsB = new Set(queueB.entries.map((e) => e.componentId))
@@ -92,7 +92,7 @@ describe('buildConsolidationQueue', () => {
     ])
     const pairs = [pair('a', 'b', ['cand-ab']), pair('c', 'd', ['cand-cd'])]
 
-    const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map())
+    const queue = buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map(), new Map())
 
     expect(queue.entries.every((e) => e.componentSize === 2)).toBe(true)
     expect(queue.complexComponentCount).toBe(0)
@@ -109,7 +109,7 @@ describe('buildConsolidationQueue', () => {
     const cboCounts = new Map([['a', 3], ['b', 0]])
     const memberCounts = new Map([['a', 1]])
 
-    const queue = buildConsolidationQueue('site-1', pairs, points, cboCounts, memberCounts, new Map(), new Map())
+    const queue = buildConsolidationQueue('site-1', pairs, points, cboCounts, memberCounts, new Map(), new Map(), new Map())
 
     const entry = queue.entries[0]
     const sideA: ConsolidationQueuePointSide = entry.pointA
@@ -124,11 +124,11 @@ describe('buildConsolidationQueue', () => {
     const points = new Map([['a', detail('a')]]) // 'b' absent
     const pairs = [pair('a', 'b', ['cand-1'])]
 
-    expect(() => buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map())).toThrow(/introuvable/)
+    expect(() => buildConsolidationQueue('site-1', pairs, points, new Map(), new Map(), new Map(), new Map(), new Map())).toThrow(/introuvable/)
   })
 
   it('file vide : totalPairs=0, complexComponentCount=0', () => {
-    const queue = buildConsolidationQueue('site-1', [], new Map(), new Map(), new Map(), new Map(), new Map())
+    const queue = buildConsolidationQueue('site-1', [], new Map(), new Map(), new Map(), new Map(), new Map(), new Map())
     expect(queue.totalPairs).toBe(0)
     expect(queue.entries).toEqual([])
     expect(queue.complexComponentCount).toBe(0)

@@ -16,6 +16,8 @@ function pointSide(derivedState: string | null): ConsolidationQueuePointSide {
     lastAppearanceAt: null,
     cboCount: 0,
     hardMemberCount: 0,
+    proofs: [],
+    proofCount: 0,
   } as ConsolidationQueuePointSide
 }
 

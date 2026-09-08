@@ -22,6 +22,8 @@ function pointSide(derivedState: string | null, overrides: Partial<Consolidation
     lastAppearanceAt: null,
     cboCount: 0,
     hardMemberCount: 0,
+    proofs: [],
+    proofCount: 0,
     ...overrides,
   } as ConsolidationQueuePointSide
 }
@@ -131,6 +133,8 @@ function assignResolutionQuestion(
       sourceDocumentFilename: null,
       sourceDocumentEffectiveDate: null,
       sourcePage: null,
+      sourceExcerpt: null,
+      hasVerbatimExcerpt: false,
       knownIdentityTargets,
       sameSubjectSuggestions,
       targetingMode,

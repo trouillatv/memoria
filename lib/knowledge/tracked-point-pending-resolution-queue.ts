@@ -66,6 +66,8 @@ export type PendingResolutionQueueEntry = {
   sourceDocumentFilename: string | null
   sourceDocumentEffectiveDate: string | null
   sourcePage: number | null
+  sourceExcerpt: string | null
+  hasVerbatimExcerpt: boolean
   knownIdentityTargets: PendingResolutionKnownTarget[]
   sameSubjectSuggestions: PendingResolutionSubjectSuggestion[]
   targetingMode: PendingResolutionTargetingMode
@@ -93,6 +95,7 @@ export type PendingResolutionSourceProposal = {
   documentFilename: string | null
   documentEffectiveDate: string | null
   sourcePage: number | null
+  sourceExcerpt: string | null
   createdAt: string | null
 }
 
@@ -178,6 +181,7 @@ export function buildPendingResolutionQueue(
 
     const sourceProposals = sourceProposalsByThread.get(trace.sourceThreadId) ?? []
     const firstProposal = sourceProposals[0] ?? null
+    const sourceExcerpt = firstProposal?.sourceExcerpt ?? null
 
     entries.push({
       pendingTraceId: trace.id,
@@ -191,6 +195,8 @@ export function buildPendingResolutionQueue(
       sourceDocumentFilename: firstProposal?.documentFilename ?? null,
       sourceDocumentEffectiveDate: firstProposal?.documentEffectiveDate ?? null,
       sourcePage: firstProposal?.sourcePage ?? null,
+      sourceExcerpt,
+      hasVerbatimExcerpt: sourceExcerpt !== null,
       knownIdentityTargets,
       sameSubjectSuggestions,
       targetingMode,
@@ -238,7 +244,7 @@ export async function loadPendingResolutionQueue(siteId: string): Promise<Pendin
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
-    .select('id, subject_thread_id, label, document_id, source_page, created_at')
+    .select('id, subject_thread_id, label, document_id, source_page, source_excerpt, created_at')
     .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
   if (propErr) throw propErr
 
@@ -261,6 +267,7 @@ export async function loadPendingResolutionQueue(siteId: string): Promise<Pendin
       documentFilename: doc?.filename ?? null,
       documentEffectiveDate: doc?.effective_date ?? null,
       sourcePage: p.source_page ?? null,
+      sourceExcerpt: p.source_excerpt?.trim() || null,
       createdAt: p.created_at,
     })
     sourceProposalsByThread.set(p.subject_thread_id, list)

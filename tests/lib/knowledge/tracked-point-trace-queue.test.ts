@@ -83,6 +83,7 @@ function proposal(id: string, overrides: Partial<TraceIdentitySourceProposal> = 
     documentType: null,
     documentEffectiveDate: null,
     sourcePage: null,
+    sourceExcerpt: null,
     createdAt: '2026-02-01T00:00:00Z',
     ...overrides,
   }

@@ -15,6 +15,8 @@ import { cn } from '@/lib/utils'
 import type { MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, type MemoriaNeedsYouCategory } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { MEMORIA_NEEDS_YOU_PRIORITY_LABEL, type MemoriaNeedsYouPriority } from '@/lib/knowledge/tracked-point-needs-you-priority'
+import type { PendingResolutionTargetingMode } from '@/lib/knowledge/tracked-point-pending-resolution-queue'
+import type { PointProofView } from '@/lib/knowledge/tracked-point-consolidation-queue'
 
 // Palette réutilisée telle quelle depuis MemoryReviewPanel.KIND_TONE (border-*-200 bg-*-50
 // text-*-700) — aucune nouvelle couleur, simple ré-application par catégorie 6E.4A pour que
@@ -80,28 +82,89 @@ function provenanceLine(effectiveDate: string | null | undefined, page: number |
   return importedDateFr ? `Importé le ${importedDateFr} (date du PV inconnue)` : null
 }
 
+// Distinction non négociable (6E.4B/A2, mandat Vincent 2026-09-08) : `sourceExcerpt` est le texte
+// PERSISTÉ tel quel au moment de l'extraction (jamais reformulé après coup) — seul ce texte peut
+// être présenté comme une citation du PV. `label` est une reformulation de l'IA d'extraction :
+// utile comme repère, mais jamais présenté comme « Extrait du PV » quand ce n'en est pas un.
 function SourceExcerpt({
   label,
+  sourceExcerpt,
+  hasVerbatimExcerpt,
   documentFilename,
   effectiveDate,
   page,
   importedAt,
 }: {
   label: string | null
+  sourceExcerpt?: string | null
+  hasVerbatimExcerpt?: boolean
   documentFilename?: string | null
   effectiveDate?: string | null
   page?: number | null
   importedAt?: string | null
 }) {
   const dateLine = provenanceLine(effectiveDate, page, importedAt)
-  if (!label && !documentFilename) return null
+  const quote = hasVerbatimExcerpt && sourceExcerpt ? sourceExcerpt : null
+  const text = quote ?? label
+  if (!text && !documentFilename) return null
   return (
     <div className="rounded-lg border border-dashed bg-muted/30 px-2.5 py-2 text-[12px] text-foreground/80">
-      {label && <p className="line-clamp-3">{label}</p>}
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+        {quote ? 'Extrait du PV' : 'Information extraite'}
+      </p>
+      {text && <p className="mt-0.5 line-clamp-3">{quote ? `« ${text} »` : text}</p>}
       {(documentFilename || dateLine) && (
         <p className="mt-1 text-[11px] text-muted-foreground">
           {[documentFilename, dateLine].filter(Boolean).join(' · ')}
         </p>
+      )}
+    </div>
+  )
+}
+
+// 6E.4B/A2 — "Voir les preuves" sous chaque Point comparé (mandat Vincent 2026-09-08) : un CBO
+// (`cboCount`) est une obligation métier, JAMAIS une preuve documentaire — cette disclosure lit
+// exclusivement `PointProofView` (memberships HARD → document_extraction_proposal, cf.
+// loadPointProofsByPointId). Repliée par défaut ; `proofs` est déjà plafonné à 3 côté read-model,
+// `proofCount` reste le total réel pour "Voir N autres" ; jamais de page/date fabriquée
+// (provenanceLine ne complète que si la date métier existe réellement).
+function PointProofDisclosure({ proofs, proofCount }: { proofs: PointProofView[]; proofCount: number }) {
+  const [open, setOpen] = useState(false)
+  if (proofCount === 0) {
+    return <p className="mt-1 text-[11px] text-muted-foreground/70">Aucune preuve documentaire disponible.</p>
+  }
+  const hiddenCount = proofCount - proofs.length
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        className="text-[11px] font-medium text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? 'Masquer les preuves' : `Voir les preuves (${proofCount})`}
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1.5">
+          {proofs.map((proof) => {
+            const dateLine = provenanceLine(proof.effectiveDate, proof.sourcePage, null)
+            const quote = proof.hasVerbatimExcerpt && proof.sourceExcerpt ? proof.sourceExcerpt : null
+            const text = quote ?? proof.extractedLabel
+            return (
+              <div key={proof.proposalId} className="rounded-lg border border-dashed bg-muted/30 px-2.5 py-2 text-[12px] text-foreground/80">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {quote ? 'Extrait du PV' : 'Information extraite'}
+                </p>
+                <p className="mt-0.5 line-clamp-3">{quote ? `« ${text} »` : text}</p>
+                {(proof.documentFilename || dateLine) && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">{[proof.documentFilename, dateLine].filter(Boolean).join(' · ')}</p>
+                )}
+              </div>
+            )
+          })}
+          {hiddenCount > 0 && (
+            <p className="text-[11px] text-muted-foreground/80">Voir {hiddenCount} autre{hiddenCount > 1 ? 's' : ''}</p>
+          )}
+        </div>
       )}
     </div>
   )
@@ -118,6 +181,67 @@ const DERIVED_STATE_LABEL: Record<string, string> = {
 function derivedStateLabel(state: string | null | undefined): string | null {
   if (!state) return null
   return DERIVED_STATE_LABEL[state] ?? state
+}
+
+// 6E.4B/A1 — "Pourquoi MemorIA me demande ça ?" : repliée par défaut, jamais une explication
+// inventée. Chaque texte ci-dessous ne s'appuie que sur des champs réels déjà chargés par les
+// read-models (jamais un nouveau calcul, jamais le champ brut `reason` dont le contenu réel n'a
+// pas pu être confirmé côté extraction — cf. mandat Vincent 2026-09-08).
+function QuestionRationale({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div>
+      <button
+        type="button"
+        className="text-[11px] font-medium text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? 'Masquer pourquoi MemorIA me demande ça' : 'Pourquoi MemorIA me demande ça ?'}
+      </button>
+      {open && <p className="mt-1 text-[12px] text-foreground/80">{text}</p>}
+    </div>
+  )
+}
+
+function duplicatePointsRationale(entry: Extract<MemoriaNeedsYouQuestion, { category: 'duplicate_points' }>['entry']): string {
+  const sameSubject = entry.pointA.subjectLabel && entry.pointB.subjectLabel && entry.pointA.subjectLabel === entry.pointB.subjectLabel
+  const base = sameSubject
+    ? `Ces deux suivis sont rattachés au même sujet (« ${entry.pointA.subjectLabel} »), ce qui fait hésiter MemorIA entre un seul suivi ou deux suivis distincts.`
+    : "MemorIA a repéré une ressemblance entre ces deux suivis sans certitude qu'il s'agisse de la même situation."
+  const extra = entry.componentSize > 2 ? ' Plusieurs suivis proches existent pour ce sujet — celui-ci n\'est qu\'une paire parmi elles.' : ''
+  return `${base}${extra} Elle ne fusionne jamais automatiquement deux suivis : une fusion incorrecte est plus difficile à corriger qu'une question posée en trop.`
+}
+
+function attachInformationRationale(entry: Extract<MemoriaNeedsYouQuestion, { category: 'attach_information' }>['entry']): string {
+  if (entry.targetCount <= 1) {
+    return "Cette information a été extraite d'un PV sans qu'aucun suivi ne soit mentionné explicitement dedans — MemorIA propose le suivi qui lui semble le plus probable, mais te laisse confirmer avant de l'associer."
+  }
+  return `Cette information pourrait concerner plusieurs suivis (${entry.targetCount} possibles) — MemorIA ne choisit pas à ta place, à toi d'indiquer lequel est le bon.`
+}
+
+function confirmTrackabilityRationale(entry: Extract<MemoriaNeedsYouQuestion, { category: 'confirm_trackability' }>['entry']): string {
+  const subject = entry.subjectLabel ? ` (à propos de « ${entry.subjectLabel} »)` : ''
+  return `MemorIA a repéré une situation dans un PV${subject} qui n'est encore rattachée à aucun suivi. Elle ne crée jamais de suivi toute seule : elle te demande si cela mérite d'être suivi dans la durée.`
+}
+
+const TARGETING_MODE_RATIONALE: Record<PendingResolutionTargetingMode, string> = {
+  KNOWN_SINGLE: 'Cette preuve semble correspondre à un suivi déjà identifié — MemorIA te demande de confirmer avant de le faire évoluer.',
+  KNOWN_MULTI: 'Cette preuve pourrait correspondre à plusieurs suivis déjà identifiés — MemorIA ne choisit pas à ta place.',
+  SUBJECT_SINGLE: 'Cette preuve concerne un sujet que MemorIA connaît, mais aucun suivi précis ne s\'impose de lui-même.',
+  SUBJECT_MULTI: 'Cette preuve concerne un sujet pour lequel plusieurs suivis existent — indique lequel est concerné.',
+  SEARCH_REQUIRED: "MemorIA n'a trouvé aucun suivi apparenté à cette preuve parmi ce qu'elle connaît déjà — c'est à toi de le retrouver.",
+  EVIDENCE_SCOPE_UNRESOLVED: "MemorIA doit d'abord savoir quelle information constitue la preuve avant de pouvoir proposer un suivi.",
+}
+
+function assignResolutionRationale(entry: Extract<MemoriaNeedsYouQuestion, { category: 'assign_resolution' }>['entry']): string {
+  return TARGETING_MODE_RATIONALE[entry.targetingMode]
+}
+
+function clarifyEvidenceRationale(entry: Extract<MemoriaNeedsYouQuestion, { category: 'clarify_evidence' }>['entry']): string {
+  const topic = entry.kind === 'TRACKABILITY_UNDETERMINED' ? 'si cette situation doit être suivie' : 'quel suivi cette preuve résout'
+  const count = entry.proposalCount > 1 ? `${entry.proposalCount} informations ont été extraites du même passage` : 'Une seule information a été extraite ici'
+  const lead = entry.proposalCount > 1 ? `${count.charAt(0).toUpperCase()}${count.slice(1)}` : count
+  return `${lead}, mais MemorIA ne sait pas laquelle permet de trancher ${topic}. Choisis celle(s) qui font vraiment foi.`
 }
 
 function CardShell({ category, title, children }: { category: MemoriaNeedsYouCategory; title: string; children: React.ReactNode }) {
@@ -201,6 +325,7 @@ function DuplicatePointsCard({
   const [confirmingMerge, setConfirmingMerge] = useState(false)
   return (
     <CardShell category="duplicate_points" title="Ces deux suivis sont-ils les mêmes ?">
+      <QuestionRationale text={duplicatePointsRationale(entry)} />
       {entry.componentSize > 2 && (
         <p className="text-[12px] text-amber-600 dark:text-amber-400">
           Plusieurs suivis proches existent pour ce sujet — comparés ici deux par deux, jamais regroupés en une seule fois.
@@ -220,10 +345,11 @@ function DuplicatePointsCard({
                 </p>
               )}
               <p className="mt-1 text-muted-foreground">
-                {side.cboCount} preuve{side.cboCount > 1 ? 's' : ''} · {side.hardMemberCount} élément{side.hardMemberCount > 1 ? 's' : ''} rattaché{side.hardMemberCount > 1 ? 's' : ''}
+                {side.cboCount} objet{side.cboCount > 1 ? 's' : ''} métier · {side.hardMemberCount} élément{side.hardMemberCount > 1 ? 's' : ''} rattaché{side.hardMemberCount > 1 ? 's' : ''}
               </p>
               {firstFr && <p className="mt-1 text-[11px] text-muted-foreground/80">Première apparition : {firstFr}</p>}
               {lastFr && <p className="mt-0.5 text-[11px] text-muted-foreground/80">Dernière activité : {lastFr}</p>}
+              <PointProofDisclosure proofs={side.proofs} proofCount={side.proofCount} />
             </div>
           )
         })}
@@ -288,8 +414,11 @@ function AttachInformationCard({
 
   return (
     <CardShell category="attach_information" title="Cette information concerne-t-elle ce suivi ?">
+      <QuestionRationale text={attachInformationRationale(entry)} />
       <SourceExcerpt
         label={entry.sourceLabel}
+        sourceExcerpt={entry.sourceExcerpt}
+        hasVerbatimExcerpt={entry.hasVerbatimExcerpt}
         documentFilename={entry.sourceDocumentFilename}
         effectiveDate={entry.sourceDocumentEffectiveDate}
         page={entry.sourcePage}
@@ -383,8 +512,11 @@ function ConfirmTrackabilityCard({
 }) {
   return (
     <CardShell category="confirm_trackability" title="Faut-il suivre cette situation ?">
+      <QuestionRationale text={confirmTrackabilityRationale(entry)} />
       <SourceExcerpt
         label={entry.sourceLabel}
+        sourceExcerpt={entry.sourceExcerpt}
+        hasVerbatimExcerpt={entry.hasVerbatimExcerpt}
         documentFilename={entry.sourceDocumentFilename}
         effectiveDate={entry.sourceDocumentEffectiveDate}
         page={entry.sourcePage}
@@ -458,10 +590,13 @@ function AssignResolutionCard({
 
   return (
     <CardShell category="assign_resolution" title="Quel suivi cette preuve vient-elle résoudre ?">
+      <QuestionRationale text={assignResolutionRationale(entry)} />
       <div>
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Preuve à rattacher</p>
         <SourceExcerpt
           label={entry.sourceLabel}
+          sourceExcerpt={entry.sourceExcerpt}
+          hasVerbatimExcerpt={entry.hasVerbatimExcerpt}
           documentFilename={entry.sourceDocumentFilename}
           effectiveDate={entry.sourceDocumentEffectiveDate}
           page={entry.sourcePage}
@@ -584,16 +719,19 @@ function ClarifyEvidenceCard({
 
   return (
     <CardShell category="clarify_evidence" title={title}>
+      <QuestionRationale text={clarifyEvidenceRationale(entry)} />
       {entry.subjectLabel && <p className="text-[11px] text-muted-foreground">À propos de : {entry.subjectLabel}</p>}
       <p className="text-[12px] text-foreground/80">{hint}</p>
       <div className="space-y-1.5">
         {entry.proposals.map((p) => {
           const dateLine = provenanceLine(p.documentEffectiveDate, p.sourcePage, p.createdAt)
+          const quote = p.hasVerbatimExcerpt && p.sourceExcerpt ? p.sourceExcerpt : null
+          const text = quote ?? p.label ?? p.documentFilename ?? 'Document'
           return (
             <label key={p.proposalId} className="flex items-start gap-2 rounded-lg border bg-background px-2.5 py-2 text-[12px]">
               <input type="checkbox" className="mt-0.5" checked={selectedIds.has(p.proposalId)} onChange={() => toggle(p.proposalId)} />
               <span className="min-w-0">
-                <span className="block truncate">{p.label ?? p.documentFilename ?? 'Document'}</span>
+                <span className="block truncate">{quote ? `« ${text} »` : text}</span>
                 {(p.documentFilename || dateLine) && <span className="mt-0.5 block text-[11px] text-muted-foreground">{[p.documentFilename, dateLine].filter(Boolean).join(' · ')}</span>}
               </span>
             </label>

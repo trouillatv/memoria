@@ -43,6 +43,8 @@ export type PendingTrackabilityQueueEntry = {
   sourceDocumentFilename: string | null
   sourceDocumentEffectiveDate: string | null
   sourcePage: number | null
+  sourceExcerpt: string | null
+  hasVerbatimExcerpt: boolean
   actionable: boolean
 }
 
@@ -69,6 +71,7 @@ export type PendingTrackabilitySourceProposal = {
   documentFilename: string | null
   documentEffectiveDate: string | null
   sourcePage: number | null
+  sourceExcerpt: string | null
   createdAt: string | null
 }
 
@@ -101,6 +104,7 @@ export function buildPendingTrackabilityQueue(
     const firstProposal = sourceProposals[0] ?? null
 
     const subjectId = subjectIdByThreadId.get(trace.sourceThreadId) ?? null
+    const sourceExcerpt = firstProposal?.sourceExcerpt ?? null
 
     entries.push({
       pendingTraceId: trace.id,
@@ -118,6 +122,8 @@ export function buildPendingTrackabilityQueue(
       sourceDocumentFilename: firstProposal?.documentFilename ?? null,
       sourceDocumentEffectiveDate: firstProposal?.documentEffectiveDate ?? null,
       sourcePage: firstProposal?.sourcePage ?? null,
+      sourceExcerpt,
+      hasVerbatimExcerpt: sourceExcerpt !== null,
       actionable,
     })
   }
@@ -164,7 +170,7 @@ export async function loadPendingTrackabilityQueue(siteId: string): Promise<Pend
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
-    .select('id, subject_thread_id, label, document_id, source_page, created_at')
+    .select('id, subject_thread_id, label, document_id, source_page, source_excerpt, created_at')
     .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
   if (propErr) throw propErr
 
@@ -187,6 +193,7 @@ export async function loadPendingTrackabilityQueue(siteId: string): Promise<Pend
       documentFilename: doc?.filename ?? null,
       documentEffectiveDate: doc?.effective_date ?? null,
       sourcePage: p.source_page ?? null,
+      sourceExcerpt: p.source_excerpt?.trim() || null,
       createdAt: p.created_at,
     })
     sourceProposalsByThread.set(p.subject_thread_id, list)

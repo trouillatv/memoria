@@ -27,6 +27,8 @@ export type EvidenceScopeCandidateProposal = {
   documentType: string | null
   documentEffectiveDate: string | null
   sourcePage: number | null
+  sourceExcerpt: string | null
+  hasVerbatimExcerpt: boolean
   createdAt: string | null
   alreadySelected: false
 }
@@ -113,7 +115,7 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
-    .select('id, subject_thread_id, proposal_family, label, document_status, document_id, source_page, created_at')
+    .select('id, subject_thread_id, proposal_family, label, document_status, document_id, source_page, source_excerpt, created_at')
     .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
   if (propErr) throw propErr
 
@@ -129,6 +131,7 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
   for (const p of rawProposals ?? []) {
     const doc = p.document_id ? documentsById.get(p.document_id) : undefined
     const list = proposalsByThreadId.get(p.subject_thread_id) ?? []
+    const sourceExcerpt = p.source_excerpt?.trim() || null
     list.push({
       proposalId: p.id,
       family: p.proposal_family,
@@ -139,6 +142,8 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
       documentType: doc?.document_type ?? null,
       documentEffectiveDate: doc?.effective_date ?? null,
       sourcePage: p.source_page ?? null,
+      sourceExcerpt,
+      hasVerbatimExcerpt: sourceExcerpt !== null,
       createdAt: p.created_at,
       alreadySelected: false,
     })
