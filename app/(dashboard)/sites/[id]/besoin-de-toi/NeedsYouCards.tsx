@@ -207,8 +207,8 @@ function duplicatePointsRationale(entry: Extract<MemoriaNeedsYouQuestion, { cate
   const sameSubject = entry.pointA.subjectLabel && entry.pointB.subjectLabel && entry.pointA.subjectLabel === entry.pointB.subjectLabel
   const base = sameSubject
     ? `Ces deux suivis sont rattachés au même sujet (« ${entry.pointA.subjectLabel} »), ce qui fait hésiter MemorIA entre un seul suivi ou deux suivis distincts.`
-    : "MemorIA a repéré une ressemblance entre ces deux suivis sans certitude qu'il s'agisse de la même situation."
-  const extra = entry.componentSize > 2 ? ' Plusieurs suivis proches existent pour ce sujet — celui-ci n\'est qu\'une paire parmi elles.' : ''
+    : "MemorIA a identifié ces deux suivis comme candidats à une vérification d'identité et préfère te demander avant de les réunir."
+  const extra = entry.componentSize > 2 ? ' Ils appartiennent à un ensemble de suivis proches, comparés ici deux par deux.' : ''
   return `${base}${extra} Elle ne fusionne jamais automatiquement deux suivis : une fusion incorrecte est plus difficile à corriger qu'une question posée en trop.`
 }
 
@@ -345,7 +345,7 @@ function DuplicatePointsCard({
                 </p>
               )}
               <p className="mt-1 text-muted-foreground">
-                {side.cboCount} objet{side.cboCount > 1 ? 's' : ''} métier · {side.hardMemberCount} élément{side.hardMemberCount > 1 ? 's' : ''} rattaché{side.hardMemberCount > 1 ? 's' : ''}
+                {side.proofCount} preuve{side.proofCount > 1 ? 's' : ''} · {side.hardMemberCount} élément{side.hardMemberCount > 1 ? 's' : ''} rattaché{side.hardMemberCount > 1 ? 's' : ''}
               </p>
               {firstFr && <p className="mt-1 text-[11px] text-muted-foreground/80">Première apparition : {firstFr}</p>}
               {lastFr && <p className="mt-0.5 text-[11px] text-muted-foreground/80">Dernière activité : {lastFr}</p>}
