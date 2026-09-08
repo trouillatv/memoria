@@ -109,9 +109,6 @@ export function NeedsYouClient({
   const [sortMode, setSortMode] = useState<SortMode>('priority')
   // 6E.4A.5 — 'all' | 'latest' | date-only (YYYY-MM-DD) sélectionnée dans le menu "PV du ...".
   const [pvMode, setPvMode] = useState<string>('all')
-  // Figé au montage : le tri "Plus important" n'a pas besoin de suivre l'horloge seconde par
-  // seconde, seulement de ne pas rappeler Date.now() à chaque re-render (recency à 30 jours).
-  const [nowMs] = useState(() => Date.now())
   // 6E.4A.6 — combien de cartes de `sorted` sont effectivement rendues. Remis à PAGE_SIZE dès que
   // filtre/tri/PV change (setFilter/setSortMode/setPvMode enveloppés ci-dessous), sinon un lot
   // affiché sous un ancien filtre resterait affiché après un changement de sélection.
@@ -155,9 +152,9 @@ export function NeedsYouClient({
   // et `distinctPvDates` — un compteur de filtre ne dépend jamais des autres filtres actifs.
   const priorityCounts = useMemo(() => {
     const c: Record<MemoriaNeedsYouPriority, number> = { PRIORITAIRE: 0, A_CLARIFIER: 0, IMPORTANT: 0, HISTORIQUE: 0 }
-    for (const q of remaining) c[computeQuestionPriority(q, nowMs)]++
+    for (const q of remaining) c[computeQuestionPriority(q)]++
     return c
-  }, [remaining, nowMs])
+  }, [remaining])
 
   const filteredQuestions = filter === 'all' ? remaining : remaining.filter((q) => q.category === filter)
 
@@ -185,8 +182,8 @@ export function NeedsYouClient({
   // Importance = filtre (jamais un tri) : appliqué après catégorie/PV, avant le tri lui-même.
   const priorityFilteredQuestions = useMemo(() => {
     if (priorityFilter === 'all') return pvFilteredQuestions
-    return pvFilteredQuestions.filter((q) => computeQuestionPriority(q, nowMs) === priorityFilter)
-  }, [pvFilteredQuestions, priorityFilter, nowMs])
+    return pvFilteredQuestions.filter((q) => computeQuestionPriority(q) === priorityFilter)
+  }, [pvFilteredQuestions, priorityFilter])
 
   const sorted = useMemo(() => {
     if (sortMode === 'priority') {
@@ -195,8 +192,8 @@ export function NeedsYouClient({
       // (déjà déterministe côté serveur) est conservé — pas de départage supplémentaire nécessaire.
       return [...priorityFilteredQuestions].sort(
         (a, b) =>
-          MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(a, nowMs)) -
-          MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(b, nowMs)),
+          MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(a)) -
+          MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(b)),
       )
     }
     return [...priorityFilteredQuestions].sort((a, b) => {
@@ -207,7 +204,7 @@ export function NeedsYouClient({
       if (db) return 1
       return 0
     })
-  }, [priorityFilteredQuestions, sortMode, nowMs])
+  }, [priorityFilteredQuestions, sortMode])
 
   const visibleQuestions = sorted.slice(0, visibleCount)
   const remainingToShow = sorted.length - visibleQuestions.length
@@ -364,7 +361,7 @@ export function NeedsYouClient({
               pending={pending.has(q.id)}
               error={errors[q.id]}
               sitePoints={sitePoints}
-              priority={computeQuestionPriority(q, nowMs)}
+              priority={computeQuestionPriority(q)}
               runAction={runActionFor(q.id)}
             />
           ))}
