@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock, History } from 'lucide-react'
+import { Search, Loader2, AlertTriangle, StickyNote, Camera, Wrench, Users, Sparkles, Flame, Activity, Archive, ShieldCheck, Check, Info, ListTodo, FileCheck2, FileText, BookOpen, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock, History, BadgeCheck } from 'lucide-react'
 import {
   askSiteMemoryAction,
   getSiteMemoryTermsAction,
@@ -61,6 +61,9 @@ const TYPE_META: Record<SiteMemoryHit['type'], { label: string; Icon: typeof Sti
   intervenant:      { label: 'Intervenant',   Icon: Users,           cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   // Mig 387 — le geste humain sur une action. Sky, comme « Vérifié » côté Actions.
   action_event:     { label: 'Geste',         Icon: History,         cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  // Mig 398 — la preuve canonique (canonical_subject_occurrence). Emerald,
+  // même palette que dans SearchOverlay/SitePatrimoineSearch.
+  canonical_occurrence: { label: 'Preuve',    Icon: BadgeCheck,      cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
 }
 
 function fmtDate(iso: string | null): string {

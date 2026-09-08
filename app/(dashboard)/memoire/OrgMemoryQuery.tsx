@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import {  UserSquare, Search, Users, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock, History } from 'lucide-react'
+import {  UserSquare, Search, Users, Loader2, AlertTriangle, StickyNote, Camera, Wrench, MapPin, Sparkles, Flame, Activity, Archive, ShieldCheck, BookOpen, ListTodo, Flag, Hammer, Info, Check, Eye, Gavel, Lightbulb, Ban, ClipboardCheck, GitBranch, CalendarClock, History, BadgeCheck } from 'lucide-react'
 import {
   askOrgMemoryAction,
   getOrgMemoryTermsAction,
@@ -59,6 +59,8 @@ const TYPE_META: Record<OrgMemoryHit['type'], { label: string; Icon: typeof Stic
   // Mig 387 — le geste humain sur une action (clôturée / rouverte / écartée /
   // vérifiée toujours ouverte). Sky, comme le geste « Vérifié » côté Actions.
   action_event:     { label: 'Geste',        Icon: History,       cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  // Mig 398 — la preuve canonique. Emerald, même palette que les autres surfaces.
+  canonical_occurrence: { label: 'Preuve',   Icon: BadgeCheck,    cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
 }
 
 function fmtDate(iso: string | null): string {

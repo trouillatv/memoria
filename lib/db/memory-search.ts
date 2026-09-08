@@ -40,6 +40,13 @@ export type MemoryHitType =
   // mig 221) mais la recherche ne la lisait pas. `id` = l'événement ;
   // `refId` = l'action, qui porte l'historique complet et l'état actuel.
   | 'action_event'
+  // Mig 398 — la PREUVE CANONIQUE (canonical_subject_occurrence) : un fait
+  // résolu et attribué à un sujet canonique, cherchable même sans aucun
+  // équivalent legacy (ex. field_visit). `id` = l'occurrence (pas d'adresse
+  // propre) ; `refId` = source_ref_id = site_reports.id, qui ouvre la fiche de
+  // compte-rendu existante. Restreint à field_visit/meeting/historical_pdf :
+  // 'copilot' est exclu (source_ref_id éphémère, aucune destination durable).
+  | 'canonical_occurrence'
 
 export interface MemoryHit {
   type: MemoryHitType

@@ -471,7 +471,11 @@ export async function askSiteMemoryAction(
       occurredAt: h.occurredAt, similarity: null, keyword: true, fts: h.rank,
       // Mig 387 — un geste ouvre la FICHE DE L'ACTION porteuse (refId), qui
       // raconte l'historique complet ; l'événement n'a pas d'adresse propre.
-      href: h.type === 'action_event' && h.refId ? `/sites/${siteId}/action/${h.refId}` : undefined,
+      // Mig 398 — une preuve canonique ouvre la fiche de compte-rendu (refId =
+      // source_ref_id = site_reports.id), même précédent que 'meeting'.
+      href: h.type === 'action_event' && h.refId ? `/sites/${siteId}/action/${h.refId}`
+        : h.type === 'canonical_occurrence' && h.refId ? `/sites/${siteId}/reunion/${h.refId}`
+        : undefined,
     })
   }
 

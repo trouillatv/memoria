@@ -60,6 +60,11 @@ export function memoryHitHref(hit: HitLocation): string {
   // Lot 4 — la Réunion a son adresse. Elle ouvre la RÉUNION, pas le chantier qui
   // la contient ni l'espace de travail de son compte-rendu.
   if (hit.type === 'meeting') return `/sites/${hit.siteId}/reunion/${hit.id}`
+  // Mig 398 — une PREUVE CANONIQUE n'a pas d'adresse propre : `refId` =
+  // source_ref_id = site_reports.id, la même fiche de compte-rendu que
+  // 'meeting'. Sans refId (ne devrait pas arriver, le CTE l'exclut sinon), on
+  // se replie sur la règle du fil puis du chantier.
+  if (hit.type === 'canonical_occurrence' && hit.refId) return `/sites/${hit.siteId}/reunion/${hit.refId}`
 
   // Lot 4 — l'Observation a son adresse. Elle prime sur la règle du fil : on a
   // cherché un constat de terrain, pas le sujet auquel il se rattache.

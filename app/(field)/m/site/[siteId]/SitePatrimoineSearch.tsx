@@ -8,7 +8,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import {
   UserSquare, Search, Users, Camera, Pencil, AlertTriangle, ListTodo, Gavel, FileText, Wrench, X,
-  Eye, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock, History,
+  Eye, Lightbulb, Ban, ClipboardCheck, GitBranch, BookOpen, CalendarClock, History, BadgeCheck,
 } from 'lucide-react'
 import { searchPatrimoineAction, type SearchPatrimoineResult } from './patrimoine-actions'
 import type { MemoryHitType } from '@/lib/db/memory-search'
@@ -36,6 +36,9 @@ const META: Record<MemoryHitType, { label: string; Icon: typeof Camera; cls: str
   // Mig 387 — gestes humains sur les actions (hors GROUP_ORDER : jamais rendu
   // ici, mais le Record est exhaustif par type).
   action_event: { label: 'Gestes', Icon: History, cls: 'text-sky-600', ring: 'bg-sky-100 dark:bg-sky-950/40' },
+  // Mig 398 — preuve canonique (hors GROUP_ORDER : jamais rendu ici, même
+  // précédent que action_event).
+  canonical_occurrence: { label: 'Preuves', Icon: BadgeCheck, cls: 'text-emerald-600', ring: 'bg-emerald-100 dark:bg-emerald-950/40' },
 }
 
 export function SitePatrimoineSearch({ siteId, suggestions }: { siteId: string; suggestions: string[] }) {
