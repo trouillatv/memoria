@@ -17,10 +17,15 @@ import { cn } from '@/lib/utils'
 import { QuestionCard, CATEGORY_TONE, CATEGORY_ICON, type ActionResult, type SitePointOption } from './NeedsYouCards'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER, type MemoriaNeedsYouCategory } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { computeQuestionPriority, MEMORIA_NEEDS_YOU_PRIORITY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-priority'
+import type { MemoriaNeedsYouPriority } from '@/lib/knowledge/tracked-point-needs-you-priority'
 import type { MemoriaNeedsYouCategorySummary, MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 
 type FilterValue = 'all' | MemoriaNeedsYouCategory
-type SortMode = 'importance' | 'recent'
+// 6E.4A UI-pass — Importance et tri sont deux axes distincts (mandat Vincent : "Historique ≠
+// faible importance, Récent ≠ important") : l'un filtre (PriorityFilterValue), l'autre trie
+// (SortMode) — jamais fusionnés dans un seul contrôle.
+type SortMode = 'priority' | 'recent' | 'oldest'
+type PriorityFilterValue = 'all' | 'PRIORITAIRE' | 'IMPORTANT' | 'A_CLARIFIER'
 
 // 6E.4A.6 — Charge cognitive : n'afficher qu'un lot de cartes à la fois plutôt que toute la file
 // (une file de 152 questions rendues d'un coup est le problème signalé, pas juste un style de
@@ -37,6 +42,14 @@ const FILTER_LABELS: Record<FilterValue, string> = {
   clarify_evidence: 'Preuves',
 }
 const FILTER_ORDER: FilterValue[] = ['all', ...MEMORIA_NEEDS_YOU_CATEGORY_ORDER]
+
+const PRIORITY_FILTER_LABELS: Record<PriorityFilterValue, string> = {
+  all: 'Toutes',
+  PRIORITAIRE: 'Prioritaires',
+  IMPORTANT: 'Importantes',
+  A_CLARIFIER: 'À clarifier',
+}
+const PRIORITY_FILTER_ORDER: PriorityFilterValue[] = ['all', 'PRIORITAIRE', 'IMPORTANT', 'A_CLARIFIER']
 
 // Vérité temporelle (6E.4A.1) : le tri "Plus récent" doit classer par date métier (PV/visite,
 // `*DocumentEffectiveDate`) — jamais par date d'import (`sourceDate`/`createdAt`), sinon un vieux
@@ -92,7 +105,8 @@ export function NeedsYouClient({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState<FilterValue>('all')
-  const [sortMode, setSortMode] = useState<SortMode>('importance')
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilterValue>('all')
+  const [sortMode, setSortMode] = useState<SortMode>('priority')
   // 6E.4A.5 — 'all' | 'latest' | date-only (YYYY-MM-DD) sélectionnée dans le menu "PV du ...".
   const [pvMode, setPvMode] = useState<string>('all')
   // Figé au montage : le tri "Plus important" n'a pas besoin de suivre l'horloge seconde par
@@ -105,6 +119,11 @@ export function NeedsYouClient({
 
   function updateFilter(next: FilterValue) {
     setFilter(next)
+    setVisibleCount(PAGE_SIZE)
+  }
+
+  function updatePriorityFilter(next: PriorityFilterValue) {
+    setPriorityFilter(next)
     setVisibleCount(PAGE_SIZE)
   }
 
@@ -132,6 +151,14 @@ export function NeedsYouClient({
     return c
   }, [remaining])
 
+  // Importance (6E.4A UI-pass) : compteurs stables sur `remaining`, même politique que `counts`
+  // et `distinctPvDates` — un compteur de filtre ne dépend jamais des autres filtres actifs.
+  const priorityCounts = useMemo(() => {
+    const c: Record<MemoriaNeedsYouPriority, number> = { PRIORITAIRE: 0, A_CLARIFIER: 0, IMPORTANT: 0, HISTORIQUE: 0 }
+    for (const q of remaining) c[computeQuestionPriority(q, nowMs)]++
+    return c
+  }, [remaining, nowMs])
+
   const filteredQuestions = filter === 'all' ? remaining : remaining.filter((q) => q.category === filter)
 
   // 6E.4A.5 — dates distinctes calculées sur `remaining` (pas `filteredQuestions`) : le menu PV
@@ -155,26 +182,32 @@ export function NeedsYouClient({
     return filteredQuestions.filter((q) => questionDateOnly(q) === targetDate)
   }, [filteredQuestions, pvMode, latestPvDate])
 
+  // Importance = filtre (jamais un tri) : appliqué après catégorie/PV, avant le tri lui-même.
+  const priorityFilteredQuestions = useMemo(() => {
+    if (priorityFilter === 'all') return pvFilteredQuestions
+    return pvFilteredQuestions.filter((q) => computeQuestionPriority(q, nowMs) === priorityFilter)
+  }, [pvFilteredQuestions, priorityFilter, nowMs])
+
   const sorted = useMemo(() => {
-    if (sortMode === 'importance') {
+    if (sortMode === 'priority') {
       // Tri réel (6E.4A.4) : ordre de palier calculé par computeQuestionPriority, jamais un score
       // additionné. Array.prototype.sort est stable (ES2019+) : à palier égal, l'ordre d'origine
       // (déjà déterministe côté serveur) est conservé — pas de départage supplémentaire nécessaire.
-      return [...pvFilteredQuestions].sort(
+      return [...priorityFilteredQuestions].sort(
         (a, b) =>
           MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(a, nowMs)) -
           MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(b, nowMs)),
       )
     }
-    return [...pvFilteredQuestions].sort((a, b) => {
+    return [...priorityFilteredQuestions].sort((a, b) => {
       const da = questionDate(a)
       const db = questionDate(b)
-      if (da && db) return db.localeCompare(da)
+      if (da && db) return sortMode === 'oldest' ? da.localeCompare(db) : db.localeCompare(da)
       if (da) return -1
       if (db) return 1
       return 0
     })
-  }, [pvFilteredQuestions, sortMode, nowMs])
+  }, [priorityFilteredQuestions, sortMode, nowMs])
 
   const visibleQuestions = sorted.slice(0, visibleCount)
   const remainingToShow = sorted.length - visibleQuestions.length
@@ -225,66 +258,97 @@ export function NeedsYouClient({
   return (
     <div className="lg:grid lg:grid-cols-[1fr_280px] lg:items-start lg:gap-4">
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-1.5">
-            {FILTER_ORDER.filter((f) => f === 'all' || counts[f] > 0).map((f) => {
-              const count = f === 'all' ? remaining.length : counts[f]
-              const active = filter === f
-              return (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => updateFilter(f)}
-                  className={cn(
-                    'rounded-full border px-2.5 py-1 text-xs font-medium',
-                    active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
-                  )}
-                >
-                  {FILTER_LABELS[f]} <span className="tabular-nums">{count}</span>
-                </button>
-              )
-            })}
+        {/* Zone de filtres — sections nommées (Type de question / Période / Importance / Trier
+            par) : Importance FILTRE la file, Trier par ORDONNE la sélection filtrée. Les deux
+            axes ne sont jamais fusionnés dans un seul contrôle (mandat Vincent : "Historique ≠
+            faible importance, Récent ≠ important"). */}
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Type de question</p>
+            <div className="flex flex-wrap gap-1.5">
+              {FILTER_ORDER.filter((f) => f === 'all' || counts[f] > 0).map((f) => {
+                const count = f === 'all' ? remaining.length : counts[f]
+                const active = filter === f
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    onClick={() => updateFilter(f)}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 text-xs font-medium',
+                      active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
+                    )}
+                  >
+                    {FILTER_LABELS[f]} <span className="tabular-nums">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-          <div className="flex gap-1.5">
-            {(['importance', 'recent'] as const).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                onClick={() => updateSortMode(mode)}
-                className={cn(
-                  'rounded-full border px-2.5 py-1 text-xs font-medium',
-                  sortMode === mode ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
-                )}
-              >
-                {mode === 'importance' ? 'Plus important' : 'Plus récent'}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        {/* 6E.4A.5 — Mode Dernier PV : n'apparaît que si au moins une question porte une date
-            métier (duplicate_points seules ne l'affiche jamais, rien à filtrer par PV). */}
-        {distinctPvDates.length > 0 && (
-          <div className="flex items-center gap-1.5">
-            <label htmlFor="pv-mode" className="text-xs text-muted-foreground">
-              Période
+          {/* 6E.4A.5 — Mode Dernier PV : n'apparaît que si au moins une question porte une date
+              métier (duplicate_points seules ne l'affiche jamais, rien à filtrer par PV). */}
+          {distinctPvDates.length > 0 && (
+            <div>
+              <label htmlFor="pv-mode" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Période
+              </label>
+              <select
+                id="pv-mode"
+                value={pvMode}
+                onChange={(e) => updatePvMode(e.target.value)}
+                className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+              >
+                <option value="all">Tous les PV</option>
+                {latestPvDate && <option value="latest">Dernier PV ({formatPvOptionDate(latestPvDate)})</option>}
+                {olderPvDates.map((d) => (
+                  <option key={d} value={d}>
+                    PV du {formatPvOptionDate(d)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Importance</p>
+            <div className="flex flex-wrap gap-1.5">
+              {PRIORITY_FILTER_ORDER.filter((p) => p === 'all' || priorityCounts[p] > 0).map((p) => {
+                const count = p === 'all' ? remaining.length : priorityCounts[p]
+                const active = priorityFilter === p
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => updatePriorityFilter(p)}
+                    className={cn(
+                      'rounded-full border px-2.5 py-1 text-xs font-medium',
+                      active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
+                    )}
+                  >
+                    {PRIORITY_FILTER_LABELS[p]} <span className="tabular-nums">{count}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="sort-mode" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Trier par
             </label>
             <select
-              id="pv-mode"
-              value={pvMode}
-              onChange={(e) => updatePvMode(e.target.value)}
+              id="sort-mode"
+              value={sortMode}
+              onChange={(e) => updateSortMode(e.target.value as SortMode)}
               className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
             >
-              <option value="all">Tous les PV</option>
-              {latestPvDate && <option value="latest">Dernier PV ({formatPvOptionDate(latestPvDate)})</option>}
-              {olderPvDates.map((d) => (
-                <option key={d} value={d}>
-                  PV du {formatPvOptionDate(d)}
-                </option>
-              ))}
+              <option value="priority">Priorité</option>
+              <option value="recent">Plus récent</option>
+              <option value="oldest">Plus ancien</option>
             </select>
           </div>
-        )}
+        </div>
 
         <div className="space-y-3">
           {sorted.length === 0 && (
