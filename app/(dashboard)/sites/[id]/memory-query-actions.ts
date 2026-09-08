@@ -225,7 +225,7 @@ async function searchSiteKnowledge(siteId: string, q: string): Promise<SiteMemor
         // ouvre la FICHE transverse. « Je cherche Vincent » → sa fiche.
         out.push({
           type: 'intervenant', id: i.id, title: label,
-          snippet: `Intervenant du chantier · ${i.role}`,
+          snippet: `Rôle mentionné · ${i.role}`,
           occurredAt: i.effective_from ?? '', similarity: null, keyword: true, personId: i.id,
         })
       }

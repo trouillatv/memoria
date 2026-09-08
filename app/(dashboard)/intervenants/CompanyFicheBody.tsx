@@ -1,12 +1,21 @@
 // Corps de la fiche ENTREPRISE — PARTAGÉ entre la page dédiée et le panneau maître-
 // détail de /intervenants. Une seule source de rendu. Purement présentationnel.
 
-import { Building2, Layers, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe } from 'lucide-react'
+import { Building2, Layers, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe, FileText } from 'lucide-react'
 import type { CompanyFiche } from '@/lib/db/company-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
-import { AttentionBadge, FicheSection, FicheLinkRow, FicheEmpty } from './fiche-ui'
+import { AttentionBadge, FicheSection, FicheLinkRow, FicheRow, FicheEmpty } from './fiche-ui'
 import { ActorNetworkExplorer } from './graph/ActorNetworkExplorer'
 import type { SelectableKind } from './graph/ActorsGraphCanvas'
+
+// Date de mention (site_intervenants.effective_from — un DATE brut, jamais un
+// horodatage) : reformatage direct, sans passer par Date()/fuseau — inutile et
+// risqué sur une valeur qui n'a pas d'heure.
+function frDateShort(iso: string | null): string | null {
+  if (!iso) return null
+  const [y, m, d] = iso.slice(0, 10).split('-')
+  return y && m && d ? `${d}/${m}/${y}` : null
+}
 
 export function CompanyFicheBody({ fiche, network, onSelectActor }: {
   fiche: CompanyFiche
@@ -47,10 +56,10 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
                 <span className="text-muted-foreground font-normal">Aucun chantier actif ni action ouverte</span>
               )}
             </p>
-            {/* Phrase de synthèse (discrète). */}
+            {/* Phrase de synthèse (discrète) — jamais de rôle ici : un rôle mentionné
+                n'est pas un fait à résumer en une ligne, voir la section dédiée. */}
             <p className="mt-0.5 text-xs text-muted-foreground">
               {[
-                fiche.activeRoles.length ? fiche.activeRoles.join(', ') : null,
                 fiche.activeCasting[0] ? `Intervient sur ${fiche.activeCasting[0].siteName}` : null,
                 `${fiche.contacts.length} contact${fiche.contacts.length > 1 ? 's' : ''} connu${fiche.contacts.length > 1 ? 's' : ''}`,
               ].filter(Boolean).join(' · ')}
@@ -82,14 +91,39 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
         </FicheSection>
       )}
 
-      {/* ── PRÉSENCE OPÉRATIONNELLE — chantiers actifs + rôles ───────────────────── */}
+      {/* ── RÔLES MENTIONNÉS — jamais « le » rôle actuel, des mentions datées ────── */}
+      {/* Plusieurs mentions actives simultanées (même une classification qui dérive
+          d'un PV à l'autre) restent listées séparément : ne jamais arbitrer entre
+          elles ni en déduire un changement de rôle. */}
+      <FicheSection title="Rôles mentionnés dans les documents" count={fiche.roleMentions.length}>
+        {fiche.roleMentions.length === 0 ? (
+          <FicheEmpty>Aucun rôle mentionné.</FicheEmpty>
+        ) : (
+          fiche.roleMentions.map((r) => {
+            const date = frDateShort(r.effectiveFrom)
+            return (
+              <FicheRow
+                key={`${r.role}-${r.effectiveFrom ?? ''}`}
+                icon={<FileText className="h-4 w-4" aria-hidden />}
+                label={r.role}
+                sub={date ? `Mention du ${date}` : 'Date de mention inconnue'}
+              />
+            )
+          })
+        )}
+      </FicheSection>
+
+      {/* ── PRÉSENCE OPÉRATIONNELLE — chantiers actifs ───────────────────────────── */}
       <FicheSection title="Présence opérationnelle" count={fiche.activeCasting.length}>
         {fiche.activeCasting.length === 0 ? (
           <FicheEmpty>Aucun chantier actif.</FicheEmpty>
         ) : (
-          fiche.activeCasting.map((c) => (
-            <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4" aria-hidden />} label={c.siteName} sub={`Rôle · ${c.role}`} />
-          ))
+          fiche.activeCasting.map((c) => {
+            const date = frDateShort(c.effectiveFrom)
+            return (
+              <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4" aria-hidden />} label={c.siteName} sub={`Rôle mentionné · ${c.role}${date ? ` — mention du ${date}` : ''}`} />
+            )
+          })
         )}
       </FicheSection>
 

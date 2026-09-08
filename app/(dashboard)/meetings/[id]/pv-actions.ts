@@ -855,12 +855,19 @@ export async function addExistingParticipantAction(
       return { ok: false, error: 'Déjà dans les présents' }
     }
 
-    // Rôle = celui du casting du site si renseigné, sinon la fonction du contact.
+    // Rôle = celui du casting ACTIF du site si UN SEUL rôle distinct en ressort,
+    // sinon la fonction du contact. Plusieurs rôles actifs distincts simultanés
+    // (ex. CAPSE « partenaire » + « AMO ») sont des mentions documentaires DISTINCTES,
+    // jamais une succession : « le plus récent gagne » reviendrait à choisir un rôle
+    // « actuel » que les données ne prouvent pas. Voir audit ACTOR-ROLE-TRUTH 2026-09.
     // (On ne fige PAS entreprise/fonction dans le JSON : résolus par contactId.)
     let role: string | null = c.function
     if (report.site_id) {
-      const { data: iv } = await sb.from('site_intervenants').select('role').eq('site_id', report.site_id).eq('company_id', c.company_id).limit(1).maybeSingle()
-      if (iv) role = (iv as { role: string }).role
+      const { data: rows } = await sb.from('site_intervenants').select('role')
+        .eq('site_id', report.site_id).eq('company_id', c.company_id)
+        .is('effective_to', null)
+      const distinctRoles = [...new Set((rows ?? []).map((r) => (r as { role: string }).role))]
+      if (distinctRoles.length === 1) role = distinctRoles[0]!
     }
 
     const participant = {

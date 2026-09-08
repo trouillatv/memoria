@@ -19,7 +19,14 @@ export interface ActorActionContext {
 
 export interface ActorContext {
   id: string
+  /** Rôle MENTIONNÉ dans les documents — jamais un fait actuel incontestable.
+   *  Voir `mentionedSince` : sans date, le LLM ne doit rien affirmer sur sa
+   *  validité présente. Audit ACTOR-ROLE-TRUTH 2026-09. */
   role: string
+  /** Date de la mention la plus récente (`site_intervenants.effective_from`),
+   *  `null` si inconnue. Ne PAS interpréter comme une date de fin ou de début
+   *  de mission : juste la date du document qui porte ce rôle. */
+  mentionedSince: string | null
   companyName: string
   contactName: string | null
   assignedActions: ActorActionContext[]
@@ -98,6 +105,7 @@ export async function getSiteActorContext(
     results.push({
       id: iv.id,
       role: iv.role,
+      mentionedSince: iv.effectiveFrom,
       companyName: iv.companyName,
       contactName: iv.contactName,
       assignedActions: (actionRows ?? []).map((a) => ({

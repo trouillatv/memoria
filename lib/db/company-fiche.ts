@@ -36,7 +36,18 @@ export interface CompanyCastingRow {
   siteName: string
   role: string
   active: boolean
+  /** Date de la mention (site_intervenants.effective_from) — jamais « depuis ». */
+  effectiveFrom: string | null
   href: string // /sites/{siteId}
+}
+
+/** Un rôle MENTIONNÉ dans les documents, daté — jamais « le » rôle actuel.
+ *  Plusieurs mentions actives simultanées sont un fait normal (classification
+ *  qui dérive d'un PV à l'autre), pas une succession prouvée. Voir audit
+ *  ACTOR-ROLE-TRUTH 2026-09 : ne jamais arbitrer entre elles. */
+export interface CompanyRoleMention {
+  role: string
+  effectiveFrom: string | null
 }
 
 export interface CompanySubjectRow {
@@ -70,7 +81,8 @@ export interface CompanyFiche {
   email: string | null
   website: string | null
   attention: AttentionState
-  activeRoles: string[]
+  /** Rôles mentionnés dans les documents, datés — jamais un rôle « actuel » unique. */
+  roleMentions: CompanyRoleMention[]
   activeSitesCount: number
   // Situation / travail en cours
   actions: CompanyFicheAction[]
@@ -89,7 +101,7 @@ export interface CompanyFiche {
 export interface CompanyFicheInputs {
   today: string
   company: { id: string; name: string; short_name: string | null; siret: string | null; address: string | null; phone: string | null; email: string | null; website: string | null; deleted_at: string | null }
-  casting: Array<{ siteId: string; siteName: string; role: string; active: boolean; mainContactId: string | null }>
+  casting: Array<{ siteId: string; siteName: string; role: string; active: boolean; effectiveFrom: string | null; mainContactId: string | null }>
   actions: Array<{ id: string; title: string; siteId: string; siteName: string; dueDate: string | null; hasReferent: boolean; assignedContactName: string | null }>
   contacts: Array<{ id: string; name: string; function: string | null }>
   /** Ids des contacts référents d'au moins une action ouverte de cette entreprise. */
@@ -107,9 +119,14 @@ export function buildCompanyFiche(input: CompanyFicheInputs): CompanyFiche {
   const overdueCount = actions.filter((a) => a.overdue).length
   const noReferentCount = actions.filter((a) => !a.hasReferent).length
 
-  const activeCasting = input.casting.filter((c) => c.active).map((c) => ({ siteId: c.siteId, siteName: c.siteName, role: c.role, active: true, href: `/sites/${c.siteId}` }))
-  const historicalCasting = input.casting.filter((c) => !c.active).map((c) => ({ siteId: c.siteId, siteName: c.siteName, role: c.role, active: false, href: `/sites/${c.siteId}` }))
-  const activeRoles = [...new Set(activeCasting.map((c) => c.role))]
+  const activeCasting = input.casting.filter((c) => c.active).map((c) => ({ siteId: c.siteId, siteName: c.siteName, role: c.role, active: true, effectiveFrom: c.effectiveFrom, href: `/sites/${c.siteId}` }))
+  const historicalCasting = input.casting.filter((c) => !c.active).map((c) => ({ siteId: c.siteId, siteName: c.siteName, role: c.role, active: false, effectiveFrom: c.effectiveFrom, href: `/sites/${c.siteId}` }))
+  // Mentions datées, jamais arbitrées : deux rôles actifs simultanés (même une
+  // même entreprise, même chantier) restent DEUX lignes distinctes — jamais
+  // fusionnées en une liste sans date ni « rôle actuel » choisi entre elles.
+  const roleMentions = [...new Map(
+    activeCasting.map((c) => [`${c.role}__${c.effectiveFrom ?? ''}`, { role: c.role, effectiveFrom: c.effectiveFrom }]),
+  ).values()].sort((a, b) => (b.effectiveFrom ?? '').localeCompare(a.effectiveFrom ?? ''))
   const activeSitesCount = new Set(activeCasting.map((c) => c.siteId)).size
 
   // Statut GLOBAL : actif dès qu'une relation actuelle existe. Jamais fondé sur le volume.
@@ -143,7 +160,7 @@ export function buildCompanyFiche(input: CompanyFicheInputs): CompanyFiche {
     email: company.email,
     website: company.website,
     attention,
-    activeRoles,
+    roleMentions,
     activeSitesCount,
     actions,
     openCount,
@@ -177,13 +194,13 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   if (!company || company.is_placeholder || !orgIds.includes(company.organization_id)) return null
 
   const [castRes, actRes, contactRes, subjectActRes] = await Promise.all([
-    db.from('site_intervenants').select('site_id, role, effective_to, main_contact_id').eq('company_id', companyId),
+    db.from('site_intervenants').select('site_id, role, effective_to, effective_from, main_contact_id').eq('company_id', companyId),
     db.from('site_actions').select('id, title, site_id, due_date, assigned_contact_id').eq('assigned_company_id', companyId).eq('status', 'open'),
     db.from('company_contacts').select('id, full_name, function').eq('company_id', companyId).is('deleted_at', null),
     // Toutes les actions (tous statuts) avec canonical_subject_id pour agréger les sujets portés.
     db.from('site_actions').select('canonical_subject_id, status, site_id').eq('assigned_company_id', companyId).not('canonical_subject_id', 'is', null),
   ])
-  const cast = (castRes.data ?? []) as Array<{ site_id: string; role: string; effective_to: string | null; main_contact_id: string | null }>
+  const cast = (castRes.data ?? []) as Array<{ site_id: string; role: string; effective_to: string | null; effective_from: string | null; main_contact_id: string | null }>
   const act = (actRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null; assigned_contact_id: string | null }>
   const contactRows = (contactRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null }>
   const subjectAct = (subjectActRes.data ?? []) as Array<{ canonical_subject_id: string; status: string; site_id: string }>
@@ -226,7 +243,7 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   return buildCompanyFiche({
     today,
     company: { id: company.id, name: company.name, short_name: company.short_name, siret: company.siret, address: addressLine, phone: company.phone, email: company.email, website: company.website, deleted_at: company.deleted_at },
-    casting: cast.map((c) => ({ siteId: c.site_id, siteName: siteName(c.site_id), role: c.role, active: c.effective_to === null, mainContactId: c.main_contact_id })),
+    casting: cast.map((c) => ({ siteId: c.site_id, siteName: siteName(c.site_id), role: c.role, active: c.effective_to === null, effectiveFrom: c.effective_from, mainContactId: c.main_contact_id })),
     actions: act.map((a) => ({
       id: a.id, title: a.title, siteId: a.site_id, siteName: siteName(a.site_id), dueDate: a.due_date,
       hasReferent: a.assigned_contact_id !== null,
