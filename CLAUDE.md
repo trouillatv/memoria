@@ -684,7 +684,8 @@ Un seul rapport à la fin du run.
 
 ### Modification mineure
 
-```markdown
+Rendu en Markdown normal, jamais dans un bloc de code (cf. section 26) :
+
 ## Statut
 CODÉ / COMPILÉ / TESTÉ / COMMITÉ / POUSSÉ
 
@@ -692,15 +693,15 @@ CODÉ / COMPILÉ / TESTÉ / COMMITÉ / POUSSÉ
 - ...
 
 ## Vérifications
-- `commande` : PASS / FAIL / NON EXÉCUTÉ
+- commande : PASS / FAIL / NON EXÉCUTÉ
 
 ## Reste
 - rien
-```
 
 ### Modification significative
 
-```markdown
+Même règle : Markdown normal, jamais dans un bloc de code.
+
 # Rapport d’implémentation
 
 ## Statut réel
@@ -732,7 +733,6 @@ CODÉ / COMPILÉ / TESTÉ / COMMITÉ / POUSSÉ
 
 ## Reste, risques et limites
 - ...
-```
 
 Ne répète pas la même information dans plusieurs tableaux.
 
@@ -1038,3 +1038,27 @@ Important
 Après avoir produit le checkpoint et son rapport, Claude attend le verdict unique de Vincent/ChatGPT.
 
 Il ne demande pas d'abord un GO pour committer, puis un second GO pour continuer.
+
+---
+
+## 26. Livraison Claude App — jamais de fenêtre de code
+
+Vincent copie manuellement les réponses Claude depuis l'application Claude vers ChatGPT et d'autres outils.
+
+Toute réponse finale ou livraison doit être directement copiable comme du texte continu dans l'application Claude.
+
+Règle absolue : ne jamais utiliser de bloc de code Markdown délimité par trois backticks dans une réponse finale.
+
+Cela vaut quel que soit le contenu : HARD STOP, rapport d'audit, compte-rendu d'implémentation, SHA et état Git, résultats de tests, commandes, SQL, code, migration, diagnostic, tableau de résultats, prompt destiné à Vincent, ou toute autre livraison.
+
+La réponse finale ne doit jamais créer dans l'application Claude une fenêtre séparée intitulée « Code » avec bouton de copie/agrandissement.
+
+Utiliser à la place du Markdown normal directement dans le corps du message : titres, paragraphes, listes, tableaux Markdown si utile, texte monospace inline avec un seul backtick si nécessaire.
+
+Même lorsqu'un morceau de code, SQL ou une commande doit être communiqué, le présenter directement dans le texte de la réponse, sans triple backticks et sans bloc de code.
+
+Les modèles HARD STOP — REVIEW READY, HARD STOP — AUDIT ONLY, etc. (section 25) sont eux aussi rendus en texte Markdown normal. Jamais dans une fenêtre de code.
+
+Cette règle concerne uniquement la présentation de la livraison à Vincent dans l'application Claude. Elle ne change pas la manière dont Claude écrit les vrais fichiers de code dans le dépôt : les fichiers créés ou modifiés via les outils d'édition ne sont pas concernés.
+
+Aucune exception selon le type de rapport ou de contenu, quel que soit le mode de travail (A/B/C/D).
