@@ -56,10 +56,16 @@ export interface CompanyRoleSource {
  *  ACTOR-ROLE-TRUTH 2026-09 : ne jamais arbitrer entre elles.
  *  `active=false` = mention CLÔTURÉE (site_intervenants.effective_to renseigné) —
  *  reste dans la chronologie, jamais retirée : une mention documentaire ne
- *  disparaît pas parce que le casting a changé depuis. */
+ *  disparaît pas parce que le casting a changé depuis.
+ *  Identité d'une mention = chantier + date + PREUVE (`sourceReportId`), jamais
+ *  seulement rôle+date : deux PV distincts (même chantier ou non) ne sont jamais
+ *  fusionnés silencieusement en une seule ligne. Voir audit P0.2 2026-09-09
+ *  (18 collisions réelles trouvées avec la clé rôle+date seule). */
 export interface CompanyRoleMention {
   role: string
   effectiveFrom: string | null
+  siteId: string
+  siteName: string
   active: boolean
   source: CompanyRoleSource | null
 }
@@ -115,7 +121,8 @@ export interface CompanyFiche {
 export interface CompanyFicheInputs {
   today: string
   company: { id: string; name: string; short_name: string | null; siret: string | null; address: string | null; phone: string | null; email: string | null; website: string | null; deleted_at: string | null }
-  casting: Array<{ siteId: string; siteName: string; role: string; active: boolean; effectiveFrom: string | null; mainContactId: string | null; source: CompanyRoleSource | null }>
+  /** `id` = site_intervenants.id — repli d'identité quand `sourceReportId` est NULL (voir dédup ci-dessous). */
+  casting: Array<{ id: string; siteId: string; siteName: string; role: string; active: boolean; effectiveFrom: string | null; mainContactId: string | null; source: CompanyRoleSource | null; sourceReportId: string | null }>
   actions: Array<{ id: string; title: string; siteId: string; siteName: string; dueDate: string | null; hasReferent: boolean; assignedContactName: string | null }>
   contacts: Array<{ id: string; name: string; function: string | null }>
   /** Ids des contacts référents d'au moins une action ouverte de cette entreprise. */
@@ -140,18 +147,26 @@ export function buildCompanyFiche(input: CompanyFicheInputs): CompanyFiche {
   // Mentions datées, jamais arbitrées : deux rôles actifs simultanés (même une
   // même entreprise, même chantier) restent DEUX lignes distinctes — jamais
   // fusionnées en une liste sans date ni « rôle actuel » choisi entre elles.
-  // Dédup sur rôle+date (comme avant) : une même mention textuelle datée reste
-  // « active » si au moins une occurrence l'est encore.
+  // Identité d'une mention = rôle + date + CHANTIER + PREUVE (`sourceReportId`).
+  // Deux PV distincts ne sont jamais fusionnés, même même rôle + même date +
+  // même chantier (audit P0.2). Sans preuve connue (`sourceReportId` NULL), on
+  // ne fusionne JAMAIS deux lignes distinctes sous prétexte qu'elles se
+  // ressemblent : la clé replie alors sur `site_intervenants.id` (une ligne =
+  // une mention). L'undermerge est préférable à une fusion de preuve non
+  // démontrée (audit P0.2 correctif, 2026-09-09) : seul un doublon exact
+  // (même sourceReportId) est dédupliqué.
   const mentionByKey = new Map<string, CompanyRoleMention>()
   for (const c of input.casting) {
-    const key = `${c.role}__${c.effectiveFrom ?? ''}`
+    const key = c.sourceReportId
+      ? `${c.role}__${c.effectiveFrom ?? ''}__${c.siteId}__report:${c.sourceReportId}`
+      : `row:${c.id}`
     const existing = mentionByKey.get(key)
     if (existing) {
       existing.active = existing.active || c.active
       if (!existing.source && c.source) existing.source = c.source
       continue
     }
-    mentionByKey.set(key, { role: c.role, effectiveFrom: c.effectiveFrom, active: c.active, source: c.source })
+    mentionByKey.set(key, { role: c.role, effectiveFrom: c.effectiveFrom, siteId: c.siteId, siteName: c.siteName, active: c.active, source: c.source })
   }
   const roleMentions = [...mentionByKey.values()].sort((a, b) => (b.effectiveFrom ?? '').localeCompare(a.effectiveFrom ?? ''))
   const activeSitesCount = new Set(activeCasting.map((c) => c.siteId)).size
@@ -221,13 +236,13 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   if (!company || company.is_placeholder || !orgIds.includes(company.organization_id)) return null
 
   const [castRes, actRes, contactRes, subjectActRes] = await Promise.all([
-    db.from('site_intervenants').select('site_id, role, effective_to, effective_from, main_contact_id, source_report_id').eq('company_id', companyId),
+    db.from('site_intervenants').select('id, site_id, role, effective_to, effective_from, main_contact_id, source_report_id').eq('company_id', companyId),
     db.from('site_actions').select('id, title, site_id, due_date, assigned_contact_id').eq('assigned_company_id', companyId).eq('status', 'open'),
     db.from('company_contacts').select('id, full_name, function').eq('company_id', companyId).is('deleted_at', null),
     // Toutes les actions (tous statuts) avec canonical_subject_id pour agréger les sujets portés.
     db.from('site_actions').select('canonical_subject_id, status, site_id').eq('assigned_company_id', companyId).not('canonical_subject_id', 'is', null),
   ])
-  const cast = (castRes.data ?? []) as Array<{ site_id: string; role: string; effective_to: string | null; effective_from: string | null; main_contact_id: string | null; source_report_id: string | null }>
+  const cast = (castRes.data ?? []) as Array<{ id: string; site_id: string; role: string; effective_to: string | null; effective_from: string | null; main_contact_id: string | null; source_report_id: string | null }>
   const act = (actRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null; assigned_contact_id: string | null }>
   const contactRows = (contactRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null }>
   const subjectAct = (subjectActRes.data ?? []) as Array<{ canonical_subject_id: string; status: string; site_id: string }>
@@ -285,7 +300,7 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   return buildCompanyFiche({
     today,
     company: { id: company.id, name: company.name, short_name: company.short_name, siret: company.siret, address: addressLine, phone: company.phone, email: company.email, website: company.website, deleted_at: company.deleted_at },
-    casting: cast.map((c) => ({ siteId: c.site_id, siteName: siteName(c.site_id), role: c.role, active: c.effective_to === null, effectiveFrom: c.effective_from, mainContactId: c.main_contact_id, source: castingSource(c) })),
+    casting: cast.map((c) => ({ id: c.id, siteId: c.site_id, siteName: siteName(c.site_id), role: c.role, active: c.effective_to === null, effectiveFrom: c.effective_from, mainContactId: c.main_contact_id, source: castingSource(c), sourceReportId: c.source_report_id })),
     actions: act.map((a) => ({
       id: a.id, title: a.title, siteId: a.site_id, siteName: siteName(a.site_id), dueDate: a.due_date,
       hasReferent: a.assigned_contact_id !== null,

@@ -106,9 +106,9 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
             const dateLabel = date ? `Mention du ${date}` : 'Date de mention inconnue'
             return (
               <FicheRow
-                key={`${r.role}-${r.effectiveFrom ?? ''}`}
+                key={`${r.role}-${r.effectiveFrom ?? ''}-${r.siteId}-${r.source?.href ?? ''}`}
                 icon={<FileText className={`h-4 w-4 ${r.active ? '' : 'opacity-50'}`} aria-hidden />}
-                label={r.role}
+                label={`${r.role} · ${r.siteName}`}
                 sub={
                   <span>
                     {dateLabel}
