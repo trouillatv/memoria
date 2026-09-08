@@ -16,10 +16,17 @@ import { HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QuestionCard, CATEGORY_TONE, CATEGORY_ICON, type ActionResult, type SitePointOption } from './NeedsYouCards'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER, type MemoriaNeedsYouCategory } from '@/lib/knowledge/tracked-point-needs-you-categories'
+import { computeQuestionPriority, MEMORIA_NEEDS_YOU_PRIORITY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-priority'
 import type { MemoriaNeedsYouCategorySummary, MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 
 type FilterValue = 'all' | MemoriaNeedsYouCategory
 type SortMode = 'importance' | 'recent'
+
+// 6E.4A.6 — Charge cognitive : n'afficher qu'un lot de cartes à la fois plutôt que toute la file
+// (une file de 152 questions rendues d'un coup est le problème signalé, pas juste un style de
+// pagination). 20 = même ordre de grandeur que le plafond WOW-2 (cap-7 très inférieur, mais ici la
+// file peut légitimement dépasser la centaine).
+const PAGE_SIZE = 20
 
 const FILTER_LABELS: Record<FilterValue, string> = {
   all: 'Tous',
@@ -31,20 +38,42 @@ const FILTER_LABELS: Record<FilterValue, string> = {
 }
 const FILTER_ORDER: FilterValue[] = ['all', ...MEMORIA_NEEDS_YOU_CATEGORY_ORDER]
 
-// La seule notion de date disponible varie par primitive source — duplicate_points n'en a
-// aucune (une paire de Points n'est pas datée), donc "Plus récent" la relègue en fin de liste.
+// Vérité temporelle (6E.4A.1) : le tri "Plus récent" doit classer par date métier (PV/visite,
+// `*DocumentEffectiveDate`) — jamais par date d'import (`sourceDate`/`createdAt`), sinon un vieux
+// PV importé aujourd'hui remonterait devant un PV récent importé la semaine dernière. La date
+// d'import ne sert qu'en repli quand la date métier est inconnue, jamais l'inverse.
+// duplicate_points reste sans date de tri : une paire de Points n'est pas une source datée.
 function questionDate(question: MemoriaNeedsYouQuestion): string | null {
   switch (question.category) {
     case 'attach_information':
     case 'confirm_trackability':
     case 'assign_resolution':
-      return question.entry.sourceDate ?? null
-    case 'clarify_evidence':
-      return question.entry.createdAt ?? null
+      return question.entry.sourceDocumentEffectiveDate ?? question.entry.sourceDate ?? null
+    case 'clarify_evidence': {
+      const firstProposal = question.entry.proposals[0] ?? null
+      return firstProposal?.documentEffectiveDate ?? firstProposal?.createdAt ?? question.entry.createdAt ?? null
+    }
     case 'duplicate_points':
     default:
       return null
   }
+}
+
+// 6E.4A.5 — Mode Dernier PV : date métier tronquée au jour, jamais l'instant complet, pour que
+// deux questions du même PV comptent comme le même "PV du DD/MM/YYYY" quel que soit l'ordre
+// d'insertion. duplicate_points reste sans date (questionDate() le dit déjà) : ces questions
+// n'apparaissent que sous "Tous les PV", jamais fabriquées sous un PV précis.
+function questionDateOnly(question: MemoriaNeedsYouQuestion): string | null {
+  const date = questionDate(question)
+  if (!date) return null
+  const parsed = Date.parse(date)
+  if (Number.isNaN(parsed)) return null
+  return new Date(parsed).toISOString().slice(0, 10)
+}
+
+function formatPvOptionDate(dateOnly: string): string {
+  const [y, m, d] = dateOnly.split('-')
+  return `${d}/${m}/${y}`
 }
 
 export function NeedsYouClient({
@@ -64,6 +93,30 @@ export function NeedsYouClient({
   const [done, setDone] = useState<Set<string>>(new Set())
   const [filter, setFilter] = useState<FilterValue>('all')
   const [sortMode, setSortMode] = useState<SortMode>('importance')
+  // 6E.4A.5 — 'all' | 'latest' | date-only (YYYY-MM-DD) sélectionnée dans le menu "PV du ...".
+  const [pvMode, setPvMode] = useState<string>('all')
+  // Figé au montage : le tri "Plus important" n'a pas besoin de suivre l'horloge seconde par
+  // seconde, seulement de ne pas rappeler Date.now() à chaque re-render (recency à 30 jours).
+  const [nowMs] = useState(() => Date.now())
+  // 6E.4A.6 — combien de cartes de `sorted` sont effectivement rendues. Remis à PAGE_SIZE dès que
+  // filtre/tri/PV change (setFilter/setSortMode/setPvMode enveloppés ci-dessous), sinon un lot
+  // affiché sous un ancien filtre resterait affiché après un changement de sélection.
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+
+  function updateFilter(next: FilterValue) {
+    setFilter(next)
+    setVisibleCount(PAGE_SIZE)
+  }
+
+  function updateSortMode(next: SortMode) {
+    setSortMode(next)
+    setVisibleCount(PAGE_SIZE)
+  }
+
+  function updatePvMode(next: string) {
+    setPvMode(next)
+    setVisibleCount(PAGE_SIZE)
+  }
 
   const remaining = questions.filter((q) => !done.has(q.id))
 
@@ -81,9 +134,39 @@ export function NeedsYouClient({
 
   const filteredQuestions = filter === 'all' ? remaining : remaining.filter((q) => q.category === filter)
 
+  // 6E.4A.5 — dates distinctes calculées sur `remaining` (pas `filteredQuestions`) : le menu PV
+  // reste stable quel que soit le filtre catégorie actif, pour ne pas faire disparaître une option
+  // déjà sélectionnée quand on change de catégorie. Le plus récent en tête.
+  const distinctPvDates = useMemo(() => {
+    const set = new Set<string>()
+    for (const q of remaining) {
+      const d = questionDateOnly(q)
+      if (d) set.add(d)
+    }
+    return [...set].sort((a, b) => b.localeCompare(a))
+  }, [remaining])
+  const latestPvDate = distinctPvDates[0] ?? null
+  const olderPvDates = distinctPvDates.slice(1)
+
+  const pvFilteredQuestions = useMemo(() => {
+    if (pvMode === 'all') return filteredQuestions
+    const targetDate = pvMode === 'latest' ? latestPvDate : pvMode
+    if (!targetDate) return filteredQuestions
+    return filteredQuestions.filter((q) => questionDateOnly(q) === targetDate)
+  }, [filteredQuestions, pvMode, latestPvDate])
+
   const sorted = useMemo(() => {
-    if (sortMode === 'importance') return filteredQuestions
-    return [...filteredQuestions].sort((a, b) => {
+    if (sortMode === 'importance') {
+      // Tri réel (6E.4A.4) : ordre de palier calculé par computeQuestionPriority, jamais un score
+      // additionné. Array.prototype.sort est stable (ES2019+) : à palier égal, l'ordre d'origine
+      // (déjà déterministe côté serveur) est conservé — pas de départage supplémentaire nécessaire.
+      return [...pvFilteredQuestions].sort(
+        (a, b) =>
+          MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(a, nowMs)) -
+          MEMORIA_NEEDS_YOU_PRIORITY_ORDER.indexOf(computeQuestionPriority(b, nowMs)),
+      )
+    }
+    return [...pvFilteredQuestions].sort((a, b) => {
       const da = questionDate(a)
       const db = questionDate(b)
       if (da && db) return db.localeCompare(da)
@@ -91,7 +174,10 @@ export function NeedsYouClient({
       if (db) return 1
       return 0
     })
-  }, [filteredQuestions, sortMode])
+  }, [pvFilteredQuestions, sortMode, nowMs])
+
+  const visibleQuestions = sorted.slice(0, visibleCount)
+  const remainingToShow = sorted.length - visibleQuestions.length
 
   function runActionFor(questionId: string) {
     return (action: () => Promise<ActionResult>) => {
@@ -148,7 +234,7 @@ export function NeedsYouClient({
                 <button
                   key={f}
                   type="button"
-                  onClick={() => setFilter(f)}
+                  onClick={() => updateFilter(f)}
                   className={cn(
                     'rounded-full border px-2.5 py-1 text-xs font-medium',
                     active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
@@ -164,7 +250,7 @@ export function NeedsYouClient({
               <button
                 key={mode}
                 type="button"
-                onClick={() => setSortMode(mode)}
+                onClick={() => updateSortMode(mode)}
                 className={cn(
                   'rounded-full border px-2.5 py-1 text-xs font-medium',
                   sortMode === mode ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
@@ -176,8 +262,37 @@ export function NeedsYouClient({
           </div>
         </div>
 
+        {/* 6E.4A.5 — Mode Dernier PV : n'apparaît que si au moins une question porte une date
+            métier (duplicate_points seules ne l'affiche jamais, rien à filtrer par PV). */}
+        {distinctPvDates.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <label htmlFor="pv-mode" className="text-xs text-muted-foreground">
+              Période
+            </label>
+            <select
+              id="pv-mode"
+              value={pvMode}
+              onChange={(e) => updatePvMode(e.target.value)}
+              className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              <option value="all">Tous les PV</option>
+              {latestPvDate && <option value="latest">Dernier PV ({formatPvOptionDate(latestPvDate)})</option>}
+              {olderPvDates.map((d) => (
+                <option key={d} value={d}>
+                  PV du {formatPvOptionDate(d)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="space-y-3">
-          {sorted.map((q) => (
+          {sorted.length === 0 && (
+            <div className="rounded-2xl border border-dashed bg-card/50 px-4 py-6 text-center">
+              <p className="text-sm text-muted-foreground">Rien à clarifier pour cette sélection.</p>
+            </div>
+          )}
+          {visibleQuestions.map((q) => (
             <QuestionCard
               key={q.id}
               question={q}
@@ -185,10 +300,28 @@ export function NeedsYouClient({
               pending={pending.has(q.id)}
               error={errors[q.id]}
               sitePoints={sitePoints}
+              priority={computeQuestionPriority(q, nowMs)}
               runAction={runActionFor(q.id)}
             />
           ))}
         </div>
+
+        {/* 6E.4A.6 — pagination progressive : n'apparaît que si la file dépasse un lot (auto-absent
+            sous PAGE_SIZE questions, donc invisible dans l'immense majorité des chantiers). */}
+        {remainingToShow > 0 && (
+          <div className="flex flex-col items-center gap-2 pt-2">
+            <p className="text-xs text-muted-foreground">
+              {visibleQuestions.length} affichées sur {sorted.length}
+            </p>
+            <button
+              type="button"
+              onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+              className="rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground"
+            >
+              Afficher {Math.min(PAGE_SIZE, remainingToShow)} de plus
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Panneau récapitulatif — même ton/structure que la bannière Aperçu (violet-50/50,
@@ -213,7 +346,7 @@ export function NeedsYouClient({
               <li key={c}>
                 <button
                   type="button"
-                  onClick={() => setFilter(active ? 'all' : c)}
+                  onClick={() => updateFilter(active ? 'all' : c)}
                   className={cn(
                     'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12.5px] transition-colors',
                     active ? 'bg-white dark:bg-violet-900/30' : 'hover:bg-white/60 dark:hover:bg-violet-900/20',
@@ -222,7 +355,7 @@ export function NeedsYouClient({
                   <span className={cn('flex h-5 w-5 shrink-0 items-center justify-center rounded-full', tone.iconBg)}>
                     <Icon className={cn('h-3 w-3', tone.iconText)} />
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-foreground/90">{MEMORIA_NEEDS_YOU_CATEGORY_LABELS[c]}</span>
+                  <span className="min-w-0 flex-1 text-foreground/90">{MEMORIA_NEEDS_YOU_CATEGORY_LABELS[c]}</span>
                   <span className="shrink-0 text-[11px] font-semibold tabular-nums text-muted-foreground">{counts[c]}</span>
                 </button>
               </li>

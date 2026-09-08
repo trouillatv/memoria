@@ -25,6 +25,8 @@ export type EvidenceScopeCandidateProposal = {
   documentId: string | null
   documentFilename: string | null
   documentType: string | null
+  documentEffectiveDate: string | null
+  sourcePage: number | null
   createdAt: string | null
   alreadySelected: false
 }
@@ -111,14 +113,14 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
-    .select('id, subject_thread_id, proposal_family, label, document_status, document_id, created_at')
+    .select('id, subject_thread_id, proposal_family, label, document_status, document_id, source_page, created_at')
     .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
   if (propErr) throw propErr
 
   const documentIds = [...new Set((rawProposals ?? []).map((p) => p.document_id).filter((id): id is string => !!id))]
   const { data: rawDocuments, error: docErr } = await db
     .from('documents')
-    .select('id, filename, document_type')
+    .select('id, filename, document_type, effective_date')
     .in('id', documentIds.length > 0 ? documentIds : [NIL_UUID])
   if (docErr) throw docErr
   const documentsById = new Map((rawDocuments ?? []).map((d) => [d.id, d]))
@@ -135,6 +137,8 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
       documentId: p.document_id,
       documentFilename: doc?.filename ?? null,
       documentType: doc?.document_type ?? null,
+      documentEffectiveDate: doc?.effective_date ?? null,
+      sourcePage: p.source_page ?? null,
       createdAt: p.created_at,
       alreadySelected: false,
     })

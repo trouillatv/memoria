@@ -64,6 +64,40 @@ export type MemoriaNeedsYouSummary = {
   totalCount: number
   categories: MemoriaNeedsYouCategorySummary[]
   questions: MemoriaNeedsYouQuestion[]
+  // 6E.4A.5 — split "dernier PV / historique" pour la bannière Aperçu (jamais un total brut).
+  // latestPvDate = date métier (jour, sans heure) la plus récente parmi les questions datées ;
+  // null si aucune question de la file n'a de date métier (ex. file uniquement duplicate_points).
+  latestPvDate: string | null
+  latestPvCount: number
+  historicalCount: number
+}
+
+// businessDateOnlyOf : même règle 6E.4A.1 que questionDate() (NeedsYouClient.tsx) et
+// businessDateOf() (tracked-point-needs-you-priority.ts) — date métier prioritaire, date d'import
+// en repli, dupliquée volontairement (convention déjà établie : chaque module reste sans
+// dépendance croisée). Tronquée au jour (YYYY-MM-DD) : deux questions du même PV mais insérées à
+// des instants différents doivent compter comme le même "dernier PV".
+function businessDateOnlyOf(question: MemoriaNeedsYouQuestion): string | null {
+  let date: string | null
+  switch (question.category) {
+    case 'attach_information':
+    case 'confirm_trackability':
+    case 'assign_resolution':
+      date = question.entry.sourceDocumentEffectiveDate ?? question.entry.sourceDate ?? null
+      break
+    case 'clarify_evidence': {
+      const firstProposal = question.entry.proposals[0] ?? null
+      date = firstProposal?.documentEffectiveDate ?? firstProposal?.createdAt ?? question.entry.createdAt ?? null
+      break
+    }
+    case 'duplicate_points':
+    default:
+      date = null
+  }
+  if (!date) return null
+  const parsed = Date.parse(date)
+  if (Number.isNaN(parsed)) return null
+  return new Date(parsed).toISOString().slice(0, 10)
 }
 
 // buildMemoriaNeedsYouSummary : pur. N'accepte que les 5 queues déjà chargées par l'appelant —
@@ -94,7 +128,19 @@ export function buildMemoriaNeedsYouSummary(
     count: questions.filter((q) => q.category === category).length,
   }))
 
-  return { siteId, totalCount: questions.length, categories, questions }
+  const dates = questions.map(businessDateOnlyOf).filter((d): d is string => d !== null)
+  const latestPvDate = dates.length > 0 ? dates.reduce((max, d) => (d > max ? d : max)) : null
+  const latestPvCount = latestPvDate ? questions.filter((q) => businessDateOnlyOf(q) === latestPvDate).length : 0
+
+  return {
+    siteId,
+    totalCount: questions.length,
+    categories,
+    questions,
+    latestPvDate,
+    latestPvCount,
+    historicalCount: questions.length - latestPvCount,
+  }
 }
 
 export async function loadMemoriaNeedsYouSummary(siteId: string): Promise<MemoriaNeedsYouSummary> {

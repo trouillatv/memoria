@@ -59,6 +59,8 @@ export type TraceIdentityTarget = {
   identityStatus: PointReadModelEntry['identityStatus'] | null
   derivedState: PointReadModelEntry['derivedState'] | null
   subject: PointReadModelEntry['ownerCanonicalSubjectId']
+  subjectLabel: string | null
+  latestMeaningfulEventAt: string | null
   cboCount: number
   hardMemberCount: number
   actionability: TraceIdentityTargetActionability
@@ -75,6 +77,8 @@ export type TraceIdentitySourceProposal = {
   documentId: string | null
   documentFilename: string | null
   documentType: string | null
+  documentEffectiveDate: string | null
+  sourcePage: number | null
   createdAt: string | null
 }
 
@@ -90,6 +94,8 @@ export type TraceIdentitySourceEntry = {
   sourceDocumentId: string | null
   sourceDocumentFilename: string | null
   sourceDocumentType: string | null
+  sourceDocumentEffectiveDate: string | null
+  sourcePage: number | null
   sourceDate: string | null
   targets: TraceIdentityTarget[]
   targetCount: number
@@ -144,6 +150,7 @@ export function buildTraceIdentityQueue(
   famillesByThreadId: Map<string, string[]>,
   pointDetailsById: Map<string, PointReadModelEntry>,
   proposalsByThreadId: Map<string, TraceIdentitySourceProposal[]>,
+  subjectLabelBySubjectId: Map<string, string | null>,
 ): TraceIdentityQueue {
   const bySource = new Map<string, TraceScopeCandidateInput[]>()
   for (const c of candidates) {
@@ -164,6 +171,7 @@ export function buildTraceIdentityQueue(
 
       const pointDetail = pointDetailsById.get(classification.canonicalTargetId ?? candidate.candidatePointId)
       const { actionability, blockerReason } = deriveActionability(classification, candidate)
+      const targetSubjectId = pointDetail?.ownerCanonicalSubjectId ?? null
 
       targets.push({
         candidateId: candidate.id,
@@ -173,7 +181,9 @@ export function buildTraceIdentityQueue(
         label: pointDetail?.label ?? null,
         identityStatus: pointDetail?.identityStatus ?? null,
         derivedState: pointDetail?.derivedState ?? null,
-        subject: pointDetail?.ownerCanonicalSubjectId ?? null,
+        subject: targetSubjectId,
+        subjectLabel: targetSubjectId ? (subjectLabelBySubjectId.get(targetSubjectId) ?? null) : null,
+        latestMeaningfulEventAt: pointDetail?.latestMeaningfulEventAt ?? null,
         cboCount: pointDetail?.cboIds.length ?? 0,
         hardMemberCount: pointDetail?.hardMemberThreadIds.length ?? 0,
         actionability,
@@ -210,6 +220,8 @@ export function buildTraceIdentityQueue(
       sourceDocumentId: firstProposal?.documentId ?? null,
       sourceDocumentFilename: firstProposal?.documentFilename ?? null,
       sourceDocumentType: firstProposal?.documentType ?? null,
+      sourceDocumentEffectiveDate: firstProposal?.documentEffectiveDate ?? null,
+      sourcePage: firstProposal?.sourcePage ?? null,
       sourceDate: firstProposal?.createdAt ?? null,
       targets,
       targetCount: targets.length,
@@ -277,7 +289,7 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
-    .select('id, subject_thread_id, proposal_family, label, document_id, created_at')
+    .select('id, subject_thread_id, proposal_family, label, document_id, source_page, created_at')
     .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
   if (propErr) throw propErr
 
@@ -291,7 +303,7 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
   const documentIds = [...new Set((rawProposals ?? []).map((p) => p.document_id).filter((id): id is string => !!id))]
   const { data: rawDocuments, error: docErr } = await db
     .from('documents')
-    .select('id, filename, document_type')
+    .select('id, filename, document_type, effective_date')
     .in('id', documentIds.length > 0 ? documentIds : [NIL_UUID])
   if (docErr) throw docErr
   const documentsById = new Map((rawDocuments ?? []).map((d) => [d.id, d]))
@@ -307,6 +319,8 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
       documentId: p.document_id,
       documentFilename: doc?.filename ?? null,
       documentType: doc?.document_type ?? null,
+      documentEffectiveDate: doc?.effective_date ?? null,
+      sourcePage: p.source_page ?? null,
       createdAt: p.created_at,
     })
     proposalsByThreadId.set(p.subject_thread_id, list)
@@ -315,5 +329,27 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
   const { points: pointReadModelEntries } = await loadTrackedPointReadModel(siteId)
   const pointDetailsById = new Map(pointReadModelEntries.map((p) => [p.id, p]))
 
-  return buildTraceIdentityQueue(siteId, candidates, points, members, famillesByThreadId, pointDetailsById, proposalsByThreadId)
+  const targetSubjectIds = [
+    ...new Set(pointReadModelEntries.map((p) => p.ownerCanonicalSubjectId).filter((id): id is string => !!id)),
+  ]
+  const subjectLabelBySubjectId = new Map<string, string | null>()
+  if (targetSubjectIds.length > 0) {
+    const { data: rawSubjects, error: subjErr } = await db
+      .from('canonical_subject')
+      .select('id, label')
+      .in('id', targetSubjectIds)
+    if (subjErr) throw subjErr
+    for (const s of rawSubjects ?? []) subjectLabelBySubjectId.set(s.id, s.label)
+  }
+
+  return buildTraceIdentityQueue(
+    siteId,
+    candidates,
+    points,
+    members,
+    famillesByThreadId,
+    pointDetailsById,
+    proposalsByThreadId,
+    subjectLabelBySubjectId,
+  )
 }

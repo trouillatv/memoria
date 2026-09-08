@@ -19,7 +19,19 @@ import type { EvidenceScopeQueue, EvidenceScopeQueueEntry } from '@/lib/knowledg
 const SITE_ID = 'site-1'
 
 function pointSide(id: string): ConsolidationQueuePointSide {
-  return { id, label: `point ${id}`, status: 'active', identityStatus: 'PROVISIONAL', cboCount: 0, hardMemberCount: 0 }
+  return {
+    id,
+    label: `point ${id}`,
+    status: 'active',
+    identityStatus: 'PROVISIONAL',
+    derivedState: null,
+    subjectId: null,
+    subjectLabel: null,
+    firstAppearanceAt: null,
+    lastAppearanceAt: null,
+    cboCount: 0,
+    hardMemberCount: 0,
+  }
 }
 
 function consolidationQueue(entries: ConsolidationQueueEntry[]): ConsolidationQueue {
@@ -53,6 +65,8 @@ function traceIdentityEntry(sourceKey: string): TraceIdentitySourceEntry {
     sourceDocumentId: null,
     sourceDocumentFilename: null,
     sourceDocumentType: null,
+    sourceDocumentEffectiveDate: null,
+    sourcePage: null,
     sourceDate: null,
     targets: [],
     targetCount: 1,
@@ -64,7 +78,11 @@ function trackabilityQueue(entries: PendingTrackabilityQueueEntry[]): PendingTra
   return { siteId: SITE_ID, entries, totalEntries: entries.length, excludedAlreadyTracked: [] }
 }
 
-function trackabilityEntry(pendingTraceId: string, actionable: boolean): PendingTrackabilityQueueEntry {
+function trackabilityEntry(
+  pendingTraceId: string,
+  actionable: boolean,
+  overrides: Partial<PendingTrackabilityQueueEntry> = {},
+): PendingTrackabilityQueueEntry {
   return {
     pendingTraceId,
     sourceThreadId: pendingTraceId,
@@ -76,10 +94,13 @@ function trackabilityEntry(pendingTraceId: string, actionable: boolean): Pending
     evidenceStatus: actionable ? 'resolved' : 'unresolved',
     evidenceProposalIds: actionable ? ['prop-1'] : [],
     sourceLabel: null,
+    sourceDocumentEffectiveDate: null,
+    sourcePage: null,
     sourceDate: null,
     sourceDocumentId: null,
     sourceDocumentFilename: null,
     actionable,
+    ...overrides,
   }
 }
 
@@ -87,7 +108,11 @@ function resolutionQueue(entries: PendingResolutionQueueEntry[]): PendingResolut
   return { siteId: SITE_ID, entries, totalEntries: entries.length, excludedAlreadyConsumed: [] }
 }
 
-function resolutionEntry(pendingTraceId: string, actionable: boolean): PendingResolutionQueueEntry {
+function resolutionEntry(
+  pendingTraceId: string,
+  actionable: boolean,
+  overrides: Partial<PendingResolutionQueueEntry> = {},
+): PendingResolutionQueueEntry {
   return {
     pendingTraceId,
     sourceThreadId: pendingTraceId,
@@ -95,6 +120,8 @@ function resolutionEntry(pendingTraceId: string, actionable: boolean): PendingRe
     evidenceBasis: actionable ? 'human_selected' : null,
     evidenceProposalIds: actionable ? ['prop-1'] : [],
     sourceLabel: null,
+    sourceDocumentEffectiveDate: null,
+    sourcePage: null,
     sourceDate: null,
     sourceDocumentId: null,
     sourceDocumentFilename: null,
@@ -102,6 +129,7 @@ function resolutionEntry(pendingTraceId: string, actionable: boolean): PendingRe
     sameSubjectSuggestions: [],
     targetingMode: actionable ? 'SEARCH_REQUIRED' : 'EVIDENCE_SCOPE_UNRESOLVED',
     actionable,
+    ...overrides,
   }
 }
 
@@ -182,5 +210,27 @@ describe('buildMemoriaNeedsYouSummary', () => {
     expect(summary.categories).toHaveLength(5)
     expect(summary.categories.every((c) => c.count === 0)).toBe(true)
     expect(summary.questions).toEqual([])
+    expect(summary.latestPvDate).toBeNull()
+    expect(summary.latestPvCount).toBe(0)
+    expect(summary.historicalCount).toBe(0)
+  })
+
+  it('6E.4A.5 — latestPvDate/latestPvCount/historicalCount : split dernier PV vs historique, jamais un total brut', () => {
+    const summary = buildMemoriaNeedsYouSummary(
+      SITE_ID,
+      consolidationQueue([consolidationEntry('pair-1')]), // sans date : compte dans historicalCount
+      traceIdentityQueue([]),
+      trackabilityQueue([trackabilityEntry('trace-1', true, { sourceDocumentEffectiveDate: '2026-03-01' })]),
+      resolutionQueue([
+        resolutionEntry('trace-2', true, { sourceDocumentEffectiveDate: '2026-03-01' }), // même jour, même dernier PV
+        resolutionEntry('trace-3', true, { sourceDocumentEffectiveDate: '2026-02-01' }), // PV plus ancien
+      ]),
+      evidenceScopeQueue([]),
+    )
+
+    expect(summary.totalCount).toBe(4)
+    expect(summary.latestPvDate).toBe('2026-03-01')
+    expect(summary.latestPvCount).toBe(2) // trace-1 + trace-2, même date métier
+    expect(summary.historicalCount).toBe(2) // pair-1 (sans date) + trace-3 (PV plus ancien)
   })
 })

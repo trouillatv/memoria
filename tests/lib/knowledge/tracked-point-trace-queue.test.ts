@@ -81,6 +81,8 @@ function proposal(id: string, overrides: Partial<TraceIdentitySourceProposal> = 
     documentId: null,
     documentFilename: null,
     documentType: null,
+    documentEffectiveDate: null,
+    sourcePage: null,
     createdAt: '2026-02-01T00:00:00Z',
     ...overrides,
   }
@@ -94,7 +96,7 @@ describe('buildTraceIdentityQueue', () => {
     const famillesByThreadId = new Map([['T1', ['observation']]])
     const proposalsByThreadId = new Map([['T1', [proposal('p1')]]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, proposalsByThreadId)
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, proposalsByThreadId, new Map())
 
     expect(queue.totalSources).toBe(1)
     expect(queue.entries).toHaveLength(1)
@@ -114,7 +116,7 @@ describe('buildTraceIdentityQueue', () => {
     const candidates = [candidate('c1', 'A', 'T2'), candidate('c2', 'B', 'T2'), candidate('c3', 'C', 'T2')]
     const famillesByThreadId = new Map([['T2', ['observation']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(1)
     expect(queue.entries[0].targetCount).toBe(3)
@@ -130,7 +132,7 @@ describe('buildTraceIdentityQueue', () => {
     const members = [member('A', 'T3', { scope: 'thread' })]
     const famillesByThreadId = new Map([['T3', ['observation']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, members, famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, members, famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(0)
     expect(queue.totalSources).toBe(0)
@@ -147,7 +149,7 @@ describe('buildTraceIdentityQueue', () => {
     const candidates = [candidate('c2', 'B', 'T4')]
     const famillesByThreadId = new Map([['T4', ['observation']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(1)
     expect(queue.entries[0].targetCount).toBe(1)
@@ -163,7 +165,7 @@ describe('buildTraceIdentityQueue', () => {
     const candidates = [candidate('c1', 'A', 'T5', { createdAt: '2026-02-01T00:00:00Z' })]
     const famillesByThreadId = new Map([['T5', ['observation']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(0)
   })
@@ -177,7 +179,7 @@ describe('buildTraceIdentityQueue', () => {
     const candidates = [candidate('c1', 'A', 'T6', { createdAt: '2026-02-01T00:00:00Z' })]
     const famillesByThreadId = new Map([['T6', ['observation']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(0)
   })
@@ -191,7 +193,7 @@ describe('buildTraceIdentityQueue', () => {
     const candidates = [candidate('c1', 'A', 'T7')]
     const famillesByThreadId = new Map([['T7', ['observation']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(1)
     const target = queue.entries[0].targets[0]
@@ -207,7 +209,7 @@ describe('buildTraceIdentityQueue', () => {
     const candidates = [candidate('c1', 'A', 'T8')]
     const famillesByThreadId = new Map([['T8', ['action', 'decision']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(1)
     const target = queue.entries[0].targets[0]
@@ -228,7 +230,7 @@ describe('buildTraceIdentityQueue', () => {
     ]
     const famillesByThreadId = new Map([['T9', ['action', 'decision']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(1)
     const entry = queue.entries[0]
@@ -245,7 +247,7 @@ describe('buildTraceIdentityQueue', () => {
     const candidates = [candidate('c1', 'GHOST', 'T10')]
     const famillesByThreadId = new Map([['T10', ['observation']]])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, new Map(), new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, new Map(), new Map(), new Map())
 
     expect(queue.entries).toHaveLength(1)
     expect(queue.entries[0].targets[0].actionability).toBe('TARGET_MISSING')
@@ -271,7 +273,7 @@ describe('buildTraceIdentityQueue', () => {
       ['T12', ['observation']],
     ])
 
-    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map())
+    const queue = buildTraceIdentityQueue('site-1', candidates, points, [], famillesByThreadId, details, new Map(), new Map())
 
     expect(queue.entries).toHaveLength(1)
     expect(queue.entries[0].sourceThreadId).toBe('T12')
@@ -279,7 +281,7 @@ describe('buildTraceIdentityQueue', () => {
   })
 
   it('file vide : totalSources=0, totalTargets=0', () => {
-    const queue = buildTraceIdentityQueue('site-1', [], [], [], new Map(), new Map(), new Map())
+    const queue = buildTraceIdentityQueue('site-1', [], [], [], new Map(), new Map(), new Map(), new Map())
     expect(queue.totalSources).toBe(0)
     expect(queue.totalTargets).toBe(0)
     expect(queue.entries).toEqual([])

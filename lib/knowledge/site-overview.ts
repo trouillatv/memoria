@@ -463,6 +463,9 @@ export function emptySiteOverview(siteId = ''): SiteOverview {
       totalCount: 0,
       categories: MEMORIA_NEEDS_YOU_CATEGORY_ORDER.map((category) => ({ category, label: MEMORIA_NEEDS_YOU_CATEGORY_LABELS[category], count: 0 })),
       questions: [],
+      latestPvDate: null,
+      latestPvCount: 0,
+      historicalCount: 0,
     },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
@@ -615,6 +618,9 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
     totalCount: 0,
     categories: MEMORIA_NEEDS_YOU_CATEGORY_ORDER.map((category) => ({ category, label: MEMORIA_NEEDS_YOU_CATEGORY_LABELS[category], count: 0 })),
     questions: [],
+    latestPvDate: null,
+    latestPvCount: 0,
+    historicalCount: 0,
   }))
 
   // ── Actions : proposé (projection) + validé (site_actions actives) ──

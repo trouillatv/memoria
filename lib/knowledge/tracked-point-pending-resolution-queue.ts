@@ -46,6 +46,9 @@ export type PendingResolutionPointRef = {
   label: string | null
   identityStatus: PointReadModelEntry['identityStatus'] | null
   derivedState: PointReadModelEntry['derivedState'] | null
+  subjectId: string | null
+  subjectLabel: string | null
+  latestMeaningfulEventAt: string | null
 }
 
 export type PendingResolutionKnownTarget = PendingResolutionPointRef & { candidateId: string }
@@ -61,6 +64,8 @@ export type PendingResolutionQueueEntry = {
   sourceDate: string | null
   sourceDocumentId: string | null
   sourceDocumentFilename: string | null
+  sourceDocumentEffectiveDate: string | null
+  sourcePage: number | null
   knownIdentityTargets: PendingResolutionKnownTarget[]
   sameSubjectSuggestions: PendingResolutionSubjectSuggestion[]
   targetingMode: PendingResolutionTargetingMode
@@ -86,16 +91,26 @@ export type PendingResolutionSourceProposal = {
   label: string | null
   documentId: string | null
   documentFilename: string | null
+  documentEffectiveDate: string | null
+  sourcePage: number | null
   createdAt: string | null
 }
 
-function toPointRef(pointId: string, pointDetailsById: Map<string, PointReadModelEntry>): PendingResolutionPointRef {
+function toPointRef(
+  pointId: string,
+  pointDetailsById: Map<string, PointReadModelEntry>,
+  subjectLabelBySubjectId: Map<string, string | null>,
+): PendingResolutionPointRef {
   const detail = pointDetailsById.get(pointId)
+  const subjectId = detail?.ownerCanonicalSubjectId ?? null
   return {
     pointId,
     label: detail?.label ?? null,
     identityStatus: detail?.identityStatus ?? null,
     derivedState: detail?.derivedState ?? null,
+    subjectId,
+    subjectLabel: subjectId ? (subjectLabelBySubjectId.get(subjectId) ?? null) : null,
+    latestMeaningfulEventAt: detail?.latestMeaningfulEventAt ?? null,
   }
 }
 
@@ -131,6 +146,7 @@ export function buildPendingResolutionQueue(
   sameSubjectPointIdsByThread: Map<string, string[]>,
   alreadyConsumedThreadIds: Set<string>,
   pointDetailsById: Map<string, PointReadModelEntry>,
+  subjectLabelBySubjectId: Map<string, string | null>,
 ): PendingResolutionQueue {
   const entries: PendingResolutionQueueEntry[] = []
   const excludedAlreadyConsumed: string[] = []
@@ -147,10 +163,10 @@ export function buildPendingResolutionQueue(
 
     const knownIdentityTargets: PendingResolutionKnownTarget[] = knownRaw.map((k) => ({
       candidateId: k.candidateId,
-      ...toPointRef(k.pointId, pointDetailsById),
+      ...toPointRef(k.pointId, pointDetailsById, subjectLabelBySubjectId),
     }))
     const sameSubjectSuggestions: PendingResolutionSubjectSuggestion[] = sameSubjectRaw.map((pointId) =>
-      toPointRef(pointId, pointDetailsById),
+      toPointRef(pointId, pointDetailsById, subjectLabelBySubjectId),
     )
 
     const { targetingMode, actionable } = resolveTargetingMode(
@@ -173,6 +189,8 @@ export function buildPendingResolutionQueue(
       sourceDate: firstProposal?.createdAt ?? null,
       sourceDocumentId: firstProposal?.documentId ?? null,
       sourceDocumentFilename: firstProposal?.documentFilename ?? null,
+      sourceDocumentEffectiveDate: firstProposal?.documentEffectiveDate ?? null,
+      sourcePage: firstProposal?.sourcePage ?? null,
       knownIdentityTargets,
       sameSubjectSuggestions,
       targetingMode,
@@ -220,26 +238,29 @@ export async function loadPendingResolutionQueue(siteId: string): Promise<Pendin
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
-    .select('id, subject_thread_id, label, document_id, created_at')
+    .select('id, subject_thread_id, label, document_id, source_page, created_at')
     .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
   if (propErr) throw propErr
 
   const documentIds = [...new Set((rawProposals ?? []).map((p) => p.document_id).filter((id): id is string => !!id))]
   const { data: rawDocuments, error: docErr } = await db
     .from('documents')
-    .select('id, filename')
+    .select('id, filename, effective_date')
     .in('id', documentIds.length > 0 ? documentIds : [NIL_UUID])
   if (docErr) throw docErr
   const documentsById = new Map((rawDocuments ?? []).map((d) => [d.id, d]))
 
   const sourceProposalsByThread = new Map<string, PendingResolutionSourceProposal[]>()
   for (const p of rawProposals ?? []) {
+    const doc = p.document_id ? documentsById.get(p.document_id) : undefined
     const list = sourceProposalsByThread.get(p.subject_thread_id) ?? []
     list.push({
       id: p.id,
       label: p.label,
       documentId: p.document_id,
-      documentFilename: p.document_id ? (documentsById.get(p.document_id)?.filename ?? null) : null,
+      documentFilename: doc?.filename ?? null,
+      documentEffectiveDate: doc?.effective_date ?? null,
+      sourcePage: p.source_page ?? null,
       createdAt: p.created_at,
     })
     sourceProposalsByThread.set(p.subject_thread_id, list)
@@ -274,6 +295,19 @@ export async function loadPendingResolutionQueue(siteId: string): Promise<Pendin
 
   const { points: pointReadModelEntries } = await loadTrackedPointReadModel(siteId)
   const pointDetailsById = new Map(pointReadModelEntries.map((p) => [p.id, p]))
+
+  const allSubjectIds = [
+    ...new Set(pointReadModelEntries.map((p) => p.ownerCanonicalSubjectId).filter((id): id is string => !!id)),
+  ]
+  const subjectLabelBySubjectId = new Map<string, string | null>()
+  if (allSubjectIds.length > 0) {
+    const { data: rawSubjects, error: subjErr } = await db
+      .from('canonical_subject')
+      .select('id, label')
+      .in('id', allSubjectIds)
+    if (subjErr) throw subjErr
+    for (const s of rawSubjects ?? []) subjectLabelBySubjectId.set(s.id, s.label)
+  }
 
   const activePointsBySubject = new Map<string, string[]>()
   for (const p of pointReadModelEntries) {
@@ -320,5 +354,6 @@ export async function loadPendingResolutionQueue(siteId: string): Promise<Pendin
     sameSubjectPointIdsByThread,
     alreadyConsumedThreadIds,
     pointDetailsById,
+    subjectLabelBySubjectId,
   )
 }

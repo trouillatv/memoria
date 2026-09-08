@@ -68,7 +68,7 @@ function makeOverview(overrides: Partial<SiteOverview> = {}): SiteOverview {
     },
     actionsPilotage: { subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 },
     reservesPilotage: { subjectsWithReserves: 0, durableReserves: 0, occurrences: 0 },
-    memoriaNeedsYou: { siteId: 'site-1', totalCount: 0, categories: [], questions: [] },
+    memoriaNeedsYou: { siteId: 'site-1', totalCount: 0, categories: [], questions: [], latestPvDate: null, latestPvCount: 0, historicalCount: 0 },
     attention: { level: 'calm', reasons: [] },
     nextEvent: null,
     recentChanges: [],

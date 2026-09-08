@@ -41,6 +41,8 @@ export type PendingTrackabilityQueueEntry = {
   sourceDate: string | null
   sourceDocumentId: string | null
   sourceDocumentFilename: string | null
+  sourceDocumentEffectiveDate: string | null
+  sourcePage: number | null
   actionable: boolean
 }
 
@@ -65,6 +67,8 @@ export type PendingTrackabilitySourceProposal = {
   label: string | null
   documentId: string | null
   documentFilename: string | null
+  documentEffectiveDate: string | null
+  sourcePage: number | null
   createdAt: string | null
 }
 
@@ -112,6 +116,8 @@ export function buildPendingTrackabilityQueue(
       sourceDate: firstProposal?.createdAt ?? null,
       sourceDocumentId: firstProposal?.documentId ?? null,
       sourceDocumentFilename: firstProposal?.documentFilename ?? null,
+      sourceDocumentEffectiveDate: firstProposal?.documentEffectiveDate ?? null,
+      sourcePage: firstProposal?.sourcePage ?? null,
       actionable,
     })
   }
@@ -158,26 +164,29 @@ export async function loadPendingTrackabilityQueue(siteId: string): Promise<Pend
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
-    .select('id, subject_thread_id, label, document_id, created_at')
+    .select('id, subject_thread_id, label, document_id, source_page, created_at')
     .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
   if (propErr) throw propErr
 
   const documentIds = [...new Set((rawProposals ?? []).map((p) => p.document_id).filter((id): id is string => !!id))]
   const { data: rawDocuments, error: docErr } = await db
     .from('documents')
-    .select('id, filename')
+    .select('id, filename, effective_date')
     .in('id', documentIds.length > 0 ? documentIds : [NIL_UUID])
   if (docErr) throw docErr
   const documentsById = new Map((rawDocuments ?? []).map((d) => [d.id, d]))
 
   const sourceProposalsByThread = new Map<string, PendingTrackabilitySourceProposal[]>()
   for (const p of rawProposals ?? []) {
+    const doc = p.document_id ? documentsById.get(p.document_id) : undefined
     const list = sourceProposalsByThread.get(p.subject_thread_id) ?? []
     list.push({
       id: p.id,
       label: p.label,
       documentId: p.document_id,
-      documentFilename: p.document_id ? (documentsById.get(p.document_id)?.filename ?? null) : null,
+      documentFilename: doc?.filename ?? null,
+      documentEffectiveDate: doc?.effective_date ?? null,
+      sourcePage: p.source_page ?? null,
       createdAt: p.created_at,
     })
     sourceProposalsByThread.set(p.subject_thread_id, list)

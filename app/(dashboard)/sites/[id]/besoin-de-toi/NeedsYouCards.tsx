@@ -14,6 +14,7 @@ import { CheckCircle2, Copy, FileSearch, HelpCircle, Link2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, type MemoriaNeedsYouCategory } from '@/lib/knowledge/tracked-point-needs-you-categories'
+import { MEMORIA_NEEDS_YOU_PRIORITY_LABEL, type MemoriaNeedsYouPriority } from '@/lib/knowledge/tracked-point-needs-you-priority'
 
 // Palette réutilisée telle quelle depuis MemoryReviewPanel.KIND_TONE (border-*-200 bg-*-50
 // text-*-700) — aucune nouvelle couleur, simple ré-application par catégorie 6E.4A pour que
@@ -34,6 +35,23 @@ export const CATEGORY_ICON: Record<MemoriaNeedsYouCategory, typeof Copy> = {
   clarify_evidence: FileSearch,
 }
 
+// 6E.4A.4 — badge de priorité auditable : le tri "Plus important" ne doit jamais rester un score
+// invisible, chaque carte affiche le palier réellement calculé (tracked-point-needs-you-priority.ts).
+const PRIORITY_TONE: Record<MemoriaNeedsYouPriority, string> = {
+  PRIORITAIRE: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  A_CLARIFIER: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  IMPORTANT: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300',
+  HISTORIQUE: 'bg-muted text-muted-foreground',
+}
+
+function PriorityBadge({ priority }: { priority: MemoriaNeedsYouPriority }) {
+  return (
+    <span className={cn('absolute right-3 top-3 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', PRIORITY_TONE[priority])}>
+      {MEMORIA_NEEDS_YOU_PRIORITY_LABEL[priority]}
+    </span>
+  )
+}
+
 const btnPrimary = 'rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40'
 const btnSecondary = 'rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40'
 const radioRow = (active: boolean, disabled: boolean) =>
@@ -51,19 +69,55 @@ function formatDateFr(iso: string | null): string | null {
   }
 }
 
-function SourceExcerpt({ label, documentFilename, date }: { label: string | null; documentFilename?: string | null; date?: string | null }) {
-  const dateFr = formatDateFr(date ?? null)
+// Vérité temporelle (6E.4A.1) : la date métier (PV/visite, `documents.effective_date`) est
+// TOUJOURS prioritaire sur la date d'import (`created_at`) — un document importé aujourd'hui
+// peut décrire une visite d'il y a trois mois. La date d'import n'apparaît qu'en repli explicite,
+// jamais confondue avec la date du PV.
+function provenanceLine(effectiveDate: string | null | undefined, page: number | null | undefined, importedAt: string | null | undefined): string | null {
+  const businessDateFr = formatDateFr(effectiveDate ?? null)
+  if (businessDateFr) return `PV du ${businessDateFr}${page ? ` · page ${page}` : ''}`
+  const importedDateFr = formatDateFr(importedAt ?? null)
+  return importedDateFr ? `Importé le ${importedDateFr} (date du PV inconnue)` : null
+}
+
+function SourceExcerpt({
+  label,
+  documentFilename,
+  effectiveDate,
+  page,
+  importedAt,
+}: {
+  label: string | null
+  documentFilename?: string | null
+  effectiveDate?: string | null
+  page?: number | null
+  importedAt?: string | null
+}) {
+  const dateLine = provenanceLine(effectiveDate, page, importedAt)
   if (!label && !documentFilename) return null
   return (
     <div className="rounded-lg border border-dashed bg-muted/30 px-2.5 py-2 text-[12px] text-foreground/80">
       {label && <p className="line-clamp-3">{label}</p>}
-      {(documentFilename || dateFr) && (
+      {(documentFilename || dateLine) && (
         <p className="mt-1 text-[11px] text-muted-foreground">
-          {[documentFilename, dateFr].filter(Boolean).join(' · ')}
+          {[documentFilename, dateLine].filter(Boolean).join(' · ')}
         </p>
       )}
     </div>
   )
+}
+
+const DERIVED_STATE_LABEL: Record<string, string> = {
+  open: 'Ouvert',
+  reopened: 'Réouvert',
+  resolved: 'Résolu',
+  unknown: 'Indéterminé',
+  conflict: 'En conflit',
+}
+
+function derivedStateLabel(state: string | null | undefined): string | null {
+  if (!state) return null
+  return DERIVED_STATE_LABEL[state] ?? state
 }
 
 function CardShell({ category, title, children }: { category: MemoriaNeedsYouCategory; title: string; children: React.ReactNode }) {
@@ -98,24 +152,32 @@ export type QuestionCardProps = {
   pending: boolean
   error?: string
   sitePoints: SitePointOption[]
+  priority: MemoriaNeedsYouPriority
   runAction: (action: () => Promise<ActionResult>) => void
 }
 
-export function QuestionCard({ question, siteId, pending, error, sitePoints, runAction }: QuestionCardProps) {
-  switch (question.category) {
-    case 'duplicate_points':
-      return <DuplicatePointsCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
-    case 'attach_information':
-      return <AttachInformationCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
-    case 'confirm_trackability':
-      return <ConfirmTrackabilityCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
-    case 'assign_resolution':
-      return <AssignResolutionCard entry={question.entry} siteId={siteId} pending={pending} error={error} sitePoints={sitePoints} runAction={runAction} />
-    case 'clarify_evidence':
-      return <ClarifyEvidenceCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
-    default:
-      return null
-  }
+export function QuestionCard({ question, siteId, pending, error, sitePoints, priority, runAction }: QuestionCardProps) {
+  return (
+    <div className="relative">
+      <PriorityBadge priority={priority} />
+      {(() => {
+        switch (question.category) {
+          case 'duplicate_points':
+            return <DuplicatePointsCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
+          case 'attach_information':
+            return <AttachInformationCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
+          case 'confirm_trackability':
+            return <ConfirmTrackabilityCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
+          case 'assign_resolution':
+            return <AssignResolutionCard entry={question.entry} siteId={siteId} pending={pending} error={error} sitePoints={sitePoints} runAction={runAction} />
+          case 'clarify_evidence':
+            return <ClarifyEvidenceCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
+          default:
+            return null
+        }
+      })()}
+    </div>
+  )
 }
 
 // ── 1. Identité — "Ces deux suivis sont-ils les mêmes ?" ──────────────────────────────────────
@@ -141,14 +203,26 @@ function DuplicatePointsCard({
         </p>
       )}
       <div className="grid grid-cols-2 gap-2">
-        {[entry.pointA, entry.pointB].map((side) => (
-          <div key={side.id} className="rounded-lg border bg-background px-2.5 py-2 text-[12px]">
-            <p className="font-medium">{side.label}</p>
-            <p className="mt-1 text-muted-foreground">
-              {side.cboCount} preuve{side.cboCount > 1 ? 's' : ''} · {side.hardMemberCount} élément{side.hardMemberCount > 1 ? 's' : ''} rattaché{side.hardMemberCount > 1 ? 's' : ''}
-            </p>
-          </div>
-        ))}
+        {[entry.pointA, entry.pointB].map((side) => {
+          const stateLabel = derivedStateLabel(side.derivedState)
+          const firstFr = formatDateFr(side.firstAppearanceAt)
+          const lastFr = formatDateFr(side.lastAppearanceAt)
+          return (
+            <div key={side.id} className="rounded-lg border bg-background px-2.5 py-2 text-[12px]">
+              <p className="font-medium">{side.label}</p>
+              {(stateLabel || side.subjectLabel) && (
+                <p className="mt-1 text-muted-foreground">
+                  {[stateLabel, side.subjectLabel].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              <p className="mt-1 text-muted-foreground">
+                {side.cboCount} preuve{side.cboCount > 1 ? 's' : ''} · {side.hardMemberCount} élément{side.hardMemberCount > 1 ? 's' : ''} rattaché{side.hardMemberCount > 1 ? 's' : ''}
+              </p>
+              {firstFr && <p className="mt-1 text-[11px] text-muted-foreground/80">Première apparition : {firstFr}</p>}
+              {lastFr && <p className="mt-0.5 text-[11px] text-muted-foreground/80">Dernière activité : {lastFr}</p>}
+            </div>
+          )
+        })}
       </div>
       <ErrorLine error={error} />
       <div className="flex flex-wrap gap-2 pt-1">
@@ -196,7 +270,13 @@ function AttachInformationCard({
 
   return (
     <CardShell category="attach_information" title="Cette information concerne-t-elle ce suivi ?">
-      <SourceExcerpt label={entry.sourceLabel} documentFilename={entry.sourceDocumentFilename} date={entry.sourceDate} />
+      <SourceExcerpt
+        label={entry.sourceLabel}
+        documentFilename={entry.sourceDocumentFilename}
+        effectiveDate={entry.sourceDocumentEffectiveDate}
+        page={entry.sourcePage}
+        importedAt={entry.sourceDate}
+      />
 
       {actionableTargets.length === 0 ? (
         <p className="text-[12px] text-amber-600 dark:text-amber-400">
@@ -204,7 +284,14 @@ function AttachInformationCard({
         </p>
       ) : entry.targets.length === 1 ? (
         <>
-          <div className="rounded-lg border bg-background px-2.5 py-2 text-[12px] font-medium">{entry.targets[0].label ?? 'Suivi sans libellé'}</div>
+          <div className="rounded-lg border bg-background px-2.5 py-2 text-[12px]">
+            <p className="font-medium">{entry.targets[0].label ?? 'Suivi sans libellé'}</p>
+            {(derivedStateLabel(entry.targets[0].derivedState) || entry.targets[0].subjectLabel) && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {[derivedStateLabel(entry.targets[0].derivedState), entry.targets[0].subjectLabel].filter(Boolean).join(' · ')}
+              </p>
+            )}
+          </div>
           <ErrorLine error={error} />
           <div className="flex flex-wrap gap-2 pt-1">
             <button type="button" className={btnPrimary} disabled={pending} onClick={() => dispatchAccept(entry.targets[0].candidateId)}>
@@ -234,6 +321,11 @@ function AttachInformationCard({
                   onClick={() => setSelectedCandidateId(t.candidateId)}
                 >
                   <span>{t.label ?? 'Suivi sans libellé'}</span>
+                  {(derivedStateLabel(t.derivedState) || t.subjectLabel) && (
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      {[derivedStateLabel(t.derivedState), t.subjectLabel].filter(Boolean).join(' · ')}
+                    </span>
+                  )}
                   {disabled && t.blockerReason && <span className="mt-0.5 block text-[11px] text-muted-foreground/80">{t.blockerReason}</span>}
                 </button>
               )
@@ -241,7 +333,12 @@ function AttachInformationCard({
           </div>
           <ErrorLine error={error} />
           <div className="flex flex-wrap gap-2 pt-1">
-            <button type="button" className={btnPrimary} disabled={pending || !selectedCandidateId} onClick={() => selectedCandidateId && dispatchAccept(selectedCandidateId)}>
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={pending || !selectedCandidateId}
+              onClick={() => selectedCandidateId && dispatchAccept(selectedCandidateId)}
+            >
               Confirmer
             </button>
           </div>
@@ -268,7 +365,13 @@ function ConfirmTrackabilityCard({
 }) {
   return (
     <CardShell category="confirm_trackability" title="Faut-il suivre cette situation ?">
-      <SourceExcerpt label={entry.sourceLabel} documentFilename={entry.sourceDocumentFilename} date={entry.sourceDate} />
+      <SourceExcerpt
+        label={entry.sourceLabel}
+        documentFilename={entry.sourceDocumentFilename}
+        effectiveDate={entry.sourceDocumentEffectiveDate}
+        page={entry.sourcePage}
+        importedAt={entry.sourceDate}
+      />
       {entry.subjectLabel && <p className="text-[11px] text-muted-foreground">À propos de : {entry.subjectLabel}</p>}
       <ErrorLine error={error} />
       <div className="flex flex-wrap gap-2 pt-1">
@@ -278,7 +381,7 @@ function ConfirmTrackabilityCard({
           disabled={pending}
           onClick={() => runAction(() => import('../tracked-point-trackability-actions').then((m) => m.confirmPendingTrackabilityAction({ siteId, pendingTraceId: entry.pendingTraceId })))}
         >
-          Oui, créer un suivi
+          Oui, à suivre
         </button>
         <button
           type="button"
@@ -286,7 +389,7 @@ function ConfirmTrackabilityCard({
           disabled={pending}
           onClick={() => runAction(() => import('../tracked-point-pending-trace-actions').then((m) => m.dismissPendingTraceAction({ siteId, pendingTraceId: entry.pendingTraceId })))}
         >
-          Non
+          Non, ne pas suivre
         </button>
       </div>
     </CardShell>
@@ -312,56 +415,94 @@ function AssignResolutionCard({
 }) {
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<{ pointId: string; candidateId: string | null } | null>(null)
+  const [selected, setSelected] = useState<{ pointId: string; candidateId: string | null; label: string } | null>(null)
 
   const suggestions = [
-    ...entry.knownIdentityTargets.map((t) => ({ pointId: t.pointId, candidateId: t.candidateId, label: t.label ?? 'Suivi sans libellé', hint: 'suivi identifié' })),
-    ...entry.sameSubjectSuggestions.map((t) => ({ pointId: t.pointId, candidateId: null as string | null, label: t.label ?? 'Suivi sans libellé', hint: 'même sujet' })),
+    ...entry.knownIdentityTargets.map((t) => ({
+      pointId: t.pointId,
+      candidateId: t.candidateId,
+      label: t.label ?? 'Suivi sans libellé',
+      derivedState: t.derivedState,
+      subjectLabel: t.subjectLabel,
+      latestMeaningfulEventAt: t.latestMeaningfulEventAt,
+    })),
+    ...entry.sameSubjectSuggestions.map((t) => ({
+      pointId: t.pointId,
+      candidateId: null as string | null,
+      label: t.label ?? 'Suivi sans libellé',
+      derivedState: t.derivedState,
+      subjectLabel: t.subjectLabel,
+      latestMeaningfulEventAt: t.latestMeaningfulEventAt,
+    })),
   ]
 
   const searchResults = query.trim().length > 0 ? sitePoints.filter((p) => p.label.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8) : []
 
   return (
     <CardShell category="assign_resolution" title="Quel suivi cette preuve vient-elle résoudre ?">
-      <SourceExcerpt label={entry.sourceLabel} documentFilename={entry.sourceDocumentFilename} date={entry.sourceDate} />
+      <div>
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Preuve à rattacher</p>
+        <SourceExcerpt
+          label={entry.sourceLabel}
+          documentFilename={entry.sourceDocumentFilename}
+          effectiveDate={entry.sourceDocumentEffectiveDate}
+          page={entry.sourcePage}
+          importedAt={entry.sourceDate}
+        />
+      </div>
 
       {suggestions.length > 0 && (
-        <div className="space-y-1.5">
-          {suggestions.map((s) => (
-            <button
-              key={`${s.pointId}-${s.candidateId ?? 'subject'}`}
-              type="button"
-              className={radioRow(selected?.pointId === s.pointId, false)}
-              onClick={() => setSelected({ pointId: s.pointId, candidateId: s.candidateId })}
-            >
-              <span>{s.label}</span>
-              <span className="ml-1.5 text-[11px] text-muted-foreground">({s.hint})</span>
-            </button>
-          ))}
+        <div>
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Suggestions du même thème</p>
+          <div className="space-y-1.5">
+            {suggestions.map((s) => {
+              const lastActivityFr = formatDateFr(s.latestMeaningfulEventAt)
+              const detail = [derivedStateLabel(s.derivedState), s.subjectLabel, lastActivityFr ? `dernière activité : ${lastActivityFr}` : null].filter(Boolean).join(' · ')
+              return (
+                <button
+                  key={`${s.pointId}-${s.candidateId ?? 'subject'}`}
+                  type="button"
+                  className={radioRow(selected?.pointId === s.pointId, false)}
+                  onClick={() => setSelected({ pointId: s.pointId, candidateId: s.candidateId, label: s.label })}
+                >
+                  <span className="font-medium">{s.label}</span>
+                  {detail && <span className="mt-0.5 block text-[11px] text-muted-foreground">{detail}</span>}
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
 
-      {searching ? (
-        <div className="space-y-1.5">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Rechercher un suivi par son libellé…"
-            className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-[12px]"
-          />
-          {searchResults.map((p) => (
-            <button key={p.id} type="button" className={radioRow(selected?.pointId === p.id, false)} onClick={() => setSelected({ pointId: p.id, candidateId: null })}>
-              {p.label}
-            </button>
-          ))}
-          {query.trim().length > 0 && searchResults.length === 0 && <p className="text-[11px] text-muted-foreground">Aucun suivi ne correspond.</p>}
-        </div>
-      ) : (
-        <button type="button" className={btnSecondary} disabled={pending} onClick={() => setSearching(true)}>
-          Rechercher un suivi du chantier
-        </button>
-      )}
+      <div>
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Résultats de recherche du chantier</p>
+        {searching ? (
+          <div className="space-y-1.5">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher un suivi par son libellé…"
+              className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-[12px]"
+            />
+            {searchResults.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={radioRow(selected?.pointId === p.id, false)}
+                onClick={() => setSelected({ pointId: p.id, candidateId: null, label: p.label })}
+              >
+                {p.label}
+              </button>
+            ))}
+            {query.trim().length > 0 && searchResults.length === 0 && <p className="text-[11px] text-muted-foreground">Aucun suivi ne correspond.</p>}
+          </div>
+        ) : (
+          <button type="button" className={btnSecondary} disabled={pending} onClick={() => setSearching(true)}>
+            Rechercher un suivi du chantier
+          </button>
+        )}
+      </div>
 
       <ErrorLine error={error} />
       <div className="flex flex-wrap gap-2 pt-1">
@@ -378,7 +519,7 @@ function AssignResolutionCard({
             )
           }
         >
-          Confirmer
+          {selected ? `Associer à « ${selected.label} »` : 'Associer'}
         </button>
         <button
           type="button"
@@ -419,21 +560,23 @@ function ClarifyEvidenceCard({
     })
   }
 
-  const hint = entry.kind === 'TRACKABILITY_UNDETERMINED' ? 'Cette preuve pourrait servir à confirmer un nouveau suivi.' : 'Cette preuve pourrait résoudre une situation déjà suivie.'
+  const isTrackability = entry.kind === 'TRACKABILITY_UNDETERMINED'
+  const title = isTrackability ? "Quelle information confirme qu'il faut suivre cette situation ?" : 'Quelle information constitue la preuve de résolution ?'
+  const hint = isTrackability ? 'Cette preuve pourrait servir à confirmer un nouveau suivi.' : 'Cette preuve pourrait résoudre une situation déjà suivie.'
 
   return (
-    <CardShell category="clarify_evidence" title="Quelle information constitue réellement la preuve ?">
+    <CardShell category="clarify_evidence" title={title}>
       {entry.subjectLabel && <p className="text-[11px] text-muted-foreground">À propos de : {entry.subjectLabel}</p>}
       <p className="text-[12px] text-foreground/80">{hint}</p>
       <div className="space-y-1.5">
         {entry.proposals.map((p) => {
-          const dateFr = formatDateFr(p.createdAt)
+          const dateLine = provenanceLine(p.documentEffectiveDate, p.sourcePage, p.createdAt)
           return (
             <label key={p.proposalId} className="flex items-start gap-2 rounded-lg border bg-background px-2.5 py-2 text-[12px]">
               <input type="checkbox" className="mt-0.5" checked={selectedIds.has(p.proposalId)} onChange={() => toggle(p.proposalId)} />
               <span className="min-w-0">
                 <span className="block truncate">{p.label ?? p.documentFilename ?? 'Document'}</span>
-                {(p.documentFilename || dateFr) && <span className="mt-0.5 block text-[11px] text-muted-foreground">{[p.documentFilename, dateFr].filter(Boolean).join(' · ')}</span>}
+                {(p.documentFilename || dateLine) && <span className="mt-0.5 block text-[11px] text-muted-foreground">{[p.documentFilename, dateLine].filter(Boolean).join(' · ')}</span>}
               </span>
             </label>
           )

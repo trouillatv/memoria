@@ -12,6 +12,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadTrackedPointConsolidationData, type TrackedPointConsolidationPointDetail } from '@/lib/db/tracked-point-consolidation'
+import { loadTrackedPointReadModel, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
 import {
   computeConnectedComponents,
   type CandidatePointPair,
@@ -24,6 +25,11 @@ export type ConsolidationQueuePointSide = {
   label: string
   status: TrackedPointMergeStatus
   identityStatus: TrackedPointMergeIdentityStatus
+  derivedState: PointReadModelEntry['derivedState'] | null
+  subjectId: string | null
+  subjectLabel: string | null
+  firstAppearanceAt: string | null
+  lastAppearanceAt: string | null
   cboCount: number
   hardMemberCount: number
 }
@@ -55,6 +61,8 @@ export function buildConsolidationQueue(
   pointDetailsById: Map<string, TrackedPointConsolidationPointDetail>,
   cboCountByPointId: Map<string, number>,
   hardMemberCountByPointId: Map<string, number>,
+  readModelByPointId: Map<string, PointReadModelEntry>,
+  subjectLabelBySubjectId: Map<string, string | null>,
 ): ConsolidationQueue {
   const components = computeConnectedComponents(pairs.map((p) => ({ a: p.pointAId, b: p.pointBId })))
   const componentIdByPointId = new Map<string, string>()
@@ -70,11 +78,18 @@ export function buildConsolidationQueue(
   const side = (pointId: string): ConsolidationQueuePointSide => {
     const detail = pointDetailsById.get(pointId)
     if (!detail) throw new Error(`buildConsolidationQueue: point introuvable ${pointId}`)
+    const readModel = readModelByPointId.get(pointId)
+    const subjectId = readModel?.ownerCanonicalSubjectId ?? null
     return {
       id: detail.id,
       label: detail.label,
       status: detail.status,
       identityStatus: detail.identityStatus,
+      derivedState: readModel?.derivedState ?? null,
+      subjectId,
+      subjectLabel: subjectId ? (subjectLabelBySubjectId.get(subjectId) ?? null) : null,
+      firstAppearanceAt: readModel?.trajectory[0]?.effectiveAt ?? null,
+      lastAppearanceAt: readModel?.latestMeaningfulEventAt ?? null,
       cboCount: cboCountByPointId.get(pointId) ?? 0,
       hardMemberCount: hardMemberCountByPointId.get(pointId) ?? 0,
     }
@@ -128,5 +143,32 @@ export async function loadConsolidationQueue(siteId: string): Promise<Consolidat
     hardMemberCountByPointId.set(row.tracked_point_id, (hardMemberCountByPointId.get(row.tracked_point_id) ?? 0) + 1)
   }
 
-  return buildConsolidationQueue(siteId, pairs, pointDetailsById, cboCountByPointId, hardMemberCountByPointId)
+  // Enrichissement 6E.4A.2 (dates métier, sujet, dernière activité) : chargeur SÉPARÉ de
+  // loadTrackedPointConsolidationData (partagé avec consolidateTrackedPoints/rejectPointIdentityPair,
+  // jamais touché) — simple merge par id, aucune écriture, aucune reconstruction de la vérité 6B.
+  const { points: pointReadModelEntries } = await loadTrackedPointReadModel(siteId)
+  const readModelByPointId = new Map(pointReadModelEntries.map((p) => [p.id, p]))
+
+  const subjectIds = [
+    ...new Set(pointReadModelEntries.map((p) => p.ownerCanonicalSubjectId).filter((id): id is string => !!id)),
+  ]
+  const subjectLabelBySubjectId = new Map<string, string | null>()
+  if (subjectIds.length > 0) {
+    const { data: rawSubjects, error: subjErr } = await db
+      .from('canonical_subject')
+      .select('id, label')
+      .in('id', subjectIds)
+    if (subjErr) throw subjErr
+    for (const s of rawSubjects ?? []) subjectLabelBySubjectId.set(s.id, s.label)
+  }
+
+  return buildConsolidationQueue(
+    siteId,
+    pairs,
+    pointDetailsById,
+    cboCountByPointId,
+    hardMemberCountByPointId,
+    readModelByPointId,
+    subjectLabelBySubjectId,
+  )
 }
