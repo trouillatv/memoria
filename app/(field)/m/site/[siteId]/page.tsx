@@ -28,6 +28,9 @@ import { VisitBriefCard } from './VisitBriefCard'
 import { listOpenSiteSubjectsLite, listSubjectsBySite } from '@/lib/db/subjects'
 import { SiteActionBar } from './SiteActionBar'
 import { ChefSiteView } from './ChefSiteView'
+import { loadMemoriaNeedsYouSummary } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import { computeMemoriaNeedsYouPill } from '@/lib/knowledge/tracked-point-needs-you-pill'
+import { MemoriaNeedsYouPill } from './MemoriaNeedsYouPill'
 import { ChevronRight } from 'lucide-react'
 import { Suspense } from 'react'
 import { SiteToTreatSection, SiteToTreatSkeleton } from './SiteToTreatSection'
@@ -154,17 +157,24 @@ export default async function FieldSitePage({
   let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitDelta>> = null
   let nextSteps: Awaited<ReturnType<typeof getSiteNextSteps>> = []
   let visitBrief: Awaited<ReturnType<typeof buildVisitBrief>> = null
+  // 6E.4A.10 — pilule "MemorIA a besoin de toi". Chargée uniquement hors visite active, comme
+  // le reste du cockpit chantier ci-dessus : même read-model que /sites/[id]/besoin-de-toi
+  // (loadMemoriaNeedsYouSummary), la fiche mobile n'accède jamais à ce shell chef_equipe déjà
+  // écarté plus haut, donc admin/manager uniquement — même restriction que la page desktop.
+  let needsYouPill: ReturnType<typeof computeMemoriaNeedsYouPill> = null
   if (!activeVisit) {
-    const [status, since, steps, brief] = await Promise.all([
+    const [status, since, steps, brief, needsYouSummary] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       buildSinceLastVisitDelta(siteId, user.id).catch(() => null),
       getSiteNextSteps(siteId).catch(() => []),
       buildVisitBrief(siteId).catch(() => null),
+      loadMemoriaNeedsYouSummary(siteId).catch(() => null),
     ])
     siteStatus = status
     sinceLastVisit = since
     nextSteps = steps
     visitBrief = brief
+    needsYouPill = needsYouSummary ? computeMemoriaNeedsYouPill(needsYouSummary) : null
   }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
@@ -292,6 +302,12 @@ export default async function FieldSitePage({
             <SiteKpiTiles cells={siteStatus} />
             <SiteActionBar siteId={siteId} siteName={site.name} resumeReportId={resumeReportId} />
           </div>
+
+          {/* 1bis — MemorIA a besoin de toi : signal d'attention discret, jamais un bloc
+              principal. Après « État du chantier », avant « Tu dois faire » (mandat Vincent
+              2026-09-07) — le parcours mental est : comment va mon chantier ? MemorIA a-t-il
+              besoin de moi pour comprendre quelque chose ? qu'est-ce que je dois faire ? */}
+          {needsYouPill && <MemoriaNeedsYouPill siteId={siteId} pill={needsYouPill} />}
 
           {/* 2 — À traiter : signaux d'intervention uniquement (propositions + actions en retard + sujet urgent). */}
           <Suspense fallback={<SiteToTreatSkeleton />}>

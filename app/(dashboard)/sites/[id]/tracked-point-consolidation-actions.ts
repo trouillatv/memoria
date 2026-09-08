@@ -37,6 +37,8 @@ export async function consolidateTrackedPointsAction(rawInput: unknown): Promise
   if (result.ok) {
     revalidatePath(`/sites/${siteId}/besoin-de-toi`)
     revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/m/site/${siteId}/besoin-de-toi`)
+    revalidatePath(`/m/site/${siteId}`)
   }
   return result
 }
@@ -53,6 +55,8 @@ export async function rejectPointIdentityPairAction(rawInput: unknown): Promise<
   if (result.ok) {
     revalidatePath(`/sites/${siteId}/besoin-de-toi`)
     revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/m/site/${siteId}/besoin-de-toi`)
+    revalidatePath(`/m/site/${siteId}`)
   }
   return result
 }

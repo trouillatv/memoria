@@ -30,6 +30,8 @@ export async function dismissPendingTraceAction(rawInput: unknown): Promise<Dism
   if (result.ok) {
     revalidatePath(`/sites/${siteId}/besoin-de-toi`)
     revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/m/site/${siteId}/besoin-de-toi`)
+    revalidatePath(`/m/site/${siteId}`)
   }
   return result
 }

@@ -32,6 +32,8 @@ export async function acceptTraceIdentityCandidateAction(rawInput: unknown): Pro
   if (result.ok) {
     revalidatePath(`/sites/${siteId}/besoin-de-toi`)
     revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/m/site/${siteId}/besoin-de-toi`)
+    revalidatePath(`/m/site/${siteId}`)
   }
   return result
 }
@@ -48,6 +50,8 @@ export async function rejectTraceIdentityCandidateAction(rawInput: unknown): Pro
   if (result.ok) {
     revalidatePath(`/sites/${siteId}/besoin-de-toi`)
     revalidatePath(`/sites/${siteId}`)
+    revalidatePath(`/m/site/${siteId}/besoin-de-toi`)
+    revalidatePath(`/m/site/${siteId}`)
   }
   return result
 }
