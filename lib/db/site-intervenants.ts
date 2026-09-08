@@ -25,6 +25,16 @@ export interface SiteIntervenant {
   sourceReportId: string | null
 }
 
+/** Rôle d'un participant réintégré à une réunion (`addExistingParticipantAction`) :
+ *  celui du casting actif du site si UN SEUL rôle distinct en ressort, sinon la
+ *  fonction du contact. Plusieurs rôles actifs distincts simultanés (ex. CAPSE
+ *  « partenaire » + « AMO ») sont des mentions documentaires DISTINCTES, jamais
+ *  une succession : on n'arbitre jamais entre elles. Voir audit ACTOR-ROLE-TRUTH 2026-09. */
+export function resolveParticipantRole(contactFunction: string | null, activeRoles: string[]): string | null {
+  const distinctRoles = [...new Set(activeRoles)]
+  return distinctRoles.length === 1 ? distinctRoles[0]! : contactFunction
+}
+
 /** Casting ACTIF d'un site (liens non clôturés : effective_to is null), rôle →
  *  entreprise → contact. Stitché à la main (robuste vs embeddings ; volumes faibles). */
 export async function listSiteIntervenants(siteId: string): Promise<SiteIntervenant[]> {

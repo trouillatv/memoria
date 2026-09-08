@@ -25,7 +25,7 @@ import {
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
 import { createContact } from '@/lib/db/company-contacts'
-import { openSiteIntervenant, closeSiteIntervenant, listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
+import { openSiteIntervenant, closeSiteIntervenant, listSiteCandidateCompanies, resolveParticipantRole } from '@/lib/db/site-intervenants'
 import { listSiteActionResponsibleCandidates, resolveActionResponsibility } from '@/lib/knowledge/action-responsible-candidates'
 import { recordCorrections, type CorrectionEvent } from '@/lib/db/memory-corrections'
 import { generatePv } from '@/services/ai/document-generation'
@@ -855,19 +855,15 @@ export async function addExistingParticipantAction(
       return { ok: false, error: 'Déjà dans les présents' }
     }
 
-    // Rôle = celui du casting ACTIF du site si UN SEUL rôle distinct en ressort,
-    // sinon la fonction du contact. Plusieurs rôles actifs distincts simultanés
-    // (ex. CAPSE « partenaire » + « AMO ») sont des mentions documentaires DISTINCTES,
-    // jamais une succession : « le plus récent gagne » reviendrait à choisir un rôle
-    // « actuel » que les données ne prouvent pas. Voir audit ACTOR-ROLE-TRUTH 2026-09.
-    // (On ne fige PAS entreprise/fonction dans le JSON : résolus par contactId.)
+    // Rôle = doctrine `resolveParticipantRole` (non-arbitrage entre rôles actifs
+    // distincts simultanés). (On ne fige PAS entreprise/fonction dans le JSON :
+    // résolus par contactId.)
     let role: string | null = c.function
     if (report.site_id) {
       const { data: rows } = await sb.from('site_intervenants').select('role')
         .eq('site_id', report.site_id).eq('company_id', c.company_id)
         .is('effective_to', null)
-      const distinctRoles = [...new Set((rows ?? []).map((r) => (r as { role: string }).role))]
-      if (distinctRoles.length === 1) role = distinctRoles[0]!
+      role = resolveParticipantRole(c.function, (rows ?? []).map((r) => (r as { role: string }).role))
     }
 
     const participant = {

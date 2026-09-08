@@ -1,6 +1,7 @@
 // Corps de la fiche ENTREPRISE — PARTAGÉ entre la page dédiée et le panneau maître-
 // détail de /intervenants. Une seule source de rendu. Purement présentationnel.
 
+import Link from 'next/link'
 import { Building2, Layers, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe, FileText } from 'lucide-react'
 import type { CompanyFiche } from '@/lib/db/company-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
@@ -94,19 +95,32 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
       {/* ── RÔLES MENTIONNÉS — jamais « le » rôle actuel, des mentions datées ────── */}
       {/* Plusieurs mentions actives simultanées (même une classification qui dérive
           d'un PV à l'autre) restent listées séparément : ne jamais arbitrer entre
-          elles ni en déduire un changement de rôle. */}
+          elles ni en déduire un changement de rôle. Les mentions closes restent
+          visibles ici (chronologie documentaire complète), marquées comme telles. */}
       <FicheSection title="Rôles mentionnés dans les documents" count={fiche.roleMentions.length}>
         {fiche.roleMentions.length === 0 ? (
           <FicheEmpty>Aucun rôle mentionné.</FicheEmpty>
         ) : (
           fiche.roleMentions.map((r) => {
             const date = frDateShort(r.effectiveFrom)
+            const dateLabel = date ? `Mention du ${date}` : 'Date de mention inconnue'
             return (
               <FicheRow
                 key={`${r.role}-${r.effectiveFrom ?? ''}`}
-                icon={<FileText className="h-4 w-4" aria-hidden />}
+                icon={<FileText className={`h-4 w-4 ${r.active ? '' : 'opacity-50'}`} aria-hidden />}
                 label={r.role}
-                sub={date ? `Mention du ${date}` : 'Date de mention inconnue'}
+                sub={
+                  <span>
+                    {dateLabel}
+                    {!r.active && ' · Mention clôturée / historique'}
+                    {r.source?.href && (
+                      <>
+                        {' · '}
+                        <Link href={r.source.href} className="text-brand-700 hover:underline dark:text-brand-300">{r.source.linkLabel}</Link>
+                      </>
+                    )}
+                  </span>
+                }
               />
             )
           })

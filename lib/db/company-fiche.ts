@@ -18,6 +18,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { deriveActorAttentionState, type AttentionState } from '@/lib/knowledge/actor-attention'
 import type { ActorStatus } from '@/lib/db/actors-cockpit'
+import { reportProvenanceType, desktopSourceHref, PROVENANCE_LINK_LABEL } from '@/lib/knowledge/action-provenance'
 
 export interface CompanyFicheAction {
   id: string
@@ -41,13 +42,26 @@ export interface CompanyCastingRow {
   href: string // /sites/{siteId}
 }
 
+/** Le PV source d'une mention, quand il est connu (`source_report_id` résolu).
+ *  Aucune migration : uniquement ce que la base sait déjà. Absent → aucun lien
+ *  inventé (jamais de fallback vers une autre source). */
+export interface CompanyRoleSource {
+  linkLabel: string // « Voir la visite » / « Voir le compte rendu » / « Voir le document »
+  href: string | null
+}
+
 /** Un rôle MENTIONNÉ dans les documents, daté — jamais « le » rôle actuel.
  *  Plusieurs mentions actives simultanées sont un fait normal (classification
  *  qui dérive d'un PV à l'autre), pas une succession prouvée. Voir audit
- *  ACTOR-ROLE-TRUTH 2026-09 : ne jamais arbitrer entre elles. */
+ *  ACTOR-ROLE-TRUTH 2026-09 : ne jamais arbitrer entre elles.
+ *  `active=false` = mention CLÔTURÉE (site_intervenants.effective_to renseigné) —
+ *  reste dans la chronologie, jamais retirée : une mention documentaire ne
+ *  disparaît pas parce que le casting a changé depuis. */
 export interface CompanyRoleMention {
   role: string
   effectiveFrom: string | null
+  active: boolean
+  source: CompanyRoleSource | null
 }
 
 export interface CompanySubjectRow {
@@ -101,7 +115,7 @@ export interface CompanyFiche {
 export interface CompanyFicheInputs {
   today: string
   company: { id: string; name: string; short_name: string | null; siret: string | null; address: string | null; phone: string | null; email: string | null; website: string | null; deleted_at: string | null }
-  casting: Array<{ siteId: string; siteName: string; role: string; active: boolean; effectiveFrom: string | null; mainContactId: string | null }>
+  casting: Array<{ siteId: string; siteName: string; role: string; active: boolean; effectiveFrom: string | null; mainContactId: string | null; source: CompanyRoleSource | null }>
   actions: Array<{ id: string; title: string; siteId: string; siteName: string; dueDate: string | null; hasReferent: boolean; assignedContactName: string | null }>
   contacts: Array<{ id: string; name: string; function: string | null }>
   /** Ids des contacts référents d'au moins une action ouverte de cette entreprise. */
@@ -121,12 +135,25 @@ export function buildCompanyFiche(input: CompanyFicheInputs): CompanyFiche {
 
   const activeCasting = input.casting.filter((c) => c.active).map((c) => ({ siteId: c.siteId, siteName: c.siteName, role: c.role, active: true, effectiveFrom: c.effectiveFrom, href: `/sites/${c.siteId}` }))
   const historicalCasting = input.casting.filter((c) => !c.active).map((c) => ({ siteId: c.siteId, siteName: c.siteName, role: c.role, active: false, effectiveFrom: c.effectiveFrom, href: `/sites/${c.siteId}` }))
+  // Chronologie DOCUMENTAIRE, toutes mentions confondues (actives + closes) :
+  // une mention clôturée reste un fait qui a existé, elle ne disparaît pas.
   // Mentions datées, jamais arbitrées : deux rôles actifs simultanés (même une
   // même entreprise, même chantier) restent DEUX lignes distinctes — jamais
   // fusionnées en une liste sans date ni « rôle actuel » choisi entre elles.
-  const roleMentions = [...new Map(
-    activeCasting.map((c) => [`${c.role}__${c.effectiveFrom ?? ''}`, { role: c.role, effectiveFrom: c.effectiveFrom }]),
-  ).values()].sort((a, b) => (b.effectiveFrom ?? '').localeCompare(a.effectiveFrom ?? ''))
+  // Dédup sur rôle+date (comme avant) : une même mention textuelle datée reste
+  // « active » si au moins une occurrence l'est encore.
+  const mentionByKey = new Map<string, CompanyRoleMention>()
+  for (const c of input.casting) {
+    const key = `${c.role}__${c.effectiveFrom ?? ''}`
+    const existing = mentionByKey.get(key)
+    if (existing) {
+      existing.active = existing.active || c.active
+      if (!existing.source && c.source) existing.source = c.source
+      continue
+    }
+    mentionByKey.set(key, { role: c.role, effectiveFrom: c.effectiveFrom, active: c.active, source: c.source })
+  }
+  const roleMentions = [...mentionByKey.values()].sort((a, b) => (b.effectiveFrom ?? '').localeCompare(a.effectiveFrom ?? ''))
   const activeSitesCount = new Set(activeCasting.map((c) => c.siteId)).size
 
   // Statut GLOBAL : actif dès qu'une relation actuelle existe. Jamais fondé sur le volume.
@@ -194,13 +221,13 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   if (!company || company.is_placeholder || !orgIds.includes(company.organization_id)) return null
 
   const [castRes, actRes, contactRes, subjectActRes] = await Promise.all([
-    db.from('site_intervenants').select('site_id, role, effective_to, effective_from, main_contact_id').eq('company_id', companyId),
+    db.from('site_intervenants').select('site_id, role, effective_to, effective_from, main_contact_id, source_report_id').eq('company_id', companyId),
     db.from('site_actions').select('id, title, site_id, due_date, assigned_contact_id').eq('assigned_company_id', companyId).eq('status', 'open'),
     db.from('company_contacts').select('id, full_name, function').eq('company_id', companyId).is('deleted_at', null),
     // Toutes les actions (tous statuts) avec canonical_subject_id pour agréger les sujets portés.
     db.from('site_actions').select('canonical_subject_id, status, site_id').eq('assigned_company_id', companyId).not('canonical_subject_id', 'is', null),
   ])
-  const cast = (castRes.data ?? []) as Array<{ site_id: string; role: string; effective_to: string | null; effective_from: string | null; main_contact_id: string | null }>
+  const cast = (castRes.data ?? []) as Array<{ site_id: string; role: string; effective_to: string | null; effective_from: string | null; main_contact_id: string | null; source_report_id: string | null }>
   const act = (actRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null; assigned_contact_id: string | null }>
   const contactRows = (contactRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null }>
   const subjectAct = (subjectActRes.data ?? []) as Array<{ canonical_subject_id: string; status: string; site_id: string }>
@@ -211,6 +238,21 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
     : { data: [] as Array<{ id: string; name: string }> }
   const siteNameById = new Map(((siteRows ?? []) as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]))
   const siteName = (id: string) => siteNameById.get(id) ?? 'Chantier'
+
+  // Source documentaire d'une mention (« Voir le PV »), quand `source_report_id`
+  // est connu — aucune migration : on ne fait que résoudre ce que la base sait
+  // déjà (même primitives que `resolveReserveSourceLinks`). Report introuvable
+  // (supprimé) → aucun lien inventé, la mention reste sans source.
+  const reportIds = [...new Set(cast.map((c) => c.source_report_id).filter((v): v is string => !!v))]
+  const { data: reportRows } = reportIds.length
+    ? await db.from('site_reports').select('id, origin').in('id', reportIds)
+    : { data: [] as Array<{ id: string; origin: string | null }> }
+  const reportOriginById = new Map(((reportRows ?? []) as Array<{ id: string; origin: string | null }>).map((r) => [r.id, r.origin]))
+  const castingSource = (c: { site_id: string; source_report_id: string | null }): CompanyRoleSource | null => {
+    if (!c.source_report_id || !reportOriginById.has(c.source_report_id)) return null
+    const type = reportProvenanceType(reportOriginById.get(c.source_report_id) ?? null)
+    return { linkLabel: PROVENANCE_LINK_LABEL[type], href: desktopSourceHref(type, { siteId: c.site_id, reportId: c.source_report_id }) }
+  }
 
   // Agrégation des sujets portés (par sujet canonique via FK canonical_subject_id — aucun matching).
   const subjectBuckets = new Map<string, { openCount: number; totalCount: number; siteId: string }>()
@@ -243,7 +285,7 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   return buildCompanyFiche({
     today,
     company: { id: company.id, name: company.name, short_name: company.short_name, siret: company.siret, address: addressLine, phone: company.phone, email: company.email, website: company.website, deleted_at: company.deleted_at },
-    casting: cast.map((c) => ({ siteId: c.site_id, siteName: siteName(c.site_id), role: c.role, active: c.effective_to === null, effectiveFrom: c.effective_from, mainContactId: c.main_contact_id })),
+    casting: cast.map((c) => ({ siteId: c.site_id, siteName: siteName(c.site_id), role: c.role, active: c.effective_to === null, effectiveFrom: c.effective_from, mainContactId: c.main_contact_id, source: castingSource(c) })),
     actions: act.map((a) => ({
       id: a.id, title: a.title, siteId: a.site_id, siteName: siteName(a.site_id), dueDate: a.due_date,
       hasReferent: a.assigned_contact_id !== null,

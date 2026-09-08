@@ -23,7 +23,7 @@ describe('buildCompanyFiche', () => {
   it('le VOLUME seul ne dégrade pas l\'état : 5 actions ouvertes, aucune en retard, toutes avec référent → à jour', () => {
     const f = buildCompanyFiche({
       ...base(),
-      casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, effectiveFrom: '2026-01-01', mainContactId: null }],
+      casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, effectiveFrom: '2026-01-01', mainContactId: null, source: null }],
       actions: Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, title: `A${i}`, siteId: 's1', siteName: 'Lycée', dueDate: '2027-01-01', hasReferent: true, assignedContactName: null })),
     })
     expect(f.openCount).toBe(5)
@@ -36,7 +36,7 @@ describe('buildCompanyFiche', () => {
   it('retard → à traiter (urgent), les retards passent en tête', () => {
     const f = buildCompanyFiche({
       ...base(),
-      casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, effectiveFrom: '2026-01-01', mainContactId: null }],
+      casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, effectiveFrom: '2026-01-01', mainContactId: null, source: null }],
       actions: [
         { id: 'a1', title: 'À jour', siteId: 's1', siteName: 'Lycée', dueDate: '2027-01-01', hasReferent: true, assignedContactName: null },
         { id: 'a2', title: 'En retard', siteId: 's1', siteName: 'Lycée', dueDate: '2026-07-01', hasReferent: false, assignedContactName: null },
@@ -52,7 +52,7 @@ describe('buildCompanyFiche', () => {
   it('responsable d\'actions mais hors casting actif → à surveiller (left_casting)', () => {
     const f = buildCompanyFiche({
       ...base(),
-      casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: false, effectiveFrom: '2025-06-01', mainContactId: null }], // clôturé
+      casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: false, effectiveFrom: '2025-06-01', mainContactId: null, source: null }], // clôturé
       actions: [{ id: 'a1', title: 'Reste', siteId: 's1', siteName: 'Lycée', dueDate: null, hasReferent: true, assignedContactName: null }],
     })
     expect(f.attention.level).toBe('attention')
@@ -64,9 +64,9 @@ describe('buildCompanyFiche', () => {
     const f = buildCompanyFiche({
       ...base(),
       casting: [
-        { siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, effectiveFrom: '2026-02-01', mainContactId: 'c1' },
-        { siteId: 's1', siteName: 'Lycée', role: 'Sous-traitant', active: true, effectiveFrom: '2026-03-01', mainContactId: null },
-        { siteId: 's2', siteName: 'Collège', role: 'ETV', active: false, effectiveFrom: '2025-06-01', mainContactId: null },
+        { siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, effectiveFrom: '2026-02-01', mainContactId: 'c1', source: null },
+        { siteId: 's1', siteName: 'Lycée', role: 'Sous-traitant', active: true, effectiveFrom: '2026-03-01', mainContactId: null, source: null },
+        { siteId: 's2', siteName: 'Collège', role: 'ETV', active: false, effectiveFrom: '2025-06-01', mainContactId: null, source: null },
       ],
     })
     expect(f.activeCasting).toHaveLength(2)
@@ -75,10 +75,39 @@ describe('buildCompanyFiche', () => {
     expect(f.roleMentions.map((r) => r.role)).toEqual(expect.arrayContaining(['ETV', 'Sous-traitant']))
   })
 
+  it('roleMentions inclut les mentions closes (chronologie documentaire complète), marquées comme telles', () => {
+    const f = buildCompanyFiche({
+      ...base(),
+      casting: [
+        { siteId: 's1', siteName: 'Lycée', role: 'AMO', active: true, effectiveFrom: '2026-02-01', mainContactId: null, source: null },
+        { siteId: 's2', siteName: 'Collège', role: 'Entreprise titulaire', active: false, effectiveFrom: '2024-06-12', mainContactId: null, source: { linkLabel: 'Voir la visite', href: '/sites/s2/visites/r1' } },
+      ],
+    })
+    expect(f.roleMentions).toHaveLength(2)
+    const active = f.roleMentions.find((r) => r.role === 'AMO')!
+    const closed = f.roleMentions.find((r) => r.role === 'Entreprise titulaire')!
+    expect(active.active).toBe(true)
+    expect(active.source).toBeNull()
+    expect(closed.active).toBe(false)
+    expect(closed.source).toEqual({ linkLabel: 'Voir la visite', href: '/sites/s2/visites/r1' })
+  })
+
+  it('roleMentions dédup rôle+date : reste actif si au moins une occurrence l\'est encore', () => {
+    const f = buildCompanyFiche({
+      ...base(),
+      casting: [
+        { siteId: 's1', siteName: 'Lycée', role: 'ETV', active: false, effectiveFrom: '2026-01-01', mainContactId: null, source: null },
+        { siteId: 's2', siteName: 'Collège', role: 'ETV', active: true, effectiveFrom: '2026-01-01', mainContactId: null, source: null },
+      ],
+    })
+    expect(f.roleMentions).toHaveLength(1)
+    expect(f.roleMentions[0]!.active).toBe(true)
+  })
+
   it('contacts : marque référents d\'actions et contacts principaux de casting', () => {
     const f = buildCompanyFiche({
       ...base(),
-      casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, effectiveFrom: '2026-02-01', mainContactId: 'c1' }],
+      casting: [{ siteId: 's1', siteName: 'Lycée', role: 'ETV', active: true, effectiveFrom: '2026-02-01', mainContactId: 'c1', source: null }],
       contacts: [{ id: 'c1', name: 'Chef', function: 'Conducteur' }, { id: 'c2', name: 'Ref', function: null }],
       referentContactIds: ['c2'],
     })
