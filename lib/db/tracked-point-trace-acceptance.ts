@@ -12,6 +12,11 @@
 // Si le candidat n'est plus 'pending' (déjà accepted/rejected), la classification live n'a plus
 // de sens — l'appel passe directement à la RPC, dont les propres guards (status, idempotence)
 // décident.
+//
+// Round 7 (migration 402) : la RPC ferme désormais aussi, dans la même transaction, l'éventuel
+// tracked_point_pending_trace(kind='IDENTITY_UNRESOLVED', status='pending') du même thread —
+// ce wrapper se contente de relayer identityPendingTraceResolved/identityPendingTraceId, sans
+// logique supplémentaire (la RPC porte tout le guard, cf. migration 402).
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -24,8 +29,24 @@ const NIL_UUID = '00000000-0000-0000-0000-000000000000'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type AcceptTraceIdentityCandidateResult =
-  | { ok: true; alreadyAssociated: true; targetPointId: string; sourceThreadId: string; memberId: string }
-  | { ok: true; alreadyAssociated: false; targetPointId: string; sourceThreadId: string; memberId: string }
+  | {
+      ok: true
+      alreadyAssociated: true
+      targetPointId: string
+      sourceThreadId: string
+      memberId: string
+      identityPendingTraceResolved: boolean
+      identityPendingTraceId: string | null
+    }
+  | {
+      ok: true
+      alreadyAssociated: false
+      targetPointId: string
+      sourceThreadId: string
+      memberId: string
+      identityPendingTraceResolved: boolean
+      identityPendingTraceId: string | null
+    }
   | { ok: false; error: string }
 
 // acceptTraceIdentityCandidate : revalide live la classification (candidat encore pending
@@ -123,6 +144,8 @@ export async function acceptTraceIdentityCandidate(params: {
     sourceThreadId: string
     memberId: string
     membershipInserted: boolean
+    identityPendingTraceResolved: boolean
+    identityPendingTraceId: string | null
   }
 
   return {
@@ -131,6 +154,8 @@ export async function acceptTraceIdentityCandidate(params: {
     targetPointId: result.targetPointId,
     sourceThreadId: result.sourceThreadId,
     memberId: result.memberId,
+    identityPendingTraceResolved: result.identityPendingTraceResolved,
+    identityPendingTraceId: result.identityPendingTraceId,
   } as AcceptTraceIdentityCandidateResult
 }
 

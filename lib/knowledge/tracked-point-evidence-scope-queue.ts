@@ -11,6 +11,15 @@
 // traces que resolvePendingEvidenceScope accepte (même filtre status/evidence_status que son
 // propre guard live), jamais une trace déjà résolue ou dismissed.
 //
+// kind filtré explicitement (P6, BLOCKER 1) — IDENTITY_UNRESOLVED (migration 401,
+// fn_reconcile_tracked_point_unit) hérite lui aussi de evidence_status='unresolved' par défaut
+// (colonne créée par la migration 394, avant l'existence de ce kind) mais N'A PAS sa place ici :
+// sa décision humaine est "quel Point est-ce ?" (tracked_point_identity_candidate, déjà servie
+// par loadTraceIdentityQueue / catégorie attach_information, déjà câblée sur
+// acceptTraceIdentityCandidate/rejectTraceIdentityCandidate), jamais "quelle preuve ?". Sans ce
+// filtre, resolvePendingEvidenceScope (qui n'a aucun guard de kind) accepterait de la "résoudre"
+// côté preuve — masquant silencieusement la vraie question d'identité jamais tranchée.
+//
 // Vocabulaire backend volontairement en `proposalIds`, jamais en langage métier — la mise en
 // mots pour un futur écran ("Laquelle correspond à ce qu'il faut suivre ?") est un problème
 // d'UI (6E.4, hors périmètre), pas de ce read-model.
@@ -102,6 +111,7 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
     .eq('site_id', siteId)
     .eq('status', 'pending')
     .eq('evidence_status', 'unresolved')
+    .in('kind', ['TRACKABILITY_UNDETERMINED', 'RESOLUTION_WITHOUT_KNOWN_PROBLEM'])
     .or(pendingTraceVisibleFilter(new Date().toISOString()))
   if (tracesErr) throw tracesErr
 
