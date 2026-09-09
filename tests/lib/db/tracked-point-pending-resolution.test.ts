@@ -18,6 +18,7 @@ import { randomUUID } from 'node:crypto'
 import {
   associatePendingResolutionToPoint,
   dismissPendingTrace,
+  deferPendingTrace,
 } from '@/lib/db/tracked-point-pending-resolution'
 
 const TAG = `__test_6e3b3c_pending_resolution_${Math.floor(Date.now() / 1000)}__`
@@ -425,5 +426,146 @@ describe('dismissPendingTrace', () => {
     const result = await dismissPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toMatch(/ALREADY_RESOLVED/)
+  })
+})
+
+// Phase 6E.8A — report temporel ("Me le redemander…"). NON EXÉCUTABLE tant que la migration
+// 399 (deferred_until/deferred_at/deferred_by) n'est pas appliquée à la base réelle : écrit
+// maintenant pour figer le contrat attendu, exécuté seulement après le GO migration de
+// Vincent. Mêmes fixtures/conventions que describe('dismissPendingTrace', ...) ci-dessus.
+describe('deferPendingTrace', () => {
+  it('INVALID_PENDING_TRACE_ID sur un id mal formé', async () => {
+    const result = await deferPendingTrace({ siteId, pendingTraceId: 'not-a-uuid', actorUserId: adminUserId, durationDays: 7 })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('INVALID_PENDING_TRACE_ID')
+  })
+
+  it('INVALID_DURATION sur une durée hors des 3 valeurs fixes autorisées', async () => {
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+    // @ts-expect-error — durée hors du type DeferDurationDays, exactement le cas que le guard
+    // runtime doit intercepter (jamais une confiance aveugle dans le typage côté appelant).
+    const result = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 3 })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('INVALID_DURATION')
+  })
+
+  it('PENDING_TRACE_NOT_FOUND sur un id inexistant', async () => {
+    const result = await deferPendingTrace({ siteId, pendingTraceId: randomUUID(), actorUserId: adminUserId, durationDays: 1 })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('PENDING_TRACE_NOT_FOUND')
+  })
+
+  it('SITE_MISMATCH : la pending trace appartient à un autre site', async () => {
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId, otherSiteId)
+    const result = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 7 })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toBe('SITE_MISMATCH')
+  })
+
+  it('succès : status reste pending, deferred_until/deferred_at/deferred_by corrects, resolved_at/target_point_id intouchés', async () => {
+    const db = createAdminClient()
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+
+    const before = Date.now()
+    const result = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 7 })
+    const after = Date.now()
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+
+    const { data: row } = await db
+      .from('tracked_point_pending_trace')
+      .select('status, deferred_until, deferred_at, deferred_by, resolved_at, resolved_by, target_point_id')
+      .eq('id', pendingId)
+      .single()
+    const trace = row as {
+      status: string
+      deferred_until: string
+      deferred_at: string
+      deferred_by: string
+      resolved_at: string | null
+      resolved_by: string | null
+      target_point_id: string | null
+    }
+
+    // Un report n'est jamais un abandon : status reste 'pending' (mandat Vincent 6E.8, verdict
+    // ASK_LATER_MODEL_MISSING — pas de nouvelle valeur de status).
+    expect(trace.status).toBe('pending')
+    expect(trace.deferred_by).toBe(adminUserId)
+    expect(result.deferredUntil).toBe(trace.deferred_until)
+
+    const deferredUntilMs = new Date(trace.deferred_until).getTime()
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+    expect(deferredUntilMs).toBeGreaterThanOrEqual(before + sevenDaysMs - 5000)
+    expect(deferredUntilMs).toBeLessThanOrEqual(after + sevenDaysMs + 5000)
+
+    // Un report ne touche jamais les colonnes du cycle de vie résolution/dismiss.
+    expect(trace.resolved_at).toBeNull()
+    expect(trace.resolved_by).toBeNull()
+    expect(trace.target_point_id).toBeNull()
+  })
+
+  it('rejeu non cumulatif : un second report avec une autre durée remplace l\'échéance, ne l\'additionne jamais', async () => {
+    const db = createAdminClient()
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+
+    const first = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 30 })
+    expect(first.ok).toBe(true)
+
+    const second = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 1 })
+    expect(second.ok).toBe(true)
+    if (!second.ok) throw new Error('attendu un succès')
+
+    const { data: row } = await db.from('tracked_point_pending_trace').select('deferred_until').eq('id', pendingId).single()
+    const deferredUntilMs = new Date((row as { deferred_until: string }).deferred_until).getTime()
+    const oneDayFromNowMs = Date.now() + 24 * 60 * 60 * 1000
+    // La deuxième échéance (1 jour) doit avoir REMPLACÉ la première (30 jours), jamais s'y
+    // ajouter : si elle s'était cumulée, l'échéance serait ~31 jours dans le futur.
+    expect(deferredUntilMs).toBeLessThan(oneDayFromNowMs + 5000)
+  })
+
+  it('ALREADY_DISMISSED : report d\'une pending trace déjà écartée est refusé', async () => {
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+    const dismissed = await dismissPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId })
+    expect(dismissed.ok).toBe(true)
+
+    const result = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 7 })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/ALREADY_DISMISSED/)
+  })
+
+  it('ALREADY_RESOLVED : report d\'une pending trace déjà résolue vers un Point est refusé', async () => {
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+    const p1 = await makeProposal(threadId)
+    await resolveEvidence(pendingId, [p1])
+    const target = await makePoint()
+    const associated = await associatePendingResolutionToPoint({ siteId, pendingTraceId: pendingId, targetPointId: target })
+    expect(associated.ok).toBe(true)
+
+    const result = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 7 })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/ALREADY_RESOLVED/)
+  })
+
+  it('interaction : dismissPendingTrace fonctionne normalement sur une trace précédemment reportée mais encore pending', async () => {
+    const db = createAdminClient()
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+
+    const deferred = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 1 })
+    expect(deferred.ok).toBe(true)
+
+    const dismissed = await dismissPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId })
+    expect(dismissed.ok).toBe(true)
+    if (!dismissed.ok) throw new Error('attendu un succès')
+    expect(dismissed.alreadyDismissed).toBe(false)
+
+    const { data: row } = await db.from('tracked_point_pending_trace').select('status').eq('id', pendingId).single()
+    expect((row as { status: string }).status).toBe('dismissed')
   })
 })

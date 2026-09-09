@@ -31,6 +31,7 @@
 // mais jamais perdu en silence : ses ids réapparaissent dans `excludedAlreadyConsumed`.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { pendingTraceVisibleFilter } from '@/lib/db/tracked-point-pending-resolution'
 import { loadTrackedPointReadModel, type PointReadModelEntry } from './tracked-point-read-model'
 
 export type PendingResolutionTargetingMode =
@@ -221,6 +222,7 @@ export async function loadPendingResolutionQueue(siteId: string): Promise<Pendin
     .eq('site_id', siteId)
     .eq('kind', 'RESOLUTION_WITHOUT_KNOWN_PROBLEM')
     .eq('status', 'pending')
+    .or(pendingTraceVisibleFilter(new Date().toISOString()))
   if (tracesErr) throw tracesErr
 
   const traces: PendingResolutionTraceRow[] = (rawTraces ?? []).map((t) => ({

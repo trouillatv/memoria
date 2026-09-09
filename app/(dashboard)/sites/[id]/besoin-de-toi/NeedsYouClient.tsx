@@ -143,6 +143,33 @@ function SessionRecapCard({ recap }: { recap: ReturnType<typeof buildMemoriaNeed
   )
 }
 
+// 6E.8A — feedback de report ("Me le redemander…"), canal structurellement séparé du récap 6E.4D :
+// un report n'est ni un rejet ni une clarification métier confirmée, il ne doit JAMAIS apparaître
+// dans "Ce que tu viens d'aider MemorIA à comprendre" (mandat Vincent, audit 6E.8
+// ASK_LATER_MODEL_MISSING). Purement informatif, session-only, jamais persisté ni relu au refresh.
+type DeferredNotice = { id: string; days: 1 | 7 | 30 }
+
+function DeferredNoticesCard({ notices }: { notices: DeferredNotice[] }) {
+  if (notices.length === 0) return null
+  return (
+    <div className="rounded-[18px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/40">
+          <HelpCircle className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+        </span>
+        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-200">
+          Questions reportées
+        </h2>
+      </div>
+      <ul className="mt-3 space-y-1 text-[13px] text-foreground/90">
+        {notices.map((n, i) => (
+          <li key={`${n.id}-${i}`}>MemorIA te le redemandera dans {n.days} jour{n.days > 1 ? 's' : ''}.</li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function NeedsYouClient({
   siteId,
   questions,
@@ -162,6 +189,8 @@ export function NeedsYouClient({
   // recapLabel passé par la carte), jamais recalculé depuis `remaining`/`done`. Une clarification
   // déjà comptée ne peut pas être retirée par un simple rerender (setState d'ajout pur).
   const [recapEntries, setRecapEntries] = useState<MemoriaNeedsYouRecapEntry[]>([])
+  // 6E.8A — append-only comme recapEntries, mais un canal distinct (cf. DeferredNoticesCard).
+  const [deferredNotices, setDeferredNotices] = useState<DeferredNotice[]>([])
   const [filter, setFilter] = useState<FilterValue>('all')
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilterValue>('all')
   const [sortMode, setSortMode] = useState<SortMode>('priority')
@@ -269,9 +298,11 @@ export function NeedsYouClient({
 
   function runActionFor(questionId: string, category: MemoriaNeedsYouCategory) {
     // 6E.4D — `recapLabel` omis (undefined) par un rejet/report ("Ce n'est pas ce suivi", "Non",
-    // "Laisser pour plus tard") : ces gestes ne produisent jamais de ligne de recap, seuls les 5
+    // "Écarter cette question") : ces gestes ne produisent jamais de ligne de recap, seuls les 5
     // confirmations positives en passent un (string | null, jamais fabriqué — cf. NeedsYouCards.tsx).
-    return (action: () => Promise<ActionResult>, recapLabel?: string | null) => {
+    // `deferredDays` (6E.8A) est un troisième canal, mutuellement exclusif avec `recapLabel` côté
+    // appelant : jamais fusionné dans le recap 6E.4D.
+    return (action: () => Promise<ActionResult>, recapLabel?: string | null, deferredDays?: 1 | 7 | 30) => {
       setErrors((prev) => {
         if (!(questionId in prev)) return prev
         const next = { ...prev }
@@ -288,6 +319,9 @@ export function NeedsYouClient({
           })
           if (result.ok) {
             setDone((prev) => new Set(prev).add(questionId))
+            if (deferredDays !== undefined) {
+              setDeferredNotices((prev) => [...prev, { id: questionId, days: deferredDays }])
+            }
             if (recapLabel !== undefined) {
               setRecapEntries((prev) => [...prev, { category, label: recapLabel }])
             }
@@ -313,6 +347,7 @@ export function NeedsYouClient({
     return (
       <div className="space-y-4">
         <SessionRecapCard recap={sessionRecap} />
+        <DeferredNoticesCard notices={deferredNotices} />
         <div className="rounded-2xl border border-dashed bg-card/50 px-4 py-8 text-center">
           <p className="text-sm font-medium">Rien à clarifier pour le moment.</p>
           <p className="mt-1 text-[12px] text-muted-foreground">La mémoire du chantier est à jour.</p>
@@ -325,6 +360,7 @@ export function NeedsYouClient({
     <div className="lg:grid lg:grid-cols-[1fr_280px] lg:items-start lg:gap-4">
       <div className="space-y-4">
         <SessionRecapCard recap={sessionRecap} />
+        <DeferredNoticesCard notices={deferredNotices} />
         {/* Zone de filtres — sections nommées (Type de question / Période / Importance / Trier
             par) : Importance FILTRE la file, Trier par ORDONNE la sélection filtrée. Les deux
             axes ne sont jamais fusionnés dans un seul contrôle (mandat Vincent : "Historique ≠

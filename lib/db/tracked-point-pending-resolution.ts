@@ -169,3 +169,82 @@ export async function dismissPendingTrace(params: {
     error: `ALREADY_RESOLVED: status=${afterRace.status} après course concurrente, dismiss impossible`,
   }
 }
+
+// Phase 6E.8A — report temporel ("Me le redemander…"), geste distinct de dismissPendingTrace.
+// Décision d'architecture de Vincent (audit 6E.8, verdict ASK_LATER_MODEL_MISSING) : status
+// reste 'pending' — un report N'EST PAS un abandon, seulement une métadonnée de visibilité
+// additive (deferred_until/deferred_at/deferred_by, migration 399). Durées fixes uniquement,
+// validées ici et jamais côté client seul : aucune date libre.
+export const DEFER_DURATION_DAYS = [1, 7, 30] as const
+export type DeferDurationDays = (typeof DEFER_DURATION_DAYS)[number]
+
+export type DeferPendingTraceResult =
+  | { ok: true; pendingTraceId: string; deferredUntil: string }
+  | { ok: false; error: string }
+
+// pendingTraceVisibleFilter : prédicat de visibilité partagé par toutes les files qui
+// consomment tracked_point_pending_trace (status='pending' déjà appliqué par l'appelant) —
+// un seul endroit connaît la formule "deferred_until NULL OU déjà passé", pour qu'elle ne
+// diverge jamais entre tracked-point-pending-resolution-queue.ts,
+// tracked-point-pending-trackability-queue.ts et tracked-point-evidence-scope-queue.ts.
+export function pendingTraceVisibleFilter(nowIso: string): string {
+  return `deferred_until.is.null,deferred_until.lte.${nowIso}`
+}
+
+// deferPendingTrace : même squelette que dismissPendingTrace (UPDATE mono-ligne gardé par
+// WHERE status='pending', re-lecture explicite en cas de course perdue). Un report ne touche
+// jamais status/resolved_at/resolved_by/evidence_status — seulement les trois colonnes de
+// report elles-mêmes. Rejouable tant que la trace reste 'pending' (un nouveau report
+// remplace simplement l'échéance précédente, jamais un cumul).
+export async function deferPendingTrace(params: {
+  siteId: string
+  pendingTraceId: string
+  actorUserId: string
+  durationDays: DeferDurationDays
+}): Promise<DeferPendingTraceResult> {
+  const { siteId, pendingTraceId, actorUserId, durationDays } = params
+  const db = createAdminClient()
+
+  if (!UUID_RE.test(pendingTraceId)) return { ok: false, error: 'INVALID_PENDING_TRACE_ID' }
+  if (!DEFER_DURATION_DAYS.includes(durationDays)) return { ok: false, error: 'INVALID_DURATION' }
+
+  const { data: pendingRow, error: pendingErr } = await db
+    .from('tracked_point_pending_trace')
+    .select('id, site_id, status')
+    .eq('id', pendingTraceId)
+    .maybeSingle()
+  if (pendingErr) throw pendingErr
+  if (!pendingRow) return { ok: false, error: 'PENDING_TRACE_NOT_FOUND' }
+  if (pendingRow.site_id !== siteId) return { ok: false, error: 'SITE_MISMATCH' }
+  if (pendingRow.status === 'dismissed') {
+    return { ok: false, error: 'ALREADY_DISMISSED: pending trace déjà écartée, report impossible' }
+  }
+  if (pendingRow.status === 'resolved') {
+    return { ok: false, error: 'ALREADY_RESOLVED: pending trace déjà résolue vers un Point, report impossible' }
+  }
+
+  const now = new Date()
+  const deferredUntil = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString()
+
+  const { data: updated, error: updErr } = await db
+    .from('tracked_point_pending_trace')
+    .update({ deferred_until: deferredUntil, deferred_at: now.toISOString(), deferred_by: actorUserId })
+    .eq('id', pendingTraceId)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle()
+  if (updErr) throw updErr
+  if (updated) return { ok: true, pendingTraceId, deferredUntil }
+
+  // Course perdue entre le SELECT et l'UPDATE gardé : ne jamais deviner, relire l'état réel.
+  const { data: afterRace, error: raceErr } = await db
+    .from('tracked_point_pending_trace')
+    .select('status')
+    .eq('id', pendingTraceId)
+    .single()
+  if (raceErr) throw raceErr
+  return {
+    ok: false,
+    error: `ALREADY_RESOLVED: status=${afterRace.status} après course concurrente, report impossible`,
+  }
+}
