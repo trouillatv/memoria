@@ -17,6 +17,11 @@
 // Frozen — voir docs/tracked-points/p6-live-writer-design.md §2.1, §2.2, §2.4, §7.
 
 import type { FoundingUnit, PropRow } from './tracked-point-founding'
+import {
+  evaluateMembershipCandidate,
+  type CandidateThreadInput,
+  type TrackedPointCandidate,
+} from './tracked-point-membership-candidates'
 
 // ── classifyRootCause — copie fidèle (frozen, ne pas modifier). ────────────────────────────
 
@@ -172,4 +177,33 @@ export function planPendingTraceForUnit(u: FoundingUnit): PlannedPendingTrace | 
     }
   }
   return null
+}
+
+// ── D1 (Round 2, Vincent) — candidats cross-thread pour l'auto-création PROVISIONAL. ──────
+//
+// Une identité concurrente connue cross-thread ne peut jamais être ignorée puis laisser le RPC
+// créer un nouveau Point (§ trackable_condition, jamais étendu à la branche CBO ni à la branche
+// pending/resolution — l'identité CBO est déjà arbitrée en amont, et la branche pending ne crée
+// jamais de Point). Réutilise tel quel le moteur déterministe de Phase 4
+// (evaluateMembershipCandidate, tracked-point-membership-candidates.ts) — pas un second moteur de
+// décision, aucun llmJudge branché (rail LLM non câblé, decision jamais UNCERTAIN en pratique).
+//
+// La liste retournée ici n'est qu'une PROPOSITION calculée hors-lock : le RPC (migration 401)
+// revérifie chaque id sous verrou (tracked_point.status='active' AND identity_status<>'CONFLICTED')
+// avant d'en tenir compte — cette fonction ne décide jamais elle-même de l'écriture.
+export function crossThreadConcurrentPointIds(
+  u: FoundingUnit,
+  sitePoints: TrackedPointCandidate[],
+  ctx: PlanUnitContext = {},
+): string[] {
+  const candidate: CandidateThreadInput = {
+    threadId: u.threadId,
+    label: u.threadLabel,
+    subjectId: ctx.canonicalSubjectId ?? null,
+    subjectLabel: ctx.canonicalSubjectLabel ?? null,
+  }
+  return sitePoints
+    .filter((point) => evaluateMembershipCandidate(candidate, point).decision === 'SAME_POINT')
+    .map((point) => point.pointId)
+    .sort()
 }

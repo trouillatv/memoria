@@ -1,5 +1,5 @@
 // P6 Live Writer — Phase 4 (partie orchestration) : wrapper au-dessus de la RPC unique
-// fn_reconcile_tracked_point_unit (migration 400, NON APPLIQUÉE dans ce lot).
+// fn_reconcile_tracked_point_unit (migration 401, NON APPLIQUÉE dans ce lot).
 //
 // Ce module ne classifie rien et ne charge aucune donnée live : il reçoit une FoundingUnit
 // déjà construite (buildFoundingUnits, lib/knowledge/tracked-point-founding.ts) par un
@@ -19,6 +19,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { FoundingUnit } from '@/lib/knowledge/tracked-point-founding'
 import { buildFingerprint } from '@/lib/knowledge/tracked-point-fingerprint'
 import {
+  crossThreadConcurrentPointIds,
   foundingReferenceOf,
   planPendingTraceForUnit,
   planPointForUnit,
@@ -26,6 +27,7 @@ import {
   type PlannedPoint,
   type PlanUnitContext,
 } from '@/lib/knowledge/tracked-point-write-plan'
+import type { TrackedPointCandidate } from '@/lib/knowledge/tracked-point-membership-candidates'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -39,6 +41,7 @@ export type ReconcileWritePattern =
   | 'CREATE_PENDING_TRACE'
   | 'CREATE_CANDIDATES'
   | 'NOOP'
+  | 'IGNORE_NOT_TRACKABLE'
 
 export type ReconcileTrackedPointUnitResult =
   | {
@@ -54,7 +57,7 @@ export type ReconcileTrackedPointUnitResult =
     }
   | { ok: false; error: string }
 
-// Codes portés par les RAISE EXCEPTION de la RPC (migration 400) — extraits du message
+// Codes portés par les RAISE EXCEPTION de la RPC (migration 401) — extraits du message
 // Postgres, jamais reconstruits ailleurs (même convention que tracked-point-pending-
 // resolution.ts:parseGuardCode).
 const KNOWN_GUARD_CODES = ['INVALID_PLAN', 'INVALID_SCOPE', 'CBO_NOT_FOUND', 'DRIFT_CBO_LINK_MISSING'] as const
@@ -64,7 +67,10 @@ function parseGuardCode(message: string): string {
   return hit ?? `UNKNOWN_ERROR: ${message}`
 }
 
-function plannedPointPayload(p: PlannedPoint) {
+// Exporté pour le témoin 14 (rollback après échec forcé) : ce témoin doit appeler le harness
+// test-only (test_only.fn_reconcile_tracked_point_unit_with_failpoint) directement plutôt que
+// ce wrapper — il a donc besoin de la même sérialisation exacte du plan, sans la dupliquer.
+export function plannedPointPayload(p: PlannedPoint) {
   return {
     label: p.label,
     foundingKind: p.founding_kind,
@@ -101,8 +107,14 @@ export async function reconcileTrackedPointUnit(params: {
   ctx?: PlanUnitContext
   sourceKind: 'historical_pdf' | 'field_visit' | 'meeting'
   sourceRefId: string
+  // D1 (Round 2, Vincent) : candidats de Points actifs du site déjà chargés par l'appelant,
+  // utilisés UNIQUEMENT pour détecter une concurrence cross-thread avant l'auto-création
+  // PROVISIONAL — jamais un second moteur de décision (crossThreadConcurrentPointIds réutilise
+  // evaluateMembershipCandidate tel quel, sans llmJudge). Le RPC revérifie chaque id sous
+  // verrou avant d'en tenir compte.
+  sitePoints?: TrackedPointCandidate[]
 }): Promise<ReconcileTrackedPointUnitResult> {
-  const { siteId, unit, ctx, sourceKind, sourceRefId } = params
+  const { siteId, unit, ctx, sourceKind, sourceRefId, sitePoints = [] } = params
 
   if (!UUID_RE.test(siteId)) return { ok: false, error: 'INVALID_SITE_ID' }
   if (!UUID_RE.test(unit.threadId)) return { ok: false, error: 'INVALID_THREAD_ID' }
@@ -114,6 +126,7 @@ export async function reconcileTrackedPointUnit(params: {
 
   const unitKey = foundingReferenceOf(unit)
   const { snapshot, fingerprint } = buildFingerprint(unit)
+  const crossThreadCandidateIds = crossThreadConcurrentPointIds(unit, sitePoints, ctx)
 
   const db = createAdminClient()
   const { data, error } = await db.rpc('fn_reconcile_tracked_point_unit', {
@@ -127,6 +140,7 @@ export async function reconcileTrackedPointUnit(params: {
     p_source_ref_id: sourceRefId,
     p_planned_point: plannedPoint ? plannedPointPayload(plannedPoint) : null,
     p_planned_pending_trace: plannedPendingTrace ? plannedPendingTracePayload(plannedPendingTrace) : null,
+    p_cross_thread_candidate_point_ids: crossThreadCandidateIds,
   })
   if (error) return { ok: false, error: parseGuardCode(error.message) }
 

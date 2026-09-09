@@ -1,8 +1,8 @@
 # P6 — Live Writer `tracked_point`
 
-Status: **DESIGN FROZEN — NO IMPLEMENTATION GO**
+Status: **DESIGN FROZEN — ROUND 2 (D1/D3/D4 codés) — NO GO APPLY, NO GO MERGE MAIN**
 
-Aucune migration créée ou appliquée, aucun code écrit pour ce document. Toute décision ci-dessous est un contrat à implémenter, pas un état déployé. Historique complet de la conception : conversation Claude Code datée 2026-09-05/09, arbitrages Vincent inclus.
+Aucune migration appliquée sur une base réelle, aucune activation prod. Toute décision ci-dessous est un contrat à implémenter, pas un état déployé. Historique complet de la conception : conversation Claude Code datée 2026-09-05/09, arbitrages Vincent inclus. §2.10 documente les corrections Round 2 (D1/D3/D4) exigées par la revue de Vincent sur le lot initial — elles amendent §2.1/§2.2, ne les remplacent pas.
 
 ## 1. Périmètre
 
@@ -16,17 +16,18 @@ Le Live Writer réutilise `decideFoundingOld`/`decideFoundingV2` et `buildFoundi
 
 Quatre verdicts métier : `AUTO_CREATED`, `AUTO_LINKED`, `NEEDS_HUMAN`, `IGNORED_NOT_TRACKABLE`.
 
-Sept gestes d'écriture possibles (un verdict peut correspondre à plusieurs gestes selon le contexte) :
+Huit gestes d'écriture possibles (un verdict peut correspondre à plusieurs gestes selon le contexte) :
 
 - `CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK` — AUTO_CREATED, fondation CBO. INSERT `tracked_point` (CONFIRMED, founding_kind='cbo', founding_reference=cbo.id) + INSERT `tracked_point_member` + UPDATE `canonical_business_object.tracked_point_id`. Les trois écritures ou aucune.
-- `CREATE_POINT_WITH_MEMBERSHIP` — AUTO_CREATED, fondation trackable_condition déterministe (décision P6-A, §2.2). INSERT `tracked_point` (PROVISIONAL, founding_kind='trackable_condition', founding_reference=subject_thread_id) + INSERT `tracked_point_member`.
+- `CREATE_POINT_WITH_MEMBERSHIP` — AUTO_CREATED, fondation trackable_condition déterministe (décision P6-A, §2.2, amendée D1/D3 §2.10). INSERT `tracked_point` (PROVISIONAL, founding_kind='trackable_condition', founding_reference=subject_thread_id) + INSERT `tracked_point_member`.
 - `ATTACH_MEMBER` — AUTO_LINKED, Point déjà fondé et actif, non CONFLICTED. INSERT `tracked_point_member` seul.
 - `ENRICH_EXISTING_POINT` — AUTO_LINKED, cas du CBO tardif (décision P6-C, §2.3). Ajoute le membership s'il manque et/ou rattache le CBO s'il est encore NULL, sur un Point déjà fondé par une autre voie. Ne modifie jamais `founding_kind`/`founding_reference`.
 - `CREATE_PENDING_TRACE` — NEEDS_HUMAN, aucune cible plausible. INSERT `tracked_point_pending_trace` seul.
-- `CREATE_CANDIDATES` — NEEDS_HUMAN, une ou plusieurs cibles plausibles. INSERT `tracked_point_pending_trace` + INSERT `tracked_point_identity_candidate` (un par cible réellement absente — voir §2.4 matérialisation partielle) + `reconcile_artifact` par objet effectivement créé.
-- `NOOP` — rejeu sans effet métier. Uniquement après revalidation live, jamais sur la seule égalité de fingerprint (§2.5).
+- `CREATE_CANDIDATES` — NEEDS_HUMAN, une ou plusieurs cibles plausibles (thread-scoped >1, OU cross-thread D1, OU cross-thread + pending existant). INSERT `tracked_point_pending_trace` (si absent) + INSERT `tracked_point_identity_candidate` (un par cible réellement absente — voir §2.4 matérialisation partielle) + `reconcile_artifact` par objet effectivement créé.
+- `IGNORE_NOT_TRACKABLE` — IGNORED_NOT_TRACKABLE, première tentative sur cette unité (décision D4, §2.10). Aucune écriture métier ; seul `reconcile_state`/`reconcile_event` journalisent la décision.
+- `NOOP` — rejeu sans effet métier, réservé à la revalidation d'un `write_pattern` déjà `NOOP` ou `IGNORE_NOT_TRACKABLE` précédent (décision D4, §2.10). Uniquement après revalidation live, jamais sur la seule égalité de fingerprint (§2.5).
 
-Chaque pattern est le nom du geste atomique retourné par le writer et journalisé dans `reconcile_event.write_pattern`.
+Chaque pattern est le nom du geste atomique retourné par le writer et journalisé dans `reconcile_event.write_pattern`. `IGNORE_NOT_TRACKABLE` et `NOOP` ne sont jamais interchangeables dans l'event : le premier caractérise la décision initiale « pas trackable », le second caractérise un rejeu constatant qu'une décision précédente (`NOOP` ou `IGNORE_NOT_TRACKABLE`) reste valide.
 
 ### 2.2 Décision P6-A — PROVISIONAL_TRACKABLE
 
@@ -103,6 +104,22 @@ Hash advisory : réutilisation de la primitive déjà gelée `hashtext(...)::big
 
 Le témoin 12 ne teste pas qu'un ordre particulier gagne. Propriété recherchée : convergence de l'état final quel que soit l'ordre réel d'exécution des writers concurrents — un seul Point, une seule provenance de fondation (celle du writer qui obtient le verrou de domaine en premier), le second writer enrichit sans jamais écraser `founding_kind`/`founding_reference`.
 
+### 2.10 Round 2 (Vincent) — D1 concurrence cross-thread, D3 règle à trois paliers, D4 IGNORE_NOT_TRACKABLE
+
+Amendements exigés par la revue de Vincent sur le lot P6 initial (branche `feat/p6-live-writer`, checkpoint gelé). Portent exclusivement sur la sous-branche `trackable_condition` de la décision P6-A (§2.2) — jamais étendus à la fondation CBO (identité déjà arbitrée en amont, §2.4) ni à la branche pending/résolution (ne fonde jamais de Point).
+
+**D1 — une identité concurrente connue cross-thread ne peut jamais être ignorée puis laisser P6 créer un nouveau Point.** Avant toute auto-création PROVISIONAL, l'appelant TypeScript calcule `crossThreadConcurrentPointIds` (`lib/knowledge/tracked-point-write-plan.ts`) : réutilise tel quel le moteur déterministe de Phase 4 (`evaluateMembershipCandidate`, `lib/knowledge/tracked-point-membership-candidates.ts`), sans `llmJudge` — ce n'est pas un second moteur de décision, aucun câblage LLM réel introduit. Le résultat n'est qu'une proposition hors-lock ; le RPC (migration 401) revérifie chaque id sous verrou (`tracked_point.status='active' AND identity_status<>'CONFLICTED'`) avant d'en tenir compte.
+
+Priorité des signaux : les siblings **thread-scoped** (signal fort, `tracked_point_member` actif sur ce même thread) sont toujours vérifiés en premier et priment sur les candidats cross-thread (signal faible, fuzzy). Le fallback cross-thread D1 n'intervient que si zéro sibling thread-scoped valide ne subsiste.
+
+**D3 — règle à trois paliers, verbatim Vincent : « 0 cible → éventuellement AUTO_CREATE ; 1 cible compatible unique → AUTO_LINK/ENRICH ; plus de 1 ou contradiction → NEEDS_HUMAN. »** Appliquée à deux niveaux distincts, jamais confondus :
+- Palier thread-scoped (signal fort) : 0 sibling → poursuit vers D1 ; exactement 1 sibling (revérifié sous verrou) → `ATTACH_MEMBER` ; plus d'1 → `NEEDS_HUMAN`/`CREATE_CANDIDATES`.
+- Palier cross-thread D1 (signal faible/fuzzy) : dès qu'au moins un candidat cross-thread valide existe, **toujours** `NEEDS_HUMAN`/`CREATE_CANDIDATES` — même si le compte est exactement 1. Un signal fuzzy unique n'a jamais le droit d'auto-lier ; seule l'égalité stricte au niveau thread-scoped en a le droit.
+
+**D4 — `IGNORE_NOT_TRACKABLE` distinct de `NOOP`.** Première tentative sur une unité non trackable ⇒ `write_pattern='IGNORE_NOT_TRACKABLE'`. Rejeu compatible (fingerprint identique, état live toujours non trackable) ⇒ `write_pattern='NOOP'`, `replayed=true`. Le check de compatibilité du court-circuit (§2.5) traite `NOOP` et `IGNORE_NOT_TRACKABLE` comme équivalents pour décider si un rejeu est possible, mais le `write_pattern` journalisé sur la première tentative reste `IGNORE_NOT_TRACKABLE`, jamais `NOOP`.
+
+Corrections structurelles associées (non fonctionnelles mais bloquantes, revue Vincent) : ordre de verrouillage corrigé (§2.8 — `reconcile_state` lu sans `FOR UPDATE` à l'étape de lecture initiale, le verrou advisory de niveau 2 suffisant déjà à sérialiser les appels sur le même `unit_key`) ; `CREATE_CANDIDATES` réécrit en CTE (`WITH to_insert AS (...), inserted AS (INSERT ... RETURNING id) SELECT array_agg(id) ...`), remplaçant le construct invalide `RETURNING id INTO <UUID[]>` ; suppression totale de l'heuristique de vérité par horodatage (`created_at >= now() - interval '1 second'`), remplacée par des booléens explicites (`v_pending_created`) et les lignes exactement insérées par la CTE ; durcissement SECURITY DEFINER (`SET search_path = ''`, `REVOKE ALL ... FROM PUBLIC/anon/authenticated`, `GRANT EXECUTE ... TO service_role`) — ce RPC est autonome (aucun geste humain de porte), donc une frontière de privilège, pas un polish sécurité.
+
 ## 3. Machine à états finale
 
 ```
@@ -134,10 +151,12 @@ lock/reload CBO + pending + points + membership + candidates + reconcile_state
     ▼
 revalidate against LIVE state (jamais NOOP sur seule égalité de fingerprint, §2.5)
     │
-    ├── same input + state still valid → NOOP
-    ├── deterministic founder, aucune concurrence → CREATE_POINT_WITH_MEMBERSHIP[_AND_CBO_LINK]
-    ├── unique existing identity, CBO tardif → ENRICH_EXISTING_POINT
-    ├── unique existing identity, cas standard → ATTACH_MEMBER
+    ├── same input + prev write_pattern ∈ {NOOP, IGNORE_NOT_TRACKABLE} + state still valid → NOOP
+    ├── not trackable, 1re tentative → IGNORE_NOT_TRACKABLE
+    ├── deterministic founder, thread-scoped siblings=0, cross-thread D1 candidates=0 → CREATE_POINT_WITH_MEMBERSHIP[_AND_CBO_LINK]
+    ├── deterministic founder, thread-scoped siblings=0, cross-thread D1 candidates≥1 (D3) → NEEDS_HUMAN / CREATE_CANDIDATES
+    ├── thread-scoped siblings=1 (revérifié sous verrou) → ATTACH_MEMBER
+    ├── thread-scoped siblings>1, ou CBO tardif unique → ENRICH_EXISTING_POINT / CREATE_CANDIDATES selon le cas
     └── ambiguïté / CONFLICTED / merged / résolution orpheline → CREATE_PENDING_TRACE / CREATE_CANDIDATES
     │
     ▼
@@ -157,7 +176,7 @@ COMMIT
 
 Le verrou de domaine d'identité (§2.8) est un protocole d'exécution (advisory lock), pas une contrainte de schéma — il ne remplace aucun des 5 invariants ci-dessus, il empêche la course qui les précède.
 
-## 5. Matrice de tests — 16 témoins minimum
+## 5. Matrice de tests — 18 témoins minimum (16 initiaux + 2 Round 2 D1/D4)
 
 Conventions reprises telles quelles de `tests/lib/db/tracked-point-pending-resolution.test.ts` : intégration réelle Supabase (`createAdminClient`), données taguées `${TAG}`, fixtures `beforeAll`/`afterAll` (org → client → site(s) → document → run), un helper par entité, nettoyage enfants-avant-parents.
 
@@ -174,9 +193,11 @@ Conventions reprises telles quelles de `tests/lib/db/tracked-point-pending-resol
 11. Concurrence same-unit — deux appels simultanés sur le même `(site_id, unit_key)`, même fingerprint : un seul écrit, l'autre `replayed=true`, jamais de unique_violation exposée.
 12. Concurrence cross-unit / même domaine d'identité — Writer A (`unit_key=cbo:C`, thread T) et Writer B (`unit_key=thread:T`, trackable_condition) en parallèle. Assertions : aucun deadlock ; exactement un `tracked_point` ; une seule provenance de fondation (celle du writer arrivé premier au verrou de domaine, indifféremment laquelle) ; le second n'écrase jamais `founding_kind`/`founding_reference` ; `CBO.tracked_point_id` pointe sur ce même Point ; membership HARD unique ; deux `reconcile_event` cohérents avec ce que chacun a réellement fait ; aucune violation de contrainte non rattrapée.
 13. Course Live Writer / RPC humaine — candidate NEEDS_HUMAN créée par le writer, acceptée par un humain via `accept_trace_identity_candidate` (mig 393) pendant qu'une nouvelle extraction relance une réconciliation sur la même unité. Assertion : le rejeu reconnaît le membership HARD posé par la RPC humaine, ne recrée rien en doublon.
-14. Rollback atomique après fondation partielle simulée — échec forcé après INSERT `tracked_point` mais avant membership/CBO. Après rollback : 0 Point, 0 member, 0 modification CBO, 0 state/event/artifact.
+14. Rollback atomique après fondation partielle simulée — échec forcé après INSERT `tracked_point` mais avant membership/CBO, via `test_only.fn_reconcile_tracked_point_unit_with_failpoint` (`supabase/testing/p6_test_failpoint_harness.sql`, harness exclusif au test, jamais une migration, jamais un paramètre RPC prod activable depuis PostgREST). Après rollback : 0 Point, 0 member, 0 modification CBO, 0 state/event/artifact.
 15. Dix appels concurrents sur la même unité (pas seulement deux) — un seul effet métier, neuf rejeux/convergences propres.
 16. Candidates partiellement matérialisées — A et C existent, B manque, nouvelle tentative `CREATE_CANDIDATES` : seule B créée, `reconcile_artifact` du nouvel event ne mentionne que B.
+17. D1/D3 — concurrence cross-thread unique. Point P existe déjà sur thread T1 ; nouvelle unité `trackable_condition` sur thread T2, `crossThreadConcurrentPointIds` retourne `[P.id]` (containment fort ou label exact, aucun sibling thread-scoped sur T2). Assertion clé : `NEEDS_HUMAN`/`CREATE_CANDIDATES`, **jamais** `AUTO_LINKED`/`ATTACH_MEMBER` malgré l'unicité — le signal cross-thread ne bénéficie jamais du palier « 1 cible unique → auto-link » réservé aux siblings thread-scoped.
+18. D4 — `IGNORE_NOT_TRACKABLE` vs `NOOP`. Première tentative sur une unité non trackable : `write_pattern='IGNORE_NOT_TRACKABLE'`, `replayed=false`. Rejeu à fingerprint identique, état live toujours non trackable : `write_pattern='NOOP'`, `replayed=true`. Assertion clé : les deux tentatives produisent des `reconcile_event` distincts et correctement typés, jamais `IGNORE_NOT_TRACKABLE` sur le rejeu ni `NOOP` sur la première tentative.
 
 ## 6. Sources — mapping vers `source_id`
 

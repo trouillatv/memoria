@@ -1,8 +1,13 @@
--- Migration 399 : schéma du Live Writer P6 (tracked_point)
+-- Migration 400 : schéma du Live Writer P6 (tracked_point)
+--
+-- Renumérotée 399→400 (Round 2) : la branche feat/p6-live-writer avait divergé
+-- de main avant l'intégration de 6E.8A, qui possède déjà la vraie migration 399
+-- (399_tracked_point_pending_trace_defer.sql). Cette migration est rejouée sur
+-- une branche fraîche depuis origin/main pour éviter toute collision de numéro.
 --
 -- Contrat frozen : docs/tracked-points/p6-live-writer-design.md. Cette migration NE
 -- CRÉE AUCUNE ÉCRITURE AUTOMATIQUE — elle pose seulement les garanties de schéma que
--- le RPC de la migration 400 (fn_reconcile_tracked_point_unit) doit pouvoir supposer
+-- le RPC de la migration 401 (fn_reconcile_tracked_point_unit) doit pouvoir supposer
 -- vraies AVANT d'écrire quoi que ce soit. Design §4 (5 invariants DB), §2.6 (state/
 -- event/artifact), §2.7 (unicité de fondation).
 --
@@ -10,9 +15,9 @@
 -- APPLICATION réelle, confirmer `SELECT count(*) FROM tracked_point WHERE
 -- founding_reference IS NULL` — si ce compte est > 0, l'index partiel ci-dessous
 -- reste correct techniquement (WHERE founding_reference IS NOT NULL l'exclut) mais
--- la couverture réelle de l'invariant 1 doit être revérifiée avant GO APPLY. Ce
--- comptage n'a PAS été exécuté dans ce lot (aucun accès DB disponible dans ce
--- worktree / cette session) — à faire avant toute application.
+-- la couverture réelle de l'invariant 1 doit être revérifiée avant GO APPLY. Un
+-- préflight READ-ONLY est exécuté sur la base cible réelle dans ce lot (Round 2,
+-- item 13) — voir rapport HARD STOP pour le résultat.
 --
 -- NO GO APPLY — cette migration n'est pas appliquée par ce lot (mandat explicite).
 
@@ -68,7 +73,7 @@ CREATE TABLE public.tracked_point_reconcile_state (
                       CHECK (write_pattern IN (
                         'CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK', 'CREATE_POINT_WITH_MEMBERSHIP',
                         'ATTACH_MEMBER', 'ENRICH_EXISTING_POINT',
-                        'CREATE_PENDING_TRACE', 'CREATE_CANDIDATES', 'NOOP'
+                        'CREATE_PENDING_TRACE', 'CREATE_CANDIDATES', 'NOOP', 'IGNORE_NOT_TRACKABLE'
                       )),
   target_point_id  UUID        REFERENCES public.tracked_point(id) ON DELETE SET NULL,
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -91,7 +96,7 @@ CREATE TABLE public.tracked_point_reconcile_event (
                        CHECK (write_pattern IN (
                          'CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK', 'CREATE_POINT_WITH_MEMBERSHIP',
                          'ATTACH_MEMBER', 'ENRICH_EXISTING_POINT',
-                         'CREATE_PENDING_TRACE', 'CREATE_CANDIDATES', 'NOOP'
+                         'CREATE_PENDING_TRACE', 'CREATE_CANDIDATES', 'NOOP', 'IGNORE_NOT_TRACKABLE'
                        )),
   target_point_id   UUID        REFERENCES public.tracked_point(id) ON DELETE SET NULL,
   replayed          BOOLEAN     NOT NULL DEFAULT false,

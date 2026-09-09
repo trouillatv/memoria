@@ -1,13 +1,9 @@
-// P6 Live Writer — matrice des 16 témoins d'intégration (design §5,
-// docs/tracked-points/p6-live-writer-design.md, frozen commit 620450d7).
+// P6 Live Writer — matrice des 18 témoins d'intégration (design §5,
+// docs/tracked-points/p6-live-writer-design.md — 16 témoins initiaux + 17/18 Round 2 D1/D4).
 //
-// HARD STOP explicite : ce fichier est écrit contre les migrations 399/400, qui NE SONT PAS
-// appliquées dans ce lot (mandat NO GO APPLY). Aucun de ces 16 témoins n'a été exécuté contre
-// une vraie base — la véracité des assertions est dérivée d'une lecture statique complète du
-// SQL de la migration 400 (fn_reconcile_tracked_point_unit), jamais d'une exécution réelle.
-// Avant la première exécution réelle de cette suite (après une éventuelle GO APPLY), s'attendre
-// à devoir ajuster des détails de timing/ordre (témoins 11, 12, 15) et à confirmer le
-// comportement exact du témoin 13 (voir commentaire dédié — zone d'incertitude assumée).
+// Round 2 (renumérotation 399/400→400/401, voir supabase/migrations/400_...) : ce fichier est
+// écrit contre les migrations 400/401, qui NE SONT PAS appliquées sur main dans ce lot (mandat
+// NO GO APPLY). Voir le rapport HARD STOP Round 2 pour l'état réel d'exécution (DB jetable).
 //
 // Conventions reprises à l'identique de tests/lib/db/tracked-point-pending-resolution.test.ts
 // (même TAG, même chaîne beforeAll/afterAll org→client→site(s)→document→run, mêmes helpers
@@ -16,10 +12,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { reconcileTrackedPointUnit } from '@/lib/db/tracked-point-live-writer'
+import { reconcileTrackedPointUnit, plannedPointPayload } from '@/lib/db/tracked-point-live-writer'
 import { acceptTraceIdentityCandidate } from '@/lib/db/tracked-point-trace-acceptance'
 import type { FoundingOutcomeV2, FoundingUnit } from '@/lib/knowledge/tracked-point-founding'
-import { foundingReferenceOf } from '@/lib/knowledge/tracked-point-write-plan'
+import { foundingReferenceOf, planPointForUnit } from '@/lib/knowledge/tracked-point-write-plan'
+import { buildFingerprint } from '@/lib/knowledge/tracked-point-fingerprint'
+import type { TrackedPointCandidate } from '@/lib/knowledge/tracked-point-membership-candidates'
 
 const TAG = `__test_p6_live_writer_${Math.floor(Date.now() / 1000)}__`
 
@@ -446,12 +444,13 @@ describe('Témoin 11 — concurrence sur la même unité (un seul effet business
 })
 
 describe('Témoin 12 — concurrence cross-unité, même domaine d\'identité (même thread)', () => {
-  it('2 unités distinctes du même thread en parallèle → pas de deadlock, jamais d\'écrasement de founding_kind', async () => {
+  it('2 unités distinctes du même thread en parallèle → convergent vers UN SEUL Point, jamais deux', async () => {
     const threadId = randomUUID()
     const cboId = await makeCbo()
     const unitA = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'cbo:x', outcomeV2: { kind: 'CONFIRMED', cboId } })
     const unitB = unit({ threadId, scope: 'thread', outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' } })
-    expect(foundingReferenceOf(unitA)).not.toBe(foundingReferenceOf(unitB))
+    const unitBKey = foundingReferenceOf(unitB)
+    expect(foundingReferenceOf(unitA)).not.toBe(unitBKey)
 
     const [a, b] = await Promise.all([
       reconcileTrackedPointUnit({ siteId, unit: unitA, sourceKind: 'historical_pdf', sourceRefId: docId }),
@@ -461,31 +460,56 @@ describe('Témoin 12 — concurrence cross-unité, même domaine d\'identité (m
     expect(b.ok).toBe(true)
     if (!a.ok || !b.ok) throw new Error('attendu deux succès — pas de deadlock')
 
-    // Invariant vérifiable indépendamment de l'ordre d'exécution réel (§2.4/P6-C : ENRICH ne
-    // change jamais founding_kind/founding_reference) : le CBO A, s'il a fini par pointer vers
-    // un Point, pointe vers un Point dont founding_kind reste cohérent avec CE QUE ce Point a
-    // été fondé — jamais réécrit par l'autre unité.
+    // Convergence réelle (pas seulement "pas d'erreur") : le verrou de domaine d'identité
+    // (§2.8, niveau 1, clé = thread seul) sérialise les deux transactions sur ce thread — quel
+    // que soit l'ordre réel d'exécution, les deux appels doivent désigner LA MÊME cible.
+    expect(a.targetPointId).toBeTruthy()
+    expect(a.targetPointId).toBe(b.targetPointId)
+
+    // Le CBO de A doit être lié à cette même cible, jamais à un Point distinct de celui que B a
+    // rejoint/fondé (P6-C : quel que soit l'ordre, l'unité arrivée en second ENRICHIT ou
+    // ATTACH plutôt que de fonder un second Point concurrent).
     const cbo = await getCbo(cboId)
-    if (cbo.tracked_point_id) {
-      const p = await getPoint(cbo.tracked_point_id)
-      expect(['cbo', 'trackable_condition']).toContain(p.founding_kind)
-    }
-    if (a.targetPointId) {
-      const pa = await getPoint(a.targetPointId)
-      expect(pa.founding_kind === 'cbo' || pa.founding_kind === 'trackable_condition').toBe(true)
-    }
+    expect(cbo.tracked_point_id).toBe(a.targetPointId)
+
+    // Exactement UN Point matérialisé pour cette paire d'identités de fondation concurrentes —
+    // jamais deux Points distincts (un fondé par A, un par B) qui auraient dû être fusionnés
+    // manuellement après coup. Les deux ordres d'exécution valides ('A fonde puis B s'y
+    // attache' / 'B fonde puis A l'enrichit') convergent tous deux vers un seul Point en base.
+    const db = createAdminClient()
+    const { data: rows } = await db
+      .from('tracked_point')
+      .select('id, founding_kind, founding_reference')
+      .eq('site_id', siteId)
+      .in('founding_reference', [cboId, unitBKey])
+    const converged = ((rows ?? []) as Array<{ id: string; founding_kind: string; founding_reference: string | null }>).filter(
+      (p) =>
+        (p.founding_kind === 'cbo' && p.founding_reference === cboId) ||
+        (p.founding_kind === 'trackable_condition' && p.founding_reference === unitBKey),
+    )
+    expect(converged.length).toBe(1)
+    expect(converged[0].id).toBe(a.targetPointId)
+
+    // Le geste retenu pour chaque unité doit correspondre à l'un des deux ordres valides —
+    // jamais deux CREATE_* simultanés (ce qui prouverait exactement la course qu'on cherche à
+    // exclure), et jamais autre chose qu'ATTACH_MEMBER/ENRICH_EXISTING_POINT côté "second arrivé".
+    const patterns = [a.writePattern, b.writePattern].sort()
+    const validOrder1 = ['ATTACH_MEMBER', 'CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK']
+    const validOrder2 = ['CREATE_POINT_WITH_MEMBERSHIP', 'ENRICH_EXISTING_POINT']
+    expect([validOrder1, validOrder2]).toContainEqual(patterns)
   })
 })
 
 describe('Témoin 13 — course Live Writer / RPC humaine (accept_trace_identity_candidate)', () => {
-  // ZONE D'INCERTITUDE ASSUMÉE (non vérifiée par exécution réelle) : la migration 400 (Branch B,
-  // lignes ~200-260 lues statiquement) sélectionne les candidats proposés à partir des siblings
-  // actifs du thread SANS exclure un Point déjà accepté comme membership HARD sur ce même
-  // thread — rien dans le SQL lu ne filtre "déjà membre" avant de proposer un nouveau candidat
-  // pending pour ce même Point. Ce témoin vérifie donc le verdict NEEDS_HUMAN (garanti par la
-  // Branch B, inconditionnelle), mais NE tranche PAS si un candidat redondant est reproposé —
-  // c'est un risque à confirmer avant toute GO APPLY, signalé explicitement dans le rapport
-  // HARD STOP plutôt que supposé silencieusement correct ou incorrect.
+  // Confirmé par lecture complète de la migration 401 (Branche B, lignes ~376-404) : le scan de
+  // sibling_ids ne filtre PAS "déjà membre HARD de ce thread" avant de proposer un candidat —
+  // il propose donc siblingPoint comme candidat pending MÊME s'il est déjà, de fait, le seul
+  // propriétaire (membership HARD posée en fixture) de ce thread. Ce n'est plus une zone
+  // d'incertitude : c'est le comportement réel de la Branche B, non modifié par Round 2 (D1-D4
+  // ne touchent jamais la Branche B, cf. tête de fichier migration 401). Redondant mais inerte
+  // (le candidat proposé pointe vers le Point déjà membre) — hors périmètre de ce lot, à ne pas
+  // corriger sans nouveau GO. Seule réserve réelle : non vérifié par exécution (pas d'accès DB
+  // dans ce worktree/cette session).
   it('candidat accepté par RPC humaine pendant qu\'une nouvelle réconciliation démarre sur le même thread', async () => {
     const threadId = randomUUID()
     const siblingPoint = await makePoint()
@@ -498,6 +522,14 @@ describe('Témoin 13 — course Live Writer / RPC humaine (accept_trace_identity
     expect(first.writePattern).toBe('CREATE_CANDIDATES')
     expect(first.newCandidateIds.length).toBe(1)
     const candidateId = first.newCandidateIds[0]
+
+    const db = createAdminClient()
+    const { data: candRow } = await db
+      .from('tracked_point_identity_candidate')
+      .select('candidate_point_id')
+      .eq('id', candidateId)
+      .single()
+    expect((candRow as { candidate_point_id: string }).candidate_point_id).toBe(siblingPoint)
 
     const accepted = await acceptTraceIdentityCandidate({ siteId, candidateId })
     expect(accepted.ok).toBe(true)
@@ -515,24 +547,42 @@ describe('Témoin 13 — course Live Writer / RPC humaine (accept_trace_identity
   })
 })
 
-describe('Témoin 14 — rollback atomique après échec simulé (CBO_NOT_FOUND)', () => {
-  it('CBO inexistant → RAISE EXCEPTION, 0 Point/membership/state/event/artifact créé', async () => {
-    const bogusCboId = randomUUID()
-    const u = unit({ outcomeV2: { kind: 'CONFIRMED', cboId: bogusCboId } })
+describe('Témoin 14 — rollback atomique après échec forcé APRÈS INSERT tracked_point (harness test-only)', () => {
+  it('échec injecté par test_only.fn_reconcile_tracked_point_unit_with_failpoint après INSERT Point → 0 Point/membership/CBO/state/event/artifact survivant', async () => {
+    const cboId = await makeCbo()
+    const u = unit({ outcomeV2: { kind: 'CONFIRMED', cboId } })
     const unitKey = foundingReferenceOf(u)
-
-    const result = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })
-    expect(result.ok).toBe(false)
-    if (result.ok) throw new Error('attendu un échec CBO_NOT_FOUND')
-    expect(result.error).toBe('CBO_NOT_FOUND')
+    const plannedPoint = planPointForUnit(u, { cboLabel: 'CBO témoin 14' })
+    if (!plannedPoint) throw new Error('attendu un plan de Point pour ce plan (setup du témoin)')
+    const { snapshot, fingerprint } = buildFingerprint(u)
 
     const db = createAdminClient()
+    // Le harness (supabase/testing/p6_test_failpoint_harness.sql) vit dans le schéma
+    // test_only, exposé UNIQUEMENT sur la base jetable où ce témoin s'exécute — jamais sur la
+    // cible réelle (mandat Vincent, cf. tête du fichier harness : pas de paramètre RPC prod).
+    const { error } = await db.schema('test_only').rpc('fn_reconcile_tracked_point_unit_with_failpoint', {
+      p_site_id: siteId,
+      p_unit_key: unitKey,
+      p_thread_id: u.threadId,
+      p_scope: u.scope,
+      p_input_snapshot: snapshot,
+      p_input_fingerprint: fingerprint,
+      p_source_kind: 'historical_pdf',
+      p_source_ref_id: docId,
+      p_planned_point: plannedPointPayload(plannedPoint),
+      p_planned_pending_trace: null,
+      p_cross_thread_candidate_point_ids: [],
+    })
+
+    expect(error).toBeTruthy()
+    expect(error?.message ?? '').toContain('TEST_INDUCED_FAILURE_AFTER_POINT_INSERT')
+
     const { count: pointCount } = await db
       .from('tracked_point')
       .select('id', { count: 'exact', head: true })
       .eq('site_id', siteId)
       .eq('founding_kind', 'cbo')
-      .eq('founding_reference', bogusCboId)
+      .eq('founding_reference', cboId)
     expect(pointCount).toBe(0)
 
     const { count: memberCount } = await db
@@ -540,6 +590,9 @@ describe('Témoin 14 — rollback atomique après échec simulé (CBO_NOT_FOUND)
       .select('id', { count: 'exact', head: true })
       .eq('subject_thread_id', u.threadId)
     expect(memberCount).toBe(0)
+
+    const cbo = await getCbo(cboId)
+    expect(cbo.tracked_point_id).toBeNull()
 
     const { count: stateCount } = await db
       .from('tracked_point_reconcile_state')
@@ -637,5 +690,69 @@ describe('Témoin 16 — candidats partiellement matérialisés (A et C existent
     for (const row of (untouchedRows ?? []) as Array<{ id: string; status: string }>) {
       expect(row.status).toBe('pending')
     }
+  })
+})
+
+describe('Témoin 17 — D1/D3 : candidat cross-thread unique, jamais un auto-rattachement', () => {
+  it('Point actif matché par le moteur de voisinage Phase 4 hors de ce thread → NEEDS_HUMAN/CREATE_CANDIDATES, jamais AUTO_LINKED', async () => {
+    const sharedLabel = `${TAG} sprinkler concurrent`
+    const existingPointId = await makePoint({ label: sharedLabel })
+    const sitePoints: TrackedPointCandidate[] = [
+      { pointId: existingPointId, label: sharedLabel, ownerSubjectId: null, ownerSubjectLabel: null, memberLabels: [] },
+    ]
+
+    const u = unit({ threadLabel: sharedLabel, outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' } })
+    const result = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId, sitePoints })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+
+    expect(result.verdict).toBe('NEEDS_HUMAN')
+    expect(result.writePattern).toBe('CREATE_CANDIDATES')
+    expect(result.targetPointId).toBeNull()
+    expect(result.newCandidateIds.length).toBe(1)
+
+    const db = createAdminClient()
+    const { data: candRow } = await db
+      .from('tracked_point_identity_candidate')
+      .select('candidate_point_id')
+      .eq('id', result.newCandidateIds[0])
+      .single()
+    expect((candRow as { candidate_point_id: string }).candidate_point_id).toBe(existingPointId)
+
+    expect(await countMembersOnThread(u.threadId)).toBe(0)
+
+    const { count: newPointCount } = await db
+      .from('tracked_point')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .eq('founding_kind', 'trackable_condition')
+      .eq('founding_reference', foundingReferenceOf(u))
+    expect(newPointCount).toBe(0)
+  })
+})
+
+describe('Témoin 18 — D4 : IGNORE_NOT_TRACKABLE (1re tentative) vs NOOP (rejeu compatible)', () => {
+  it('rien à fonder ni à faire arbitrer → 1re tentative IGNORE_NOT_TRACKABLE, rejeu compatible NOOP', async () => {
+    const u = unit({ outcomeV2: { kind: 'NO_POINT_EMPTY_THREAD' } })
+
+    const first = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(first.ok).toBe(true)
+    if (!first.ok) throw new Error('attendu un succès')
+    expect(first.verdict).toBe('IGNORED_NOT_TRACKABLE')
+    expect(first.writePattern).toBe('IGNORE_NOT_TRACKABLE')
+    expect(first.replayed).toBe(false)
+    expect(first.targetPointId).toBeNull()
+    expect(first.pendingTraceId).toBeNull()
+    expect(first.newCandidateIds).toEqual([])
+
+    expect(await countMembersOnThread(u.threadId)).toBe(0)
+
+    const replay = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(replay.ok).toBe(true)
+    if (!replay.ok) throw new Error('attendu un succès')
+    expect(replay.writePattern).toBe('NOOP')
+    expect(replay.replayed).toBe(true)
+    expect(replay.verdict).toBe('IGNORED_NOT_TRACKABLE')
+    expect(replay.targetPointId).toBeNull()
   })
 })
