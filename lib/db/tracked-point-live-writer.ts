@@ -111,10 +111,16 @@ export async function reconcileTrackedPointUnit(params: {
   // utilisés UNIQUEMENT pour détecter une concurrence cross-thread avant l'auto-création
   // PROVISIONAL — jamais un second moteur de décision (crossThreadConcurrentPointIds réutilise
   // evaluateMembershipCandidate tel quel, sans llmJudge). Le RPC revérifie chaque id sous
-  // verrou avant d'en tenir compte.
+  // verrou (FOR UPDATE OF tp, migration 401, Round 3) avant d'en tenir compte.
+  //
+  // BUG 3b (Round 3, Vincent) : PAS de valeur par défaut. Un appelant qui omet ce paramètre
+  // pour une unité encore éligible à l'auto-création PROVISIONAL (founding_kind=
+  // 'trackable_condition', seule branche où D1 s'applique — cf. migration 401 tête de
+  // fichier) reçoit un refus explicite (MISSING_SITE_POINTS) plutôt qu'un `[]` silencieux
+  // qui laisserait croire à "0 concurrent connu" et autoriserait une auto-création fausse.
   sitePoints?: TrackedPointCandidate[]
 }): Promise<ReconcileTrackedPointUnitResult> {
-  const { siteId, unit, ctx, sourceKind, sourceRefId, sitePoints = [] } = params
+  const { siteId, unit, ctx, sourceKind, sourceRefId, sitePoints } = params
 
   if (!UUID_RE.test(siteId)) return { ok: false, error: 'INVALID_SITE_ID' }
   if (!UUID_RE.test(unit.threadId)) return { ok: false, error: 'INVALID_THREAD_ID' }
@@ -124,9 +130,13 @@ export async function reconcileTrackedPointUnit(params: {
   const plannedPendingTrace = plannedPoint ? null : planPendingTraceForUnit(unit)
   if (plannedPoint && plannedPendingTrace) return { ok: false, error: 'INVALID_PLAN' }
 
+  if (plannedPoint?.founding_kind === 'trackable_condition' && sitePoints === undefined) {
+    return { ok: false, error: 'MISSING_SITE_POINTS' }
+  }
+
   const unitKey = foundingReferenceOf(unit)
   const { snapshot, fingerprint } = buildFingerprint(unit)
-  const crossThreadCandidateIds = crossThreadConcurrentPointIds(unit, sitePoints, ctx)
+  const crossThreadCandidateIds = crossThreadConcurrentPointIds(unit, sitePoints ?? [], ctx)
 
   const db = createAdminClient()
   const { data, error } = await db.rpc('fn_reconcile_tracked_point_unit', {

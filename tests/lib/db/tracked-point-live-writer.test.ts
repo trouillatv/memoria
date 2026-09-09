@@ -214,7 +214,7 @@ describe('Témoin 2 — AUTO_CREATED / CREATE_POINT_WITH_MEMBERSHIP (P6-A, track
   it('unité trackable_condition sans CBO, sans sibling → fonde un Point PROVISIONAL', async () => {
     const u = unit({ outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' } })
 
-    const result = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })
+    const result = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId, sitePoints: [] })
     expect(result.ok).toBe(true)
     if (!result.ok) throw new Error('attendu un succès')
     expect(result.verdict).toBe('AUTO_CREATED')
@@ -387,7 +387,7 @@ describe('Témoin 10 — CBO tardif sur un Point trackable_condition déjà fond
     const threadId = randomUUID()
     const first = await reconcileTrackedPointUnit({
       siteId, unit: unit({ threadId, outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' } }),
-      sourceKind: 'historical_pdf', sourceRefId: docId,
+      sourceKind: 'historical_pdf', sourceRefId: docId, sitePoints: [],
     })
     expect(first.ok).toBe(true)
     if (!first.ok) throw new Error('attendu un succès')
@@ -454,7 +454,7 @@ describe('Témoin 12 — concurrence cross-unité, même domaine d\'identité (m
 
     const [a, b] = await Promise.all([
       reconcileTrackedPointUnit({ siteId, unit: unitA, sourceKind: 'historical_pdf', sourceRefId: docId }),
-      reconcileTrackedPointUnit({ siteId, unit: unitB, sourceKind: 'historical_pdf', sourceRefId: docId }),
+      reconcileTrackedPointUnit({ siteId, unit: unitB, sourceKind: 'historical_pdf', sourceRefId: docId, sitePoints: [] }),
     ])
     expect(a.ok).toBe(true)
     expect(b.ok).toBe(true)
@@ -501,15 +501,13 @@ describe('Témoin 12 — concurrence cross-unité, même domaine d\'identité (m
 })
 
 describe('Témoin 13 — course Live Writer / RPC humaine (accept_trace_identity_candidate)', () => {
-  // Confirmé par lecture complète de la migration 401 (Branche B, lignes ~376-404) : le scan de
-  // sibling_ids ne filtre PAS "déjà membre HARD de ce thread" avant de proposer un candidat —
-  // il propose donc siblingPoint comme candidat pending MÊME s'il est déjà, de fait, le seul
-  // propriétaire (membership HARD posée en fixture) de ce thread. Ce n'est plus une zone
-  // d'incertitude : c'est le comportement réel de la Branche B, non modifié par Round 2 (D1-D4
-  // ne touchent jamais la Branche B, cf. tête de fichier migration 401). Redondant mais inerte
-  // (le candidat proposé pointe vers le Point déjà membre) — hors périmètre de ce lot, à ne pas
-  // corriger sans nouveau GO. Seule réserve réelle : non vérifié par exécution (pas d'accès DB
-  // dans ce worktree/cette session).
+  // BUG 2 (Round 3, Vincent — "c'est précisément le témoin 13") : une membership HARD posée par
+  // accept_trace_identity_candidate (scope='thread', evidence_grade='HARD',
+  // resolution_source='manual') est une vérité terminale humaine. La réconciliation qui rejoue
+  // APRÈS cette acceptation doit converger DIRECTEMENT vers ce Point (AUTO_LINKED/ATTACH_MEMBER),
+  // jamais reproposer un candidat redondant ni rouvrir l'arbitrage (migration 401,
+  // v_accepted_target_id, revérifié sous verrou dans les trois branches consommatrices :
+  // CBO-reverse, trackable_condition, Branche B).
   it('candidat accepté par RPC humaine pendant qu\'une nouvelle réconciliation démarre sur le même thread', async () => {
     const threadId = randomUUID()
     const siblingPoint = await makePoint()
@@ -536,14 +534,41 @@ describe('Témoin 13 — course Live Writer / RPC humaine (accept_trace_identity
     if (!accepted.ok) throw new Error('attendu une acceptation réussie')
     expect(accepted.targetPointId).toBe(siblingPoint)
 
-    // La membership HARD posée par l'humain existe désormais sur ce thread — le rejeu de la
-    // même unité doit détecter que l'état live a changé (candidat plus 'pending' → pas de NOOP)
-    // et revalider entièrement plutôt que de rejouer aveuglément l'ancien verdict.
+    // État live juste après l'acceptation humaine, AVANT le rejeu — sert de référence pour
+    // prouver que le rejeu ne produit strictement AUCUNE écriture nouvelle (convergence pure).
+    const { count: candidateCountBefore } = await db
+      .from('tracked_point_identity_candidate')
+      .select('id', { count: 'exact', head: true })
+      .eq('subject_thread_id', threadId)
+    const { count: pendingCountBefore } = await db
+      .from('tracked_point_pending_trace')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_thread_id', threadId)
+    const memberCountBefore = await countMembersOnThread(threadId)
+
+    // La membership HARD posée par l'humain est désormais la vérité terminale de ce thread — le
+    // rejeu de la même unité doit converger directement vers ce Point, sans reproposer de
+    // candidat ni rouvrir l'arbitrage.
     const replay = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })
     expect(replay.ok).toBe(true)
     if (!replay.ok) throw new Error('attendu un succès')
-    expect(replay.writePattern).not.toBe('NOOP')
-    expect(replay.verdict).toBe('NEEDS_HUMAN')
+    expect(replay.verdict).toBe('AUTO_LINKED')
+    expect(replay.writePattern).toBe('ATTACH_MEMBER')
+    expect(replay.targetPointId).toBe(siblingPoint)
+    expect(replay.newCandidateIds).toEqual([])
+
+    const { count: candidateCountAfter } = await db
+      .from('tracked_point_identity_candidate')
+      .select('id', { count: 'exact', head: true })
+      .eq('subject_thread_id', threadId)
+    const { count: pendingCountAfter } = await db
+      .from('tracked_point_pending_trace')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_thread_id', threadId)
+    const memberCountAfter = await countMembersOnThread(threadId)
+    expect(candidateCountAfter).toBe(candidateCountBefore)
+    expect(pendingCountAfter).toBe(pendingCountBefore)
+    expect(memberCountAfter).toBe(memberCountBefore)
   })
 })
 
@@ -615,7 +640,7 @@ describe('Témoin 15 — dix appels concurrents sur la même unité', () => {
     const u = unit({ outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' } })
 
     const results = await Promise.all(
-      Array.from({ length: 10 }, () => reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })),
+      Array.from({ length: 10 }, () => reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId, sitePoints: [] })),
     )
     for (const r of results) expect(r.ok).toBe(true)
     const okResults = results.filter((r): r is Extract<typeof r, { ok: true }> => r.ok)
@@ -754,5 +779,58 @@ describe('Témoin 18 — D4 : IGNORE_NOT_TRACKABLE (1re tentative) vs NOOP (reje
     expect(replay.replayed).toBe(true)
     expect(replay.verdict).toBe('IGNORED_NOT_TRACKABLE')
     expect(replay.targetPointId).toBeNull()
+  })
+})
+
+describe('Témoin 19 — BUG 3b : refus explicite quand sitePoints est omis pour une unité trackable_condition', () => {
+  it('unité éligible à l\'auto-création PROVISIONAL sans sitePoints → MISSING_SITE_POINTS, aucun appel RPC, aucune écriture', async () => {
+    const u = unit({ outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' } })
+
+    const result = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error('attendu un refus')
+    expect(result.error).toBe('MISSING_SITE_POINTS')
+
+    // Le refus intervient AVANT tout appel RPC (garde purement TS) — aucun Point ne doit exister.
+    const { count } = await createAdminClient()
+      .from('tracked_point')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .eq('founding_kind', 'trackable_condition')
+      .eq('founding_reference', foundingReferenceOf(u))
+    expect(count).toBe(0)
+  })
+})
+
+describe('Témoin 20 — BUG 3a : le scan de siblings exclut un sibling CONFLICTED sous le nouveau motif verrouillé', () => {
+  // Preuve du filtre appliqué APRÈS acquisition du verrou (FOR UPDATE OF tp sur la sous-requête,
+  // puis WHERE sub.status='active' AND sub.identity_status<>'CONFLICTED' dans la requête externe,
+  // migration 401 Round 3) — pas une preuve de course concurrente réelle (qui exigerait un
+  // harness dédié type témoin 14, hors périmètre de ce lot).
+  it('3 siblings actifs sur le même thread dont un CONFLICTED → seuls les 2 valides deviennent candidats', async () => {
+    const threadId = randomUUID()
+    const pointA = await makePoint()
+    const pointB = await makePoint()
+    const pointC = await makePoint({ identity_status: 'CONFLICTED' })
+    await makeMember(pointA, threadId)
+    await makeMember(pointB, threadId)
+    await makeMember(pointC, threadId)
+
+    const u = unit({ threadId, outcomeV2: { kind: 'PENDING_TRACKABILITY' } })
+    const result = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+    expect(result.verdict).toBe('NEEDS_HUMAN')
+    expect(result.writePattern).toBe('CREATE_CANDIDATES')
+    expect(result.newCandidateIds.length).toBe(2)
+
+    const db = createAdminClient()
+    const { data: candRows } = await db
+      .from('tracked_point_identity_candidate')
+      .select('candidate_point_id')
+      .in('id', result.newCandidateIds)
+    const candidatePointIds = ((candRows ?? []) as Array<{ candidate_point_id: string }>).map((c) => c.candidate_point_id).sort()
+    expect(candidatePointIds).toEqual([pointA, pointB].sort())
+    expect(candidatePointIds).not.toContain(pointC)
   })
 })
