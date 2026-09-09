@@ -820,13 +820,33 @@ Le but est une livraison fiable, pas une accumulation de cérémonies.
 
 ## 23. Graphify — outil de navigation de l'architecture
 
-Graphify est installé comme outil externe (`graphifyy 0.9.28` via `uv tool install graphifyy`). Il ne fait pas partie du code source de MemorIA.
+Graphify est installé comme outil externe (`graphifyy 0.9.57` via `uv tool install "graphifyy[sql]"`, extra SQL actif — `tree-sitter-sql`). Il ne fait pas partie du code source de MemorIA.
 
 ### Doctrine
 
 Graphify sert à **comprendre l'architecture et les dépendances** avant une modification importante. Ce n'est pas un outil à lancer systématiquement.
 
 Toujours analyser le **périmètre minimal** utile à la tâche. Ne jamais indexer l'ensemble du dépôt par défaut.
+
+### Fraîcheur de l'index
+
+Objectif : que Graphify réduise réellement la consommation de tokens (moins de lectures/greps massifs du dépôt), pas qu'il devienne une procédure lourde à entretenir.
+
+Règle : l'index Graphify ne doit jamais avoir plus de **10 commits de retard** sur le `HEAD` courant.
+
+- Au plus tard tous les 10 nouveaux commits sur la branche de travail, mettre à jour l'index :
+  ```bash
+  graphify update .
+  ```
+  (`update` ré-extrait uniquement le code, sans LLM, coût 0 token — ne pas confondre avec `graphify . --backend claude`, réservé à l'audit mensuel.)
+- Si une tâche nécessite une exploration transversale du code (plusieurs modules, impact cross-domaine) et que l'index semble ancien, le mettre à jour AVANT l'exploration, même si les 10 commits ne sont pas encore atteints.
+- Ne pas réindexer mécaniquement après chaque commit : le but est d'économiser du travail, pas d'en ajouter.
+
+Pour connaître le retard, sans infrastructure dédiée : le fichier `graphify-out/GRAPH_REPORT.md` contient une ligne « Built from commit: `<sha court>` ». Comparer ce commit au `HEAD` courant :
+```bash
+git rev-list --count <sha-du-rapport>..HEAD
+```
+Si le résultat dépasse 10, lancer `graphify update .` avant de s'appuyer sur l'index pour une recherche d'architecture. `graphify check-update .` (cron-safe) fait la même vérification sans qu'il soit nécessaire de la scripter soi-même.
 
 ### Ordre de préférence
 
@@ -838,10 +858,11 @@ Toujours analyser le **périmètre minimal** utile à la tâche. Ne jamais index
    graphify lib/tender --code-only
    ```
 
-2. **Migrations SQL** — quand la tâche touche au schéma ou aux relations :
+2. **Migrations SQL** — quand la tâche touche au schéma ou aux relations. Le support SQL est actif (`tree-sitter-sql`), Graphify indexe réellement les fichiers `.sql` :
    ```bash
    graphify supabase/migrations --code-only
    ```
+   Graphify aide à localiser une migration/RPC/dépendance SQL, jamais à trancher seul une décision. Pour un invariant DB, un ordre de verrou, une transaction ou de la concurrence, toujours relire directement le SQL source concerné avant décision ou modification.
 
 3. **Documentation ciblée** — uniquement si l'analyse documentaire est nécessaire à la tâche :
    ```bash
@@ -897,8 +918,10 @@ Cela réduit fortement le contexte et évite les analyses globales inutiles.
 - Utiliser `--code-only` par défaut (aucun token LLM consommé).
 - Ne jamais lancer `graphify .` sans `--code-only` sauf audit mensuel ou refonte majeure.
 - N'utiliser un backend LLM que si l'analyse sémantique des docs ou images est réellement nécessaire.
-- `graphify-out/` est versionné dans le dépôt.
+- `graphify-out/` est un artefact local (non versionné, `.gitignore`) — ne jamais le committer.
 - Ne pas lancer Graphify pour une correction locale, un changement de texte ou un ajustement CSS.
+- Pour une recherche d'architecture, de dépendances, d'appels, de symboles ou de flux entre modules : si l'index est suffisamment frais (cf. Fraîcheur de l'index ci-dessus), l'interroger en premier plutôt que de lire/grepper de larges portions du dépôt ; n'ouvrir ensuite que les fichiers réellement pertinents.
+- Graphify aide à localiser et comprendre, il ne remplace jamais la vérification du code source réel avant une modification ou une conclusion sensible. Pour une migration, un invariant DB, une concurrence SQL ou une décision critique, toujours vérifier directement les fichiers concernés.
 
 ---
 
@@ -1062,3 +1085,48 @@ Les modèles HARD STOP — REVIEW READY, HARD STOP — AUDIT ONLY, etc. (section
 Cette règle concerne uniquement la présentation de la livraison à Vincent dans l'application Claude. Elle ne change pas la manière dont Claude écrit les vrais fichiers de code dans le dépôt : les fichiers créés ou modifiés via les outils d'édition ne sont pas concernés.
 
 Aucune exception selon le type de rapport ou de contenu, quel que soit le mode de travail (A/B/C/D).
+
+---
+
+## 27. Économie de contexte et de tokens
+
+Objectif permanent : moins de lecture inutile → moins de tokens → même niveau de preuve → livraison plus rapide. Aucune règle de cette section ne doit ralentir une tâche simple. Détails, commandes et exemples : `docs/dev/economie-contexte-graphify.md`.
+
+### Graphify en première intention
+
+- Si l'index Graphify a moins de 10 commits de retard (section 23), l'interroger en premier pour toute question d'architecture, de dépendances, d'appels, d'impact, de localisation de symbole ou de flux cross-module.
+- Avant d'ouvrir plus d'environ 5 fichiers pour comprendre un sujet transversal, interroger Graphify (`graphify query`, `graphify explain`, `graphify affected`) d'abord ; n'ouvrir ensuite que les fichiers réellement nécessaires.
+- Si l'index est obsolète, incomplet ou contredit par le code courant, vérifier directement le code.
+- Graphify sert à découvrir, jamais à trancher seul une décision critique — cf. section 23.
+
+### SQL
+
+Le support SQL de Graphify est actif (`tree-sitter-sql`) : l'utiliser pour localiser migrations/RPC/dépendances SQL. Pour toute migration, invariant DB, lock order, transaction ou concurrence : toujours relire directement le SQL source concerné avant décision ou modification — cf. section 15 et section 23.
+
+### Lectures ciblées
+
+- Ne pas relire un ensemble de fichiers déjà étudié « par sécurité » si aucune hypothèse n'a changé.
+- Réutiliser les documents canoniques, l'index Graphify et les décisions déjà gelées (journal des décisions, audits `*-CLOSED.md`) plutôt que de relire le code source correspondant.
+- Un audit global n'est relancé que si une découverte nouvelle invalide réellement une hypothèse précédente.
+
+### Rapports delta-only
+
+- Un HARD STOP ou un compte-rendu privilégie ce qui a changé, ce qui a été découvert, les tests, les risques/blocages et la décision attendue.
+- Ne pas répéter une décision déjà documentée et inchangée.
+- Quand les vérifications passent, une ligne suffit, par exemple : PASS — 24/24 — 6,2 s. Ne recopier une sortie détaillée qu'en cas d'échec ou d'anomalie utile.
+
+### Modèles Claude
+
+Le choix du modèle est proportionné à la difficulté réelle de la tâche, jamais automatique vers le modèle le plus puissant.
+
+| Modèle | Effort | Usage |
+|---|---|---|
+| Haiku 4.5 | Faible/Moyen | Git, Graphify, recherches mécaniques, renommages, petites tâches documentaires |
+| Sonnet 5 | Moyen | Développement courant, tests, UI, read-models, corrections ciblées |
+| Sonnet 5 | Élevé | Migrations, SQL transactionnel, concurrence, invariants, identité canonique, pré-GO sensible |
+| Opus 5 | Élevé | Seulement après blocage réel de Sonnet ou arbitrage architectural réellement difficile |
+| Fable 5.1 | Élevé | Exceptionnel, si Opus ne suffit pas |
+
+### Ce que cette section n'ajoute pas
+
+Aucun compteur, daemon, hook Git lourd, pipeline obligatoire après chaque commit, ni cérémonie supplémentaire avant une petite modification locale. Si une optimisation proposée coûte plus de temps qu'elle n'en économise, ne pas l'ajouter.

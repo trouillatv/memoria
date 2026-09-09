@@ -219,3 +219,5 @@ Cibles identifiées dans `scripts/_p6d1a-preflight-global.ts` (lignes 294-493) :
 - Écrire les 16 témoins de la matrice de tests (§5) avant d'ouvrir le Live Writer à un flux d'extraction réel.
 
 Aucun de ces prérequis n'est levé par ce document. Le document fige la conception ; il n'autorise ni migration, ni code, ni déploiement.
+
+**État réel (2026-09-10) :** migrations 400/401/402 appliquées en production ; Live Writer installé mais **OFF**, aucun producteur PV/visite/réunion connecté. Le cas « tous les candidats d'identité rejetés » (IDENTITY_UNRESOLVED à l'acceptation) reste **DEFERRED**, bloquant avant toute activation générale. Le tracker de migrations est historiquement incomplet après la 318 (dette séparée, non traitée ici) : l'inspection directe des objets DB reste requise tant que cette dette n'est pas résorbée.
