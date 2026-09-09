@@ -99,6 +99,43 @@ async function makeCandidate(overrides: Record<string, unknown>) {
   return (data as { id: string }).id
 }
 
+// Round 5B (Vincent) — mêmes helpers/convention que tracked-point-pending-resolution.test.ts
+// (makeProposal/resolveEvidence), pour construire une pending trace evidence-ready conforme
+// au contrat 394/396 (Témoin 24) sans inventer de raccourci qui contourne les invariants.
+async function makeProposal(threadId: string, overrides: Record<string, unknown> = {}) {
+  const db = createAdminClient()
+  const { data, error } = await db
+    .from('document_extraction_proposal')
+    .insert({
+      organization_id: orgId,
+      extraction_run_id: runId,
+      document_id: docId,
+      proposal_family: 'observation',
+      label: `${TAG} proposal`,
+      subject_thread_id: threadId,
+      ...overrides,
+    })
+    .select('id')
+    .single()
+  if (error) throw error
+  return (data as { id: string }).id
+}
+
+async function resolveEvidence(
+  pendingTraceId: string,
+  proposalIds: string[],
+  basis: 'exact_single_proposal' | 'whole_thread_proven_safe' = 'exact_single_proposal',
+) {
+  const db = createAdminClient()
+  const { data, error } = await db.rpc('resolve_pending_trace_evidence', {
+    p_pending_trace_id: pendingTraceId,
+    p_proposal_ids: proposalIds,
+    p_evidence_basis: basis,
+  })
+  if (error) throw error
+  return data as { pendingTraceId: string; result: string; evidenceBasis?: string; evidenceCount: number }
+}
+
 async function getPoint(id: string) {
   const db = createAdminClient()
   const { data, error } = await db
@@ -1020,11 +1057,18 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
   // pouvait tenir le verrou tracked_point puis attendre le verrou pending, pendant que B tenait
   // déjà le verrou pending et attendait le verrou tracked_point — cycle réel. APRÈS le correctif
   // (§4.5, cet ordre est désormais 4 avant 5 sur TOUTE tentative) : les deux transactions
-  // verrouillent la pending trace EN PREMIER, dans le même ordre — la pause (barrière contrôlée,
-  // p_pause_ms) élargit délibérément la fenêtre pendant laquelle A tient ce verrou, pour que la
-  // tentative de B sur EXACTEMENT la même ligne soit garantie de se produire pendant que A la
-  // tient encore, plutôt que de dépendre d'un minutage non garanti (Promise.all seul,
-  // témoins 11/12/15).
+  // verrouillent la pending trace EN PREMIER, dans le même ordre.
+  //
+  // Round 5B (Vincent) — reformulation honnête de la synchronisation : ni p_pause_ms côté A, ni
+  // le délai côté B (voir Transaction B plus bas) ne sont une garantie au sens strict. Ce que le
+  // test garantit réellement : A, une fois son verrou §4.5 acquis, LE TIENT pendant p_pause_ms
+  // (400ms) — c'est la seule chose déterministe ici, portée par pg_sleep côté serveur sous le
+  // verrou. Ce que le test ne garantit PAS formellement, c'est que la tentative de B tombe bien
+  // à l'intérieur de cette fenêtre : c'est une fenêtre de contention déterministe côté A
+  // (400ms tenue) + un lancement délibérément retardé côté B (100ms), pas une preuve
+  // d'ordonnancement absolue. En pratique 100ms de marge sous 400ms de fenêtre rend un raté
+  // extrêmement improbable, mais un test qui échouerait sporadiquement sur ce point serait un
+  // signal réel de fenêtre insuffisante, pas un flake à ignorer.
   //
   // Preuve attendue (§ mandat Round 5, point b) : aucun deadlock, une seule issue
   // transactionnelle cohérente, aucun doublon de pending trace, aucun doublon de membership,
@@ -1058,6 +1102,33 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
     expect((pendingRow as { kind: string; status: string }).kind).toBe('RESOLUTION_WITHOUT_KNOWN_PROBLEM')
     expect((pendingRow as { kind: string; status: string }).status).toBe('pending')
 
+    // Round 5B (Vincent) — rendre cette pending trace EVIDENCE-READY avant toute tentative de
+    // concurrence. Sans cette étape, associate_pending_resolution_to_point (migration 396) rejette
+    // TOUJOURS B sur le Guard 6 (EVIDENCE_SCOPE_UNRESOLVED) avant même d'atteindre le verrou
+    // tracked_point (Guard 9, ligne 174) — la preuve de concurrence recherchée par ce témoin ne
+    // serait alors jamais exercée, quel que soit le résultat de l'assertion sur b.result. Même
+    // convention que tracked-point-pending-resolution.test.ts (makeProposal/resolveEvidence) :
+    // une vraie proposition rattachée au thread (obligatoire, cf. trigger de garde migration 394),
+    // puis resolve_pending_trace_evidence pour faire passer evidence_status à 'resolved'.
+    const evidenceProposalId = await makeProposal(threadId)
+    const evidenceResolution = await resolveEvidence(pendingTraceId, [evidenceProposalId])
+    expect(evidenceResolution.result).toBe('resolved')
+    expect(evidenceResolution.evidenceCount).toBe(1)
+
+    const { data: pendingRowReady } = await db
+      .from('tracked_point_pending_trace')
+      .select('status, evidence_status')
+      .eq('id', pendingTraceId)
+      .single()
+    expect((pendingRowReady as { status: string; evidence_status: string }).status).toBe('pending')
+    expect((pendingRowReady as { status: string; evidence_status: string }).evidence_status).toBe('resolved')
+
+    const { data: evidenceRows } = await db
+      .from('tracked_point_pending_trace_evidence')
+      .select('proposal_id')
+      .eq('pending_trace_id', pendingTraceId)
+    expect((evidenceRows ?? []).map((r) => (r as { proposal_id: string }).proposal_id)).toEqual([evidenceProposalId])
+
     // Transaction A — deuxième unité du MÊME thread (unit_key distinct de setupUnit : ce n'est
     // pas un rejeu), via le harness à pause. Passe par test_only, jamais par le wrapper prod (ce
     // harness n'a pas vocation à être appelable en dehors d'une DB jetable de test).
@@ -1082,10 +1153,14 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
       p_cross_thread_candidate_point_ids: [],
     })
 
-    // Transaction B — décalée de 100ms (pas une exigence de correction, seulement pour garantir
-    // que A a déjà atteint et tenu son verrou §4.5 avant que B ne tente le sien sur la même
-    // ligne — A n'a que des vérifications légères à faire avant d'atteindre ce point, largement
-    // sous 100ms). Cible directement la pending trace ET le Point sibling déjà préparés.
+    // Transaction B — lancement délibérément retardé de 100ms. Ce délai n'est PAS une garantie
+    // que B tente son verrou pendant que A tient le sien : c'est une attente fixe côté client,
+    // sujette à l'ordonnancement réel du runtime Node et du réseau vers Postgres. La seule
+    // garantie déterministe du témoin est côté A (verrou §4.5 tenu 400ms via p_pause_ms/
+    // pg_sleep) ; les 100ms côté B ne font qu'élargir la marge probabiliste pour que la
+    // tentative de B tombe dans cette fenêtre de 400ms (A n'a que des vérifications légères à
+    // faire avant d'atteindre son propre verrou, largement sous 100ms en pratique). Cible
+    // directement la pending trace ET le Point sibling déjà préparés.
     const transactionB = new Promise((resolve) => setTimeout(resolve, 100)).then(() =>
       associatePendingResolutionToPoint({ siteId, pendingTraceId, targetPointId: siblingPoint }),
     )
@@ -1120,10 +1195,17 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
     expect(dataA.pendingTraceId).toBe(pendingTraceId)
     expect(dataA.newCandidateIds.length).toBe(1)
 
-    // Issue cohérente unique côté B : association réussie (ou déjà-associée si l'ordre réel
-    // d'exécution a fait arriver B après que A a déjà relâché son verrou et que le membership du
-    // thread était déjà actif depuis la préparation) — jamais une erreur de garde.
-    expect(['associated', 'already_resolved', 'already_associated']).toContain(b.result)
+    // Issue cohérente unique côté B — Round 5B : resserrée à 'associated' strictement.
+    // Analyse garde-par-garde de la migration 396 pour ce setup précis (pending fraîche,
+    // jamais résolue avant cet appel, aucune membership scope='proposal_set' préexistante sur
+    // cette cible) : Guard 4a/4b (already_resolved) et Guard 16 (ALREADY_ASSOCIATED, qui ne
+    // teste que scope='proposal_set') sont structurellement inatteignables ici — la seule
+    // membership préexistante sur ce thread est celle posée par makeMember (scope='thread'),
+    // qui ne peut déclencher ni Guard 15 (cible différente requise) ni Guard 16 (scope
+    // différent requis). 'associated' est donc la SEULE issue légitime possible ; tolérer
+    // 'already_resolved'/'already_associated' masquerait un rejeu inattendu au lieu de le
+    // signaler comme une régression.
+    expect(b.result).toBe('associated')
     expect(b.targetPointId).toBe(siblingPoint)
 
     // Aucun doublon de pending trace pour ce thread+kind — le pré-verrou §4.5 de A a retrouvé et
@@ -1143,10 +1225,36 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
       .single()
     expect((pendingAfter as { status: string }).status).toBe('resolved')
 
-    // Aucun doublon de membership actif sur ce thread pour le Point sibling — la préparation
-    // (makeMember) posait déjà 1 membership actif ; B ne doit jamais en ajouter un second pour
-    // le même thread sur la même cible.
-    expect(await countMembersOnThread(threadId)).toBe(1)
+    // Round 5B — distinguer explicitement les deux memberships actives attendues sur ce thread,
+    // pour ne jamais confondre la membership scope='thread' préexistante (posée par makeMember
+    // pendant la préparation, AVANT toute concurrence) avec la membership scope='proposal_set'
+    // que la migration 396 insère elle-même à l'étape 17 lors de l'association de B. Ce sont deux
+    // memberships DISTINCTES posées par deux mécanismes distincts, jamais un doublon de la même.
+    const { count: totalMembers } = await db
+      .from('tracked_point_member')
+      .select('id', { count: 'exact', head: true })
+      .eq('subject_thread_id', threadId)
+      .eq('status', 'active')
+    expect(totalMembers).toBe(2)
+
+    const { count: threadScopeMembers } = await db
+      .from('tracked_point_member')
+      .select('id', { count: 'exact', head: true })
+      .eq('subject_thread_id', threadId)
+      .eq('status', 'active')
+      .eq('scope', 'thread')
+    expect(threadScopeMembers).toBe(1)
+
+    const { data: proposalSetMembers } = await db
+      .from('tracked_point_member')
+      .select('proposal_ids, tracked_point_id')
+      .eq('subject_thread_id', threadId)
+      .eq('status', 'active')
+      .eq('scope', 'proposal_set')
+    expect((proposalSetMembers ?? []).length).toBe(1)
+    const proposalSetMember = (proposalSetMembers ?? [])[0] as { proposal_ids: string[]; tracked_point_id: string }
+    expect(proposalSetMember.tracked_point_id).toBe(siblingPoint)
+    expect(proposalSetMember.proposal_ids).toEqual([evidenceProposalId])
 
     // Aucun état partiellement écrit côté A : l'événement de réconciliation de cette tentative
     // référence exactement 1 artefact candidate (le nouveau candidat de unitA), jamais 0 (échec
