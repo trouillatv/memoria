@@ -92,23 +92,51 @@
 --   fonction harness séparée, hors supabase/migrations/ (supabase/testing/
 --   p6_test_failpoint_harness.sql), positionne ce GUC — appliquée uniquement sur une
 --   base jetable, jamais sur la cible réelle.
+-- - Pause witness Round 5 (concurrence cross-RPC, préparée — non exécutée ce lot) : même
+--   doctrine, second GUC de session distinct `p6_test.pause_ms_after_pending_lock`,
+--   consulté juste après le pré-verrouillage §4.5 d'une pending trace EXISTANTE
+--   uniquement. Une seconde fonction harness (à ajouter à
+--   supabase/testing/p6_test_failpoint_harness.sql avant exécution du témoin) positionnera
+--   ce GUC — jamais accordée/atteignable sur la base cible réelle.
 --
--- Verrouillage — ordre total §2.8 : (1) domaine d'identité thread, (2) unité, (3) CBO,
--- (5) tracked_point(s) ordre UUID croissant, (4) pending trace, (6) tracked_point_member,
+-- Verrouillage — ordre total §2.8 (Round 5, Vincent, BLOCKER 1 — AMENDE l'ordre décrit
+-- au Round 4 ci-dessous) : (1) domaine d'identité thread, (2) unité, (3) CBO,
+-- (4) pending trace EXISTANTE le cas échéant (pré-verrou §4.5, jamais de création à ce
+-- stade), (5) tracked_point(s) ordre UUID croissant, (6) tracked_point_member,
 -- (7) tracked_point_identity_candidate(s) ordre UUID croissant, (8) reconcile_state
--- (verrouillé en dernier, à l'UPSERT final).
+-- (verrouillé en dernier, à l'UPSERT final). Pending trace (4) est donc verrouillée
+-- AVANT tracked_point(s) (5) sur TOUTE tentative — même ordre que
+-- associate_pending_resolution_to_point (migration 396 : pending puis target), ce qui
+-- élimine le cycle de deadlock cross-RPC identifié au Round 5 (cf. §4.5 ci-dessous et
+-- le commentaire de tête de fonction).
 --
--- Round 4 (BUG 1, Vincent) — réordonnancement ASSUMÉ de (4) et (5) par rapport aux Rounds
--- précédents : la primitive commune "ensure pending trace" (étape 7.5) verrouille
--- désormais la pending trace APRÈS que Branche A et Branche B aient déjà verrouillé
--- CBO/tracked_point(s) (ses deux branches ont besoin de connaître le verdict — donc d'avoir
--- déjà scanné/verrouillé les Points candidats — avant de savoir SI une pending trace doit
--- être matérialisée). Sans risque de deadlock : cette fonction est l'unique écrivain de ces
--- tables (SECURITY DEFINER, EXECUTE réservé à service_role) et suit désormais cet ordre
--- (3)→(5)→(4) sur TOUTE tentative sans exception — un ordre global unique ne peut jamais
--- produire de deadlock, contrairement à deux ordres concurrents.
+-- Round 4 (BUG 1, Vincent) — historique, CORRIGÉ au Round 5 : ce round avait fait
+-- verrouiller la pending trace (4) APRÈS tracked_point(s) (5), à l'étape 7.5 (Branche A
+-- et Branche B avaient besoin de connaître le verdict — donc d'avoir déjà
+-- scanné/verrouillé les Points candidats — avant de savoir SI une pending trace devait
+-- être matérialisée). Ce raisonnement restait localement correct (cette fonction est
+-- l'unique écrivain automatisé de ces tables, EXECUTE réservé à service_role) mais
+-- ignorait l'ordre inverse déjà en production dans la migration 396 (RPC humaine,
+-- déclenchement séparé) — la garantie "pas de deadlock" ne tient que si TOUTES les
+-- transactions qui verrouillent ces deux verrous suivent le même ordre global, pas
+-- seulement toutes les invocations de cette seule fonction. Round 5 réaligne (3)→(4)→(5)
+-- pour couvrir aussi 396.
 --
--- Ensure pending trace (§7.5, Round 4, BUG 1) — primitive commune consommée par Branche A
+-- Pré-verrou de pending trace (§4.5, Round 5, BLOCKER 1) — avant le premier FOR UPDATE
+-- de tracked_point, verrouille (sans jamais créer) une pending trace déjà existante dont
+-- le kind correspond au contrat RPC-input connu à l'entrée (COALESCE(p_planned_pending_trace,
+-- p_fallback_pending_trace) — les deux mêmes sources que v_pending_contract plus bas,
+-- jamais une troisième). Si trouvée, la ligne reste verrouillée jusqu'à COMMIT et sera
+-- réutilisée telle quelle par l'étape 7.5 (son guard v_pending.id IS NULL sera déjà faux).
+-- Si absente, v_pending reste NULL et l'étape 7.5 fonctionne inchangée (seule habilitée à
+-- créer). Vérifié (Round 5) : aucun cycle supplémentaire avec 393 (verrouille un candidat
+-- PRÉEXISTANT puis son Point cible — cette fonction ne verrouille jamais de candidate
+-- préexistante avant son Point, elle se contente d'INSÉRER sans verrou après coup) ni
+-- avec 395 (ne verrouille jamais de tracked_point préexistant, INSERT seul, kind
+-- TRACKABILITY_UNDETERMINED exclusivement).
+--
+-- Ensure pending trace (§7.5, Round 4, BUG 1 — inchangé au Round 5 hormis l'effet du
+-- pré-verrou §4.5 ci-dessus sur son guard) — primitive commune consommée par Branche A
 -- (dégradée : merged/CONFLICTED, siblings multiples, cross-thread — via p_fallback_pending_trace,
 -- kind=IDENTITY_UNRESOLVED, reason recalculée en SQL, jamais celle du placeholder TS générique)
 -- ET Branche B (résolution en attente — via p_planned_pending_trace, inchangé). Fin de
@@ -164,6 +192,7 @@ DECLARE
   v_existing_pending_kind TEXT;
   v_accepted_target_id    UUID;
   v_pending_contract      JSONB;
+  v_early_pending_contract JSONB;
 BEGIN
   -- Guard 1 : plan mutuellement exclusif (au plus un des deux plans non-null).
   IF p_planned_point IS NOT NULL AND p_planned_pending_trace IS NOT NULL THEN
@@ -268,6 +297,71 @@ BEGIN
     AND tp.status = 'active' AND tp.identity_status <> 'CONFLICTED'
   ORDER BY c.resolved_at DESC NULLS LAST, c.created_at DESC
   LIMIT 1;
+
+  -- ── 4.5. Pré-verrouillage anticipé d'une pending trace existante (Round 5,
+  --      Vincent, BLOCKER 1) — AVANT tout FOR UPDATE de tracked_point (niveau 5).
+  --
+  --      Cause : associate_pending_resolution_to_point (migration 396, déjà
+  --      appliquée) verrouille la pending trace PUIS le tracked_point cible — ordre
+  --      inverse de celui suivi jusqu'ici par cette fonction (Point(s) d'abord,
+  --      pending seulement à l'étape 7.5). Deux ordres opposés sur les deux mêmes
+  --      verrous = cycle de deadlock réel (Live Writer : Point→pending ;
+  --      396 : pending→Point). Correctif : verrouiller la pending trace ICI, avant
+  --      le premier FOR UPDATE de tracked_point de Branche A/B, pour que TOUTE
+  --      transaction de cette fonction respecte désormais l'ordre pending→Point,
+  --      identique à celui de 396.
+  --
+  --      v_early_pending_contract = COALESCE(p_planned_pending_trace,
+  --      p_fallback_pending_trace) : exactement les deux mêmes paramètres RPC-input
+  --      qui alimenteront plus tard v_pending_contract dans Branche A (dégradée) ou
+  --      Branche B — jamais une troisième source. Le kind verrouillé ici est donc
+  --      TOUJOURS celui que l'étape 7.5 chercherait de toute façon.
+  --
+  --      AUCUNE création ici : uniquement un SELECT ... FOR UPDATE sur une ligne
+  --      DÉJÀ existante. Si elle existe, elle reste verrouillée jusqu'à COMMIT et
+  --      sera réutilisée par l'étape 7.5 (son propre SELECT la retrouvera identique,
+  --      son guard v_pending.id IS NULL sera déjà faux → pas de second SELECT ni
+  --      d'INSERT). Si rien n'existe, v_pending reste NULL et l'étape 7.5 fonctionne
+  --      exactement comme avant (seule habilitée à créer, Round 4).
+  --
+  --      393 (accept_trace_identity_candidate) et 395 (confirm_pending_trackability)
+  --      vérifiés (Round 5) : aucun cycle supplémentaire. 393 verrouille un candidat
+  --      PRÉEXISTANT puis le Point cible — cette fonction ne verrouille jamais un
+  --      candidat préexistant avant son propre Point (elle ne fait qu'INSÉRER de
+  --      nouvelles candidates, sans verrou, après avoir verrouillé le Point).
+  --      395 ne verrouille jamais un tracked_point préexistant (INSERT seul, kind
+  --      TRACKABILITY_UNDETERMINED exclusivement) — aucune inversion possible.
+  v_early_pending_contract := COALESCE(p_planned_pending_trace, p_fallback_pending_trace);
+  IF v_early_pending_contract IS NOT NULL THEN
+    SELECT p.* INTO v_pending
+    FROM public.tracked_point_pending_trace p
+    WHERE p.source_thread_id = p_thread_id
+      AND p.kind = (v_early_pending_contract->>'kind')
+      AND p.status = 'pending'
+    FOR UPDATE;
+
+    -- Pause test-only (Round 5, témoin de concurrence, préparé — PAS exécuté ce lot) —
+    -- même doctrine que le failpoint du witness 14 : GUC de session
+    -- `p6_test.pause_ms_after_pending_lock`, lu via current_setting(..., missing_ok=true),
+    -- inerte par construction (jamais positionné hors d'un harness test-only dédié, jamais
+    -- accordé/atteignable sur la base cible réelle). Ne s'exerce que si la ligne a
+    -- effectivement été trouvée ET verrouillée (v_pending.id IS NOT NULL) : mettre en pause
+    -- alors qu'aucun verrou n'est tenu ne prouverait rien. Objectif du témoin : élargir
+    -- délibérément la fenêtre pendant laquelle CETTE transaction tient le verrou sur la
+    -- pending trace, pour qu'une transaction concurrente lancée peu après (associate_pending_
+    -- resolution_to_point, migration 396, qui verrouille cette même pending trace EN PREMIER)
+    -- ait le temps réel de tenter et de bloquer sur ce même verrou pendant la pause, plutôt
+    -- que de dépendre d'un minutage non garanti (Promise.all seul, témoins 11/12/15).
+    IF v_pending.id IS NOT NULL THEN
+      DECLARE
+        v_pause_ms TEXT := current_setting('p6_test.pause_ms_after_pending_lock', true);
+      BEGIN
+        IF v_pause_ms IS NOT NULL AND v_pause_ms <> '' THEN
+          PERFORM pg_sleep(v_pause_ms::NUMERIC / 1000.0);
+        END IF;
+      END;
+    END IF;
+  END IF;
 
   -- ── 5. Branche A — le plan fonde ou rejoint un Point ──────────────────────
   IF p_planned_point IS NOT NULL THEN
@@ -734,7 +828,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[], JSONB) IS
-  'P6 Live Writer — RPC unique d''écriture pour UNE FoundingUnit déjà classifiée (decideFoundingV2) et déjà transformée en plan pur (planPointForUnit/planPendingTraceForUnit). Verrouille §2.8 (domaine identité thread, unité, puis CBO, puis tracked_point(s)/member/candidate(s), pending trace en dernier via la primitive commune §7.5), revalide contre l''état live avant toute conclusion NOOP (§2.5, jamais sur la seule égalité de fingerprint), exécute un des 8 gestes du §2.1 (7 figés + IGNORE_NOT_TRACKABLE, D4). P6-B (merged/CONFLICTED ⇒ toujours NEEDS_HUMAN) et P6-C (founding_kind/founding_reference immuables, CBO tardif ⇒ ENRICH_EXISTING_POINT seul) appliqués sans exception. D1 (Round 2) : une concurrence cross-thread connue (p_cross_thread_candidate_point_ids, calculée côté TS via le moteur Phase 4 evaluateMembershipCandidate réutilisé tel quel, jamais un second moteur de décision) est revérifiée live et empêche toute autocréation PROVISIONAL silencieuse, sans jamais s''auto-lier (D3 : signal fuzzy, toujours NEEDS_HUMAN). D3 : 0 cible compatible ⇒ AUTO_CREATE, 1 cible thread-scoped compatible unique ⇒ AUTO_LINK, plus d''1 ou contradiction ⇒ NEEDS_HUMAN. Round 4 (BUG 1) : p_fallback_pending_trace (kind=IDENTITY_UNRESOLVED, migration 400) porte un contrat de repli SÉPARÉ du plan principal (n''annule jamais l''exclusivité p_planned_point XOR p_planned_pending_trace) — consommé uniquement si la Branche A dégrade effectivement le plan de Point en NEEDS_HUMAN ; la primitive commune §7.5 matérialise alors la trace au lieu de la Branche B seule, avec garde MISSING_PENDING_CONTRACT si aucun contrat exploitable n''atteint ce point. SECURITY DEFINER durci (search_path vide, EXECUTE réservé à service_role). NON EXÉCUTÉ : aucun des témoins de la matrice §5 n''a pu être lancé (pas d''accès DB dans ce lot).';
+  'P6 Live Writer — RPC unique d''écriture pour UNE FoundingUnit déjà classifiée (decideFoundingV2) et déjà transformée en plan pur (planPointForUnit/planPendingTraceForUnit). Verrouille §2.8 (domaine identité thread, unité, puis CBO, puis pending trace EXISTANTE le cas échéant — pré-verrou §4.5, Round 5, jamais de création à ce stade —, puis tracked_point(s)/member/candidate(s)) ; la primitive commune §7.5 réutilise cette même pending trace ou en crée une nouvelle si aucune n''existait. Cet ordre (CBO, pending, tracked_point) aligne désormais cette fonction sur associate_pending_resolution_to_point (migration 396 : pending puis target) et élimine le cycle de deadlock cross-RPC identifié au Round 5 (BLOCKER 1, Vincent) — Round 4 verrouillait la pending trace APRÈS tracked_point(s), ordre inverse de 396. Revalide contre l''état live avant toute conclusion NOOP (§2.5, jamais sur la seule égalité de fingerprint), exécute un des 8 gestes du §2.1 (7 figés + IGNORE_NOT_TRACKABLE, D4). P6-B (merged/CONFLICTED ⇒ toujours NEEDS_HUMAN) et P6-C (founding_kind/founding_reference immuables, CBO tardif ⇒ ENRICH_EXISTING_POINT seul) appliqués sans exception. D1 (Round 2) : une concurrence cross-thread connue (p_cross_thread_candidate_point_ids, calculée côté TS via le moteur Phase 4 evaluateMembershipCandidate réutilisé tel quel, jamais un second moteur de décision) est revérifiée live et empêche toute autocréation PROVISIONAL silencieuse, sans jamais s''auto-lier (D3 : signal fuzzy, toujours NEEDS_HUMAN). D3 : 0 cible compatible ⇒ AUTO_CREATE, 1 cible thread-scoped compatible unique ⇒ AUTO_LINK, plus d''1 ou contradiction ⇒ NEEDS_HUMAN. Round 4 (BUG 1) : p_fallback_pending_trace (kind=IDENTITY_UNRESOLVED, migration 400) porte un contrat de repli SÉPARÉ du plan principal (n''annule jamais l''exclusivité p_planned_point XOR p_planned_pending_trace) — consommé uniquement si la Branche A dégrade effectivement le plan de Point en NEEDS_HUMAN ; la primitive commune §7.5 matérialise alors la trace au lieu de la Branche B seule, avec garde MISSING_PENDING_CONTRACT si aucun contrat exploitable n''atteint ce point. SECURITY DEFINER durci (search_path vide, EXECUTE réservé à service_role). NON EXÉCUTÉ : aucun des témoins de la matrice §5 n''a pu être lancé (pas d''accès DB dans ce lot).';
 
 REVOKE ALL ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[], JSONB) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[], JSONB) FROM anon;

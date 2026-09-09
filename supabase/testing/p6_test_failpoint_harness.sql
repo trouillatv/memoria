@@ -75,3 +75,74 @@ COMMENT ON FUNCTION test_only.fn_reconcile_tracked_point_unit_with_failpoint(
 -- Pas de SECURITY DEFINER : cette fonction tourne avec les privilèges du rôle qui l'appelle (le
 -- test runner, déjà propriétaire de la DB jetable) — aucun durcissement de privilège nécessaire
 -- puisqu'elle n'est jamais déployée sur une base où un appelant non habilité pourrait l'atteindre.
+
+-- ── Round 5 (Vincent, BLOCKER 1) — harness du témoin de concurrence cross-RPC ────────────────
+-- (matrice §5, PRÉPARÉ ce lot, PAS EXÉCUTÉ — cf. rapport HARD STOP Round 5).
+--
+-- Même doctrine que le harness ci-dessus : aucun paramètre de pause caché dans la fonction prod
+-- appelable depuis PostgREST. La fonction prod (migration 401) consulte le GUC de session
+-- `p6_test.pause_ms_after_pending_lock` (current_setting(..., missing_ok=true), inerte par
+-- construction) immédiatement après le pré-verrouillage §4.5 d'une pending trace EXISTANTE —
+-- seule cette fonction harness positionne ce GUC.
+--
+-- Objectif du témoin : Transaction A (ce harness, portant la pause) verrouille une pending trace
+-- RESOLUTION_WITHOUT_KNOWN_PROBLEM déjà existante à l'étape §4.5 puis reste en pause, verrou
+-- tenu, pendant p_pause_ms millisecondes — le temps que Transaction B
+-- (associate_pending_resolution_to_point, migration 396, appliquée) tente de verrouiller CETTE
+-- MÊME pending trace (son propre premier verrou) et bloque réellement dessus, plutôt que de
+-- dépendre d'un minutage non garanti. Preuve attendue : aucun deadlock, une seule issue
+-- transactionnelle cohérente, aucun doublon de pending trace ni de membership, aucun état
+-- partiellement écrit — cf. Témoin 24 (tests/lib/db/tracked-point-live-writer.test.ts).
+CREATE OR REPLACE FUNCTION test_only.fn_reconcile_tracked_point_unit_with_pause(
+  p_site_id UUID,
+  p_unit_key TEXT,
+  p_thread_id UUID,
+  p_scope TEXT,
+  p_input_snapshot JSONB,
+  p_input_fingerprint TEXT,
+  p_source_kind TEXT,
+  p_source_ref_id UUID,
+  p_pause_ms INTEGER,
+  p_planned_point JSONB DEFAULT NULL,
+  p_planned_pending_trace JSONB DEFAULT NULL,
+  p_fallback_pending_trace JSONB DEFAULT NULL,
+  p_cross_thread_candidate_point_ids UUID[] DEFAULT '{}'::UUID[]
+) RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  -- Portée transaction (is_local=true) : le GUC ne fuit jamais hors de cet appel, même si la
+  -- session est réutilisée par un pool de connexions ensuite.
+  PERFORM set_config('p6_test.pause_ms_after_pending_lock', p_pause_ms::TEXT, true);
+
+  -- Appel par nom (jamais positionnel) : évite toute dépendance fragile à l'ordre réel des
+  -- paramètres DEFAULT de public.fn_reconcile_tracked_point_unit (migration 401), qui place
+  -- p_fallback_pending_trace APRÈS p_cross_thread_candidate_point_ids.
+  RETURN public.fn_reconcile_tracked_point_unit(
+    p_site_id => p_site_id,
+    p_unit_key => p_unit_key,
+    p_thread_id => p_thread_id,
+    p_scope => p_scope,
+    p_input_snapshot => p_input_snapshot,
+    p_input_fingerprint => p_input_fingerprint,
+    p_source_kind => p_source_kind,
+    p_source_ref_id => p_source_ref_id,
+    p_planned_point => p_planned_point,
+    p_planned_pending_trace => p_planned_pending_trace,
+    p_cross_thread_candidate_point_ids => p_cross_thread_candidate_point_ids,
+    p_fallback_pending_trace => p_fallback_pending_trace
+  );
+END;
+$$;
+
+COMMENT ON FUNCTION test_only.fn_reconcile_tracked_point_unit_with_pause(
+  UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, INTEGER, JSONB, JSONB, JSONB, UUID[]
+) IS
+  'Harness EXCLUSIF au témoin de concurrence cross-RPC Round 5 (BLOCKER 1, préparé — pas encore '
+  'exécuté) — jamais appliqué en migration, jamais présent sur la base cible réelle. Positionne '
+  'p6_test.pause_ms_after_pending_lock (portée transaction) puis délègue à '
+  'public.fn_reconcile_tracked_point_unit inchangée, pour élargir délibérément la fenêtre de '
+  'contention sur le verrou de la pending trace §4.5, sans introduire de paramètre de pause dans '
+  'la fonction prod.';
+
+-- Pas de SECURITY DEFINER, même raison que le harness du témoin 14 ci-dessus.

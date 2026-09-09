@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { reconcileTrackedPointUnit, plannedPointPayload } from '@/lib/db/tracked-point-live-writer'
 import { acceptTraceIdentityCandidate } from '@/lib/db/tracked-point-trace-acceptance'
+import { associatePendingResolutionToPoint } from '@/lib/db/tracked-point-pending-resolution'
 import type { FoundingOutcomeV2, FoundingUnit } from '@/lib/knowledge/tracked-point-founding'
 import { foundingReferenceOf, planPointForUnit } from '@/lib/knowledge/tracked-point-write-plan'
 import { buildFingerprint } from '@/lib/knowledge/tracked-point-fingerprint'
@@ -1000,5 +1001,165 @@ describe('Témoin 23 — Round 4 (BUG 1) : MISSING_PENDING_CONTRACT si write_pat
     expect(eventCount).toBe(0)
 
     await db.from('tracked_point').update({ status: 'active', merged_into_id: null }).eq('id', target)
+  })
+})
+
+describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associate_pending_resolution_to_point sur la même pending trace (PRÉPARÉ, NON EXÉCUTÉ ce lot)', () => {
+  // Ce témoin n'a jamais tourné : migrations 400/401 non appliquées ce round (mandat NO GO
+  // APPLY), et le harness test_only.fn_reconcile_tracked_point_unit_with_pause
+  // (supabase/testing/p6_test_failpoint_harness.sql) n'est chargé sur aucune base cette session.
+  // Écrit pour la prochaine étape (DB jetable, GO explicite de Vincent).
+  //
+  // Combinaison dangereuse exacte demandée par Vincent (Round 5) : une pending trace
+  // RESOLUTION_WITHOUT_KNOWN_PROBLEM déjà existante + un Point cible/sibling correspondant.
+  // Transaction A = Live Writer (via le harness à pause, migration 401 §4.5) ; Transaction B =
+  // associate_pending_resolution_to_point (migration 396, déjà appliquée, wrapper inchangé
+  // tracked-point-pending-resolution.ts).
+  //
+  // AVANT le correctif Round 5 (ordre 3→5→4, pending verrouillée seulement à l'étape 7.5) : A
+  // pouvait tenir le verrou tracked_point puis attendre le verrou pending, pendant que B tenait
+  // déjà le verrou pending et attendait le verrou tracked_point — cycle réel. APRÈS le correctif
+  // (§4.5, cet ordre est désormais 4 avant 5 sur TOUTE tentative) : les deux transactions
+  // verrouillent la pending trace EN PREMIER, dans le même ordre — la pause (barrière contrôlée,
+  // p_pause_ms) élargit délibérément la fenêtre pendant laquelle A tient ce verrou, pour que la
+  // tentative de B sur EXACTEMENT la même ligne soit garantie de se produire pendant que A la
+  // tient encore, plutôt que de dépendre d'un minutage non garanti (Promise.all seul,
+  // témoins 11/12/15).
+  //
+  // Preuve attendue (§ mandat Round 5, point b) : aucun deadlock, une seule issue
+  // transactionnelle cohérente, aucun doublon de pending trace, aucun doublon de membership,
+  // aucun état partiellement écrit.
+  it('pending trace RESOLUTION_WITHOUT_KNOWN_PROBLEM + Point sibling : Live Writer (en pause, verrou tenu) et associate_pending_resolution_to_point concurrents → pas de deadlock, issue cohérente unique', async () => {
+    const db = createAdminClient()
+    const threadId = randomUUID()
+
+    // Point sibling déjà actif sur ce thread — condition requise pour que le plan
+    // RESOLUTION_WITHOUT_KNOWN_PROBLEM produise CREATE_CANDIDATES (jamais CREATE_PENDING_TRACE
+    // seul) et pour que Transaction B ait une cible plausible.
+    const siblingPoint = await makePoint()
+    await makeMember(siblingPoint, threadId)
+
+    // Étape de préparation SÉQUENTIELLE (hors mesure de concurrence) : fait exister la pending
+    // trace RESOLUTION_WITHOUT_KNOWN_PROBLEM + le premier candidat, exactement l'état de départ
+    // que Vincent demande ("une pending trace déjà existante + un Point cible correspondant").
+    const setupUnit = unit({ threadId, outcomeV2: { kind: 'RESOLUTION_WITHOUT_KNOWN_PROBLEM' } })
+    const setup = await reconcileTrackedPointUnit({ siteId, unit: setupUnit, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(setup.ok).toBe(true)
+    if (!setup.ok) throw new Error('attendu un succès de préparation')
+    expect(setup.writePattern).toBe('CREATE_CANDIDATES')
+    expect(setup.pendingTraceId).toBeTruthy()
+    const pendingTraceId = setup.pendingTraceId as string
+
+    const { data: pendingRow } = await db
+      .from('tracked_point_pending_trace')
+      .select('kind, status')
+      .eq('id', pendingTraceId)
+      .single()
+    expect((pendingRow as { kind: string; status: string }).kind).toBe('RESOLUTION_WITHOUT_KNOWN_PROBLEM')
+    expect((pendingRow as { kind: string; status: string }).status).toBe('pending')
+
+    // Transaction A — deuxième unité du MÊME thread (unit_key distinct de setupUnit : ce n'est
+    // pas un rejeu), via le harness à pause. Passe par test_only, jamais par le wrapper prod (ce
+    // harness n'a pas vocation à être appelable en dehors d'une DB jetable de test).
+    const unitA = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'resolution:concurrent-A', outcomeV2: { kind: 'RESOLUTION_WITHOUT_KNOWN_PROBLEM' } })
+    expect(foundingReferenceOf(unitA)).not.toBe(foundingReferenceOf(setupUnit))
+    const plannedPendingTraceA = { kind: 'RESOLUTION_WITHOUT_KNOWN_PROBLEM', reason: 'témoin 24 — unité concurrente A' }
+    const { snapshot: snapshotA, fingerprint: fingerprintA } = buildFingerprint(unitA)
+
+    const transactionA = db.schema('test_only').rpc('fn_reconcile_tracked_point_unit_with_pause', {
+      p_site_id: siteId,
+      p_unit_key: foundingReferenceOf(unitA),
+      p_thread_id: unitA.threadId,
+      p_scope: unitA.scope,
+      p_input_snapshot: snapshotA,
+      p_input_fingerprint: fingerprintA,
+      p_source_kind: 'historical_pdf',
+      p_source_ref_id: docId,
+      p_pause_ms: 400,
+      p_planned_point: null,
+      p_planned_pending_trace: plannedPendingTraceA,
+      p_fallback_pending_trace: null,
+      p_cross_thread_candidate_point_ids: [],
+    })
+
+    // Transaction B — décalée de 100ms (pas une exigence de correction, seulement pour garantir
+    // que A a déjà atteint et tenu son verrou §4.5 avant que B ne tente le sien sur la même
+    // ligne — A n'a que des vérifications légères à faire avant d'atteindre ce point, largement
+    // sous 100ms). Cible directement la pending trace ET le Point sibling déjà préparés.
+    const transactionB = new Promise((resolve) => setTimeout(resolve, 100)).then(() =>
+      associatePendingResolutionToPoint({ siteId, pendingTraceId, targetPointId: siblingPoint }),
+    )
+
+    const [resultA, resultB] = await Promise.all([transactionA, transactionB])
+
+    // Aucun deadlock : ni erreur Postgres brute côté A, ni erreur applicative côté B qui
+    // évoquerait un deadlock. Un deadlock réel se manifesterait par un rejet explicite
+    // ('deadlock detected', code 40P01) sur l'une des deux transactions.
+    expect(resultA.error).toBeNull()
+    if (resultA.error) {
+      expect((resultA.error as { message: string }).message.toLowerCase()).not.toContain('deadlock')
+    }
+    const b = resultB as Awaited<ReturnType<typeof associatePendingResolutionToPoint>>
+    if (!b.ok) {
+      expect(b.error.toLowerCase()).not.toContain('deadlock')
+      throw new Error(`attendu un succès côté B (associatePendingResolutionToPoint) : ${b.error}`)
+    }
+    expect(b.ok).toBe(true)
+
+    // Issue cohérente unique côté A : CREATE_CANDIDATES sur cette 2e unité, pending trace
+    // réutilisée (jamais recréée) — même garantie que Témoin 21, ici sous contention réelle
+    // avec une RPC humaine concurrente plutôt qu'un second appel Live Writer.
+    const dataA = resultA.data as {
+      writePattern: string
+      pendingTraceId: string | null
+      newCandidateIds: string[]
+      replayed: boolean
+    }
+    expect(dataA.writePattern).toBe('CREATE_CANDIDATES')
+    expect(dataA.replayed).toBe(false)
+    expect(dataA.pendingTraceId).toBe(pendingTraceId)
+    expect(dataA.newCandidateIds.length).toBe(1)
+
+    // Issue cohérente unique côté B : association réussie (ou déjà-associée si l'ordre réel
+    // d'exécution a fait arriver B après que A a déjà relâché son verrou et que le membership du
+    // thread était déjà actif depuis la préparation) — jamais une erreur de garde.
+    expect(['associated', 'already_resolved', 'already_associated']).toContain(b.result)
+    expect(b.targetPointId).toBe(siblingPoint)
+
+    // Aucun doublon de pending trace pour ce thread+kind — le pré-verrou §4.5 de A a retrouvé et
+    // réutilisé exactement la même ligne que B a ensuite résolue, jamais une seconde ligne créée
+    // en parallèle.
+    const { count: pendingCount } = await db
+      .from('tracked_point_pending_trace')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_thread_id', threadId)
+      .eq('kind', 'RESOLUTION_WITHOUT_KNOWN_PROBLEM')
+    expect(pendingCount).toBe(1)
+
+    const { data: pendingAfter } = await db
+      .from('tracked_point_pending_trace')
+      .select('status')
+      .eq('id', pendingTraceId)
+      .single()
+    expect((pendingAfter as { status: string }).status).toBe('resolved')
+
+    // Aucun doublon de membership actif sur ce thread pour le Point sibling — la préparation
+    // (makeMember) posait déjà 1 membership actif ; B ne doit jamais en ajouter un second pour
+    // le même thread sur la même cible.
+    expect(await countMembersOnThread(threadId)).toBe(1)
+
+    // Aucun état partiellement écrit côté A : l'événement de réconciliation de cette tentative
+    // référence exactement 1 artefact candidate (le nouveau candidat de unitA), jamais 0 (échec
+    // partiel silencieux) ni un artefact pending trace (réutilisée, jamais créée par cette
+    // tentative — même garantie que Témoin 21 côté B).
+    const { data: eventA } = await db
+      .from('tracked_point_reconcile_event')
+      .select('id')
+      .eq('site_id', siteId)
+      .eq('unit_key', foundingReferenceOf(unitA))
+      .single()
+    const artifactsA = await countArtifacts((eventA as { id: string }).id)
+    expect(artifactsA.filter((a) => a.artifact_kind === 'tracked_point_identity_candidate').length).toBe(1)
+    expect(artifactsA.filter((a) => a.artifact_kind === 'tracked_point_pending_trace')).toEqual([])
   })
 })

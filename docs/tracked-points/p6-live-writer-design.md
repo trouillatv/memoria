@@ -98,6 +98,8 @@ Ordre total, à respecter par tous les writers P6 et par toute évolution future
 7. tracked_point_identity_candidate(s), ordre UUID croissant
 8. reconcile_state
 
+**Round 5 (Vincent, BLOCKER 1) — correction, pending (4) verrouillée AVANT tracked_point(s) (5) sur TOUTE tentative.** L'implémentation initiale de la migration 401 verrouillait en réalité (3)→(5)→(4) : Branche A/B verrouillaient CBO puis tracked_point(s), et ne verrouillaient la pending trace qu'à l'étape 7.5 (primitive commune "ensure pending trace", après le verdict). Cet ordre est correct en isolation (401 est l'unique écrivain automatisé de ces tables) mais entre en conflit avec `associate_pending_resolution_to_point` (migration 396, déjà appliquée), qui verrouille la pending trace PUIS le tracked_point cible — l'ordre inverse. Deux ordres opposés sur les deux mêmes verrous constituent un cycle de deadlock réel. Correctif appliqué dans la migration 401 : un pré-verrou (§4.5 du fichier SQL) verrouille — sans jamais créer — une pending trace déjà existante dont le kind correspond au contrat RPC-input connu à l'entrée, avant le premier `FOR UPDATE` de `tracked_point`. L'ordre ci-dessus (4 avant 5) est donc désormais l'ordre réellement suivi, et non plus seulement documenté. `accept_trace_identity_candidate` (393) et `confirm_pending_trackability` (395) vérifiés : aucun cycle supplémentaire.
+
 Hash advisory : réutilisation de la primitive déjà gelée `hashtext(...)::bigint` (`scripts/_p6d1b-apply-global.mjs`), pour homogénéité avec le batch existant plutôt qu'un second protocole de hash. Une collision ne fait que sérialiser inutilement deux unités sans rapport, jamais corrompre une donnée.
 
 ### 2.9 Convergence, pas ordre imposé

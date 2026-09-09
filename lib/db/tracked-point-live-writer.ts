@@ -61,7 +61,13 @@ export type ReconcileTrackedPointUnitResult =
 // Codes portés par les RAISE EXCEPTION de la RPC (migration 401) — extraits du message
 // Postgres, jamais reconstruits ailleurs (même convention que tracked-point-pending-
 // resolution.ts:parseGuardCode).
-const KNOWN_GUARD_CODES = ['INVALID_PLAN', 'INVALID_SCOPE', 'CBO_NOT_FOUND', 'DRIFT_CBO_LINK_MISSING'] as const
+const KNOWN_GUARD_CODES = [
+  'INVALID_PLAN',
+  'INVALID_SCOPE',
+  'CBO_NOT_FOUND',
+  'DRIFT_CBO_LINK_MISSING',
+  'MISSING_PENDING_CONTRACT',
+] as const
 
 function parseGuardCode(message: string): string {
   const hit = KNOWN_GUARD_CODES.find((code) => message.includes(code))
