@@ -494,7 +494,10 @@ describe('deferPendingTrace', () => {
     // ASK_LATER_MODEL_MISSING — pas de nouvelle valeur de status).
     expect(trace.status).toBe('pending')
     expect(trace.deferred_by).toBe(adminUserId)
-    expect(result.deferredUntil).toBe(trace.deferred_until)
+    // Comparaison par instant, pas par égalité de chaîne : result.deferredUntil vient de
+    // Date.toISOString() (suffixe Z) alors que trace.deferred_until vient de Postgres
+    // timestamptz (suffixe +00:00) — même instant, sérialisations différentes.
+    expect(new Date(result.deferredUntil).getTime()).toBe(new Date(trace.deferred_until).getTime())
 
     const deferredUntilMs = new Date(trace.deferred_until).getTime()
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
