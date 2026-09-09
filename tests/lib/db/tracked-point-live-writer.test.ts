@@ -1305,3 +1305,89 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
     expect(candidateCountAfter).toBe(1)
   })
 })
+
+describe('Témoin 25 — Round 6 (BLOCKER contamination des kinds de pending) : une pending trace d\'un AUTRE kind sur le même thread ne doit jamais être réutilisée ni bloquer une fondation trackable_condition sans ambiguïté réelle (PRÉPARÉ, NON EXÉCUTÉ ce lot)', () => {
+  // Ce témoin n'a jamais tourné : migration 401 non appliquée ce round (mandat NO GO APPLY),
+  // aucune base jetable chargée cette session. Écrit pour la prochaine étape (DB jetable, GO
+  // explicite de Vincent) — preuve statique du correctif dans le fichier .sql lui-même
+  // (suppression du second SELECT non filtré/non verrouillé qui écrasait v_pending posée par
+  // le pré-verrou §4.5, et qui pouvait réutiliser une pending trace de N'IMPORTE QUEL kind
+  // simplement parce qu'elle partageait le même source_thread_id).
+  //
+  // Scénario : une unité PENDING_TRACKABILITY (Branche B) pose d'abord une pending trace
+  // TRACKABILITY_UNDETERMINED sur un thread neuf. Une SECONDE unité, distincte
+  // (unit_key différent), trackable_condition, sur ce MÊME thread, sans aucun sibling
+  // thread-scoped ni aucun candidat cross-thread (sitePoints=[]) — donc structurellement sans
+  // aucune ambiguïté réelle à arbitrer pour CETTE unité.
+  //
+  // AVANT le correctif (Round 6) : le second SELECT non filtré du chemin D1 cross-thread
+  // trouvait la pending trace TRACKABILITY_UNDETERMINED préexistante (même thread, kind
+  // différent) et la réutilisait à tort → NEEDS_HUMAN/CREATE_PENDING_TRACE, pendingTraceId
+  // pointant vers une trace du MAUVAIS kind, targetPointId=null — une fondation pourtant sûre
+  // se retrouvait bloquée/mal-diagnostiquée par une question sans rapport.
+  //
+  // APRÈS le correctif : le pré-verrou §4.5 ne charge v_pending que filtrée sur
+  // kind=IDENTITY_UNRESOLVED (le seul kind possible du fallback en Branche A) — la trace
+  // TRACKABILITY_UNDETERMINED préexistante ne matche jamais ce filtre, v_pending reste NULL,
+  // et la branche retombe légitimement sur AUTO_CREATED (0 candidat cross-thread, aucune
+  // pending IDENTITY_UNRESOLVED déjà ouverte sur ce thread).
+  it('pending trace TRACKABILITY_UNDETERMINED préexistante sur le thread + nouvelle unité trackable_condition sans ambiguïté → AUTO_CREATED, jamais la réutilisation de la trace étrangère', async () => {
+    const threadId = randomUUID()
+
+    // Plante la pending trace "étrangère" (kind TRACKABILITY_UNDETERMINED, Branche B) — même
+    // mécanisme que Témoin 4, sur un thread neuf sans aucun sibling.
+    const setupUnit = unit({ threadId, outcomeV2: { kind: 'PENDING_TRACKABILITY' } })
+    const setup = await reconcileTrackedPointUnit({ siteId, unit: setupUnit, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(setup.ok).toBe(true)
+    if (!setup.ok) throw new Error('attendu un succès de préparation')
+    expect(setup.writePattern).toBe('CREATE_PENDING_TRACE')
+    expect(setup.pendingTraceId).toBeTruthy()
+    const foreignPendingTraceId = setup.pendingTraceId as string
+
+    const db = createAdminClient()
+    const { data: foreignPending } = await db
+      .from('tracked_point_pending_trace')
+      .select('kind, status')
+      .eq('id', foreignPendingTraceId)
+      .single()
+    expect((foreignPending as { kind: string; status: string }).kind).toBe('TRACKABILITY_UNDETERMINED')
+    expect((foreignPending as { kind: string; status: string }).status).toBe('pending')
+
+    // Seconde unité, unit_key distinct, MÊME thread, trackable_condition déterministe, aucun
+    // sibling thread-scoped (0 tracked_point_member sur ce thread avant cet appel) ni candidat
+    // cross-thread (sitePoints=[]) — la seule ambiguïté possible viendrait d'une mauvaise
+    // réutilisation de la trace étrangère plantée ci-dessus.
+    const u = unit({ threadId, outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' } })
+    expect(foundingReferenceOf(u)).not.toBe(foundingReferenceOf(setupUnit))
+    const result = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId, sitePoints: [] })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+
+    // Preuve directe du correctif : ni NEEDS_HUMAN, ni réutilisation de la trace étrangère.
+    expect(result.verdict).toBe('AUTO_CREATED')
+    expect(result.writePattern).toBe('CREATE_POINT_WITH_MEMBERSHIP')
+    expect(result.targetPointId).toBeTruthy()
+    expect(result.pendingTraceId).toBeNull()
+
+    const point = await getPoint(result.targetPointId as string)
+    expect(point.founding_kind).toBe('trackable_condition')
+    expect(point.identity_status).toBe('PROVISIONAL')
+
+    // La trace étrangère reste intacte, non consommée, non modifiée par cette seconde unité.
+    const { data: foreignPendingAfter } = await db
+      .from('tracked_point_pending_trace')
+      .select('kind, status')
+      .eq('id', foreignPendingTraceId)
+      .single()
+    expect((foreignPendingAfter as { kind: string; status: string }).kind).toBe('TRACKABILITY_UNDETERMINED')
+    expect((foreignPendingAfter as { kind: string; status: string }).status).toBe('pending')
+
+    // Aucune nouvelle pending trace créée pour cette seconde unité : exactement 1 pending trace
+    // sur ce thread (la trace étrangère du setup), jamais 2.
+    const { count: pendingCountOnThread } = await db
+      .from('tracked_point_pending_trace')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_thread_id', threadId)
+    expect(pendingCountOnThread).toBe(1)
+  })
+})

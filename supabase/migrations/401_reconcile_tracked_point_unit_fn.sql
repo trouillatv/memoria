@@ -556,10 +556,16 @@ BEGIN
           ) sub
           WHERE sub.status = 'active' AND sub.identity_status <> 'CONFLICTED';
 
-          SELECT p.* INTO v_pending FROM public.tracked_point_pending_trace p
-          WHERE p.source_thread_id = p_thread_id AND p.status = 'pending'
-          ORDER BY p.created_at ASC LIMIT 1;
-
+          -- Round 6 (Vincent, BLOCKER contamination des kinds de pending) — l'ancien
+          -- SELECT ici (sans filtre kind, sans verrou) écrasait v_pending déjà correctement
+          -- chargée et verrouillée par le pré-verrou §4.5 (filtré sur
+          -- v_early_pending_contract->>'kind', qui vaut TOUJOURS 'IDENTITY_UNRESOLVED' dans
+          -- cette branche puisque p_fallback_pending_trace est le seul contrat disponible
+          -- ici). Ce second SELECT non filtré pouvait réutiliser/rapporter une pending trace
+          -- d'un AUTRE kind (ex. RESOLUTION_WITHOUT_KNOWN_PROBLEM) simplement parce qu'elle
+          -- partageait le même source_thread_id — contaminant le diagnostic exposé
+          -- (pendingTraceId) et pouvant désactiver à tort la garde §7.5. Supprimé : v_pending
+          -- reste celle, déjà correcte, posée par §4.5.
           IF array_length(v_cross_thread_ids, 1) > 0 THEN
             -- D3 : signal cross-thread, toujours NEEDS_HUMAN quel que soit le nombre de
             -- candidats — jamais un auto-rattachement sur un signal fuzzy hors thread.
@@ -571,12 +577,12 @@ BEGIN
             IF p_fallback_pending_trace IS NOT NULL THEN
               v_pending_contract := jsonb_build_object('kind', p_fallback_pending_trace->>'kind', 'reason', v_candidate_reason);
             END IF;
-          ELSIF FOUND THEN
-            -- Question déjà ouverte sur ce thread (kind quelconque, pas nécessairement
-            -- IDENTITY_UNRESOLVED) : ne pas la dupliquer, réutiliser telle quelle (0
-            -- nouvelle ligne). v_pending est déjà résolue par le SELECT ci-dessus — aucun
-            -- v_pending_contract nécessaire, l'étape 7.5 se voit désactivée par sa propre
-            -- garde (v_pending.id IS NULL) pour cette sous-branche précisément.
+          ELSIF v_pending.id IS NOT NULL THEN
+            -- Question IDENTITY_UNRESOLVED déjà ouverte sur ce thread (verrouillée par
+            -- §4.5, kind garanti = celui du contrat courant) : ne pas la dupliquer,
+            -- réutiliser telle quelle (0 nouvelle ligne). Aucun v_pending_contract
+            -- nécessaire, l'étape 7.5 se voit désactivée par sa propre garde
+            -- (v_pending.id IS NULL) pour cette sous-branche précisément.
             v_verdict := 'NEEDS_HUMAN';
             v_write_pattern := 'CREATE_PENDING_TRACE';
             v_target_point_id := NULL;
@@ -656,11 +662,12 @@ BEGIN
   -- font plus qu'écrire leur `reason` précise dans v_pending_contract (étape 6/7
   -- ci-dessus) — plus aucune n'insère elle-même.
   --
-  -- Garde v_pending.id IS NULL : la section D1 cross-thread (branche "ELSIF FOUND")
-  -- a pu déjà résoudre v_pending elle-même via sa propre réutilisation (n'importe
-  -- quel kind, pas seulement IDENTITY_UNRESOLVED) avant d'atteindre ce point — dans
-  -- ce cas précis, cette étape ne doit rien insérer (0 nouvelle ligne, comportement
-  -- inchangé depuis avant ce round).
+  -- Garde v_pending.id IS NULL : la section D1 cross-thread (branche
+  -- "ELSIF v_pending.id IS NOT NULL", Round 6) a pu déjà résoudre v_pending via le
+  -- pré-verrou §4.5 (kind garanti = celui du contrat courant, jamais un kind
+  -- étranger depuis Round 6) avant d'atteindre ce point — dans ce cas précis, cette
+  -- étape ne doit rien insérer (0 nouvelle ligne, comportement inchangé depuis avant
+  -- ce round).
   IF v_write_pattern IN ('CREATE_PENDING_TRACE', 'CREATE_CANDIDATES') AND v_pending.id IS NULL THEN
     IF v_pending_contract IS NULL THEN
       RAISE EXCEPTION 'fn_reconcile_tracked_point_unit: MISSING_PENDING_CONTRACT — write_pattern=% atteint sans p_planned_pending_trace ni p_fallback_pending_trace exploitable (unit_key=%)', v_write_pattern, p_unit_key;
