@@ -133,6 +133,7 @@ function assignResolutionQuestion(
       sourceDate: null,
       sourceDocumentId: null,
       sourceDocumentFilename: null,
+      sourceDocumentType: null,
       sourceDocumentEffectiveDate: null,
       sourcePage: null,
       sourceExcerpt: null,

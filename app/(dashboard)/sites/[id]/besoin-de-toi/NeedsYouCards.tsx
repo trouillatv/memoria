@@ -10,13 +10,15 @@
 // MemoryReviewPanel (border-primary bg-primary/10).
 
 import { useState } from 'react'
-import { CheckCircle2, Copy, FileSearch, HelpCircle, Link2 } from 'lucide-react'
+import Link from 'next/link'
+import { CheckCircle2, Copy, FileSearch, FileText, HelpCircle, Link2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, type MemoriaNeedsYouCategory } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { MEMORIA_NEEDS_YOU_PRIORITY_LABEL, type MemoriaNeedsYouPriority } from '@/lib/knowledge/tracked-point-needs-you-priority'
 import type { PendingResolutionTargetingMode } from '@/lib/knowledge/tracked-point-pending-resolution-queue'
 import type { PointProofView } from '@/lib/knowledge/tracked-point-consolidation-queue'
+import { documentHref } from '@/lib/knowledge/document-href'
 import {
   duplicatePointsImpact,
   duplicatePointsConservedLabel,
@@ -90,6 +92,30 @@ function provenanceLine(effectiveDate: string | null | undefined, page: number |
   return importedDateFr ? `Importé le ${importedDateFr} (date du PV inconnue)` : null
 }
 
+// 6E.7 — porte unique vers le document source : ne rend un lien QUE quand documentHref peut
+// honnêtement déterminer une destination (documentId ET documentType réellement connus). Jamais
+// de fabrication de site_id/litige/page ; jamais une copie de la logique de documentHref.
+function DocumentSourceLink({
+  documentId,
+  documentType,
+  siteId,
+}: {
+  documentId?: string | null
+  documentType?: string | null
+  siteId?: string | null
+}) {
+  if (!documentId || !documentType) return null
+  return (
+    <Link
+      href={documentHref({ id: documentId, document_type: documentType }, siteId)}
+      className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary underline decoration-dotted underline-offset-2 hover:text-primary/80"
+    >
+      <FileText className="h-3 w-3" />
+      Ouvrir le document source
+    </Link>
+  )
+}
+
 // Distinction non négociable (6E.4B/A2, mandat Vincent 2026-09-08) : `sourceExcerpt` est le texte
 // PERSISTÉ tel quel au moment de l'extraction (jamais reformulé après coup) — seul ce texte peut
 // être présenté comme une citation du PV. `label` est une reformulation de l'IA d'extraction :
@@ -102,6 +128,9 @@ function SourceExcerpt({
   effectiveDate,
   page,
   importedAt,
+  documentId,
+  documentType,
+  siteId,
 }: {
   label: string | null
   sourceExcerpt?: string | null
@@ -110,6 +139,9 @@ function SourceExcerpt({
   effectiveDate?: string | null
   page?: number | null
   importedAt?: string | null
+  documentId?: string | null
+  documentType?: string | null
+  siteId?: string | null
 }) {
   const dateLine = provenanceLine(effectiveDate, page, importedAt)
   const quote = hasVerbatimExcerpt && sourceExcerpt ? sourceExcerpt : null
@@ -126,6 +158,7 @@ function SourceExcerpt({
           {[documentFilename, dateLine].filter(Boolean).join(' · ')}
         </p>
       )}
+      <DocumentSourceLink documentId={documentId} documentType={documentType} siteId={siteId} />
     </div>
   )
 }
@@ -136,7 +169,7 @@ function SourceExcerpt({
 // loadPointProofsByPointId). Repliée par défaut ; `proofs` est déjà plafonné à 3 côté read-model,
 // `proofCount` reste le total réel pour "Voir N autres" ; jamais de page/date fabriquée
 // (provenanceLine ne complète que si la date métier existe réellement).
-function PointProofDisclosure({ proofs, proofCount }: { proofs: PointProofView[]; proofCount: number }) {
+function PointProofDisclosure({ proofs, proofCount, siteId }: { proofs: PointProofView[]; proofCount: number; siteId: string }) {
   const [open, setOpen] = useState(false)
   if (proofCount === 0) {
     return <p className="mt-1 text-[11px] text-muted-foreground/70">Aucune preuve documentaire disponible.</p>
@@ -166,6 +199,7 @@ function PointProofDisclosure({ proofs, proofCount }: { proofs: PointProofView[]
                 {(proof.documentFilename || dateLine) && (
                   <p className="mt-1 text-[11px] text-muted-foreground">{[proof.documentFilename, dateLine].filter(Boolean).join(' · ')}</p>
                 )}
+                <DocumentSourceLink documentId={proof.documentId} documentType={proof.documentType} siteId={siteId} />
               </div>
             )
           })}
@@ -381,7 +415,7 @@ function DuplicatePointsCard({
               </p>
               {firstFr && <p className="mt-1 text-[11px] text-muted-foreground/80">Première apparition : {firstFr}</p>}
               {lastFr && <p className="mt-0.5 text-[11px] text-muted-foreground/80">Dernière activité : {lastFr}</p>}
-              <PointProofDisclosure proofs={side.proofs} proofCount={side.proofCount} />
+              <PointProofDisclosure proofs={side.proofs} proofCount={side.proofCount} siteId={siteId} />
             </div>
           )
         })}
@@ -461,6 +495,9 @@ function AttachInformationCard({
         effectiveDate={entry.sourceDocumentEffectiveDate}
         page={entry.sourcePage}
         importedAt={entry.sourceDate}
+        documentId={entry.sourceDocumentId}
+        documentType={entry.sourceDocumentType}
+        siteId={siteId}
       />
 
       {actionableTargets.length === 0 ? (
@@ -575,6 +612,9 @@ function ConfirmTrackabilityCard({
         effectiveDate={entry.sourceDocumentEffectiveDate}
         page={entry.sourcePage}
         importedAt={entry.sourceDate}
+        documentId={entry.sourceDocumentId}
+        documentType={entry.sourceDocumentType}
+        siteId={siteId}
       />
       {entry.subjectLabel && <p className="text-[11px] text-muted-foreground">À propos de : {entry.subjectLabel}</p>}
       <ImpactPreview items={confirmTrackabilityImpact()} />
@@ -661,6 +701,9 @@ function AssignResolutionCard({
           effectiveDate={entry.sourceDocumentEffectiveDate}
           page={entry.sourcePage}
           importedAt={entry.sourceDate}
+          documentId={entry.sourceDocumentId}
+          documentType={entry.sourceDocumentType}
+          siteId={siteId}
         />
       </div>
 
@@ -796,6 +839,7 @@ function ClarifyEvidenceCard({
               <span className="min-w-0">
                 <span className="block truncate">{quote ? `« ${text} »` : text}</span>
                 {(p.documentFilename || dateLine) && <span className="mt-0.5 block text-[11px] text-muted-foreground">{[p.documentFilename, dateLine].filter(Boolean).join(' · ')}</span>}
+                <DocumentSourceLink documentId={p.documentId} documentType={p.documentType} siteId={siteId} />
               </span>
             </label>
           )

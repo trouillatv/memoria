@@ -41,6 +41,7 @@ export type PendingTrackabilityQueueEntry = {
   sourceDate: string | null
   sourceDocumentId: string | null
   sourceDocumentFilename: string | null
+  sourceDocumentType: string | null
   sourceDocumentEffectiveDate: string | null
   sourcePage: number | null
   sourceExcerpt: string | null
@@ -69,6 +70,7 @@ export type PendingTrackabilitySourceProposal = {
   label: string | null
   documentId: string | null
   documentFilename: string | null
+  documentType: string | null
   documentEffectiveDate: string | null
   sourcePage: number | null
   sourceExcerpt: string | null
@@ -120,6 +122,7 @@ export function buildPendingTrackabilityQueue(
       sourceDate: firstProposal?.createdAt ?? null,
       sourceDocumentId: firstProposal?.documentId ?? null,
       sourceDocumentFilename: firstProposal?.documentFilename ?? null,
+      sourceDocumentType: firstProposal?.documentType ?? null,
       sourceDocumentEffectiveDate: firstProposal?.documentEffectiveDate ?? null,
       sourcePage: firstProposal?.sourcePage ?? null,
       sourceExcerpt,
@@ -177,7 +180,7 @@ export async function loadPendingTrackabilityQueue(siteId: string): Promise<Pend
   const documentIds = [...new Set((rawProposals ?? []).map((p) => p.document_id).filter((id): id is string => !!id))]
   const { data: rawDocuments, error: docErr } = await db
     .from('documents')
-    .select('id, filename, effective_date')
+    .select('id, filename, document_type, effective_date')
     .in('id', documentIds.length > 0 ? documentIds : [NIL_UUID])
   if (docErr) throw docErr
   const documentsById = new Map((rawDocuments ?? []).map((d) => [d.id, d]))
@@ -191,6 +194,7 @@ export async function loadPendingTrackabilityQueue(siteId: string): Promise<Pend
       label: p.label,
       documentId: p.document_id,
       documentFilename: doc?.filename ?? null,
+      documentType: doc?.document_type ?? null,
       documentEffectiveDate: doc?.effective_date ?? null,
       sourcePage: p.source_page ?? null,
       sourceExcerpt: p.source_excerpt?.trim() || null,
