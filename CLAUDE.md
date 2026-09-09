@@ -1130,3 +1130,11 @@ Le choix du modèle est proportionné à la difficulté réelle de la tâche, ja
 ### Ce que cette section n'ajoute pas
 
 Aucun compteur, daemon, hook Git lourd, pipeline obligatoire après chaque commit, ni cérémonie supplémentaire avant une petite modification locale. Si une optimisation proposée coûte plus de temps qu'elle n'en économise, ne pas l'ajouter.
+
+### Réutilisation des outils existants
+
+Avant de créer un script de recette, audit, diagnostic, backfill, migration helper ou témoin ponctuel, consulter `docs/dev/outils-recette-audits.md` et rechercher un outil existant correspondant.
+
+Réutiliser ou adapter un outil existant plutôt que recréer la même mécanique.
+
+Lorsqu'un nouveau script/test/audit devient réutilisable au-delà de sa session initiale, ajouter une ligne à cet index. Ne pas indexer les fichiers jetables, logs ou explorations ponctuelles.
