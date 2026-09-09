@@ -20,17 +20,24 @@
 
 import type { ConsolidationQueueEntry } from './tracked-point-consolidation-queue'
 
+// 6E.4D — même lecture que ci-dessous (predictedTargetPointId), exportée pour que le recap de
+// session (NeedsYouCards.tsx) nomme le suivi conservé sans dupliquer cette résolution.
+export function duplicatePointsConservedLabel(entry: ConsolidationQueueEntry): string | null {
+  if (!entry.predictedTargetPointId) return null
+  return entry.predictedTargetPointId === entry.pointA.id ? entry.pointA.label : entry.pointB.label
+}
+
 export function duplicatePointsImpact(entry: ConsolidationQueueEntry): string[] {
-  if (!entry.predictedTargetPointId) {
+  const targetLabel = duplicatePointsConservedLabel(entry)
+  if (!targetLabel) {
     return [
       "MemorIA ne peut pas encore déterminer lequel des deux suivis serait conservé — la fusion reste bloquée tant que ce conflit d'identité n'est pas résolu autrement.",
     ]
   }
-  const target = entry.predictedTargetPointId === entry.pointA.id ? entry.pointA : entry.pointB
-  const source = entry.predictedTargetPointId === entry.pointA.id ? entry.pointB : entry.pointA
+  const sourceLabel = entry.predictedTargetPointId === entry.pointA.id ? entry.pointB.label : entry.pointA.label
   return [
-    `Point conservé : « ${target.label} ».`,
-    `Point absorbé : « ${source.label} » — son historique reste consultable dans « ${target.label} », rien n'est supprimé.`,
+    `Point conservé : « ${targetLabel} ».`,
+    `Point absorbé : « ${sourceLabel} » — son historique reste consultable dans « ${targetLabel} », rien n'est supprimé.`,
     "Aucune preuve n'est réécrite ni déplacée.",
   ]
 }

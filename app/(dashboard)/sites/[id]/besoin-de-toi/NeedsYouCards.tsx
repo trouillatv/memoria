@@ -19,6 +19,7 @@ import type { PendingResolutionTargetingMode } from '@/lib/knowledge/tracked-poi
 import type { PointProofView } from '@/lib/knowledge/tracked-point-consolidation-queue'
 import {
   duplicatePointsImpact,
+  duplicatePointsConservedLabel,
   attachInformationImpact,
   confirmTrackabilityImpact,
   assignResolutionImpact,
@@ -296,6 +297,11 @@ export type ActionResult = { ok: boolean; error?: string }
 
 export type SitePointOption = { id: string; label: string }
 
+// 6E.4D — `recapLabel` distingue un geste de clarification positif d'un rejet/report : omis
+// (undefined) pour "Ce n'est pas ce suivi"/"Non"/"Laisser pour plus tard" (aucune ligne de recap) ;
+// passé (string | null) pour les 5 confirmations positives, avec le même libellé déjà affiché à
+// l'utilisateur avant confirmation (jamais un texte recalculé) — null quand aucun libellé réel
+// n'existe pour ce cas (ex. confirm_trackability sans subjectLabel).
 export type QuestionCardProps = {
   question: MemoriaNeedsYouQuestion
   siteId: string
@@ -303,7 +309,7 @@ export type QuestionCardProps = {
   error?: string
   sitePoints: SitePointOption[]
   priority: MemoriaNeedsYouPriority
-  runAction: (action: () => Promise<ActionResult>) => void
+  runAction: (action: () => Promise<ActionResult>, recapLabel?: string | null) => void
 }
 
 export function QuestionCard({ question, siteId, pending, error, sitePoints, priority, runAction }: QuestionCardProps) {
@@ -390,7 +396,12 @@ function DuplicatePointsCard({
               type="button"
               className={btnPrimary}
               disabled={pending}
-              onClick={() => runAction(() => import('../tracked-point-consolidation-actions').then((m) => m.consolidateTrackedPointsAction({ siteId, pairId: entry.pairId })))}
+              onClick={() =>
+                runAction(
+                  () => import('../tracked-point-consolidation-actions').then((m) => m.consolidateTrackedPointsAction({ siteId, pairId: entry.pairId })),
+                  duplicatePointsConservedLabel(entry),
+                )
+              }
             >
               Confirmer la fusion
             </button>
@@ -436,8 +447,8 @@ function AttachInformationCard({
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
   const actionableTargets = entry.targets.filter((t) => t.actionability === 'ACTIONABLE')
 
-  const dispatchAccept = (candidateId: string) =>
-    runAction(() => import('../tracked-point-trace-actions').then((m) => m.acceptTraceIdentityCandidateAction({ siteId, candidateId })))
+  const dispatchAccept = (candidateId: string, recapLabel: string) =>
+    runAction(() => import('../tracked-point-trace-actions').then((m) => m.acceptTraceIdentityCandidateAction({ siteId, candidateId })), recapLabel)
 
   return (
     <CardShell category="attach_information" title="Cette information concerne-t-elle ce suivi ?">
@@ -469,7 +480,12 @@ function AttachInformationCard({
           <ImpactPreview items={attachInformationImpact(entry.targets[0].label ?? 'Suivi sans libellé')} />
           <ErrorLine error={error} />
           <div className="flex flex-wrap gap-2 pt-1">
-            <button type="button" className={btnPrimary} disabled={pending} onClick={() => dispatchAccept(entry.targets[0].candidateId)}>
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={pending}
+              onClick={() => dispatchAccept(entry.targets[0].candidateId, entry.targets[0].label ?? 'Suivi sans libellé')}
+            >
               Associer
             </button>
             <button
@@ -519,7 +535,10 @@ function AttachInformationCard({
               type="button"
               className={btnPrimary}
               disabled={pending || !selectedCandidateId}
-              onClick={() => selectedCandidateId && dispatchAccept(selectedCandidateId)}
+              onClick={() =>
+                selectedCandidateId &&
+                dispatchAccept(selectedCandidateId, entry.targets.find((t) => t.candidateId === selectedCandidateId)?.label ?? 'Suivi sans libellé')
+              }
             >
               Confirmer
             </button>
@@ -565,7 +584,12 @@ function ConfirmTrackabilityCard({
           type="button"
           className={btnPrimary}
           disabled={pending}
-          onClick={() => runAction(() => import('../tracked-point-trackability-actions').then((m) => m.confirmPendingTrackabilityAction({ siteId, pendingTraceId: entry.pendingTraceId })))}
+          onClick={() =>
+            runAction(
+              () => import('../tracked-point-trackability-actions').then((m) => m.confirmPendingTrackabilityAction({ siteId, pendingTraceId: entry.pendingTraceId })),
+              entry.subjectLabel,
+            )
+          }
         >
           Oui, à suivre
         </button>
@@ -702,10 +726,12 @@ function AssignResolutionCard({
           disabled={pending || !selected}
           onClick={() =>
             selected &&
-            runAction(() =>
-              import('../tracked-point-resolution-actions').then((m) =>
-                m.associatePendingResolutionToPointAction({ siteId, pendingTraceId: entry.pendingTraceId, targetPointId: selected.pointId, candidateId: selected.candidateId }),
-              ),
+            runAction(
+              () =>
+                import('../tracked-point-resolution-actions').then((m) =>
+                  m.associatePendingResolutionToPointAction({ siteId, pendingTraceId: entry.pendingTraceId, targetPointId: selected.pointId, candidateId: selected.candidateId }),
+                ),
+              selected.label,
             )
           }
         >
@@ -783,10 +809,12 @@ function ClarifyEvidenceCard({
           className={btnPrimary}
           disabled={pending || selectedIds.size === 0}
           onClick={() =>
-            runAction(() =>
-              import('../tracked-point-evidence-scope-actions').then((m) =>
-                m.resolvePendingEvidenceScopeAction({ siteId, pendingTraceId: entry.pendingTraceId, proposalIds: [...selectedIds] }),
-              ),
+            runAction(
+              () =>
+                import('../tracked-point-evidence-scope-actions').then((m) =>
+                  m.resolvePendingEvidenceScopeAction({ siteId, pendingTraceId: entry.pendingTraceId, proposalIds: [...selectedIds] }),
+                ),
+              entry.subjectLabel,
             )
           }
         >

@@ -12,13 +12,14 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { HelpCircle } from 'lucide-react'
+import { CheckCircle2, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QuestionCard, CATEGORY_TONE, CATEGORY_ICON, type ActionResult, type SitePointOption } from './NeedsYouCards'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER, type MemoriaNeedsYouCategory } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { computeQuestionPriority, MEMORIA_NEEDS_YOU_PRIORITY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-priority'
 import type { MemoriaNeedsYouPriority } from '@/lib/knowledge/tracked-point-needs-you-priority'
 import type { MemoriaNeedsYouCategorySummary, MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import { buildMemoriaNeedsYouRecap, type MemoriaNeedsYouRecapEntry } from '@/lib/knowledge/tracked-point-needs-you-recap'
 
 type FilterValue = 'all' | MemoriaNeedsYouCategory
 // 6E.4A UI-pass — Importance et tri sont deux axes distincts (mandat Vincent : "Historique ≠
@@ -112,6 +113,36 @@ export function interleaveByCategory(list: MemoriaNeedsYouQuestion[]): MemoriaNe
   return result
 }
 
+// 6E.4D — "Qu'est-ce que je viens d'aider MemorIA à comprendre ?" Silencieuse tant qu'aucune
+// clarification n'a été confirmée cette session (mandat : "aucune action → aucune faux recap").
+// Décrit l'acte effectué (cf. tracked-point-needs-you-recap.ts), jamais une vérité métier
+// supplémentaire — même ton visuel que le panneau récapitulatif existant (violet-50/50), pour
+// rester cohérente sans créer une nouvelle identité graphique. Surface inline, non bloquante :
+// n'empêche jamais de filtrer/naviguer/quitter la page.
+function SessionRecapCard({ recap }: { recap: ReturnType<typeof buildMemoriaNeedsYouRecap> }) {
+  if (recap.totalCount === 0) return null
+  return (
+    <div className="rounded-[18px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/40">
+          <CheckCircle2 className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+        </span>
+        <h2 className="text-[13px] font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-200">
+          Ce que tu viens d&apos;aider MemorIA à comprendre
+        </h2>
+      </div>
+      <ul className="mt-3 space-y-1 text-[13px] text-foreground/90">
+        {recap.lines.map((line) => (
+          <li key={line.category}>{line.text}</li>
+        ))}
+      </ul>
+      {recap.labels.length > 0 && (
+        <p className="mt-2 text-[12px] text-muted-foreground">{recap.labels.map((l) => `« ${l} »`).join(' · ')}</p>
+      )}
+    </div>
+  )
+}
+
 export function NeedsYouClient({
   siteId,
   questions,
@@ -127,6 +158,10 @@ export function NeedsYouClient({
   const [pending, setPending] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Set<string>>(new Set())
+  // 6E.4D — recap de session : append-only, uniquement sur confirmation positive (ok:true ET
+  // recapLabel passé par la carte), jamais recalculé depuis `remaining`/`done`. Une clarification
+  // déjà comptée ne peut pas être retirée par un simple rerender (setState d'ajout pur).
+  const [recapEntries, setRecapEntries] = useState<MemoriaNeedsYouRecapEntry[]>([])
   const [filter, setFilter] = useState<FilterValue>('all')
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilterValue>('all')
   const [sortMode, setSortMode] = useState<SortMode>('priority')
@@ -232,8 +267,11 @@ export function NeedsYouClient({
   const visibleQuestions = sorted.slice(0, visibleCount)
   const remainingToShow = sorted.length - visibleQuestions.length
 
-  function runActionFor(questionId: string) {
-    return (action: () => Promise<ActionResult>) => {
+  function runActionFor(questionId: string, category: MemoriaNeedsYouCategory) {
+    // 6E.4D — `recapLabel` omis (undefined) par un rejet/report ("Ce n'est pas ce suivi", "Non",
+    // "Laisser pour plus tard") : ces gestes ne produisent jamais de ligne de recap, seuls les 5
+    // confirmations positives en passent un (string | null, jamais fabriqué — cf. NeedsYouCards.tsx).
+    return (action: () => Promise<ActionResult>, recapLabel?: string | null) => {
       setErrors((prev) => {
         if (!(questionId in prev)) return prev
         const next = { ...prev }
@@ -250,6 +288,9 @@ export function NeedsYouClient({
           })
           if (result.ok) {
             setDone((prev) => new Set(prev).add(questionId))
+            if (recapLabel !== undefined) {
+              setRecapEntries((prev) => [...prev, { category, label: recapLabel }])
+            }
             startTransition(() => router.refresh())
           } else {
             setErrors((prev) => ({ ...prev, [questionId]: result.error ?? 'Action impossible.' }))
@@ -266,11 +307,16 @@ export function NeedsYouClient({
     }
   }
 
+  const sessionRecap = useMemo(() => buildMemoriaNeedsYouRecap(recapEntries), [recapEntries])
+
   if (remaining.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed bg-card/50 px-4 py-8 text-center">
-        <p className="text-sm font-medium">Rien à clarifier pour le moment.</p>
-        <p className="mt-1 text-[12px] text-muted-foreground">La mémoire du chantier est à jour.</p>
+      <div className="space-y-4">
+        <SessionRecapCard recap={sessionRecap} />
+        <div className="rounded-2xl border border-dashed bg-card/50 px-4 py-8 text-center">
+          <p className="text-sm font-medium">Rien à clarifier pour le moment.</p>
+          <p className="mt-1 text-[12px] text-muted-foreground">La mémoire du chantier est à jour.</p>
+        </div>
       </div>
     )
   }
@@ -278,6 +324,7 @@ export function NeedsYouClient({
   return (
     <div className="lg:grid lg:grid-cols-[1fr_280px] lg:items-start lg:gap-4">
       <div className="space-y-4">
+        <SessionRecapCard recap={sessionRecap} />
         {/* Zone de filtres — sections nommées (Type de question / Période / Importance / Trier
             par) : Importance FILTRE la file, Trier par ORDONNE la sélection filtrée. Les deux
             axes ne sont jamais fusionnés dans un seul contrôle (mandat Vincent : "Historique ≠
@@ -385,7 +432,7 @@ export function NeedsYouClient({
               error={errors[q.id]}
               sitePoints={sitePoints}
               priority={computeQuestionPriority(q)}
-              runAction={runActionFor(q.id)}
+              runAction={runActionFor(q.id, q.category)}
             />
           ))}
         </div>
