@@ -1129,6 +1129,20 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
       .eq('pending_trace_id', pendingTraceId)
     expect((evidenceRows ?? []).map((r) => (r as { proposal_id: string }).proposal_id)).toEqual([evidenceProposalId])
 
+    // Round 5C (Vincent) — le CREATE_CANDIDATES du setup a déjà inséré 1 candidat pending pour
+    // exactement (candidate_point_id=siblingPoint, subject_thread_id=threadId, scope='thread').
+    // C'est cette ligne que le NOT EXISTS de la migration 401 (§8, CREATE_CANDIDATES) retrouvera
+    // pour Transaction A ci-dessous — la déduplication n'est pas un effet de bord accidentel,
+    // c'est le comportement volontaire que ce témoin doit vérifier.
+    const { count: candidateCountBeforeA } = await db
+      .from('tracked_point_identity_candidate')
+      .select('id', { count: 'exact', head: true })
+      .eq('candidate_point_id', siblingPoint)
+      .eq('subject_thread_id', threadId)
+      .eq('scope', 'thread')
+      .eq('status', 'pending')
+    expect(candidateCountBeforeA).toBe(1)
+
     // Transaction A — deuxième unité du MÊME thread (unit_key distinct de setupUnit : ce n'est
     // pas un rejeu), via le harness à pause. Passe par test_only, jamais par le wrapper prod (ce
     // harness n'a pas vocation à être appelable en dehors d'une DB jetable de test).
@@ -1184,6 +1198,14 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
     // Issue cohérente unique côté A : CREATE_CANDIDATES sur cette 2e unité, pending trace
     // réutilisée (jamais recréée) — même garantie que Témoin 21, ici sous contention réelle
     // avec une RPC humaine concurrente plutôt qu'un second appel Live Writer.
+    //
+    // Round 5C (Vincent, FIX_REQUIRED sur 4ad9567a) — newCandidateIds doit être VIDE, pas [1
+    // élément]. Le setup a déjà posé le candidat pending (candidate_point_id=siblingPoint,
+    // subject_thread_id=threadId, scope='thread', status='pending') vérifié ci-dessus ; le
+    // NOT EXISTS de la migration 401 (§8, CREATE_CANDIDATES) exclut délibérément cette cible
+    // pour Transaction A — la 401 est conçue pour ne JAMAIS dupliquer un candidat déjà pending
+    // sur la même clé, y compris sous contention. Attendre newCandidateIds=[1] contredirait ce
+    // comportement volontaire et masquerait un régression de déduplication.
     const dataA = resultA.data as {
       writePattern: string
       pendingTraceId: string | null
@@ -1193,7 +1215,7 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
     expect(dataA.writePattern).toBe('CREATE_CANDIDATES')
     expect(dataA.replayed).toBe(false)
     expect(dataA.pendingTraceId).toBe(pendingTraceId)
-    expect(dataA.newCandidateIds.length).toBe(1)
+    expect(dataA.newCandidateIds).toEqual([])
 
     // Issue cohérente unique côté B — Round 5B : resserrée à 'associated' strictement.
     // Analyse garde-par-garde de la migration 396 pour ce setup précis (pending fraîche,
@@ -1256,10 +1278,10 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
     expect(proposalSetMember.tracked_point_id).toBe(siblingPoint)
     expect(proposalSetMember.proposal_ids).toEqual([evidenceProposalId])
 
-    // Aucun état partiellement écrit côté A : l'événement de réconciliation de cette tentative
-    // référence exactement 1 artefact candidate (le nouveau candidat de unitA), jamais 0 (échec
-    // partiel silencieux) ni un artefact pending trace (réutilisée, jamais créée par cette
-    // tentative — même garantie que Témoin 21 côté B).
+    // Round 5C — côté A, aucun nouvel artefact du tout : ni candidate (déduplication §8, NOT
+    // EXISTS sur candidate_point_id+subject_thread_id+scope='thread'+status='pending', vérifiée
+    // ci-dessus), ni pending trace (réutilisée, jamais créée par cette tentative — même garantie
+    // que Témoin 21 côté B). A ne fait que réutiliser deux structures déjà présentes.
     const { data: eventA } = await db
       .from('tracked_point_reconcile_event')
       .select('id')
@@ -1267,7 +1289,19 @@ describe('Témoin 24 — Round 5 (BLOCKER 1) : concurrence Live Writer / associa
       .eq('unit_key', foundingReferenceOf(unitA))
       .single()
     const artifactsA = await countArtifacts((eventA as { id: string }).id)
-    expect(artifactsA.filter((a) => a.artifact_kind === 'tracked_point_identity_candidate').length).toBe(1)
+    expect(artifactsA.filter((a) => a.artifact_kind === 'tracked_point_identity_candidate')).toEqual([])
     expect(artifactsA.filter((a) => a.artifact_kind === 'tracked_point_pending_trace')).toEqual([])
+
+    // Round 5C — preuve finale de non-duplication : sous contention réelle (setup + Transaction A
+    // + Transaction B concurrentes sur la même clé), il reste exactement 1 candidat pending pour
+    // (siblingPoint, threadId, scope='thread') — jamais 2, jamais 0.
+    const { count: candidateCountAfter } = await db
+      .from('tracked_point_identity_candidate')
+      .select('id', { count: 'exact', head: true })
+      .eq('candidate_point_id', siblingPoint)
+      .eq('subject_thread_id', threadId)
+      .eq('scope', 'thread')
+      .eq('status', 'pending')
+    expect(candidateCountAfter).toBe(1)
   })
 })
