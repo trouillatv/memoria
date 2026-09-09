@@ -101,6 +101,26 @@ function resolveDate(docDate: Map<string, string | null>, documentId: string | n
   return createdAt.slice(0, 10)
 }
 
+// Même dérivation que loadFullSiteData (_p6d1a-preflight-global.ts:177-190) : le libellé
+// représentatif d'un thread est celui de sa proposition la plus récente (par date effective de
+// document, puis created_at), avec repli sur le libellé du sujet canonique. Utilisé aussi bien
+// pour construire threads[] (loadRunFoundingInput) que pour memberLabels (loadSitePointCandidates)
+// — les deux doivent porter le MÊME libellé pour un thread donné, jamais le libellé du sujet
+// canonique seul (trop générique pour le containment D1, cf. TrackedPointCandidate.memberLabels).
+function pickThreadLabel(
+  props: Array<{ label: string; document_id: string | null; created_at: string }>,
+  docDate: Map<string, string | null>,
+  subjectLabel: string | null,
+): string {
+  if (props.length === 0) return subjectLabel ?? '(sujet inconnu)'
+  const sorted = [...props].sort((a, b) => {
+    const da = resolveDate(docDate, a.document_id, a.created_at)
+    const dbb = resolveDate(docDate, b.document_id, b.created_at)
+    return dbb.localeCompare(da) || b.created_at.localeCompare(a.created_at)
+  })
+  return sorted[0].label
+}
+
 async function loadRunFoundingInput(db: Db, siteId: string, runId: string): Promise<RunFoundingInput | null> {
   const { data: runProps } = await db
     .from('document_extraction_proposal')
@@ -152,20 +172,16 @@ async function loadRunFoundingInput(db: Db, siteId: string, runId: string): Prom
     threadSubjectRootById.set(threadId, rootSubjectId)
     const subjectLabel = rootSubjectId ? await resolver.labelOf(rootSubjectId) : null
     const threadProps = propsByThread.get(threadId) ?? []
-    let label = subjectLabel ?? '(sujet inconnu)'
-    if (threadProps.length > 0) {
-      const sorted = [...threadProps].sort((a, b) => {
-        const da = resolveDate(docDate, a.document_id, a.created_at)
-        const dbb = resolveDate(docDate, b.document_id, b.created_at)
-        return dbb.localeCompare(da) || b.created_at.localeCompare(a.created_at)
-      })
-      label = sorted[0].label
-    }
+    const label = pickThreadLabel(threadProps, docDate, subjectLabel)
     threads.push({ threadId, label })
   }
 
-  // Membership CBO — même dérivation que loadFullSiteData (_p6d1a), scopée aux seules
-  // propositions de ce run (jamais l'ensemble des CBO/matérialisations du site).
+  // Membership CBO — même dérivation que loadFullSiteData (_p6d1a). `props` ici est l'historique
+  // COMPLET connu des threads touchés par ce run (chargé ligne ~144 sans filtre extraction_run_id),
+  // pas seulement les propositions nouvelles de ce run : buildFoundingUnits classe un thread sur
+  // son état accumulé complet (familles/statuts résolus), jamais sur le seul delta du run (Question 1,
+  // gate d'activation P6 — voir HARD STOP correspondant). Reste borné aux threads touchés par ce
+  // run, jamais l'ensemble des CBO/matérialisations du site.
   const propIds = props.map((p) => p.id)
   const materializations: Array<{ proposal_id: string; target_entity_id: string; target_entity_type: string }> = []
   if (propIds.length > 0) {
@@ -273,6 +289,43 @@ async function loadSitePointCandidates(db: Db, siteId: string, resolver: Subject
     membersByPoint.set(m.tracked_point_id, l)
   }
 
+  // Libellé représentatif de chaque thread membre — MÊME dérivation que threads[] côté
+  // loadRunFoundingInput (pickThreadLabel), jamais le seul libellé du canonical_subject (trop
+  // générique pour l'exact/containment D1, cf. TrackedPointCandidate.memberLabels et
+  // threadById.get(m.subject_thread_id)?.label dans _p6d1a-preflight-global.ts). Un sujet trop
+  // générique pour matcher ne doit pas masquer un membre dont le libellé propre matche.
+  type MemberPropRow = { label: string; subject_thread_id: string | null; document_id: string | null; created_at: string }
+  const threadLabelById = new Map<string, string>()
+  if (memberThreadIds.length > 0) {
+    const { data: memberPropRows } = await db
+      .from('document_extraction_proposal')
+      .select('label, subject_thread_id, document_id, created_at')
+      .in('subject_thread_id', memberThreadIds)
+    const memberProps = (memberPropRows ?? []) as MemberPropRow[]
+
+    const memberDocIds = [...new Set(memberProps.map((p) => p.document_id).filter((x): x is string => !!x))]
+    const memberDocDate = new Map<string, string | null>()
+    if (memberDocIds.length > 0) {
+      const { data: docs } = await db.from('documents').select('id, effective_date').in('id', memberDocIds)
+      for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) memberDocDate.set(d.id, d.effective_date)
+    }
+
+    const propsByMemberThread = new Map<string, MemberPropRow[]>()
+    for (const p of memberProps) {
+      if (!p.subject_thread_id) continue
+      const l = propsByMemberThread.get(p.subject_thread_id) ?? []
+      l.push(p)
+      propsByMemberThread.set(p.subject_thread_id, l)
+    }
+
+    for (const threadId of memberThreadIds) {
+      const rootId = await resolver.resolveRoot(stiMap.get(threadId) ?? null)
+      const subjectLabel = rootId ? await resolver.labelOf(rootId) : null
+      const threadProps = propsByMemberThread.get(threadId) ?? []
+      threadLabelById.set(threadId, pickThreadLabel(threadProps, memberDocDate, subjectLabel))
+    }
+  }
+
   const { data: cboRows } = await db
     .from('canonical_business_object')
     .select('id, tracked_point_id')
@@ -290,12 +343,11 @@ async function loadSitePointCandidates(db: Db, siteId: string, resolver: Subject
     const ownerSubjectId = await resolver.resolveRoot(p.canonical_subject_id)
     const ownerSubjectLabel = ownerSubjectId ? await resolver.labelOf(ownerSubjectId) : null
 
-    const memberLabels: string[] = []
-    for (const threadId of membersByPoint.get(p.id) ?? []) {
-      const rootId = await resolver.resolveRoot(stiMap.get(threadId) ?? null)
-      const label = rootId ? await resolver.labelOf(rootId) : null
-      if (label) memberLabels.push(label)
-    }
+    const memberLabels = [...new Set(
+      (membersByPoint.get(p.id) ?? [])
+        .map((threadId) => threadLabelById.get(threadId))
+        .filter((l): l is string => !!l),
+    )]
 
     candidates.push({
       pointId: p.id,

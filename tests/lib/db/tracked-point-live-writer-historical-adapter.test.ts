@@ -106,6 +106,12 @@ async function makePoint(overrides: Record<string, unknown> = {}, targetSiteId: 
   return (data as { id: string }).id
 }
 
+async function linkActiveMemberThread(pointId: string, threadId: string) {
+  const db = createAdminClient()
+  const { error } = await db.from('tracked_point_member').insert({ tracked_point_id: pointId, subject_thread_id: threadId })
+  if (error) throw error
+}
+
 async function countActiveMembersOnThread(threadId: string) {
   const db = createAdminClient()
   const { count } = await db
@@ -269,6 +275,38 @@ describe('runTrackedPointLiveWriterForHistoricalRun — site autorisé, exécuti
     const threadId = randomUUID()
     await linkThreadIdentity(siteId, threadId, subjectId)
     await makeProposal(runId, docId, threadId, { proposal_family: 'decision', label })
+
+    const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
+    expect(result).not.toBeNull()
+    expect(result?.unitsProcessed).toBe(1)
+    expect(result?.verdictCounts.AUTO_CREATED ?? 0).toBe(0)
+  })
+
+  it('D1 memberLabels : Point.label et sujet propriétaire génériques (non matchants), mais un membre actif porte le libellé exact du nouveau thread → concurrence détectée via memberLabels, pas AUTO_CREATED', async () => {
+    process.env[ENV_KEY] = siteId
+    const sharedLabel = `${TAG} d1 memberLabels partagé`
+
+    // Sujet et libellé du Point volontairement génériques : NE matchent PAS sharedLabel — le rail
+    // exact/containment ne doit trouver la concurrence qu'en creusant memberLabels.
+    const genericSubjectId = await makeCanonicalSubject(siteId, `${TAG} sujet générique sans rapport`)
+    const pointId = await makePoint({
+      label: `${TAG} point libellé générique différent`,
+      canonical_subject_id: genericSubjectId,
+      founding_kind: 'trackable_condition',
+      identity_status: 'PROVISIONAL',
+    })
+
+    // Membre actif existant du Point, sur un thread DISTINCT du sujet du Point, dont le libellé
+    // propre (pickThreadLabel) porte exactement sharedLabel.
+    const memberThreadId = randomUUID()
+    const { docId: memberDocId, runId: memberRunId } = await makeDocAndRun()
+    await makeProposal(memberRunId, memberDocId, memberThreadId, { proposal_family: 'decision', label: sharedLabel })
+    await linkActiveMemberThread(pointId, memberThreadId)
+
+    // Nouveau thread du run courant, même libellé exact que le membre actif ci-dessus.
+    const { docId, runId } = await makeDocAndRun()
+    const candidateThreadId = randomUUID()
+    await makeProposal(runId, docId, candidateThreadId, { proposal_family: 'decision', label: sharedLabel })
 
     const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
     expect(result).not.toBeNull()
