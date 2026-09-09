@@ -26,6 +26,7 @@
 // founding_reference).
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { pendingTraceVisibleFilter } from '@/lib/db/tracked-point-pending-resolution'
 
 export type PendingTrackabilityQueueEntry = {
   pendingTraceId: string
@@ -145,6 +146,7 @@ export async function loadPendingTrackabilityQueue(siteId: string): Promise<Pend
     .eq('site_id', siteId)
     .eq('kind', 'TRACKABILITY_UNDETERMINED')
     .eq('status', 'pending')
+    .or(pendingTraceVisibleFilter(new Date().toISOString()))
   if (tracesErr) throw tracesErr
 
   const traces: PendingTrackabilityTraceRow[] = (rawTraces ?? []).map((t) => ({

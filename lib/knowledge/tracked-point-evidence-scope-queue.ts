@@ -16,6 +16,7 @@
 // d'UI (6E.4, hors périmètre), pas de ce read-model.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { pendingTraceVisibleFilter } from '@/lib/db/tracked-point-pending-resolution'
 
 export type EvidenceScopeCandidateProposal = {
   proposalId: string
@@ -101,6 +102,7 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
     .eq('site_id', siteId)
     .eq('status', 'pending')
     .eq('evidence_status', 'unresolved')
+    .or(pendingTraceVisibleFilter(new Date().toISOString()))
   if (tracesErr) throw tracesErr
 
   const traces: EvidenceScopePendingTraceRow[] = (rawTraces ?? []).map((t) => ({

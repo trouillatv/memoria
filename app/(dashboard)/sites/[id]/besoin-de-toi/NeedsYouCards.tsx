@@ -66,6 +66,15 @@ function PriorityBadge({ priority }: { priority: MemoriaNeedsYouPriority }) {
 
 const btnPrimary = 'rounded-full bg-violet-500 px-3.5 py-1.5 text-[12px] font-medium text-white hover:bg-violet-600 disabled:opacity-40'
 const btnSecondary = 'rounded-full border border-border px-3.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground disabled:opacity-40'
+
+// 6E.8A — durées fixes uniquement (mandat Vincent, audit 6E.8 ASK_LATER_MODEL_MISSING) : jamais
+// de date libre côté client, la même liste que DEFER_DURATION_DAYS (tracked-point-pending-
+// resolution.ts), revalidée côté serveur dans deferPendingTraceAction.
+const DEFER_DURATION_CHOICES: { days: 1 | 7 | 30; label: string }[] = [
+  { days: 1, label: 'Dans 1 jour' },
+  { days: 7, label: 'Dans 7 jours' },
+  { days: 30, label: 'Dans 30 jours' },
+]
 const radioRow = (active: boolean, disabled: boolean) =>
   cn(
     'w-full rounded-lg border px-2.5 py-2 text-left text-[12px] transition-colors',
@@ -332,10 +341,14 @@ export type ActionResult = { ok: boolean; error?: string }
 export type SitePointOption = { id: string; label: string }
 
 // 6E.4D — `recapLabel` distingue un geste de clarification positif d'un rejet/report : omis
-// (undefined) pour "Ce n'est pas ce suivi"/"Non"/"Laisser pour plus tard" (aucune ligne de recap) ;
+// (undefined) pour "Ce n'est pas ce suivi"/"Non"/"Écarter cette question" (aucune ligne de recap) ;
 // passé (string | null) pour les 5 confirmations positives, avec le même libellé déjà affiché à
 // l'utilisateur avant confirmation (jamais un texte recalculé) — null quand aucun libellé réel
 // n'existe pour ce cas (ex. confirm_trackability sans subjectLabel).
+//
+// 6E.8A — `deferredDays` est un troisième canal, structurellement séparé de `recapLabel` : un
+// report n'est ni un rejet ni une clarification métier, il ne doit JAMAIS alimenter le récap
+// 6E.4D (mandat Vincent, audit 6E.8). Seul le bouton "Me le redemander…" le renseigne.
 export type QuestionCardProps = {
   question: MemoriaNeedsYouQuestion
   siteId: string
@@ -343,7 +356,7 @@ export type QuestionCardProps = {
   error?: string
   sitePoints: SitePointOption[]
   priority: MemoriaNeedsYouPriority
-  runAction: (action: () => Promise<ActionResult>, recapLabel?: string | null) => void
+  runAction: (action: () => Promise<ActionResult>, recapLabel?: string | null, deferredDays?: 1 | 7 | 30) => void
 }
 
 export function QuestionCard({ question, siteId, pending, error, sitePoints, priority, runAction }: QuestionCardProps) {
@@ -666,6 +679,9 @@ function AssignResolutionCard({
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<{ pointId: string; candidateId: string | null; label: string } | null>(null)
+  // 6E.8A — panneau de report, même pattern que confirmingMerge (DuplicatePointsCard) : un choix
+  // de durée explicite avant d'écrire quoi que ce soit, jamais un report silencieux.
+  const [choosingDefer, setChoosingDefer] = useState(false)
 
   const suggestions = [
     ...entry.knownIdentityTargets.map((t) => ({
@@ -762,33 +778,67 @@ function AssignResolutionCard({
 
       {selected && <ImpactPreview items={assignResolutionImpact(selected.label)} />}
       <ErrorLine error={error} />
-      <div className="flex flex-wrap gap-2 pt-1">
-        <button
-          type="button"
-          className={btnPrimary}
-          disabled={pending || !selected}
-          onClick={() =>
-            selected &&
-            runAction(
-              () =>
-                import('../tracked-point-resolution-actions').then((m) =>
-                  m.associatePendingResolutionToPointAction({ siteId, pendingTraceId: entry.pendingTraceId, targetPointId: selected.pointId, candidateId: selected.candidateId }),
-                ),
-              selected.label,
-            )
-          }
-        >
-          {selected ? `Associer à « ${selected.label} »` : 'Associer'}
-        </button>
-        <button
-          type="button"
-          className={btnSecondary}
-          disabled={pending}
-          onClick={() => runAction(() => import('../tracked-point-pending-trace-actions').then((m) => m.dismissPendingTraceAction({ siteId, pendingTraceId: entry.pendingTraceId })))}
-        >
-          Laisser pour plus tard
-        </button>
-      </div>
+      {choosingDefer ? (
+        <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/50 px-2.5 py-2 dark:border-violet-900/40 dark:bg-violet-950/20">
+          <p className="text-[12px] text-foreground/80">Dans combien de temps MemorIA doit-elle te la redemander ?</p>
+          <div className="flex flex-wrap gap-2">
+            {DEFER_DURATION_CHOICES.map((choice) => (
+              <button
+                key={choice.days}
+                type="button"
+                className={btnSecondary}
+                disabled={pending}
+                onClick={() =>
+                  runAction(
+                    () =>
+                      import('../tracked-point-pending-trace-actions').then((m) =>
+                        m.deferPendingTraceAction({ siteId, pendingTraceId: entry.pendingTraceId, durationDays: choice.days }),
+                      ),
+                    undefined,
+                    choice.days,
+                  )
+                }
+              >
+                {choice.label}
+              </button>
+            ))}
+            <button type="button" className={btnSecondary} disabled={pending} onClick={() => setChoosingDefer(false)}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            className={btnPrimary}
+            disabled={pending || !selected}
+            onClick={() =>
+              selected &&
+              runAction(
+                () =>
+                  import('../tracked-point-resolution-actions').then((m) =>
+                    m.associatePendingResolutionToPointAction({ siteId, pendingTraceId: entry.pendingTraceId, targetPointId: selected.pointId, candidateId: selected.candidateId }),
+                  ),
+                selected.label,
+              )
+            }
+          >
+            {selected ? `Associer à « ${selected.label} »` : 'Associer'}
+          </button>
+          <button type="button" className={btnSecondary} disabled={pending} onClick={() => setChoosingDefer(true)}>
+            Me le redemander…
+          </button>
+          <button
+            type="button"
+            className={btnSecondary}
+            disabled={pending}
+            onClick={() => runAction(() => import('../tracked-point-pending-trace-actions').then((m) => m.dismissPendingTraceAction({ siteId, pendingTraceId: entry.pendingTraceId })))}
+          >
+            Écarter cette question
+          </button>
+        </div>
+      )}
     </CardShell>
   )
 }

@@ -16,7 +16,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { randomUUID } from 'node:crypto'
 import { confirmPendingTrackability } from '@/lib/db/tracked-point-pending-trackability'
-import { dismissPendingTrace } from '@/lib/db/tracked-point-pending-resolution'
+import { dismissPendingTrace, deferPendingTrace } from '@/lib/db/tracked-point-pending-resolution'
 import { loadPendingTrackabilityQueue } from '@/lib/knowledge/tracked-point-pending-trackability-queue'
 
 const TAG = `__test_6e3b2_pending_trackability_${Math.floor(Date.now() / 1000)}__`
@@ -237,5 +237,47 @@ describe('dismissPendingTrace réutilisé tel quel pour le geste "Non" (aucune n
 
     const after = await loadPendingTrackabilityQueue(siteId)
     expect(after.entries.some((e) => e.pendingTraceId === pendingId)).toBe(false)
+  })
+})
+
+// Phase 6E.8A — report temporel. NON EXÉCUTABLE tant que la migration 399
+// (deferred_until/deferred_at/deferred_by) n'est pas appliquée à la base réelle : écrit pour
+// figer le contrat attendu du prédicat de visibilité partagé (pendingTraceVisibleFilter), une
+// fois câblé dans loadPendingTrackabilityQueue.
+describe('deferPendingTrace — visibilité de file (prédicat partagé pendingTraceVisibleFilter)', () => {
+  it('une trace reportée dans le futur disparaît de la file, sans être dismissed/resolved', async () => {
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+
+    const before = await loadPendingTrackabilityQueue(siteId)
+    expect(before.entries.some((e) => e.pendingTraceId === pendingId)).toBe(true)
+
+    const deferred = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 7 })
+    expect(deferred.ok).toBe(true)
+
+    const after = await loadPendingTrackabilityQueue(siteId)
+    expect(after.entries.some((e) => e.pendingTraceId === pendingId)).toBe(false)
+    // Toujours 'pending' — un report cache seulement, n'abandonne jamais (à la différence de
+    // dismiss juste au-dessus, qui retire définitivement de la file).
+    const db = createAdminClient()
+    const { data: row } = await db.from('tracked_point_pending_trace').select('status').eq('id', pendingId).single()
+    expect((row as { status: string }).status).toBe('pending')
+  })
+
+  it('une trace dont le report est déjà expiré reste visible dans la file', async () => {
+    const db = createAdminClient()
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+
+    const deferred = await deferPendingTrace({ siteId, pendingTraceId: pendingId, actorUserId: adminUserId, durationDays: 1 })
+    expect(deferred.ok).toBe(true)
+
+    // Simule l'écoulement du temps : recule l'échéance dans le passé, exactement ce que la
+    // relecture naturelle de la file doit voir sans cron ni polling (mandat Vincent 6E.8A).
+    const past = new Date(Date.now() - 60_000).toISOString()
+    await db.from('tracked_point_pending_trace').update({ deferred_until: past }).eq('id', pendingId)
+
+    const after = await loadPendingTrackabilityQueue(siteId)
+    expect(after.entries.some((e) => e.pendingTraceId === pendingId)).toBe(true)
   })
 })
