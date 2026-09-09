@@ -177,3 +177,43 @@ CREATE POLICY "service role manages tracked_point_reconcile_event"
 CREATE POLICY "service role manages tracked_point_reconcile_artifact"
   ON public.tracked_point_reconcile_artifact FOR ALL
   USING (auth.role() = 'service_role');
+
+-- ── BUG 1 (Round 4, Vincent) — kind IDENTITY_UNRESOLVED sur tracked_point_pending_trace ──
+--
+-- Extension additive du CHECK posé par la migration 390 (NE PAS modifier 390 elle-même —
+-- déjà appliquée). Doctrine 390 (tête de fichier) : "Extension additive uniquement si un
+-- nouveau cas de trace-sans-Point apparaît — jamais de réaffectation d'une valeur existante."
+--
+-- IDENTITY_UNRESOLVED couvre, en UN SEUL kind générique (jamais quatre kinds séparés) : target
+-- fusionnée, target CONFLICTED, plusieurs siblings thread-scope compatibles, candidat(s)
+-- cross-thread. La cause précise vit UNIQUEMENT dans le texte `reason`, jamais dans le kind
+-- (migration 401, primitive "ensure pending trace" / branche fallback dégradée).
+--
+-- Le nom du CHECK posé par 390 est un CHECK de colonne inline, donc généré par Postgres —
+-- jamais supposé ici : ce bloc le retrouve par son contenu réel (pg_get_constraintdef) avant
+-- de le remplacer, et échoue explicitement si aucune correspondance n'est trouvée plutôt que
+-- de deviner un nom.
+DO $$
+DECLARE
+  v_constraint_name TEXT;
+BEGIN
+  SELECT con.conname INTO v_constraint_name
+  FROM pg_constraint con
+  JOIN pg_class rel ON rel.oid = con.conrelid
+  JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+  WHERE nsp.nspname = 'public'
+    AND rel.relname = 'tracked_point_pending_trace'
+    AND con.contype = 'c'
+    AND pg_get_constraintdef(con.oid) ILIKE '%TRACKABILITY_UNDETERMINED%'
+    AND pg_get_constraintdef(con.oid) ILIKE '%RESOLUTION_WITHOUT_KNOWN_PROBLEM%';
+
+  IF v_constraint_name IS NULL THEN
+    RAISE EXCEPTION 'BUG1_CHECK_NOT_FOUND: impossible de retrouver le CHECK kind existant (migration 390) sur tracked_point_pending_trace — refus de deviner un nom de contrainte.';
+  END IF;
+
+  EXECUTE format('ALTER TABLE public.tracked_point_pending_trace DROP CONSTRAINT %I', v_constraint_name);
+END $$;
+
+ALTER TABLE public.tracked_point_pending_trace
+  ADD CONSTRAINT tracked_point_pending_trace_kind_check
+  CHECK (kind IN ('TRACKABILITY_UNDETERMINED', 'RESOLUTION_WITHOUT_KNOWN_PROBLEM', 'IDENTITY_UNRESOLVED'));

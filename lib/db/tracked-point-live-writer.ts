@@ -20,6 +20,7 @@ import type { FoundingUnit } from '@/lib/knowledge/tracked-point-founding'
 import { buildFingerprint } from '@/lib/knowledge/tracked-point-fingerprint'
 import {
   crossThreadConcurrentPointIds,
+  fallbackPendingTraceForUnit,
   foundingReferenceOf,
   planPendingTraceForUnit,
   planPointForUnit,
@@ -130,6 +131,12 @@ export async function reconcileTrackedPointUnit(params: {
   const plannedPendingTrace = plannedPoint ? null : planPendingTraceForUnit(unit)
   if (plannedPoint && plannedPendingTrace) return { ok: false, error: 'INVALID_PLAN' }
 
+  // Fallback (Round 4, Vincent — BUG 1) : contrat SÉPARÉ du plan principal, ne touche pas à
+  // l'exclusivité ci-dessus. Toujours calculé quand plannedPoint existe ; consommé par le RPC
+  // uniquement s'il dégrade effectivement ce plan en NEEDS_HUMAN (jamais si la revalidation live
+  // confirme le Point).
+  const fallbackPendingTrace = plannedPoint ? fallbackPendingTraceForUnit(unit) : null
+
   if (plannedPoint?.founding_kind === 'trackable_condition' && sitePoints === undefined) {
     return { ok: false, error: 'MISSING_SITE_POINTS' }
   }
@@ -150,6 +157,7 @@ export async function reconcileTrackedPointUnit(params: {
     p_source_ref_id: sourceRefId,
     p_planned_point: plannedPoint ? plannedPointPayload(plannedPoint) : null,
     p_planned_pending_trace: plannedPendingTrace ? plannedPendingTracePayload(plannedPendingTrace) : null,
+    p_fallback_pending_trace: fallbackPendingTrace ? plannedPendingTracePayload(fallbackPendingTrace) : null,
     p_cross_thread_candidate_point_ids: crossThreadCandidateIds,
   })
   if (error) return { ok: false, error: parseGuardCode(error.message) }

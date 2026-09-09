@@ -284,6 +284,13 @@ describe('Témoin 5 — NEEDS_HUMAN / CREATE_CANDIDATES (plusieurs cibles plausi
     expect(artifacts.length).toBe(3)
     expect(artifacts.filter((a) => a.artifact_kind === 'tracked_point_identity_candidate').length).toBe(2)
     expect(artifacts.filter((a) => a.artifact_kind === 'tracked_point_pending_trace').length).toBe(1)
+
+    // Round 4 (BUG 1) : cette pending trace vient du contrat PLANIFIÉ (Branche B,
+    // planPendingTraceForUnit) — jamais du fallback générique IDENTITY_UNRESOLVED, qui
+    // n'existe que côté Branche A dégradée (p_planned_point non nul).
+    const db = createAdminClient()
+    const { data: pt } = await db.from('tracked_point_pending_trace').select('kind').eq('id', result.pendingTraceId as string).single()
+    expect((pt as { kind: string }).kind).toBe('TRACKABILITY_UNDETERMINED')
   })
 })
 
@@ -303,6 +310,14 @@ describe('Témoin 6 — NEEDS_HUMAN forcé par cible merged (P6-B)', () => {
     expect(result.writePattern).toBe('CREATE_PENDING_TRACE')
     expect(result.targetPointId).toBeNull()
 
+    // Round 4 (BUG 1) : cible merged → dégradation Branche A, contrat = fallback générique
+    // IDENTITY_UNRESOLVED (jamais un kind spécifique "merged" distinct — cf. tête de fichier
+    // migration 401 et fallbackPendingTraceForUnit).
+    expect(result.pendingTraceId).toBeTruthy()
+    const { data: pt } = await db.from('tracked_point_pending_trace').select('kind, status').eq('id', result.pendingTraceId as string).single()
+    expect((pt as { kind: string; status: string }).kind).toBe('IDENTITY_UNRESOLVED')
+    expect((pt as { kind: string; status: string }).status).toBe('pending')
+
     await db.from('tracked_point').update({ status: 'active', merged_into_id: null }).eq('id', target)
   })
 })
@@ -319,6 +334,14 @@ describe('Témoin 7 — NEEDS_HUMAN forcé par cible CONFLICTED', () => {
     expect(result.verdict).toBe('NEEDS_HUMAN')
     expect(result.writePattern).toBe('CREATE_PENDING_TRACE')
     expect(result.targetPointId).toBeNull()
+
+    // Round 4 (BUG 1) : cible CONFLICTED → même contrat fallback générique IDENTITY_UNRESOLVED
+    // que la cible merged (Témoin 6) — la cause précise vit uniquement dans `reason`.
+    expect(result.pendingTraceId).toBeTruthy()
+    const db = createAdminClient()
+    const { data: pt } = await db.from('tracked_point_pending_trace').select('kind, status').eq('id', result.pendingTraceId as string).single()
+    expect((pt as { kind: string; status: string }).kind).toBe('IDENTITY_UNRESOLVED')
+    expect((pt as { kind: string; status: string }).status).toBe('pending')
   })
 })
 
@@ -753,6 +776,14 @@ describe('Témoin 17 — D1/D3 : candidat cross-thread unique, jamais un auto-ra
       .eq('founding_kind', 'trackable_condition')
       .eq('founding_reference', foundingReferenceOf(u))
     expect(newPointCount).toBe(0)
+
+    // Round 4 (BUG 1) : ce scénario est exactement celui du fallback générique — 0 cible
+    // thread-scoped, signal cross-thread D1 unique → dégradation Branche A, contrat =
+    // fallback IDENTITY_UNRESOLVED (jamais TRACKABILITY_UNDETERMINED, réservé à la Branche B).
+    expect(result.pendingTraceId).toBeTruthy()
+    const { data: pt } = await db.from('tracked_point_pending_trace').select('kind, status').eq('id', result.pendingTraceId as string).single()
+    expect((pt as { kind: string; status: string }).kind).toBe('IDENTITY_UNRESOLVED')
+    expect((pt as { kind: string; status: string }).status).toBe('pending')
   })
 })
 
@@ -832,5 +863,142 @@ describe('Témoin 20 — BUG 3a : le scan de siblings exclut un sibling CONFLICT
     const candidatePointIds = ((candRows ?? []) as Array<{ candidate_point_id: string }>).map((c) => c.candidate_point_id).sort()
     expect(candidatePointIds).toEqual([pointA, pointB].sort())
     expect(candidatePointIds).not.toContain(pointC)
+  })
+})
+
+describe('Témoin 21 — Round 4 (BUG 1) : dédup IDENTITY_UNRESOLVED cross-unité + artefacts scopés à la tentative', () => {
+  it('deux unités distinctes dégradées vers la même cible merged sur le même thread → 1 seule pending trace, réutilisée sans nouvel artefact', async () => {
+    const threadId = randomUUID()
+    const mergedInto = await makePoint()
+    const target = await makePoint()
+    const db = createAdminClient()
+    await db.from('tracked_point').update({ status: 'merged', merged_into_id: mergedInto }).eq('id', target)
+
+    // Deux CBO distincts, tous deux déjà liés à la même cible merged, portés par deux unités de
+    // unit_key différentes (scope='proposal_set', même convention que le témoin 12) mais du MÊME
+    // thread — la dégradation Branche A ne peut donc pas passer par le court-circuit NOOP de
+    // l'étape 4 (clé = unit_key), et exerce réellement le SELECT ... FOR UPDATE de la primitive
+    // commune (étape 7.5, migration 401).
+    const cboA = await makeCbo({ tracked_point_id: target })
+    const cboB = await makeCbo({ tracked_point_id: target })
+    const unitA = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'cbo:A', outcomeV2: { kind: 'CONFIRMED', cboId: cboA } })
+    const unitB = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'cbo:B', outcomeV2: { kind: 'CONFIRMED', cboId: cboB } })
+    expect(foundingReferenceOf(unitA)).not.toBe(foundingReferenceOf(unitB))
+
+    const resultA = await reconcileTrackedPointUnit({ siteId, unit: unitA, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(resultA.ok).toBe(true)
+    if (!resultA.ok) throw new Error('attendu un succès')
+    expect(resultA.writePattern).toBe('CREATE_PENDING_TRACE')
+    expect(resultA.replayed).toBe(false)
+    expect(resultA.pendingTraceId).toBeTruthy()
+
+    const resultB = await reconcileTrackedPointUnit({ siteId, unit: unitB, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(resultB.ok).toBe(true)
+    if (!resultB.ok) throw new Error('attendu un succès')
+    expect(resultB.writePattern).toBe('CREATE_PENDING_TRACE')
+    expect(resultB.replayed).toBe(false) // unit_key différent de A : pas un rejeu, une vraie 2e tentative
+
+    // Dédup : la primitive commune retrouve la trace pending IDENTITY_UNRESOLVED déjà posée par
+    // A (SELECT ... FOR UPDATE avant INSERT, clé = source_thread_id+kind) plutôt que d'en créer
+    // une seconde — même garantie que Witness 16 pour les candidats, généralisée aux pending traces.
+    expect(resultB.pendingTraceId).toBe(resultA.pendingTraceId)
+
+    const { count: pendingCount } = await db
+      .from('tracked_point_pending_trace')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_thread_id', threadId)
+      .eq('kind', 'IDENTITY_UNRESOLVED')
+    expect(pendingCount).toBe(1)
+
+    // Artefacts scopés à la tentative (§2.6) : l'événement A référence la pending trace qu'IL a
+    // créée ; l'événement B, qui l'a seulement réutilisée, ne doit référencer aucun artefact
+    // tracked_point_pending_trace (v_pending_created=false pour cette tentative).
+    const artifactsA = await countArtifacts(resultA.reconcileEventId)
+    expect(artifactsA.filter((a) => a.artifact_kind === 'tracked_point_pending_trace')).toEqual([
+      { artifact_kind: 'tracked_point_pending_trace', artifact_id: resultA.pendingTraceId },
+    ])
+
+    const artifactsB = await countArtifacts(resultB.reconcileEventId)
+    expect(artifactsB.filter((a) => a.artifact_kind === 'tracked_point_pending_trace')).toEqual([])
+
+    await db.from('tracked_point').update({ status: 'active', merged_into_id: null }).eq('id', target)
+  })
+})
+
+describe('Témoin 22 — Round 4 (BUG 1) : le fallback ne se matérialise jamais sur le chemin nominal', () => {
+  it('CBO frais sans concurrence → AUTO_CREATED, 0 pending trace créée malgré le fallback toujours calculé côté TS', async () => {
+    const threadId = randomUUID()
+    const cboId = await makeCbo()
+    const u = unit({ threadId, outcomeV2: { kind: 'CONFIRMED', cboId } })
+
+    const result = await reconcileTrackedPointUnit({ siteId, unit: u, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+    expect(result.verdict).toBe('AUTO_CREATED')
+    expect(result.writePattern).toBe('CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK')
+    expect(result.pendingTraceId).toBeNull()
+
+    // reconcileTrackedPointUnit calcule TOUJOURS fallbackPendingTraceForUnit dès qu'un
+    // plannedPoint existe (tracked-point-live-writer.ts) et le transmet en p_fallback_pending_trace
+    // — la preuve que ce round n'introduit aucune écriture parasite passe par la DB, pas par le
+    // simple typage du retour : cette revalidation live confirme le plan (ATTACH_MEMBER/CREATE_*
+    // nominal), donc la primitive commune (étape 7.5) n'est jamais atteinte pour ce thread.
+    const db = createAdminClient()
+    const { count } = await db
+      .from('tracked_point_pending_trace')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_thread_id', threadId)
+    expect(count).toBe(0)
+  })
+})
+
+describe('Témoin 23 — Round 4 (BUG 1) : MISSING_PENDING_CONTRACT si write_pattern dégradé atteint sans contrat exploitable', () => {
+  it('appel RPC direct avec p_fallback_pending_trace omis sur une cible merged → RAISE explicite, aucune trace insérée', async () => {
+    const mergedInto = await makePoint()
+    const target = await makePoint()
+    const db = createAdminClient()
+    await db.from('tracked_point').update({ status: 'merged', merged_into_id: mergedInto }).eq('id', target)
+    const cboId = await makeCbo({ tracked_point_id: target })
+    const u = unit({ outcomeV2: { kind: 'CONFIRMED', cboId } })
+    const unitKey = foundingReferenceOf(u)
+    const plannedPoint = planPointForUnit(u, { cboLabel: 'CBO témoin 23' })
+    if (!plannedPoint) throw new Error('attendu un plan de Point pour ce plan (setup du témoin)')
+    const { snapshot, fingerprint } = buildFingerprint(u)
+
+    // Appel RPC direct (contourne le wrapper, qui calcule TOUJOURS fallbackPendingTraceForUnit
+    // dès qu'un plannedPoint existe) : reproduit l'état qu'un appelant bugué produirait en
+    // omettant p_fallback_pending_trace (DEFAULT NULL) sur exactement le scénario dégradé du
+    // Témoin 6 — write_pattern atteint CREATE_PENDING_TRACE mais v_pending_contract reste NULL.
+    const { error } = await db.rpc('fn_reconcile_tracked_point_unit', {
+      p_site_id: siteId,
+      p_unit_key: unitKey,
+      p_thread_id: u.threadId,
+      p_scope: u.scope,
+      p_input_snapshot: snapshot,
+      p_input_fingerprint: fingerprint,
+      p_source_kind: 'historical_pdf',
+      p_source_ref_id: docId,
+      p_planned_point: plannedPointPayload(plannedPoint),
+      p_planned_pending_trace: null,
+      p_cross_thread_candidate_point_ids: [],
+    })
+
+    expect(error).toBeTruthy()
+    expect(error?.message ?? '').toContain('MISSING_PENDING_CONTRACT')
+
+    const { count: pendingCount } = await db
+      .from('tracked_point_pending_trace')
+      .select('id', { count: 'exact', head: true })
+      .eq('source_thread_id', u.threadId)
+    expect(pendingCount).toBe(0)
+
+    const { count: eventCount } = await db
+      .from('tracked_point_reconcile_event')
+      .select('id', { count: 'exact', head: true })
+      .eq('site_id', siteId)
+      .eq('unit_key', unitKey)
+    expect(eventCount).toBe(0)
+
+    await db.from('tracked_point').update({ status: 'active', merged_into_id: null }).eq('id', target)
   })
 })

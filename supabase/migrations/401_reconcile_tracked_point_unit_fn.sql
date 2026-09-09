@@ -93,10 +93,34 @@
 --   p6_test_failpoint_harness.sql), positionne ce GUC — appliquée uniquement sur une
 --   base jetable, jamais sur la cible réelle.
 --
--- Verrouillage — ordre total §2.8 respecté : (1) domaine d'identité thread,
--- (2) unité, (3) CBO, (4) pending trace, (5) tracked_point(s) ordre UUID croissant,
--- (6) tracked_point_member, (7) tracked_point_identity_candidate(s) ordre UUID
--- croissant, (8) reconcile_state (verrouillé en dernier, à l'UPSERT final).
+-- Verrouillage — ordre total §2.8 : (1) domaine d'identité thread, (2) unité, (3) CBO,
+-- (5) tracked_point(s) ordre UUID croissant, (4) pending trace, (6) tracked_point_member,
+-- (7) tracked_point_identity_candidate(s) ordre UUID croissant, (8) reconcile_state
+-- (verrouillé en dernier, à l'UPSERT final).
+--
+-- Round 4 (BUG 1, Vincent) — réordonnancement ASSUMÉ de (4) et (5) par rapport aux Rounds
+-- précédents : la primitive commune "ensure pending trace" (étape 7.5) verrouille
+-- désormais la pending trace APRÈS que Branche A et Branche B aient déjà verrouillé
+-- CBO/tracked_point(s) (ses deux branches ont besoin de connaître le verdict — donc d'avoir
+-- déjà scanné/verrouillé les Points candidats — avant de savoir SI une pending trace doit
+-- être matérialisée). Sans risque de deadlock : cette fonction est l'unique écrivain de ces
+-- tables (SECURITY DEFINER, EXECUTE réservé à service_role) et suit désormais cet ordre
+-- (3)→(5)→(4) sur TOUTE tentative sans exception — un ordre global unique ne peut jamais
+-- produire de deadlock, contrairement à deux ordres concurrents.
+--
+-- Ensure pending trace (§7.5, Round 4, BUG 1) — primitive commune consommée par Branche A
+-- (dégradée : merged/CONFLICTED, siblings multiples, cross-thread — via p_fallback_pending_trace,
+-- kind=IDENTITY_UNRESOLVED, reason recalculée en SQL, jamais celle du placeholder TS générique)
+-- ET Branche B (résolution en attente — via p_planned_pending_trace, inchangé). Fin de
+-- l'asymétrie où seule la Branche B savait matérialiser une pending trace : l'ancienne
+-- Branche A produisait write_pattern='CREATE_PENDING_TRACE'/'CREATE_CANDIDATES' sans jamais
+-- écrire la ligne tracked_point_pending_trace correspondante (BUG 1). Réutilise une trace
+-- active équivalente (source_thread_id, kind, status='pending' — même clé que l'index unique
+-- tracked_point_pending_trace_active_uidx, migration 390, source_proposal_id toujours NULL
+-- ici) plutôt que d'en créer une nouvelle. v_pending_created=true SEULEMENT sur un INSERT
+-- réel (Witness 16 préservé). Si write_pattern atteint CREATE_PENDING_TRACE/CREATE_CANDIDATES
+-- sans contrat exploitable (v_pending_contract NULL — ni planifié ni fallback) → RAISE
+-- MISSING_PENDING_CONTRACT, jamais un write_pattern mensonger sans écriture réelle.
 
 CREATE OR REPLACE FUNCTION public.fn_reconcile_tracked_point_unit(
   p_site_id UUID,
@@ -109,7 +133,8 @@ CREATE OR REPLACE FUNCTION public.fn_reconcile_tracked_point_unit(
   p_source_ref_id UUID,
   p_planned_point JSONB DEFAULT NULL,
   p_planned_pending_trace JSONB DEFAULT NULL,
-  p_cross_thread_candidate_point_ids UUID[] DEFAULT '{}'::UUID[]
+  p_cross_thread_candidate_point_ids UUID[] DEFAULT '{}'::UUID[],
+  p_fallback_pending_trace JSONB DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -138,6 +163,7 @@ DECLARE
   v_member_proposal_ids   UUID[];
   v_existing_pending_kind TEXT;
   v_accepted_target_id    UUID;
+  v_pending_contract      JSONB;
 BEGIN
   -- Guard 1 : plan mutuellement exclusif (au plus un des deux plans non-null).
   IF p_planned_point IS NOT NULL AND p_planned_pending_trace IS NOT NULL THEN
@@ -266,6 +292,15 @@ BEGIN
           v_verdict := 'NEEDS_HUMAN';
           v_write_pattern := 'CREATE_PENDING_TRACE';
           v_target_point_id := NULL;
+          IF p_fallback_pending_trace IS NOT NULL THEN
+            v_pending_contract := jsonb_build_object(
+              'kind', p_fallback_pending_trace->>'kind',
+              'reason', CASE WHEN v_target.status = 'merged'
+                THEN 'Le Point déjà lié à ce CBO (' || v_cbo.id::text || ') a été fusionné (merged) — cible non exploitable automatiquement, jamais suggérée (D2).'
+                ELSE 'Le Point déjà lié à ce CBO (' || v_cbo.id::text || ') est en conflit d''identité (CONFLICTED) — cible non exploitable automatiquement, jamais suggérée (D2).'
+              END
+            );
+          END IF;
         ELSE
           v_verdict := 'AUTO_LINKED';
           v_write_pattern := 'ATTACH_MEMBER';
@@ -316,6 +351,9 @@ BEGIN
             v_candidate_point_ids := v_sibling_ids;
             v_candidate_reason := 'Plusieurs Points déjà rattachés à ce thread (membership HARD active) — impossible de choisir automatiquement lequel absorbe ce CBO.';
             v_target_point_id := NULL;
+            IF p_fallback_pending_trace IS NOT NULL THEN
+              v_pending_contract := jsonb_build_object('kind', p_fallback_pending_trace->>'kind', 'reason', v_candidate_reason);
+            END IF;
           ELSE
             -- Défensif : la table ne doit jamais contenir un Point cbo-fondé sur ce
             -- CBO sans que cbo.tracked_point_id le reflète (invariant CREATE_POINT_
@@ -342,6 +380,15 @@ BEGIN
           v_verdict := 'NEEDS_HUMAN';
           v_write_pattern := 'CREATE_PENDING_TRACE';
           v_target_point_id := NULL;
+          IF p_fallback_pending_trace IS NOT NULL THEN
+            v_pending_contract := jsonb_build_object(
+              'kind', p_fallback_pending_trace->>'kind',
+              'reason', CASE WHEN v_target.status = 'merged'
+                THEN 'Le Point déjà fondé sur cette identité (' || p_unit_key || ') a été fusionné (merged) — cible non exploitable automatiquement.'
+                ELSE 'Le Point déjà fondé sur cette identité (' || p_unit_key || ') est en conflit d''identité (CONFLICTED) — cible non exploitable automatiquement.'
+              END
+            );
+          END IF;
         ELSE
           v_verdict := 'AUTO_LINKED';
           v_write_pattern := 'ATTACH_MEMBER';
@@ -395,6 +442,9 @@ BEGIN
           v_candidate_point_ids := v_sibling_ids;
           v_candidate_reason := 'Plusieurs Points déjà rattachés à ce thread (membership HARD active) — impossible de choisir automatiquement.';
           v_target_point_id := NULL;
+          IF p_fallback_pending_trace IS NOT NULL THEN
+            v_pending_contract := jsonb_build_object('kind', p_fallback_pending_trace->>'kind', 'reason', v_candidate_reason);
+          END IF;
 
         ELSE
           -- 0 cible thread-scoped exploitable : D1 — revérifier live les candidats
@@ -424,9 +474,15 @@ BEGIN
             v_candidate_point_ids := v_cross_thread_ids;
             v_candidate_reason := 'Identité concurrente détectée hors de ce thread (correspondance déterministe cbo/exact/containment fort, moteur de voisinage Phase 4) — jamais un auto-rattachement sur un signal cross-thread.';
             v_target_point_id := NULL;
+            IF p_fallback_pending_trace IS NOT NULL THEN
+              v_pending_contract := jsonb_build_object('kind', p_fallback_pending_trace->>'kind', 'reason', v_candidate_reason);
+            END IF;
           ELSIF FOUND THEN
-            -- Question déjà ouverte sur ce thread : ne pas la dupliquer, réutiliser
-            -- telle quelle (0 nouvelle ligne).
+            -- Question déjà ouverte sur ce thread (kind quelconque, pas nécessairement
+            -- IDENTITY_UNRESOLVED) : ne pas la dupliquer, réutiliser telle quelle (0
+            -- nouvelle ligne). v_pending est déjà résolue par le SELECT ci-dessus — aucun
+            -- v_pending_contract nécessaire, l'étape 7.5 se voit désactivée par sa propre
+            -- garde (v_pending.id IS NULL) pour cette sous-branche précisément.
             v_verdict := 'NEEDS_HUMAN';
             v_write_pattern := 'CREATE_PENDING_TRACE';
             v_target_point_id := NULL;
@@ -464,18 +520,10 @@ BEGIN
     ELSE
     v_verdict := 'NEEDS_HUMAN';
 
-    SELECT p.* INTO v_pending FROM public.tracked_point_pending_trace p
-    WHERE p.source_thread_id = p_thread_id
-      AND p.kind = (p_planned_pending_trace->>'kind')
-      AND p.status = 'pending'
-    FOR UPDATE;
-
-    IF NOT FOUND THEN
-      INSERT INTO public.tracked_point_pending_trace (site_id, source_thread_id, kind, reason)
-      VALUES (p_site_id, p_thread_id, p_planned_pending_trace->>'kind', p_planned_pending_trace->>'reason')
-      RETURNING * INTO v_pending;
-      v_pending_created := true;
-    END IF;
+    -- Round 4 (BUG 1) : la matérialisation elle-même est déportée dans la primitive
+    -- commune (étape 7.5, ci-dessous) — cette branche ne fait plus que déclarer SON
+    -- contrat (kind/reason déjà précis, inchangé depuis planPendingTraceForUnit).
+    v_pending_contract := p_planned_pending_trace;
 
     -- Voisinage thread-scoped uniquement — cette branche ne fonde déjà jamais de Point
     -- automatiquement, D1 (cross-thread) n'y ajoute rien (cf. tête de fichier). Verrou
@@ -503,6 +551,39 @@ BEGIN
     v_verdict := 'IGNORED_NOT_TRACKABLE';
     v_write_pattern := 'IGNORE_NOT_TRACKABLE';
     v_target_point_id := NULL;
+  END IF;
+
+  -- ── 7.5. Primitive commune "ensure pending trace" (Round 4, Vincent — BUG 1) ──
+  --
+  -- Point unique de matérialisation d'une tracked_point_pending_trace pour TOUT
+  -- write_pattern CREATE_PENDING_TRACE/CREATE_CANDIDATES, qu'il vienne de la
+  -- Branche A dégradée (contrat = p_fallback_pending_trace, kind=IDENTITY_UNRESOLVED)
+  -- ou de la Branche B (contrat = p_planned_pending_trace). Les deux branches ne
+  -- font plus qu'écrire leur `reason` précise dans v_pending_contract (étape 6/7
+  -- ci-dessus) — plus aucune n'insère elle-même.
+  --
+  -- Garde v_pending.id IS NULL : la section D1 cross-thread (branche "ELSIF FOUND")
+  -- a pu déjà résoudre v_pending elle-même via sa propre réutilisation (n'importe
+  -- quel kind, pas seulement IDENTITY_UNRESOLVED) avant d'atteindre ce point — dans
+  -- ce cas précis, cette étape ne doit rien insérer (0 nouvelle ligne, comportement
+  -- inchangé depuis avant ce round).
+  IF v_write_pattern IN ('CREATE_PENDING_TRACE', 'CREATE_CANDIDATES') AND v_pending.id IS NULL THEN
+    IF v_pending_contract IS NULL THEN
+      RAISE EXCEPTION 'fn_reconcile_tracked_point_unit: MISSING_PENDING_CONTRACT — write_pattern=% atteint sans p_planned_pending_trace ni p_fallback_pending_trace exploitable (unit_key=%)', v_write_pattern, p_unit_key;
+    END IF;
+
+    SELECT p.* INTO v_pending FROM public.tracked_point_pending_trace p
+    WHERE p.source_thread_id = p_thread_id
+      AND p.kind = (v_pending_contract->>'kind')
+      AND p.status = 'pending'
+    FOR UPDATE;
+
+    IF NOT FOUND THEN
+      INSERT INTO public.tracked_point_pending_trace (site_id, source_thread_id, kind, reason)
+      VALUES (p_site_id, p_thread_id, v_pending_contract->>'kind', v_pending_contract->>'reason')
+      RETURNING * INTO v_pending;
+      v_pending_created := true;
+    END IF;
   END IF;
 
   -- ── 8. Écritures atomiques selon le geste retenu ──────────────────────────
@@ -652,10 +733,10 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[]) IS
-  'P6 Live Writer — RPC unique d''écriture pour UNE FoundingUnit déjà classifiée (decideFoundingV2) et déjà transformée en plan pur (planPointForUnit/planPendingTraceForUnit). Verrouille §2.8 (domaine identité thread, unité, puis CBO/pending/point(s)/member/candidate(s), reconcile_state en dernier), revalide contre l''état live avant toute conclusion NOOP (§2.5, jamais sur la seule égalité de fingerprint), exécute un des 8 gestes du §2.1 (7 figés + IGNORE_NOT_TRACKABLE, D4). P6-B (merged/CONFLICTED ⇒ toujours NEEDS_HUMAN) et P6-C (founding_kind/founding_reference immuables, CBO tardif ⇒ ENRICH_EXISTING_POINT seul) appliqués sans exception. D1 (Round 2) : une concurrence cross-thread connue (p_cross_thread_candidate_point_ids, calculée côté TS via le moteur Phase 4 evaluateMembershipCandidate réutilisé tel quel, jamais un second moteur de décision) est revérifiée live et empêche toute autocréation PROVISIONAL silencieuse, sans jamais s''auto-lier (D3 : signal fuzzy, toujours NEEDS_HUMAN). D3 : 0 cible compatible ⇒ AUTO_CREATE, 1 cible thread-scoped compatible unique ⇒ AUTO_LINK, plus d''1 ou contradiction ⇒ NEEDS_HUMAN. SECURITY DEFINER durci (search_path vide, EXECUTE réservé à service_role). NON EXÉCUTÉ : aucun des 16 témoins de la matrice §5 n''a pu être lancé (pas d''accès DB dans ce lot).';
+COMMENT ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[], JSONB) IS
+  'P6 Live Writer — RPC unique d''écriture pour UNE FoundingUnit déjà classifiée (decideFoundingV2) et déjà transformée en plan pur (planPointForUnit/planPendingTraceForUnit). Verrouille §2.8 (domaine identité thread, unité, puis CBO, puis tracked_point(s)/member/candidate(s), pending trace en dernier via la primitive commune §7.5), revalide contre l''état live avant toute conclusion NOOP (§2.5, jamais sur la seule égalité de fingerprint), exécute un des 8 gestes du §2.1 (7 figés + IGNORE_NOT_TRACKABLE, D4). P6-B (merged/CONFLICTED ⇒ toujours NEEDS_HUMAN) et P6-C (founding_kind/founding_reference immuables, CBO tardif ⇒ ENRICH_EXISTING_POINT seul) appliqués sans exception. D1 (Round 2) : une concurrence cross-thread connue (p_cross_thread_candidate_point_ids, calculée côté TS via le moteur Phase 4 evaluateMembershipCandidate réutilisé tel quel, jamais un second moteur de décision) est revérifiée live et empêche toute autocréation PROVISIONAL silencieuse, sans jamais s''auto-lier (D3 : signal fuzzy, toujours NEEDS_HUMAN). D3 : 0 cible compatible ⇒ AUTO_CREATE, 1 cible thread-scoped compatible unique ⇒ AUTO_LINK, plus d''1 ou contradiction ⇒ NEEDS_HUMAN. Round 4 (BUG 1) : p_fallback_pending_trace (kind=IDENTITY_UNRESOLVED, migration 400) porte un contrat de repli SÉPARÉ du plan principal (n''annule jamais l''exclusivité p_planned_point XOR p_planned_pending_trace) — consommé uniquement si la Branche A dégrade effectivement le plan de Point en NEEDS_HUMAN ; la primitive commune §7.5 matérialise alors la trace au lieu de la Branche B seule, avec garde MISSING_PENDING_CONTRACT si aucun contrat exploitable n''atteint ce point. SECURITY DEFINER durci (search_path vide, EXECUTE réservé à service_role). NON EXÉCUTÉ : aucun des témoins de la matrice §5 n''a pu être lancé (pas d''accès DB dans ce lot).';
 
-REVOKE ALL ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[]) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[]) FROM anon;
-REVOKE ALL ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[]) FROM authenticated;
-GRANT EXECUTE ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[]) TO service_role;
+REVOKE ALL ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[], JSONB) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[], JSONB) FROM anon;
+REVOKE ALL ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[], JSONB) FROM authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_reconcile_tracked_point_unit(UUID, TEXT, UUID, TEXT, JSONB, TEXT, TEXT, UUID, JSONB, JSONB, UUID[], JSONB) TO service_role;

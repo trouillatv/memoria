@@ -74,7 +74,7 @@ export type PlannedPoint = {
 export type PlannedPendingTrace = {
   source_thread_id: string
   source_proposal_id: string | null
-  kind: 'TRACKABILITY_UNDETERMINED' | 'RESOLUTION_WITHOUT_KNOWN_PROBLEM'
+  kind: 'TRACKABILITY_UNDETERMINED' | 'RESOLUTION_WITHOUT_KNOWN_PROBLEM' | 'IDENTITY_UNRESOLVED'
   reason: string
 }
 
@@ -177,6 +177,30 @@ export function planPendingTraceForUnit(u: FoundingUnit): PlannedPendingTrace | 
     }
   }
   return null
+}
+
+// ── Fallback pending trace (Round 4, Vincent — BUG 1) ──────────────────────────────────────
+//
+// Contrat SÉPARÉ du plan principal — ne remplace ni ne touche plannedPoint/planPendingTraceForUnit,
+// et ne lève PAS l'exclusivité plannedPoint XOR plannedPendingTrace (INVALID_PLAN inchangé).
+// Chaque fois que planPointForUnit produit un PlannedPoint, le wrapper (tracked-point-live-writer.ts)
+// calcule EN PLUS ce fallback et le transmet à la RPC (p_fallback_pending_trace). Il n'est jamais
+// matérialisé si le plan de Point passe la revalidation live — seul le RPC (migration 401) le
+// consomme, et seulement s'il dégrade effectivement le plan en NEEDS_HUMAN.
+//
+// kind=IDENTITY_UNRESOLVED est un kind générique unique (migration 400) : la cause précise
+// (target fusionnée / target CONFLICTED / plusieurs siblings thread / candidat(s) cross-thread)
+// n'est JAMAIS encodée ici en un kind distinct — seulement dans le texte `reason`. Ce texte
+// générique n'est qu'un PLACEHOLDER : le RPC reconstruit sa propre `reason` précise à partir de
+// ce qu'il observe réellement sous verrou au moment de la dégradation ("ne pas inventer une
+// vérité supplémentaire" — le texte ci-dessous n'est jamais écrit tel quel en DB).
+export function fallbackPendingTraceForUnit(u: FoundingUnit): PlannedPendingTrace {
+  return {
+    source_thread_id: u.threadId,
+    source_proposal_id: null,
+    kind: 'IDENTITY_UNRESOLVED',
+    reason: `Fallback générique (scope=${u.scope}${u.proposalSetOf ? `#${u.proposalSetOf}` : ''}) — cause précise de dégradation NEEDS_HUMAN non déterminée hors verrou ; le RPC réécrit ce champ.`,
+  }
 }
 
 // ── D1 (Round 2, Vincent) — candidats cross-thread pour l'auto-création PROVISIONAL. ──────
