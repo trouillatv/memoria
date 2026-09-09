@@ -828,6 +828,26 @@ Graphify sert à **comprendre l'architecture et les dépendances** avant une mod
 
 Toujours analyser le **périmètre minimal** utile à la tâche. Ne jamais indexer l'ensemble du dépôt par défaut.
 
+### Fraîcheur de l'index
+
+Objectif : que Graphify réduise réellement la consommation de tokens (moins de lectures/greps massifs du dépôt), pas qu'il devienne une procédure lourde à entretenir.
+
+Règle : l'index Graphify ne doit jamais avoir plus de **10 commits de retard** sur le `HEAD` courant.
+
+- Au plus tard tous les 10 nouveaux commits sur la branche de travail, mettre à jour l'index :
+  ```bash
+  graphify update .
+  ```
+  (`update` ré-extrait uniquement le code, sans LLM, coût 0 token — ne pas confondre avec `graphify . --backend claude`, réservé à l'audit mensuel.)
+- Si une tâche nécessite une exploration transversale du code (plusieurs modules, impact cross-domaine) et que l'index semble ancien, le mettre à jour AVANT l'exploration, même si les 10 commits ne sont pas encore atteints.
+- Ne pas réindexer mécaniquement après chaque commit : le but est d'économiser du travail, pas d'en ajouter.
+
+Pour connaître le retard, sans infrastructure dédiée : le fichier `graphify-out/GRAPH_REPORT.md` contient une ligne « Built from commit: `<sha court>` ». Comparer ce commit au `HEAD` courant :
+```bash
+git rev-list --count <sha-du-rapport>..HEAD
+```
+Si le résultat dépasse 10, lancer `graphify update .` avant de s'appuyer sur l'index pour une recherche d'architecture. `graphify check-update .` (cron-safe) fait la même vérification sans qu'il soit nécessaire de la scripter soi-même.
+
 ### Ordre de préférence
 
 1. **Module ciblé** — avant toute analyse d'impact ou refactorisation :
@@ -899,6 +919,8 @@ Cela réduit fortement le contexte et évite les analyses globales inutiles.
 - N'utiliser un backend LLM que si l'analyse sémantique des docs ou images est réellement nécessaire.
 - `graphify-out/` est versionné dans le dépôt.
 - Ne pas lancer Graphify pour une correction locale, un changement de texte ou un ajustement CSS.
+- Pour une recherche d'architecture, de dépendances, d'appels, de symboles ou de flux entre modules : si l'index est suffisamment frais (cf. Fraîcheur de l'index ci-dessus), l'interroger en premier plutôt que de lire/grepper de larges portions du dépôt ; n'ouvrir ensuite que les fichiers réellement pertinents.
+- Graphify aide à localiser et comprendre, il ne remplace jamais la vérification du code source réel avant une modification ou une conclusion sensible. Pour une migration, un invariant DB, une concurrence SQL ou une décision critique, toujours vérifier directement les fichiers concernés.
 
 ---
 
