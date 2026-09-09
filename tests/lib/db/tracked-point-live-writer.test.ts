@@ -186,7 +186,6 @@ afterAll(async () => {
 
 describe('Témoin 1 — AUTO_CREATED / CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK', () => {
   it('CBO frais sans tracked_point_id, aucun sibling → crée le Point CONFIRMED et lie le CBO', async () => {
-    const db = createAdminClient()
     const cboId = await makeCbo()
     const u = unit({ outcomeV2: { kind: 'CONFIRMED', cboId } })
 
