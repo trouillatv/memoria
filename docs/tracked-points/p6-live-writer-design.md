@@ -1,0 +1,198 @@
+# P6 — Live Writer `tracked_point`
+
+Status: **DESIGN FROZEN — NO IMPLEMENTATION GO**
+
+Aucune migration créée ou appliquée, aucun code écrit pour ce document. Toute décision ci-dessous est un contrat à implémenter, pas un état déployé. Historique complet de la conception : conversation Claude Code datée 2026-09-05/09, arbitrages Vincent inclus.
+
+## 1. Périmètre
+
+Le batch `_p6d1b-apply-global.mjs` et les RPCs pilotes 393/395/396 traitent le rattrapage historique et l'arbitrage humain. P6 ajoute un troisième mode : projection **automatique, par extraction, en continu** des résultats d'extraction (`historical_pdf` / `field_visit` / `meeting`) dans le système d'identité `tracked_point`, sans attendre un batch ni un geste humain, mais sans jamais court-circuiter l'arbitrage humain existant.
+
+Le Live Writer réutilise `decideFoundingOld`/`decideFoundingV2` et `buildFoundingUnits` (`scripts/_p6d1a-preflight-global.ts`) comme seul moteur de classification. Il n'introduit pas de second moteur de décision.
+
+## 2. Decisions frozen
+
+### 2.1 Verdicts et write patterns
+
+Quatre verdicts métier : `AUTO_CREATED`, `AUTO_LINKED`, `NEEDS_HUMAN`, `IGNORED_NOT_TRACKABLE`.
+
+Sept gestes d'écriture possibles (un verdict peut correspondre à plusieurs gestes selon le contexte) :
+
+- `CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK` — AUTO_CREATED, fondation CBO. INSERT `tracked_point` (CONFIRMED, founding_kind='cbo', founding_reference=cbo.id) + INSERT `tracked_point_member` + UPDATE `canonical_business_object.tracked_point_id`. Les trois écritures ou aucune.
+- `CREATE_POINT_WITH_MEMBERSHIP` — AUTO_CREATED, fondation trackable_condition déterministe (décision P6-A, §2.2). INSERT `tracked_point` (PROVISIONAL, founding_kind='trackable_condition', founding_reference=subject_thread_id) + INSERT `tracked_point_member`.
+- `ATTACH_MEMBER` — AUTO_LINKED, Point déjà fondé et actif, non CONFLICTED. INSERT `tracked_point_member` seul.
+- `ENRICH_EXISTING_POINT` — AUTO_LINKED, cas du CBO tardif (décision P6-C, §2.3). Ajoute le membership s'il manque et/ou rattache le CBO s'il est encore NULL, sur un Point déjà fondé par une autre voie. Ne modifie jamais `founding_kind`/`founding_reference`.
+- `CREATE_PENDING_TRACE` — NEEDS_HUMAN, aucune cible plausible. INSERT `tracked_point_pending_trace` seul.
+- `CREATE_CANDIDATES` — NEEDS_HUMAN, une ou plusieurs cibles plausibles. INSERT `tracked_point_pending_trace` + INSERT `tracked_point_identity_candidate` (un par cible réellement absente — voir §2.4 matérialisation partielle) + `reconcile_artifact` par objet effectivement créé.
+- `NOOP` — rejeu sans effet métier. Uniquement après revalidation live, jamais sur la seule égalité de fingerprint (§2.5).
+
+Chaque pattern est le nom du geste atomique retourné par le writer et journalisé dans `reconcile_event.write_pattern`.
+
+### 2.2 Décision P6-A — PROVISIONAL_TRACKABLE
+
+> trackable déterministe (rail non-LLM, non incertain) + aucune concurrence live (aucune identité concurrente, aucun HARD membership incompatible, aucune pending/candidate contradictoire) ⇒ fondation automatique d'un Point PROVISIONAL.
+
+Trackable via rail LLM/incertain, ou plusieurs identités possibles, ou résolution orpheline ⇒ toujours NEEDS_HUMAN. Le statut créé est PROVISIONAL, jamais CONFIRMED — la fondation automatique n'affirme pas une validation humaine, seulement un déterminisme suffisant pour commencer un suivi.
+
+À faire figer explicitement dans le mandat P6 avant code — ce n'est pas un mandat historique retrouvé, c'est une décision de conception prise dans cette conversation.
+
+### 2.3 Décision P6-B — Point merged
+
+P6 ne suit jamais `merged_into_id` automatiquement. `target.status='merged'` ⇒ toujours NEEDS_HUMAN, jamais `ATTACH_MEMBER`/`ENRICH_EXISTING_POINT`. Alignement strict avec les gardes déjà en production : migration 393 (`accept_trace_identity_candidate`) garde 5, migration 396 (`associate_pending_resolution_to_point`) garde 10 — même contrôle, même refus, deux RPCs indépendantes. Si le merge doit un jour devenir une redirection suivie automatiquement, ce sera un lot dédié touchant 393/395/396/P6/read-models ensemble, jamais une doctrine P6 isolée.
+
+`target.identity_status='CONFLICTED'` ⇒ toujours NEEDS_HUMAN, sans condition, quel que soit le statut par ailleurs.
+
+### 2.4 Décision P6-C — provenance de fondation immuable, CBO tardif
+
+> `founding_kind`/`founding_reference` sont la provenance de fondation du Point et deviennent immuables après création. L'apparition ultérieure d'un CBO enrichit l'identité du Point existant, elle ne réécrit pas son histoire.
+
+Cas : un Point P a été fondé en `trackable_condition` sur un thread T (founding_reference=T). Un CBO C apparaît ensuite sur ce même thread. Si P est actif, non CONFLICTED, T est HARD member de P, `C.tracked_point_id IS NULL`, et aucune autre cible compatible/concurrente n'existe : `ENRICH_EXISTING_POINT` — UPDATE `C.tracked_point_id = P.id` uniquement. Zéro nouveau Point, zéro changement de `founding_kind`/`founding_reference`.
+
+Explicitement rejeté : créer un second Point `founding_kind='cbo'` puis exiger une fusion humaine — ce serait fabriquer une dette que le moteur vient de résoudre lui-même. Explicitement rejeté également : muter `founding_kind` de `trackable_condition` vers `cbo` — ce champ décrit une propriété historique, pas un état courant.
+
+`identity_status` : la promotion PROVISIONAL → CONFIRMED sur rattachement CBO tardif est conceptuellement cohérente (CONFIRMED existe déjà pour la fondation directe par CBO) mais reste une transition d'état **non retenue pour P6 v1**. En v1 : le CBO est rattaché, `identity_status` reste inchangé. Toute promotion est un GO gate distinct (§4).
+
+### 2.5 Fingerprint et revalidation live — NOOP n'est jamais automatique sur la seule égalité de fingerprint
+
+`input_snapshot` JSONB (valeurs en clair pour diagnostic humain : threadId, scope, proposalSetOf, cboIds triés, families triées, outcomeV2, trackability) → hash canonique → `input_fingerprint` TEXT. Contrat de canonicalisation obligatoire avant implémentation : tri stable des arrays, distinction explicite null/absent, ordre de clés fixe.
+
+Séquence de décision NOOP : lecture `reconcile_state` → si `input_fingerprint` identique au précédent, NE PAS conclure NOOP directement → recharger sous verrou les dépendances live pertinentes au verdict précédent → checklist de revalidation propre à ce verdict :
+
+- Précédent AUTO_LINKED/ENRICH_EXISTING_POINT : target existe, `status='active'`, `identity_status≠'CONFLICTED'`, membership attendu toujours actif, aucun membership incompatible apparu.
+- Précédent AUTO_CREATED : le Point fondé existe toujours, `status='active'`.
+- Précédent NEEDS_HUMAN : pending/candidates toujours à l'état pending — si un humain a résolu entre-temps (candidate acceptée, pending dismissed/resolved), ce n'est plus un NOOP, c'est une nouvelle tentative qui doit reconnaître l'état résolu sans rien recréer.
+
+Seulement si tout est compatible → NOOP, `replayed=true`. Sinon → revalidation complète de la transition, comme un fingerprint différent. Witness 9 (§5) matérialise le cas où l'omission de cette règle produirait un contournement silencieux de la décision P6-B.
+
+### 2.6 State / Event / Artifact
+
+`tracked_point_reconcile_state` — une ligne courante par `(site_id, unit_key)`, UPSERT. Colonnes : site_id, unit_key, input_fingerprint, verdict, write_pattern, target_point_id nullable, updated_at. Sert au rejeu rapide.
+
+`tracked_point_reconcile_event` — append-only, une ligne par tentative. Colonnes : id, site_id, unit_key, input_fingerprint, input_snapshot, verdict, write_pattern, target_point_id nullable, occurred_at, provenance (extraction_run_id ou source_document_id). Garde l'historique complet des transitions (y compris needs_human → auto_linked) qu'un simple UPSERT détruirait.
+
+`tracked_point_reconcile_artifact` — enfant de `reconcile_event`. Colonnes : id, reconcile_event_id FK, artifact_kind ('tracked_point'/'tracked_point_member'/'tracked_point_pending_trace'/'tracked_point_identity_candidate'/'canonical_business_object'), artifact_id. Référence uniquement ce que CETTE tentative a effectivement créé ou modifié — si `CREATE_CANDIDATES` retrouve candidate A et C déjà existantes et ne crée que B, l'artifact du nouvel event ne mentionne que B (witness 16, §5).
+
+`already_reconciled` n'est pas une colonne durable — c'est une propriété d'exécution. Elle apparaît dans le résultat retourné par l'appel (`{ verdict, write_pattern, replayed: boolean }`) et implicitement via `write_pattern='NOOP'` dans l'event.
+
+### 2.7 Unicité réelle sur `tracked_point`
+
+`UNIQUE` partiel `tracked_point_founding_identity_uidx` sur `(site_id, founding_kind, founding_reference) WHERE founding_reference IS NOT NULL`. Sémantique vérifiée dans le code déjà en production : `founding_kind='cbo'` → `founding_reference=canonical_business_object.id` (`scripts/_p6c-apply-rus.mjs`) ; `founding_kind='trackable_condition'` → `founding_reference=subject_thread_id` (migrations 392/393/395) ; `founding_kind='manual'` → `founding_reference=pending_trace_id` (migration 395 lignes 114/209). L'invariant vit sur le modèle, pas sur le ledger — un writer tiers qui ignorerait le ledger ne peut plus créer de doublon.
+
+Réserve non levée : vérifier `count(*) WHERE founding_reference IS NULL` sur `tracked_point` avant migration réelle ; l'index reste partiel tant que ce comptage n'est pas fait.
+
+### 2.8 Protocole de verrouillage — 8 niveaux, verrou de domaine d'identité en tête
+
+Le verrou advisory au grain `(site_id, unit_key)` ne protège pas deux unités **distinctes** capables de fonder la même identité métier. Exemple concret : l'unité `cbo:C` et l'unité `thread:T` (trackable_condition) portent sur le même thread T mais ont des `unit_key` différents — les deux peuvent démarrer, voir 0 Point existant, et fonder chacune un Point valide au regard de l'index unique du §2.7 (`(site,cbo,C) ≠ (site,trackable_condition,T)`), alors qu'il s'agit sémantiquement de la même identité (witness 12, §5).
+
+Verrou de domaine d'identité ajouté : `pg_advisory_xact_lock(hashtext('tracked_point_identity:' || site_id || ':thread:' || thread_id)::bigint)`, pris **avant** le verrou d'unité, pour toute unité rattachée à un thread (fondation CBO ou trackable_condition). Le second writer entrant voit alors le Point déjà créé par le premier et bascule sur `ENRICH_EXISTING_POINT`/`ATTACH_MEMBER` au lieu de fonder un second Point.
+
+Ordre total, à respecter par tous les writers P6 et par toute évolution future de 393/395/396 :
+
+1. advisory identity-domain lock(s), ordre lexical si plusieurs domaines concernés
+2. advisory unit lock
+3. CBO
+4. pending trace
+5. tracked_point(s), ordre UUID croissant si plusieurs cibles possibles
+6. tracked_point_member
+7. tracked_point_identity_candidate(s), ordre UUID croissant
+8. reconcile_state
+
+Hash advisory : réutilisation de la primitive déjà gelée `hashtext(...)::bigint` (`scripts/_p6d1b-apply-global.mjs`), pour homogénéité avec le batch existant plutôt qu'un second protocole de hash. Une collision ne fait que sérialiser inutilement deux unités sans rapport, jamais corrompre une donnée.
+
+### 2.9 Convergence, pas ordre imposé
+
+Le témoin 12 ne teste pas qu'un ordre particulier gagne. Propriété recherchée : convergence de l'état final quel que soit l'ordre réel d'exécution des writers concurrents — un seul Point, une seule provenance de fondation (celle du writer qui obtient le verrou de domaine en premier), le second writer enrichit sans jamais écraser `founding_kind`/`founding_reference`.
+
+## 3. Machine à états finale
+
+```
+FoundingUnit
+    │
+    ▼
+canonical input_snapshot
+    │
+    ├── hash → input_fingerprint
+    │
+    ▼
+classify pur (decideFoundingV2)
+    │
+    ▼
+proposed verdict
+    │
+    ▼
+BEGIN
+    │
+    ▼
+advisory identity-domain lock(s)
+    │
+    ▼
+advisory unit lock
+    │
+    ▼
+lock/reload CBO + pending + points + membership + candidates + reconcile_state
+    │
+    ▼
+revalidate against LIVE state (jamais NOOP sur seule égalité de fingerprint, §2.5)
+    │
+    ├── same input + state still valid → NOOP
+    ├── deterministic founder, aucune concurrence → CREATE_POINT_WITH_MEMBERSHIP[_AND_CBO_LINK]
+    ├── unique existing identity, CBO tardif → ENRICH_EXISTING_POINT
+    ├── unique existing identity, cas standard → ATTACH_MEMBER
+    └── ambiguïté / CONFLICTED / merged / résolution orpheline → CREATE_PENDING_TRACE / CREATE_CANDIDATES
+    │
+    ▼
+reconcile_state UPSERT + reconcile_event INSERT + reconcile_artifact × N
+    │
+    ▼
+COMMIT
+```
+
+## 4. Invariants DB (5) et gate de vérification préalable
+
+1. Une identité de fondation ne peut produire qu'un Point → `tracked_point_founding_identity_uidx`, §2.7.
+2. Un membership HARD actif incompatible ne peut pas être créé deux fois → étend `tracked_point_member_active_thread_uidx` (mig 388, aujourd'hui limité à `scope='thread'`) par un index équivalent pour `scope='proposal_set'` sur `(subject_thread_id, proposal_ids)` — trou identifié, non comblé sans GO.
+3. Une pending trace active équivalente ne peut exister qu'une fois → déjà couvert, `tracked_point_pending_trace_active_uidx` (mig 390).
+4. Une candidate pending équivalente ne peut exister qu'une fois → à créer, `UNIQUE` partiel `(candidate_point_id, subject_thread_id, scope) WHERE status='pending'` sur `tracked_point_identity_candidate`.
+5. Une unité possède au maximum un état courant, N événements → PK naturelle `(site_id, unit_key)` sur `reconcile_state`, aucune contrainte au-delà de la PK sur `reconcile_event`.
+
+Le verrou de domaine d'identité (§2.8) est un protocole d'exécution (advisory lock), pas une contrainte de schéma — il ne remplace aucun des 5 invariants ci-dessus, il empêche la course qui les précède.
+
+## 5. Matrice de tests — 16 témoins minimum
+
+Conventions reprises telles quelles de `tests/lib/db/tracked-point-pending-resolution.test.ts` : intégration réelle Supabase (`createAdminClient`), données taguées `${TAG}`, fixtures `beforeAll`/`afterAll` (org → client → site(s) → document → run), un helper par entité, nettoyage enfants-avant-parents.
+
+1. AUTO_CREATED / `CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK` — fondation CBO neuve, aucune concurrence.
+2. AUTO_CREATED / `CREATE_POINT_WITH_MEMBERSHIP` — fondation trackable_condition déterministe neuve (décision P6-A).
+3. AUTO_LINKED / `ATTACH_MEMBER` — Point actif non CONFLICTED déjà fondé sur ce thread.
+4. NEEDS_HUMAN / `CREATE_PENDING_TRACE` — aucune cible plausible.
+5. NEEDS_HUMAN / `CREATE_CANDIDATES` — plusieurs cibles plausibles, N candidates + 1 pending + N+1 artifacts.
+6. NEEDS_HUMAN forcé par target `merged` — jamais `ATTACH_MEMBER`/`ENRICH_EXISTING_POINT` (décision P6-B).
+7. NEEDS_HUMAN forcé par target `CONFLICTED`.
+8. NOOP par rejeu identique strict — même fingerprint, aucun changement live : `replayed=true`, 0 écriture métier.
+9. Rejeu à fingerprint identique MAIS état live incompatible — AUTO_LINKED vers un Point à T0, Point passe à `merged` à T1 (indépendamment, ex. `merge_tracked_points`), rejeu à T2 même fingerprint. Assertion clé : PAS NOOP, retombe sur NEEDS_HUMAN (§2.5).
+10. CBO tardif sur Point trackable_condition déjà fondé — `ENRICH_EXISTING_POINT`, `C.tracked_point_id` mis à jour, `founding_kind`/`founding_reference`/`identity_status` inchangés (décision P6-C).
+11. Concurrence same-unit — deux appels simultanés sur le même `(site_id, unit_key)`, même fingerprint : un seul écrit, l'autre `replayed=true`, jamais de unique_violation exposée.
+12. Concurrence cross-unit / même domaine d'identité — Writer A (`unit_key=cbo:C`, thread T) et Writer B (`unit_key=thread:T`, trackable_condition) en parallèle. Assertions : aucun deadlock ; exactement un `tracked_point` ; une seule provenance de fondation (celle du writer arrivé premier au verrou de domaine, indifféremment laquelle) ; le second n'écrase jamais `founding_kind`/`founding_reference` ; `CBO.tracked_point_id` pointe sur ce même Point ; membership HARD unique ; deux `reconcile_event` cohérents avec ce que chacun a réellement fait ; aucune violation de contrainte non rattrapée.
+13. Course Live Writer / RPC humaine — candidate NEEDS_HUMAN créée par le writer, acceptée par un humain via `accept_trace_identity_candidate` (mig 393) pendant qu'une nouvelle extraction relance une réconciliation sur la même unité. Assertion : le rejeu reconnaît le membership HARD posé par la RPC humaine, ne recrée rien en doublon.
+14. Rollback atomique après fondation partielle simulée — échec forcé après INSERT `tracked_point` mais avant membership/CBO. Après rollback : 0 Point, 0 member, 0 modification CBO, 0 state/event/artifact.
+15. Dix appels concurrents sur la même unité (pas seulement deux) — un seul effet métier, neuf rejeux/convergences propres.
+16. Candidates partiellement matérialisées — A et C existent, B manque, nouvelle tentative `CREATE_CANDIDATES` : seule B créée, `reconcile_artifact` du nouvel event ne mentionne que B.
+
+## 6. Sources — mapping vers `source_id`
+
+`site_reports` porte à la fois `source_document_id` (→ `documents.id`) et `extraction_run_id` (migration 297, confirmé colonnes co-remplies). Précédent de convention : `canonical_subject_occurrence.source_kind`/`source_ref_id` (migration 398) — pour `field_visit`, `source_ref_id = site_reports.id` ; pour `historical_pdf`, `source_proposal_id=NULL` et idempotence par `(canonical_subject_id, source_ref_id) WHERE source_kind='historical_pdf'` (migration 317). Recommandation reprise pour la provenance `reconcile_event` : utiliser `source_document_id` plutôt que `extraction_run_id` pour `historical_pdf`, aligné sur le précédent 398/317.
+
+## 7. Extraction vers `lib/knowledge/`
+
+Cibles identifiées dans `scripts/_p6d1a-preflight-global.ts` (lignes 294-493) : `type FoundingUnit`, `buildFoundingUnits(sd: FullSiteData)`, `type PlannedPoint`/`PlannedMember`/`PlannedCandidate`/`PlannedPendingTrace`, `buildWritePlan(sd, units)`. Ce sont les primitives que le Live Writer doit consommer telles quelles (classification pure), pas réimplémenter. Extraction du script vers `lib/knowledge/` = prérequis d'implémentation, pas un item de conception restant.
+
+## 8. Implementation prerequisites / GO gates
+
+- Confirmer `count(*) FROM tracked_point WHERE founding_reference IS NULL` avant d'écrire la migration de l'index unique (§2.7).
+- Extraire `buildFoundingUnits`/`decideFoundingV2`/types associés de `scripts/_p6d1a-preflight-global.ts` vers `lib/knowledge/` (§7) — dépendance du Live Writer, pas du batch seul.
+- Écrire et faire relire la migration DDL complète : colonnes/index §2.7, table `reconcile_state`/`reconcile_event`/`reconcile_artifact` §2.6, index manquant `tracked_point_member` scope='proposal_set' (§4 invariant 2), index manquant `tracked_point_identity_candidate` (§4 invariant 4).
+- Décision distincte, hors P6 v1, à statuer séparément avant de l'implémenter : promotion `identity_status` PROVISIONAL → CONFIRMED sur CBO tardif (§2.4).
+- Mandat P6 à faire figer explicitement sur la décision P6-A (§2.2) avant code, même si elle est déjà tranchée dans ce document.
+- Écrire les 16 témoins de la matrice de tests (§5) avant d'ouvrir le Live Writer à un flux d'extraction réel.
+
+Aucun de ces prérequis n'est levé par ce document. Le document fige la conception ; il n'autorise ni migration, ni code, ni déploiement.
