@@ -53,6 +53,22 @@ describe('buildInputSnapshot', () => {
     const provisional = unit({ outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' } })
     expect(buildInputSnapshot(provisional).cboIds).toEqual([])
   })
+
+  it('proposalIds = null pour scope=thread, même si props est renseigné', () => {
+    const u = unit({
+      scope: 'thread',
+      props: [{ id: 'prop-a', proposal_family: 'observation', document_status: null, label: 'A', subject_thread_id: 't1', document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }],
+      outcomeV2: { kind: 'NO_POINT_EMPTY_THREAD' },
+    })
+    expect(buildInputSnapshot(u).proposalIds).toBeNull()
+  })
+
+  it('proposalIds = props triés et dédupliqués pour scope=proposal_set', () => {
+    const propA = { id: 'prop-b', proposal_family: 'observation', document_status: null, label: 'B', subject_thread_id: 't1', document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const propB = { id: 'prop-a', proposal_family: 'observation', document_status: null, label: 'A', subject_thread_id: 't1', document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const u = unit({ scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA, propB], outcomeV2: { kind: 'CONFIRMED', cboId: 'cbo-1' } })
+    expect(buildInputSnapshot(u).proposalIds).toEqual(['prop-a', 'prop-b'])
+  })
 })
 
 describe('computeInputFingerprint / buildFingerprint', () => {
@@ -84,5 +100,21 @@ describe('computeInputFingerprint / buildFingerprint', () => {
   it('produit un hex sha256 (64 caractères)', () => {
     const { fingerprint } = buildFingerprint(unit({ outcomeV2: { kind: 'NO_POINT_EMPTY_THREAD' } }))
     expect(fingerprint).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('P6 régression proposal_set — [A] puis [A,B] (même famille/CBO/outcome/trackability) change le fingerprint', () => {
+    const propA = { id: 'prop-a', proposal_family: 'observation', document_status: null, label: 'A', subject_thread_id: 't1', document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const propB = { id: 'prop-b', proposal_family: 'observation', document_status: null, label: 'B', subject_thread_id: 't1', document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const unit1 = unit({ threadId: 't1', scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA], families: ['observation'], outcomeV2: { kind: 'CONFIRMED', cboId: 'cbo-1' } })
+    const unit2 = unit({ threadId: 't1', scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA, propB], families: ['observation'], outcomeV2: { kind: 'CONFIRMED', cboId: 'cbo-1' } })
+    expect(buildFingerprint(unit1).fingerprint).not.toBe(buildFingerprint(unit2).fingerprint)
+  })
+
+  it('P6 régression proposal_set — le fingerprint de [A,B] est indépendant de l\'ordre d\'extraction de A/B', () => {
+    const propA = { id: 'prop-a', proposal_family: 'observation', document_status: null, label: 'A', subject_thread_id: 't1', document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const propB = { id: 'prop-b', proposal_family: 'observation', document_status: null, label: 'B', subject_thread_id: 't1', document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const unitAB = unit({ threadId: 't1', scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA, propB], outcomeV2: { kind: 'CONFIRMED', cboId: 'cbo-1' } })
+    const unitBA = unit({ threadId: 't1', scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propB, propA], outcomeV2: { kind: 'CONFIRMED', cboId: 'cbo-1' } })
+    expect(buildFingerprint(unitAB).fingerprint).toBe(buildFingerprint(unitBA).fingerprint)
   })
 })

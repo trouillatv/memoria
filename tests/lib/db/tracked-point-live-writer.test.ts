@@ -1391,3 +1391,99 @@ describe('Témoin 25 — Round 6 (BLOCKER contamination des kinds de pending) : 
     expect(pendingCountOnThread).toBe(1)
   })
 })
+
+// P6 — correctif évolution proposal_set (arbitrage Vincent/ChatGPT, migration 403 écrite
+// non appliquée ce lot). [A] puis [A,B] (même famille/CBO/outcome/trackability) partageaient
+// avant correctif le même input_fingerprint → le court-circuit NOOP de fn_reconcile_tracked_point_unit
+// (§4, migration 401) rejouait la 1re réconciliation sans jamais faire entrer B dans
+// tracked_point_member.proposal_ids. Le correctif retenu fait entrer la composition triée des
+// proposalIds dans buildInputSnapshot (lib/knowledge/tracked-point-fingerprint.ts) : [A] et [A,B]
+// ont désormais des fingerprints distincts. Ce témoin tourne CE LOT contre la migration 401
+// TELLE QU'APPLIQUÉE (inchangée) : la condition `v_prev_state.input_fingerprint = p_input_fingerprint`
+// (401, ligne 221) empêche déjà le court-circuit NOOP de s'activer dès que la composition change —
+// le correctif TS suffit à corriger le scénario témoigné, sans exiger la migration 403 (qui reste un
+// filet de sécurité SQL en profondeur, pour le cas résiduel où un fingerprint coïnciderait malgré
+// tout, jamais appliquée ce lot). Sémantique gelée : append-only, [A] n'est JAMAIS retirée/supersede
+// quand [A,B] arrive — un strict subset ne prouve pas qu'il s'agit de la version précédente du même
+// proposal_set (plusieurs subsets d'un même thread peuvent représenter des conditions distinctes).
+describe('Témoin 26 — P6 correctif évolution proposal_set : [A]→[A,B]→[A,B,C], append-only, jamais de retrait', () => {
+  it('chaque composition nouvelle produit une écriture réelle, la composition précédente reste active, la preuve se restitue sans doublon', async () => {
+    const db = createAdminClient()
+    const target = await makePoint()
+    const cboId = await makeCbo({ tracked_point_id: target })
+    const threadId = randomUUID()
+
+    const propA = { id: randomUUID(), proposal_family: 'observation', document_status: null, label: 'A', subject_thread_id: threadId, document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const propB = { id: randomUUID(), proposal_family: 'observation', document_status: null, label: 'B', subject_thread_id: threadId, document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const propC = { id: randomUUID(), proposal_family: 'observation', document_status: null, label: 'C', subject_thread_id: threadId, document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+
+    const unitA = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA], outcomeV2: { kind: 'CONFIRMED', cboId } })
+    const callA = await reconcileTrackedPointUnit({ siteId, unit: unitA, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(callA.ok).toBe(true)
+    if (!callA.ok) throw new Error('attendu un succès (A)')
+    expect(callA.writePattern).toBe('ATTACH_MEMBER')
+    expect(callA.targetPointId).toBe(target)
+
+    // [A]→[A,B] : ce n'est PAS un NOOP, B devient preuve (nouvelle membership active,
+    // composition [A,B] distincte de [A]).
+    const unitAB = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA, propB], outcomeV2: { kind: 'CONFIRMED', cboId } })
+    const callAB = await reconcileTrackedPointUnit({ siteId, unit: unitAB, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(callAB.ok).toBe(true)
+    if (!callAB.ok) throw new Error('attendu un succès (A,B)')
+    expect(callAB.writePattern).not.toBe('NOOP')
+    expect(callAB.replayed).toBe(false)
+    expect(callAB.targetPointId).toBe(target)
+
+    // Régression — append-only : la membership [A] reste active, jamais retirée/supersede.
+    const { data: memberAAfterAB } = await db
+      .from('tracked_point_member')
+      .select('id, status')
+      .eq('tracked_point_id', target)
+      .eq('subject_thread_id', threadId)
+      .eq('scope', 'proposal_set')
+      .contains('proposal_ids', [propA.id])
+      .not('proposal_ids', 'cs', `{${propB.id}}`)
+    expect((memberAAfterAB ?? []).length).toBe(1)
+    expect((memberAAfterAB as Array<{ status: string }>)[0].status).toBe('active')
+
+    expect(await countMembersOnThread(threadId)).toBe(2)
+
+    // Rejeu immédiat [A,B]→[A,B] (unité strictement identique) : NOOP, aucune écriture business
+    // supplémentaire.
+    const replayAB = await reconcileTrackedPointUnit({ siteId, unit: unitAB, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(replayAB.ok).toBe(true)
+    if (!replayAB.ok) throw new Error('attendu un succès (rejeu A,B)')
+    expect(replayAB.writePattern).toBe('NOOP')
+    expect(replayAB.replayed).toBe(true)
+    expect(replayAB.targetPointId).toBe(target)
+    expect(await countMembersOnThread(threadId)).toBe(2)
+
+    // [A,B]→[A,B,C] : C devient preuve à son tour.
+    const unitABC = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA, propB, propC], outcomeV2: { kind: 'CONFIRMED', cboId } })
+    const callABC = await reconcileTrackedPointUnit({ siteId, unit: unitABC, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(callABC.ok).toBe(true)
+    if (!callABC.ok) throw new Error('attendu un succès (A,B,C)')
+    expect(callABC.writePattern).not.toBe('NOOP')
+    expect(callABC.replayed).toBe(false)
+    expect(callABC.targetPointId).toBe(target)
+    expect(await countMembersOnThread(threadId)).toBe(3)
+
+    // Restitution — même mécanisme de déduplication que le read-model (Set sur l'union des
+    // proposal_ids de toutes les memberships actives scope=proposal_set du thread, invariant
+    // GO 6B.1, tracked-point-read-model.ts) : A, B, C chacun exactement une fois, jamais dupliqués
+    // malgré les 3 memberships actives coexistantes ([A], [A,B], [A,B,C]).
+    const { data: allActiveMembers } = await db
+      .from('tracked_point_member')
+      .select('proposal_ids')
+      .eq('tracked_point_id', target)
+      .eq('subject_thread_id', threadId)
+      .eq('scope', 'proposal_set')
+      .eq('status', 'active')
+    const restitutedIds = [...new Set((allActiveMembers ?? []).flatMap((r) => (r as { proposal_ids: string[] }).proposal_ids ?? []))]
+    expect(restitutedIds.sort()).toEqual([propA.id, propB.id, propC.id].sort())
+
+    // Régression finale — les 3 compositions ([A], [A,B], [A,B,C]) coexistent bien comme 3
+    // memberships actives distinctes : aucune n'a été retirée par l'arrivée de la suivante.
+    expect((allActiveMembers ?? []).length).toBe(3)
+  })
+})

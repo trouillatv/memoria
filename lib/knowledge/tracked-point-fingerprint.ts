@@ -13,6 +13,16 @@
 // pour rester correct si cette contrainte change en amont.
 //
 // Frozen — voir docs/tracked-points/p6-live-writer-design.md §2.5, §2.6.
+//
+// P6 — correctif évolution proposal_set (arbitrage Vincent/ChatGPT) : la composition de la
+// preuve (proposalIds) fait désormais partie du fingerprint pour scope='proposal_set'. Sans
+// cela, [A] et [A,B] de même famille/CBO/outcome/trackability produisaient un fingerprint
+// identique — le fast-path NOOP de fn_reconcile_tracked_point_unit (migration 401) rejouait
+// alors la première réconciliation sans jamais faire entrer B dans tracked_point_member.proposal_ids,
+// seule source de preuve consommée par le read-model pour ce scope (invariant GO 6B.1,
+// tracked-point-read-model.ts). Triée comme cboIds/families pour rester stable indépendamment
+// de l'ordre d'extraction des propositions. null pour scope='thread' (mêmes conventions que
+// memberOf, tracked-point-write-plan.ts).
 
 import { createHash } from 'node:crypto'
 import type { FoundingUnit } from './tracked-point-founding'
@@ -21,6 +31,7 @@ export type InputSnapshot = {
   threadId: string
   scope: 'thread' | 'proposal_set'
   proposalSetOf: string | null
+  proposalIds: string[] | null
   cboIds: string[]
   families: string[]
   outcomeV2: unknown
@@ -37,6 +48,7 @@ export function buildInputSnapshot(u: FoundingUnit): InputSnapshot {
     threadId: u.threadId,
     scope: u.scope,
     proposalSetOf: u.proposalSetOf ?? null,
+    proposalIds: u.scope === 'proposal_set' ? [...new Set(u.props.map((p) => p.id))].sort() : null,
     cboIds: [...cboIdsOf(u)].sort(),
     families: [...u.families].sort(),
     outcomeV2: u.outcomeV2,

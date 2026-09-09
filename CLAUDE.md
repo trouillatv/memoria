@@ -275,6 +275,18 @@ Vérifications :
 - Ne masque jamais un échec.
 - Si une commande ne peut pas être exécutée, indique-la et explique l’impact.
 
+### Audit ciblé sensible sans modification
+
+Une question P6 / SQL / identité peut exiger un Effort Élevé (lecture fine, arbitrage précis, témoin ciblé) sans que cela déclenche pour autant tout le cérémonial du Niveau 3.
+
+Le niveau de vérification se calibre sur ce qui est réellement modifié, pas sur la difficulté d’analyse ni la sensibilité du sujet.
+
+Si l’intervention ne produit ni code livré, ni migration appliquée, ni donnée métier modifiée :
+- limiter le travail aux lectures strictement nécessaires à la question posée et au témoin ciblé demandé ;
+- ne pas lancer par défaut : build, CI, reviewer, `verify:pushable`, audit transversal.
+
+Ces vérifications restent dues dès qu’un code, une migration ou une écriture réelle est proposée à l’issue de l’audit.
+
 ---
 
 ## 8. Stratégie Vitest
