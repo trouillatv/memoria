@@ -48,4 +48,23 @@ describe('historical import post-processing orchestration', () => {
     // Best-effort : n'écrit jamais de signal lifecycle.
     expect(source).not.toMatch(/object_state_occurrence_signal/)
   })
+
+  it('câble le P6 Live Writer historical_pdf en best-effort, après attach et avant le pont documentaire', () => {
+    const source = read('lib/subjects/historical-import-post-processing.ts')
+    expect(source).toMatch(/runTrackedPointLiveWriterForHistoricalRun\(\{ runId, siteId \}\)/)
+
+    const attach = source.indexOf('attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId')
+    const liveWriter = source.indexOf('runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })')
+    const resolve = source.indexOf('resolveSiteDocumentCompletionsByProposal(siteId)')
+    expect(attach).toBeGreaterThan(-1)
+    expect(liveWriter).toBeGreaterThan(attach)
+    expect(resolve).toBeGreaterThan(liveWriter)
+
+    // Best-effort : l'appel est enveloppé dans un try/catch dédié, jamais laissé remonter.
+    const tryStart = source.lastIndexOf('try {', liveWriter)
+    const catchStart = source.indexOf('} catch (err) {', liveWriter)
+    expect(tryStart).toBeGreaterThan(attach)
+    expect(catchStart).toBeGreaterThan(liveWriter)
+    expect(source.slice(catchStart, catchStart + 400)).toMatch(/console\.error/)
+  })
 })

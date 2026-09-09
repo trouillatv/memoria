@@ -11,6 +11,7 @@ import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-histo
 import { attachHistoricalReportEntitiesToCanonicalBusinessObjects } from '@/lib/db/canonical-business-object-attach'
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
 import { resolveSiteDocumentCompletionsByProposal } from '@/lib/knowledge/document-completion-resolver'
+import { runTrackedPointLiveWriterForHistoricalRun } from '@/lib/db/tracked-point-live-writer-historical-adapter'
 
 export type HistoricalImportPostProcessingOutcome =
   | 'completed'
@@ -202,6 +203,20 @@ export async function runHistoricalImportPostProcessing(
     touchedCanonicalSubjectIds,
   })
   await attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId })
+
+  // P6 Live Writer — câblage inerte, premier producteur historical_pdf (mandat Vincent).
+  // Allowlist par site OFF par défaut (TRACKED_POINT_LIVE_WRITER_SITE_IDS,
+  // lib/db/tracked-point-live-writer-flag.ts) : aucun site réel n'est activé dans ce lot.
+  // Best-effort, même doctrine que le pont documentaire ci-dessous : un échec ici ne fait
+  // jamais échouer l'import historique.
+  try {
+    await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
+  } catch (err) {
+    console.error(
+      '[historical-import-post-processing] tracked point live writer failed:',
+      err instanceof Error ? err.message : String(err),
+    )
+  }
 
   // Pont documentaire de complétion (P1-4B-WIRING) : UNITÉ DE PREUVE = document_extraction_proposal
   // (fait atomique), pas l'occurrence agrégée. Preuve → candidats CBO action du sujet → résolution
