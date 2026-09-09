@@ -43,6 +43,21 @@ async function makeCandidate(overrides: Record<string, unknown>) {
   return (data as { id: string }).id
 }
 
+// Round 7 — matérialise la Branche A dégradée de fn_reconcile_tracked_point_unit (migration
+// 401) sans repasser par le RPC : au plus une ligne pending par (thread, kind) — cf. l'index
+// partiel unique de la migration 390 — donc ce helper ne doit jamais être appelé deux fois pour
+// le même (subjectThreadId, kind) dans un même test.
+async function makePendingTrace(overrides: Record<string, unknown>) {
+  const db = createAdminClient()
+  const { data, error } = await db
+    .from('tracked_point_pending_trace')
+    .insert({ site_id: siteId, source_thread_id: randomUUID(), kind: 'IDENTITY_UNRESOLVED', reason: 'test round 7', ...overrides })
+    .select('id')
+    .single()
+  if (error) throw error
+  return (data as { id: string }).id
+}
+
 async function makeDocumentAndRun() {
   const db = createAdminClient()
   const { data: doc, error: docErr } = await db
@@ -111,6 +126,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const db = createAdminClient()
+  await db.from('tracked_point_pending_trace').delete().in('site_id', [siteId, otherSiteId])
   await db.from('tracked_point_identity_candidate').delete().eq('site_id', siteId)
   const { data: pts } = await db.from('tracked_point').select('id').in('site_id', [siteId, otherSiteId])
   const ptIds = ((pts ?? []) as Array<{ id: string }>).map((p) => p.id)
@@ -253,6 +269,124 @@ describe('acceptTraceIdentityCandidate', () => {
       .eq('tracked_point_id', target)
       .eq('subject_thread_id', threadX)
     expect(membersAfterReplay).toHaveLength(1)
+  })
+})
+
+// Témoin 26 — Round 7 (migration 402) : accept_trace_identity_candidate ferme désormais, dans
+// la même transaction, l'éventuelle tracked_point_pending_trace(kind='IDENTITY_UNRESOLVED',
+// status='pending') du même subject_thread_id. PRÉPARÉ, NON EXÉCUTÉ ce lot (aucun accès DB
+// cette session) — même convention que les Témoins 24/25.
+describe('Témoin 26 — Round 7 : acceptation ferme la pending trace IDENTITY_UNRESOLVED du même thread (PRÉPARÉ, NON EXÉCUTÉ ce lot)', () => {
+  it('succès : la pending trace IDENTITY_UNRESOLVED du thread passe à resolved avec le bon target_point_id', async () => {
+    const db = createAdminClient()
+    const threadX = randomUUID()
+    const { documentId, extractionRunId } = await makeDocumentAndRun()
+    await makeProposal(threadX, 'observation', documentId, extractionRunId)
+    const target = await makePoint()
+    const cand = await makeCandidate({ candidate_point_id: target, subject_thread_id: threadX, scope: 'thread' })
+    const pendingId = await makePendingTrace({ source_thread_id: threadX, kind: 'IDENTITY_UNRESOLVED' })
+
+    const result = await acceptTraceIdentityCandidate({ siteId, candidateId: cand })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+    expect(result.identityPendingTraceResolved).toBe(true)
+    expect(result.identityPendingTraceId).toBe(pendingId)
+
+    const { data: pendingRow } = await db
+      .from('tracked_point_pending_trace')
+      .select('status, target_point_id, resolved_at')
+      .eq('id', pendingId)
+      .single()
+    const row = pendingRow as { status: string; target_point_id: string; resolved_at: string | null }
+    expect(row.status).toBe('resolved')
+    expect(row.target_point_id).toBe(target)
+    expect(row.resolved_at).toBeTruthy()
+  })
+
+  it('rejeu (déjà accepted) : reste resolved sans 2e écriture ni erreur', async () => {
+    const db = createAdminClient()
+    const threadX = randomUUID()
+    const { documentId, extractionRunId } = await makeDocumentAndRun()
+    await makeProposal(threadX, 'observation', documentId, extractionRunId)
+    const target = await makePoint()
+    const cand = await makeCandidate({ candidate_point_id: target, subject_thread_id: threadX, scope: 'thread' })
+    const pendingId = await makePendingTrace({ source_thread_id: threadX, kind: 'IDENTITY_UNRESOLVED' })
+
+    const first = await acceptTraceIdentityCandidate({ siteId, candidateId: cand })
+    expect(first.ok).toBe(true)
+    if (!first.ok) throw new Error('attendu un succès')
+    expect(first.identityPendingTraceResolved).toBe(true)
+
+    const { data: afterFirst } = await db
+      .from('tracked_point_pending_trace')
+      .select('resolved_at')
+      .eq('id', pendingId)
+      .single()
+    const resolvedAtAfterFirst = (afterFirst as { resolved_at: string }).resolved_at
+
+    // Rejeu : candidate déjà 'accepted' → branche idempotente (1bis) de la RPC. La pending
+    // trace est déjà 'resolved' — l'UPDATE gardé WHERE status='pending' affecte 0 ligne,
+    // identityPendingTraceResolved=false sur CE rejeu précis (rien de nouveau à fermer),
+    // mais l'état déjà posé par le premier appel reste intact (pas de régression).
+    const replay = await acceptTraceIdentityCandidate({ siteId, candidateId: cand })
+    expect(replay.ok).toBe(true)
+    if (!replay.ok) throw new Error('attendu un succès idempotent')
+    expect(replay.alreadyAssociated).toBe(true)
+
+    const { data: afterReplay } = await db
+      .from('tracked_point_pending_trace')
+      .select('status, resolved_at, target_point_id')
+      .eq('id', pendingId)
+      .single()
+    const rowAfterReplay = afterReplay as { status: string; resolved_at: string; target_point_id: string }
+    expect(rowAfterReplay.status).toBe('resolved')
+    expect(rowAfterReplay.resolved_at).toBe(resolvedAtAfterFirst)
+    expect(rowAfterReplay.target_point_id).toBe(target)
+  })
+
+  it('non-contamination cross-kind : une pending trace RESOLUTION_WITHOUT_KNOWN_PROBLEM du même thread n\'est jamais touchée', async () => {
+    const db = createAdminClient()
+    const threadX = randomUUID()
+    const { documentId, extractionRunId } = await makeDocumentAndRun()
+    await makeProposal(threadX, 'observation', documentId, extractionRunId)
+    const target = await makePoint()
+    const cand = await makeCandidate({ candidate_point_id: target, subject_thread_id: threadX, scope: 'thread' })
+    const otherKindPendingId = await makePendingTrace({
+      source_thread_id: threadX,
+      kind: 'RESOLUTION_WITHOUT_KNOWN_PROBLEM',
+      source_proposal_id: null,
+    })
+
+    const result = await acceptTraceIdentityCandidate({ siteId, candidateId: cand })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+    // Aucune pending trace IDENTITY_UNRESOLVED n'existait sur ce thread — 0 ligne fermée.
+    expect(result.identityPendingTraceResolved).toBe(false)
+    expect(result.identityPendingTraceId).toBeNull()
+
+    const { data: otherKindRow } = await db
+      .from('tracked_point_pending_trace')
+      .select('status, target_point_id, resolved_at')
+      .eq('id', otherKindPendingId)
+      .single()
+    const row = otherKindRow as { status: string; target_point_id: string | null; resolved_at: string | null }
+    expect(row.status).toBe('pending')
+    expect(row.target_point_id).toBeNull()
+    expect(row.resolved_at).toBeNull()
+  })
+
+  it('aucune pending trace sur le thread : acceptation réussit normalement, identityPendingTraceResolved=false', async () => {
+    const threadX = randomUUID()
+    const { documentId, extractionRunId } = await makeDocumentAndRun()
+    await makeProposal(threadX, 'observation', documentId, extractionRunId)
+    const target = await makePoint()
+    const cand = await makeCandidate({ candidate_point_id: target, subject_thread_id: threadX, scope: 'thread' })
+
+    const result = await acceptTraceIdentityCandidate({ siteId, candidateId: cand })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès')
+    expect(result.identityPendingTraceResolved).toBe(false)
+    expect(result.identityPendingTraceId).toBeNull()
   })
 })
 
