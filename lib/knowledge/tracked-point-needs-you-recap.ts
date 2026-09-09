@@ -43,7 +43,12 @@ function recapLineText(category: MemoriaNeedsYouCategory, count: number): string
         ? '1 nouvelle situation reconnue comme suivi distinct'
         : `${count} nouvelles situations reconnues comme suivis distincts`
     case 'assign_resolution':
-      return count === 1 ? '1 résolution rattachée à un suivi existant' : `${count} résolutions rattachées à des suivis existants`
+      // Correctif ChatGPT (revue 6E.4D) : "résolution" seule affirme un état métier non prouvé —
+      // l'action rattache une PREUVE de résolution, elle ne démontre pas que la situation est
+      // résolue (même distinction que assignResolutionImpact dans tracked-point-needs-you-impact.ts).
+      return count === 1
+        ? '1 preuve de résolution rattachée à un suivi existant'
+        : `${count} preuves de résolution rattachées à des suivis existants`
     case 'clarify_evidence':
       return count === 1 ? '1 preuve clarifiée' : `${count} preuves clarifiées`
   }

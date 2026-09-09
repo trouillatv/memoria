@@ -52,7 +52,7 @@ describe('buildMemoriaNeedsYouRecap — agrégation multi-actions', () => {
 
   it('une seule action → libellé singulier', () => {
     const recap = buildMemoriaNeedsYouRecap([{ category: 'assign_resolution', label: 'VGP nacelle élévatrice' }])
-    expect(recap.lines[0].text).toBe('1 résolution rattachée à un suivi existant')
+    expect(recap.lines[0].text).toBe('1 preuve de résolution rattachée à un suivi existant')
   })
 
   it('libellé réel conservé et dédupliqué, borné (MAX_LABELS=5)', () => {
