@@ -281,6 +281,62 @@ describe('buildTraceIdentityQueue', () => {
     expect(queue.entries.some((e) => e.targets.some((t) => t.classification.category === 'STALE_NOW_POINT_TO_POINT'))).toBe(false)
   })
 
+  it('dernier candidat rejeté mais pending trace IDENTITY_UNRESOLVED encore ouverte → entrée FALLBACK visible (mandat Vincent)', () => {
+    // Aucun candidat transmis pour T13 (tous rejetés, exclus en amont par le chargeur) : sans le
+    // second passage FALLBACK, cette source disparaîtrait totalement de la file alors que sa
+    // tracked_point_pending_trace reste 'pending' en base.
+    const candidates: TraceScopeCandidateInput[] = []
+    const proposalsByThreadId = new Map([['T13', [proposal('p13', { label: 'Sujet T13' })]]])
+    const pendingTraceIdByThreadId = new Map([['T13', 'trace-13']])
+
+    const queue = buildTraceIdentityQueue(
+      'site-1',
+      candidates,
+      [],
+      [],
+      new Map(),
+      new Map(),
+      proposalsByThreadId,
+      new Map(),
+      pendingTraceIdByThreadId,
+    )
+
+    expect(queue.entries).toHaveLength(1)
+    const entry = queue.entries[0]
+    expect(entry.sourceThreadId).toBe('T13')
+    expect(entry.targetCount).toBe(0)
+    expect(entry.targets).toEqual([])
+    expect(entry.evidenceScopeStatus).toBe('BLOCKED')
+    expect(entry.pendingTraceId).toBe('trace-13')
+    expect(entry.needsFreeIdentityResolution).toBe(true)
+    expect(entry.sourceLabel).toBe('Sujet T13')
+  })
+
+  it('source avec pending trace ET candidats encore actionnables → une seule entrée normale, pas de doublon FALLBACK', () => {
+    const points = [point('A')]
+    const details = new Map([['A', pointDetail('A')]])
+    const candidates = [candidate('c1', 'A', 'T14')]
+    const famillesByThreadId = new Map([['T14', ['observation']]])
+    const pendingTraceIdByThreadId = new Map([['T14', 'trace-14']])
+
+    const queue = buildTraceIdentityQueue(
+      'site-1',
+      candidates,
+      points,
+      [],
+      famillesByThreadId,
+      details,
+      new Map(),
+      new Map(),
+      pendingTraceIdByThreadId,
+    )
+
+    expect(queue.entries).toHaveLength(1)
+    expect(queue.entries[0].targetCount).toBe(1)
+    expect(queue.entries[0].needsFreeIdentityResolution).toBe(false)
+    expect(queue.entries[0].pendingTraceId).toBe('trace-14')
+  })
+
   it('file vide : totalSources=0, totalTargets=0', () => {
     const queue = buildTraceIdentityQueue('site-1', [], [], [], new Map(), new Map(), new Map(), new Map())
     expect(queue.totalSources).toBe(0)

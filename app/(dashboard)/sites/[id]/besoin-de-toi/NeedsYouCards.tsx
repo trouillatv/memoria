@@ -264,6 +264,9 @@ function duplicatePointsRationale(entry: Extract<MemoriaNeedsYouQuestion, { cate
 }
 
 function attachInformationRationale(entry: Extract<MemoriaNeedsYouQuestion, { category: 'attach_information' }>['entry']): string {
+  if (entry.needsFreeIdentityResolution) {
+    return "Aucune des propositions de MemorIA pour cette information n'a été retenue — à toi de dire à quel suivi elle appartient réellement, ou s'il s'agit d'une situation encore jamais suivie."
+  }
   if (entry.targetCount <= 1) {
     return "Cette information a été extraite d'un PV sans qu'aucun suivi ne soit mentionné explicitement dedans — MemorIA propose le suivi qui lui semble le plus probable, mais te laisse confirmer avant de l'associer."
   }
@@ -368,7 +371,16 @@ export function QuestionCard({ question, siteId, pending, error, sitePoints, pri
           case 'duplicate_points':
             return <DuplicatePointsCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
           case 'attach_information':
-            return <AttachInformationCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
+            return (
+              <AttachInformationCard
+                entry={question.entry}
+                siteId={siteId}
+                pending={pending}
+                error={error}
+                sitePoints={sitePoints}
+                runAction={runAction}
+              />
+            )
           case 'confirm_trackability':
             return <ConfirmTrackabilityCard entry={question.entry} siteId={siteId} pending={pending} error={error} runAction={runAction} />
           case 'assign_resolution':
@@ -483,12 +495,14 @@ function AttachInformationCard({
   siteId,
   pending,
   error,
+  sitePoints,
   runAction,
 }: {
   entry: Extract<MemoriaNeedsYouQuestion, { category: 'attach_information' }>['entry']
   siteId: string
   pending: boolean
   error?: string
+  sitePoints: SitePointOption[]
   runAction: QuestionCardProps['runAction']
 }) {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
@@ -496,6 +510,24 @@ function AttachInformationCard({
 
   const dispatchAccept = (candidateId: string, recapLabel: string) =>
     runAction(() => import('../tracked-point-trace-actions').then((m) => m.acceptTraceIdentityCandidateAction({ siteId, candidateId })), recapLabel)
+
+  // Fermeture humaine de IDENTITY_UNRESOLVED après rejet de tous les candidats (mandat Vincent,
+  // migration 404) : cette carte n'a plus aucune cible proposée par MemorIA (targets=[]), mais sa
+  // tracked_point_pending_trace reste 'pending' — deux gestures libres remplacent le choix parmi
+  // des candidats, jamais un nouveau matching automatique.
+  if (entry.needsFreeIdentityResolution && entry.pendingTraceId) {
+    return (
+      <IdentityFreeResolutionCard
+        entry={entry}
+        pendingTraceId={entry.pendingTraceId}
+        siteId={siteId}
+        pending={pending}
+        error={error}
+        sitePoints={sitePoints}
+        runAction={runAction}
+      />
+    )
+  }
 
   return (
     <CardShell category="attach_information" title="Cette information concerne-t-elle ce suivi ?">
@@ -594,6 +626,140 @@ function AttachInformationCard({
             </button>
           </div>
         </>
+      )}
+    </CardShell>
+  )
+}
+
+// ── 2bis. Fermeture d'identité libre — "Aucune proposition ne convient" ───────────────────────
+//
+// Mandat Vincent (migration 404) : deux gestures symétriques, jamais un seul — "aucun des Points
+// proposés n'est le bon, j'en choisis un autre existant" (associateIdentityTraceToPointAction) OU
+// "c'est une situation réellement nouvelle, je crée un Point" (createPointFromIdentityTraceAction).
+// Le motif de recherche par libellé sur sitePoints reprend tel quel le pattern déjà validé par
+// AssignResolutionCard (searching/query/searchResults) — aucune nouvelle mécanique de recherche.
+function IdentityFreeResolutionCard({
+  entry,
+  pendingTraceId,
+  siteId,
+  pending,
+  error,
+  sitePoints,
+  runAction,
+}: {
+  entry: Extract<MemoriaNeedsYouQuestion, { category: 'attach_information' }>['entry']
+  pendingTraceId: string
+  siteId: string
+  pending: boolean
+  error?: string
+  sitePoints: SitePointOption[]
+  runAction: QuestionCardProps['runAction']
+}) {
+  const [searching, setSearching] = useState(false)
+  const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState<SitePointOption | null>(null)
+  const [confirmingCreate, setConfirmingCreate] = useState(false)
+
+  const searchResults = query.trim().length > 0 ? sitePoints.filter((p) => p.label.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8) : []
+
+  return (
+    <CardShell category="attach_information" title="Cette information concerne-t-elle ce suivi ?">
+      <QuestionRationale text={attachInformationRationale(entry)} />
+      <SourceExcerpt
+        label={entry.sourceLabel}
+        sourceExcerpt={entry.sourceExcerpt}
+        hasVerbatimExcerpt={entry.hasVerbatimExcerpt}
+        documentFilename={entry.sourceDocumentFilename}
+        effectiveDate={entry.sourceDocumentEffectiveDate}
+        page={entry.sourcePage}
+        importedAt={entry.sourceDate}
+        documentId={entry.sourceDocumentId}
+        documentType={entry.sourceDocumentType}
+        siteId={siteId}
+      />
+
+      <div>
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Associer à un autre suivi existant</p>
+        {searching ? (
+          <div className="space-y-1.5">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher un suivi par son libellé…"
+              className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-[12px]"
+            />
+            {searchResults.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={radioRow(selected?.id === p.id, false)}
+                onClick={() => setSelected(p)}
+              >
+                {p.label}
+              </button>
+            ))}
+            {query.trim().length > 0 && searchResults.length === 0 && <p className="text-[11px] text-muted-foreground">Aucun suivi ne correspond.</p>}
+          </div>
+        ) : (
+          <button type="button" className={btnSecondary} disabled={pending} onClick={() => setSearching(true)}>
+            Rechercher un suivi du chantier
+          </button>
+        )}
+      </div>
+
+      {selected && <ImpactPreview items={attachInformationImpact(selected.label)} />}
+      <ErrorLine error={error} />
+
+      {confirmingCreate ? (
+        <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/50 px-2.5 py-2 dark:border-violet-900/40 dark:bg-violet-950/20">
+          <p className="text-[12px] text-foreground/80">Créer un nouveau suivi pour cette information ?</p>
+          <ImpactPreview items={confirmTrackabilityImpact()} />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnPrimary}
+              disabled={pending}
+              onClick={() =>
+                runAction(
+                  () =>
+                    import('../tracked-point-identity-resolution-actions').then((m) =>
+                      m.createPointFromIdentityTraceAction({ siteId, pendingTraceId }),
+                    ),
+                  entry.sourceLabel,
+                )
+              }
+            >
+              Confirmer la création
+            </button>
+            <button type="button" className={btnSecondary} disabled={pending} onClick={() => setConfirmingCreate(false)}>
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            className={btnPrimary}
+            disabled={pending || !selected}
+            onClick={() =>
+              selected &&
+              runAction(
+                () =>
+                  import('../tracked-point-identity-resolution-actions').then((m) =>
+                    m.associateIdentityTraceToPointAction({ siteId, pendingTraceId, targetPointId: selected.id }),
+                  ),
+                selected.label,
+              )
+            }
+          >
+            {selected ? `Associer à « ${selected.label} »` : 'Associer'}
+          </button>
+          <button type="button" className={btnSecondary} disabled={pending} onClick={() => setConfirmingCreate(true)}>
+            C&apos;est une situation nouvelle, créer un suivi
+          </button>
+        </div>
       )}
     </CardShell>
   )

@@ -32,6 +32,16 @@
 // tracked-point-trace-acceptance.test.ts). Exposer canonicalPointId ≠ pointId sans le masquer
 // derrière une classification "safe" est le seul moyen de ne pas offrir un "Associer" qui
 // échouerait côté serveur — recalculé ici, jamais mémorisé.
+//
+// Fermeture humaine de IDENTITY_UNRESOLVED après rejet de tous les candidats (mandat Vincent) :
+// avant ce correctif, une source dont TOUS les candidats sont rejetés/consommés quittait la file
+// en silence (targets.length===0 → continue) alors que sa tracked_point_pending_trace
+// kind=IDENTITY_UNRESOLVED reste 'pending' en base — invisible et bloquée. pendingTraceIdByThreadId
+// (chargé indépendamment des candidats) permet désormais d'ajouter une entrée FALLBACK pour toute
+// pending trace encore ouverte dont aucun candidat n'est plus actionnable, avec
+// needsFreeIdentityResolution=true : la carte propose alors les deux gestures humaines libres
+// (associer à un autre Point existant / créer un nouveau Point), jamais un nouveau matching
+// automatique.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadTrackedPointReadModel, type PointReadModelEntry } from './tracked-point-read-model'
@@ -106,6 +116,14 @@ export type TraceIdentitySourceEntry = {
   targets: TraceIdentityTarget[]
   targetCount: number
   evidenceScopeStatus: TraceIdentitySourceEvidenceScopeStatus
+  // pendingTraceId/needsFreeIdentityResolution (mandat Vincent, fermeture IDENTITY_UNRESOLVED) :
+  // pendingTraceId n'est jamais null pour une entrée FALLBACK (needsFreeIdentityResolution=true)
+  // — c'est l'identifiant que les deux gestures libres (associer / créer) exigent en entrée. Pour
+  // une entrée normale (candidats encore actionnables), needsFreeIdentityResolution reste false ;
+  // pendingTraceId peut être renseigné (source couverte par une pending trace) ou non (ancien
+  // comportement, aucune pending trace connue pour cette source).
+  pendingTraceId: string | null
+  needsFreeIdentityResolution: boolean
 }
 
 export type TraceIdentityQueue = {
@@ -157,6 +175,7 @@ export function buildTraceIdentityQueue(
   pointDetailsById: Map<string, PointReadModelEntry>,
   proposalsByThreadId: Map<string, TraceIdentitySourceProposal[]>,
   subjectLabelBySubjectId: Map<string, string | null>,
+  pendingTraceIdByThreadId: Map<string, string> = new Map(),
 ): TraceIdentityQueue {
   const bySource = new Map<string, TraceScopeCandidateInput[]>()
   for (const c of candidates) {
@@ -199,8 +218,10 @@ export function buildTraceIdentityQueue(
     }
 
     // Source structurellement vidée (tous ses candidats sont devenus POINT_TO_POINT / déjà
-    // associés) : elle quitte la file TRACE en silence — c'est le comportement voulu, pas un
-    // gap. Un Point↔Point équivalent, s'il existe, vit désormais dans buildConsolidationQueue.
+    // associés, ou rejetés) : elle ne produit pas d'entrée ICI. Un Point↔Point équivalent, s'il
+    // existe, vit désormais dans buildConsolidationQueue. Si une tracked_point_pending_trace
+    // IDENTITY_UNRESOLVED reste 'pending' pour cette source, le second passage FALLBACK plus bas
+    // la réintroduit — ce n'est donc plus systématiquement une disparition silencieuse.
     if (targets.length === 0) continue
 
     const allActionable = targets.every((t) => t.actionability === 'ACTIONABLE')
@@ -235,6 +256,42 @@ export function buildTraceIdentityQueue(
       targets,
       targetCount: targets.length,
       evidenceScopeStatus,
+      pendingTraceId: pendingTraceIdByThreadId.get(sourceThreadId) ?? null,
+      needsFreeIdentityResolution: false,
+    })
+  }
+
+  // Second passage FALLBACK (mandat Vincent) : une pending trace IDENTITY_UNRESOLVED encore
+  // 'pending' en base dont la source n'a produit AUCUNE entrée ci-dessus (candidats tous rejetés/
+  // consommés, ou jamais eu de candidat actionnable) ne doit jamais rester invisible. On ne
+  // reconstruit rien depuis les candidats : seule la pending trace elle-même fait foi ici.
+  const coveredThreadIds = new Set(entries.map((e) => e.sourceThreadId))
+  for (const [sourceThreadId, pendingTraceId] of pendingTraceIdByThreadId) {
+    if (coveredThreadIds.has(sourceThreadId)) continue
+
+    const sourceProposals = proposalsByThreadId.get(sourceThreadId) ?? []
+    const firstProposal = sourceProposals[0] ?? null
+    const sourceExcerpt = firstProposal?.sourceExcerpt ?? null
+
+    entries.push({
+      sourceKey: sourceThreadId,
+      sourceThreadId,
+      sourceProposalIds: sourceProposals.map((p) => p.id),
+      scope: 'thread',
+      sourceLabel: firstProposal?.label ?? null,
+      sourceDocumentId: firstProposal?.documentId ?? null,
+      sourceDocumentFilename: firstProposal?.documentFilename ?? null,
+      sourceDocumentType: firstProposal?.documentType ?? null,
+      sourceDocumentEffectiveDate: firstProposal?.documentEffectiveDate ?? null,
+      sourcePage: firstProposal?.sourcePage ?? null,
+      sourceExcerpt,
+      hasVerbatimExcerpt: sourceExcerpt !== null,
+      sourceDate: firstProposal?.createdAt ?? null,
+      targets: [],
+      targetCount: 0,
+      evidenceScopeStatus: 'BLOCKED',
+      pendingTraceId,
+      needsFreeIdentityResolution: true,
     })
   }
 
@@ -294,7 +351,25 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
     createdAt: c.created_at,
   }))
 
-  const threadIds = [...new Set(candidates.map((c) => c.subjectThreadId))]
+  // Pending traces IDENTITY_UNRESOLVED encore ouvertes (mandat Vincent) : chargées INDÉPENDAMMENT
+  // des candidats — c'est exactement ce qui permet de détecter une source dont plus aucun
+  // candidat n'est actionnable alors que la trace, elle, reste 'pending' en base.
+  const { data: rawPendingTraces, error: pendingErr } = await db
+    .from('tracked_point_pending_trace')
+    .select('id, source_thread_id')
+    .eq('site_id', siteId)
+    .eq('kind', 'IDENTITY_UNRESOLVED')
+    .eq('status', 'pending')
+  if (pendingErr) throw pendingErr
+
+  const pendingTraceIdByThreadId = new Map<string, string>()
+  for (const t of rawPendingTraces ?? []) {
+    if (t.source_thread_id) pendingTraceIdByThreadId.set(t.source_thread_id, t.id)
+  }
+
+  const threadIds = [
+    ...new Set([...candidates.map((c) => c.subjectThreadId), ...pendingTraceIdByThreadId.keys()]),
+  ]
 
   const { data: rawProposals, error: propErr } = await db
     .from('document_extraction_proposal')
@@ -361,5 +436,6 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
     pointDetailsById,
     proposalsByThreadId,
     subjectLabelBySubjectId,
+    pendingTraceIdByThreadId,
   )
 }
