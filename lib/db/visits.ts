@@ -292,6 +292,61 @@ export async function listSiteVisits(siteId: string, limit = 50): Promise<DbSite
   return (data ?? []) as DbSiteReport[]
 }
 
+/**
+ * Dates des PV/visites d'un chantier — visite terrain (`site_reports.started_at`, origine
+ * ∈ TERRAIN_VISIT_ORIGINS ∪ {import}) UNION PV historique importé (`documents.effective_date`
+ * via document_links, document_type='historical_visit_report'). Réunions exclues (`origin
+ * === null`). Sert à mesurer combien de passages documentés ont eu lieu depuis une date de
+ * référence (Lot 2 « Points qui traînent »).
+ *
+ * Les deux sources sont nécessaires : sur un chantier à import historique massif (ex. RUS
+ * Dumbea Mall), `site_reports.started_at` est NULL pour les 8 PV importés (seul `created_at`
+ * existe, horodatage du batch d'import lui-même — pas la date réelle du PV, donc inutilisable
+ * ici) ; la vraie date métier de chaque PV historique n'est portée que par `documents
+ * .effective_date` (constaté sur RUS : 2025-01-29 → 2026-07-22, cf. lib/documents/classify.ts).
+ * Sans cette seconde source, tous les PV historiques retombent sur la même date d'import et
+ * `pvWithoutProgress` cesse de discriminer (constaté : 173/199 Points, identique à la V1).
+ */
+export async function listSitePvDates(siteId: string, limit = 200): Promise<string[]> {
+  const supabase = createAdminClient()
+  const [reportsRes, linksRes] = await Promise.all([
+    supabase
+      .from('site_reports')
+      .select('started_at')
+      .eq('site_id', siteId)
+      .is('deleted_at', null)
+      .not('origin', 'is', null)
+      .not('started_at', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(limit),
+    supabase.from('document_links').select('document_id').eq('target_type', 'site').eq('target_id', siteId),
+  ])
+  if (reportsRes.error) throw reportsRes.error
+  if (linksRes.error) throw linksRes.error
+
+  const dates = new Set<string>()
+  for (const r of (reportsRes.data ?? []) as { started_at: string | null }[]) {
+    if (r.started_at) dates.add(r.started_at)
+  }
+
+  const docIds = (linksRes.data ?? []).map((l) => (l as { document_id: string }).document_id)
+  if (docIds.length > 0) {
+    const { data: docs, error } = await supabase
+      .from('documents')
+      .select('effective_date')
+      .in('id', docIds)
+      .eq('document_type', 'historical_visit_report')
+      .is('deleted_at', null)
+      .not('effective_date', 'is', null)
+    if (error) throw error
+    for (const d of (docs ?? []) as { effective_date: string | null }[]) {
+      if (d.effective_date) dates.add(d.effective_date)
+    }
+  }
+
+  return [...dates].sort((a, b) => b.localeCompare(a)).slice(0, limit)
+}
+
 /** La visite ouverte (non terminée) d'un site, s'il y en a une. */
 export async function getActiveVisit(siteId: string): Promise<DbSiteReport | null> {
   const supabase = createAdminClient()

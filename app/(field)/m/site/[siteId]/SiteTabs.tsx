@@ -22,9 +22,11 @@ export type SiteTab =
   | 'vue' | 'points' | 'sujets' | 'carte' | 'terrain' | 'explorer' | 'reserves'
   | 'actions' | 'visites' | 'photos' | 'reunions' | 'frise' | 'documents' | 'patrimoine'
 
-// `seg` = segment d'URL après la base ('' = Synthèse/hub).
+// `seg` = segment d'URL après la base ('' = Aujourd'hui/hub).
 const TABS: Array<{ key: SiteTab; label: string; seg: string }> = [
-  { key: 'vue',        label: 'Synthèse',   seg: '' },
+  // Lot 2 « Aujourd'hui » (mandat Vincent 2026-09-10) : `seg` reste '' (stabilité d'URL/hub),
+  // seul le libellé évolue.
+  { key: 'vue',        label: "Aujourd'hui", seg: '' },
   // « Points » (Lot 1 navigation, mandat Vincent 2026-09-10) : entrée primaire
   // mobile chantier vers la liste des tracked_point — route dédiée /points.
   { key: 'points',     label: 'Points',     seg: 'points' },

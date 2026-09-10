@@ -26,12 +26,27 @@ function categoryIcon(category: AttentionCategory) {
   return <EyeOff className={className} /> // documentary_silence
 }
 
-export function CanonicalAttentionRow({ item }: { item: CanonicalAttentionItem }) {
+export function CanonicalAttentionRow({
+  item,
+  pointCount = null,
+  pointHref = null,
+  subjectHref = null,
+}: {
+  item: CanonicalAttentionItem
+  /** Lot 2 « Aujourd'hui » — nb de Points de suivi rattachés au sujet, si connu (Lot 1 read-model). */
+  pointCount?: number | null
+  /** Lot 2 — quand le sujet ne porte qu'UN seul Point, lien direct vers sa fiche plutôt que le sujet. */
+  pointHref?: string | null
+  /** Lot 2 — repli explicite vers la fiche sujet quand `pointHref` est absent. `item.href` est
+   *  câblé en dur vers la route DESKTOP (`deriveCanonicalAttentionItems`) : sur mobile, ce repli
+   *  doit pointer vers l'équivalent `/m/site/<id>/sujets/<canonicalSubjectId>`. */
+  subjectHref?: string | null
+}) {
   const badge = CATEGORY_BADGE[item.category]
 
   return (
     <Link
-      href={item.href}
+      href={pointHref ?? subjectHref ?? item.href}
       className="group flex items-start gap-3 rounded-lg border bg-card px-4 py-3 shadow-sm transition-colors hover:bg-muted/50"
     >
       {categoryIcon(item.category)}
@@ -46,6 +61,11 @@ export function CanonicalAttentionRow({ item }: { item: CanonicalAttentionItem }
           )}>
             {badge.label}
           </span>
+          {pointCount !== null && pointCount > 0 && (
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {pointCount} Point{pointCount > 1 ? 's' : ''}
+            </span>
+          )}
         </div>
         {item.reasons.map((reason, i) => (
           <p key={i} className="mt-0.5 text-xs leading-relaxed text-muted-foreground">

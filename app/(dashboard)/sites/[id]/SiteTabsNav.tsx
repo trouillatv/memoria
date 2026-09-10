@@ -3,7 +3,9 @@ import { cn } from '@/lib/utils'
 import { ScrollActiveRail } from '@/components/ui/ScrollActiveRail'
 
 export const SITE_TABS = [
-  { key: 'apercu',           label: 'Aperçu' },
+  // Lot 2 « Aujourd'hui » (mandat Vincent 2026-09-10) : la clé `apercu` reste inchangée
+  // (stabilité d'URL, `resolveSiteTab` par défaut), seul le libellé évolue.
+  { key: 'apercu',           label: "Aujourd'hui" },
   // « Points » (Lot 1 navigation, mandat Vincent 2026-09-10) : entrée primaire
   // vers la liste des tracked_point du chantier — route dédiée existante (/points).
   { key: 'points',           label: 'Points',    pathSuffix: '/points' },

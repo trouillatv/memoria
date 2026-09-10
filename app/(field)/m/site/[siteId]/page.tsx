@@ -30,11 +30,13 @@ import { listVerifyEligiblePointsForSite } from '@/lib/knowledge/tracked-point-v
 import { SiteActionBar } from './SiteActionBar'
 import { ChefSiteView } from './ChefSiteView'
 import { loadMemoriaNeedsYouSummary } from '@/lib/knowledge/tracked-point-needs-you-summary'
-import { computeMemoriaNeedsYouPill } from '@/lib/knowledge/tracked-point-needs-you-pill'
-import { MemoriaNeedsYouPill } from './MemoriaNeedsYouPill'
+import { deriveCanonicalAttentionItems } from '@/lib/knowledge/canonical-attention'
+import { loadTrackedPointReadModel } from '@/lib/knowledge/tracked-point-read-model'
+import { selectLingeringPoints, loadSitePvDates, loadOpenActionCountBySubject } from '@/lib/knowledge/tracked-point-lingering'
+import { SiteTodayAttentionList } from '@/components/site/SiteTodayAttentionList'
+import { MemoriaNeedsYouBlock } from '@/components/site/MemoriaNeedsYouBlock'
+import { SiteLingeringPointsBlock } from '@/components/site/SiteLingeringPointsBlock'
 import { ChevronRight } from 'lucide-react'
-import { Suspense } from 'react'
-import { SiteToTreatSection, SiteToTreatSkeleton } from './SiteToTreatSection'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
   planned: { label: 'Prévue', cls: 'bg-slate-100 text-slate-700' },
@@ -158,24 +160,35 @@ export default async function FieldSitePage({
   let sinceLastVisit: Awaited<ReturnType<typeof buildSinceLastVisitDelta>> = null
   let nextSteps: Awaited<ReturnType<typeof getSiteNextSteps>> = []
   let visitBrief: Awaited<ReturnType<typeof buildVisitBrief>> = null
-  // 6E.4A.10 — pilule "MemorIA a besoin de toi". Chargée uniquement hors visite active, comme
-  // le reste du cockpit chantier ci-dessus : même read-model que /sites/[id]/besoin-de-toi
-  // (loadMemoriaNeedsYouSummary), la fiche mobile n'accède jamais à ce shell chef_equipe déjà
-  // écarté plus haut, donc admin/manager uniquement — même restriction que la page desktop.
-  let needsYouPill: ReturnType<typeof computeMemoriaNeedsYouPill> = null
+  // Lot 2 « Aujourd'hui » (mandat Vincent) — mêmes moteurs gelés que l'onglet desktop
+  // (deriveCanonicalAttentionItems, loadTrackedPointReadModel, loadMemoriaNeedsYouSummary),
+  // chargés uniquement hors visite active comme le reste du cockpit chantier ci-dessus.
+  let needsYouSummary: Awaited<ReturnType<typeof loadMemoriaNeedsYouSummary>> | null = null
+  let attentionItems: Awaited<ReturnType<typeof deriveCanonicalAttentionItems>> = []
+  let pointModel: Awaited<ReturnType<typeof loadTrackedPointReadModel>> = { points: [], mergedPoints: [], bySubject: new Map(), pendingIdentityCandidates: [] }
+  let pvDates: Awaited<ReturnType<typeof loadSitePvDates>> = []
+  let openActionCountBySubject: Awaited<ReturnType<typeof loadOpenActionCountBySubject>> = new Map()
   if (!activeVisit) {
-    const [status, since, steps, brief, needsYouSummary] = await Promise.all([
+    const [status, since, steps, brief, needsYou, attention, points, pvs, openActionCounts] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       buildSinceLastVisitDelta(siteId, user.id).catch(() => null),
       getSiteNextSteps(siteId).catch(() => []),
       buildVisitBrief(siteId).catch(() => null),
       loadMemoriaNeedsYouSummary(siteId).catch(() => null),
+      deriveCanonicalAttentionItems(siteId).catch(() => []),
+      loadTrackedPointReadModel(siteId).catch(() => ({ points: [], mergedPoints: [], bySubject: new Map(), pendingIdentityCandidates: [] })),
+      loadSitePvDates(siteId).catch(() => []),
+      loadOpenActionCountBySubject(siteId).catch(() => new Map<string, number>()),
     ])
     siteStatus = status
     sinceLastVisit = since
     nextSteps = steps
     visitBrief = brief
-    needsYouPill = needsYouSummary ? computeMemoriaNeedsYouPill(needsYouSummary) : null
+    needsYouSummary = needsYou
+    attentionItems = attention
+    pointModel = points
+    pvDates = pvs
+    openActionCountBySubject = openActionCounts
   }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
@@ -234,6 +247,8 @@ export default async function FieldSitePage({
   // jour, puis on agrège interventions du jour. Réponse immédiate à « qu'est-ce
   // qui me concerne ici, maintenant ? ».
   const todayIso = todayLocalIso()
+  const lingering = selectLingeringPoints(pointModel.points, todayIso, pvDates, { attentionItems, openActionCountBySubject })
+  const pointHrefPrefix = `/m/site/${siteId}/point`
   await ensureTodayInterventionsForSites([siteId], 0).catch(() => {})
   const { data: siteMissionRows } = await supabase
     .from('missions').select('id, name').eq('site_id', siteId).is('deleted_at', null)
@@ -311,15 +326,42 @@ export default async function FieldSitePage({
           </div>
 
           {/* 1bis — MemorIA a besoin de toi : signal d'attention discret, jamais un bloc
-              principal. Après « État du chantier », avant « Tu dois faire » (mandat Vincent
+              principal. Après « État du chantier », avant « À surveiller » (mandat Vincent
               2026-09-07) — le parcours mental est : comment va mon chantier ? MemorIA a-t-il
-              besoin de moi pour comprendre quelque chose ? qu'est-ce que je dois faire ? */}
-          {needsYouPill && <MemoriaNeedsYouPill siteId={siteId} pill={needsYouPill} />}
+              besoin de moi pour comprendre quelque chose ? qu'est-ce qui mérite mon attention ?
+              Lot 2 « Aujourd'hui » : même bloc partagé que le desktop (loadMemoriaNeedsYouSummary). */}
+          {needsYouSummary && (
+            <MemoriaNeedsYouBlock summary={needsYouSummary} seeAllHref={`/m/site/${siteId}/besoin-de-toi`} />
+          )}
 
-          {/* 2 — À traiter : signaux d'intervention uniquement (propositions + actions en retard + sujet urgent). */}
-          <Suspense fallback={<SiteToTreatSkeleton />}>
-            <SiteToTreatSection siteId={siteId} />
-          </Suspense>
+          {/* 2 — À surveiller : Lot 2 « Aujourd'hui », même moteur gelé que le desktop
+              (deriveCanonicalAttentionItems) — remplace l'ancien « À traiter ». */}
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              À surveiller
+            </h2>
+            <SiteTodayAttentionList
+              items={attentionItems}
+              bySubject={pointModel.bySubject}
+              cap={3}
+              seeAllHref={`/m/site/${siteId}/sujets`}
+              pointHrefPrefix={pointHrefPrefix}
+              subjectHrefPrefix={`/m/site/${siteId}/sujets`}
+            />
+          </section>
+
+          {/* 2bis — Points qui traînent : Lot 2 « Aujourd'hui », lecture pure du read-model
+              Points (Lot 1), aucun nouveau moteur. */}
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Points qui traînent
+            </h2>
+            <SiteLingeringPointsBlock
+              entries={lingering}
+              seeAllHref={`/m/site/${siteId}/points`}
+              pointHrefPrefix={pointHrefPrefix}
+            />
+          </section>
 
           {/* 3 — Sur place : opportunités contextuelles + agenda du jour.
               VisitBriefCard répond à « qu'est-ce qui vaut le coup de traiter si je suis là ? »
