@@ -14,6 +14,8 @@ import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-
 import { isTerminalCboState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import type { CboComputedCurrentState, CboEventKind } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import { partitionFilGroups } from '@/lib/knowledge/fil-metier-visibility'
+import { loadTrackedPointReadModel, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
+import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
@@ -90,6 +92,16 @@ const DISPLAY_STATE_COLORS: Record<string, string> = {
   resolved: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
   reopened: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
   unknown:  'bg-muted text-muted-foreground',
+}
+
+// Points de suivi (tracked_point, 6F) — même palette que DISPLAY_STATE_COLORS
+// avec l'état "conflict" en plus (le CBO n'a pas cet état).
+const POINT_STATE_COLORS: Record<string, string> = {
+  unknown:  'bg-muted text-muted-foreground',
+  open:     'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+  resolved: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300',
+  reopened: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300',
+  conflict: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
 }
 
 const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
@@ -959,6 +971,39 @@ function OccurrenceCard({ occ, siteId }: { occ: SubjectOccurrenceMerged; siteId:
   )
 }
 
+// Points de suivi (tracked_point, 6F) — lecture pure de `loadTrackedPointReadModel`,
+// aucun recalcul d'état ; un Point représente une situation précise et durable,
+// à distinguer des « Objets métier » (CBO) qui restent l'organisateur documentaire.
+function PointsSection({ points, siteId }: { points: PointReadModelEntry[]; siteId: string }) {
+  return (
+    <ul className="divide-y divide-border/60">
+      {points.map((p) => (
+        <li key={p.id}>
+          <Link
+            href={`/sites/${siteId}/point/${p.id}`}
+            className="group flex items-center justify-between gap-3 py-2.5 hover:bg-muted/20 -mx-1 px-1 rounded-md transition-colors"
+          >
+            <div className="min-w-0">
+              <span className="text-[13.5px] font-medium group-hover:underline underline-offset-2">{p.label}</span>
+              {p.latestMeaningfulEventAt && (
+                <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+                  Évolution le {frDate(p.latestMeaningfulEventAt)}
+                </p>
+              )}
+            </div>
+            <span className={cn(
+              'shrink-0 rounded-full px-2.5 py-0.5 text-[11.5px] font-medium',
+              POINT_STATE_COLORS[p.derivedState] ?? 'bg-muted text-muted-foreground',
+            )}>
+              {POINT_STATE_LABEL[p.derivedState] ?? p.derivedState}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function MaterializedEventsSection({
   entries,
   evolutions,
@@ -1389,6 +1434,10 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   // P1-4C2E1 — vérité CBO autoritative C2A (scopée au sujet), plus loadCboEvolutions.
   const cboEvolutions = await loadCboReducedStates(life.siteId, { canonicalSubjectId })
   const cboSummary = summarizeCboStates(businessObjectEntries, cboEvolutions)
+  // 6F — Points de suivi rattachés à ce sujet (lecture pure, aucun second moteur).
+  const trackedPoints = await loadTrackedPointReadModel(siteId)
+    .then((r) => r.bySubject.get(canonicalSubjectId)?.points ?? [])
+    .catch(() => [] as PointReadModelEntry[])
   // Le résumé CBO déterministe couvre déjà "l'état actuel" quand il est disponible ;
   // la synthèse narrative IA (sans connaissance des CBO) ne servirait alors qu'à se
   // contredire ("aucune information disponible" à côté d'états connus).
@@ -1510,6 +1559,17 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
             <p className="mt-1 text-[10px] text-muted-foreground">
               Espacé selon les dates réelles · les cercles grisés = PV où le sujet n'est pas mentionné
             </p>
+          </section>
+        )}
+
+        {/* Points de suivi — situations précises et durables rattachées à ce sujet. */}
+        {trackedPoints.length > 0 && (
+          <section id="points" className="rounded-[18px] border bg-card px-5 py-4 space-y-1">
+            <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <LayoutList className="h-3.5 w-3.5" />
+              Points de suivi ({trackedPoints.length})
+            </h2>
+            <PointsSection points={trackedPoints} siteId={siteId} />
           </section>
         )}
 

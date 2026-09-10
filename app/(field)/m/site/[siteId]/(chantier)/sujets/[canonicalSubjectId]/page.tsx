@@ -15,6 +15,8 @@ import type { ActorLinkedIdentity, ActorResponsibilities } from '@/lib/db/actor-
 import { SubjectTrajectorySection, SubjectTrajectorySkeleton } from './SubjectTrajectorySection'
 import SubjectContextGraph from './SubjectContextGraph'
 import { cn } from '@/lib/utils'
+import { loadTrackedPointReadModel, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
+import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
 
 export const dynamic = 'force-dynamic'
 
@@ -126,6 +128,16 @@ const DISPLAY_STATE_COLORS: Record<string, string> = {
   resolved: 'bg-emerald-100 text-emerald-800',
   reopened: 'bg-red-100 text-red-700',
   unknown:  'bg-muted text-muted-foreground',
+}
+
+// Points de suivi (tracked_point, 6F) — même palette que DISPLAY_STATE_COLORS
+// avec l'état "conflict" en plus (le CBO n'a pas cet état).
+const POINT_STATE_COLORS: Record<string, string> = {
+  unknown:  'bg-muted text-muted-foreground',
+  open:     'bg-sky-100 text-sky-700',
+  resolved: 'bg-emerald-100 text-emerald-800',
+  reopened: 'bg-orange-100 text-orange-700',
+  conflict: 'bg-rose-100 text-rose-700',
 }
 
 const ENTITY_TYPE_META: Record<MaterializedEntityType, { label: string; plural: string; color: string }> = {
@@ -327,6 +339,39 @@ function EventsSection({ events }: { events: MaterializedEvent[] }) {
         )
       })}
     </div>
+  )
+}
+
+// Points de suivi (tracked_point, 6F) — lecture pure de `loadTrackedPointReadModel`,
+// aucun recalcul d'état ; un Point représente une situation précise et durable,
+// à distinguer des « Objets à piloter » (CBO) qui restent l'organisateur documentaire.
+function PointsSection({ points, siteId }: { points: PointReadModelEntry[]; siteId: string }) {
+  return (
+    <ul className="space-y-1.5">
+      {points.map((p) => (
+        <li key={p.id}>
+          <Link
+            href={`/m/site/${siteId}/point/${p.id}`}
+            className="flex items-start gap-2.5 rounded-xl border bg-card px-3 py-2.5 active:bg-muted/30"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium leading-snug">{p.label}</p>
+              {p.latestMeaningfulEventAt && (
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Évolution le {frDate(p.latestMeaningfulEventAt)}
+                </p>
+              )}
+            </div>
+            <span className={cn(
+              'mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+              POINT_STATE_COLORS[p.derivedState] ?? 'bg-muted text-muted-foreground',
+            )}>
+              {POINT_STATE_LABEL[p.derivedState] ?? p.derivedState}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -654,6 +699,11 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   ])
   if (!life || life.siteId !== siteId) notFound()
 
+  // 6F — Points de suivi rattachés à ce sujet (lecture pure, aucun second moteur).
+  const trackedPoints = await loadTrackedPointReadModel(siteId)
+    .then((r) => r.bySubject.get(canonicalSubjectId)?.points ?? [])
+    .catch(() => [] as PointReadModelEntry[])
+
   const realOccs = life.occurrences
     .filter((o) => !o.isGap)
     .sort((a, b) => a.effectiveDate.localeCompare(b.effectiveDate))
@@ -813,6 +863,16 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
                   Mentionné{realOccs.length > 1 ? ` ${realOccs.length} fois` : ''} depuis le {frDate(life.firstSeenAt)}.
                 </p>
               )}
+            </section>
+          )}
+
+          {/* Points de suivi — situations précises et durables rattachées à ce sujet. */}
+          {trackedPoints.length > 0 && (
+            <section>
+              <h2 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Points de suivi ({trackedPoints.length})
+              </h2>
+              <PointsSection points={trackedPoints} siteId={siteId} />
             </section>
           )}
 
