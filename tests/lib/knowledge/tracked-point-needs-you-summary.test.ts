@@ -77,6 +77,8 @@ function traceIdentityEntry(sourceKey: string): TraceIdentitySourceEntry {
     targets: [],
     targetCount: 1,
     evidenceScopeStatus: 'ACTIONABLE',
+    pendingTraceId: null,
+    needsFreeIdentityResolution: false,
   }
 }
 
