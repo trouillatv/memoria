@@ -19,12 +19,15 @@ import { usePathname } from 'next/navigation'
 import { ScrollActiveRail } from '@/components/ui/ScrollActiveRail'
 
 export type SiteTab =
-  | 'vue' | 'sujets' | 'carte' | 'terrain' | 'explorer' | 'reserves'
+  | 'vue' | 'points' | 'sujets' | 'carte' | 'terrain' | 'explorer' | 'reserves'
   | 'actions' | 'visites' | 'photos' | 'reunions' | 'frise' | 'documents' | 'patrimoine'
 
 // `seg` = segment d'URL après la base ('' = Synthèse/hub).
 const TABS: Array<{ key: SiteTab; label: string; seg: string }> = [
   { key: 'vue',        label: 'Synthèse',   seg: '' },
+  // « Points » (Lot 1 navigation, mandat Vincent 2026-09-10) : entrée primaire
+  // mobile chantier vers la liste des tracked_point — route dédiée /points.
+  { key: 'points',     label: 'Points',     seg: 'points' },
   { key: 'sujets',     label: 'Sujets',     seg: 'sujets' },
   { key: 'carte',      label: 'Carte',      seg: 'carte' },
   { key: 'terrain',    label: 'Terrain',    seg: 'terrain' },

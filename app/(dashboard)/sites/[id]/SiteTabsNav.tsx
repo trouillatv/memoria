@@ -4,6 +4,9 @@ import { ScrollActiveRail } from '@/components/ui/ScrollActiveRail'
 
 export const SITE_TABS = [
   { key: 'apercu',           label: 'Aperçu' },
+  // « Points » (Lot 1 navigation, mandat Vincent 2026-09-10) : entrée primaire
+  // vers la liste des tracked_point du chantier — route dédiée existante (/points).
+  { key: 'points',           label: 'Points',    pathSuffix: '/points' },
   // « Visites » (retour Guillaume, 2026-08-14) : « Chronologie pour moi c'est de
   // la planification, l'évolution du chantier — alors que là c'est des comptes
   // rendus. » Son modèle mental est le bon :
