@@ -143,6 +143,32 @@ export function buildMemoriaNeedsYouSummary(
   }
 }
 
+// Lot UX Point 3F (mandat Vincent) — NeedsYou contextuel À l'échelle d'UN Point : seules les
+// catégories dont la donnée référence RÉELLEMENT ce Point qualifient. confirm_trackability et
+// clarify_evidence n'ont AUCUNE référence Point dans leur source (vérifié : zéro `pointId` dans
+// tracked-point-pending-trackability-queue.ts et tracked-point-evidence-scope-queue.ts) — les
+// exclure ici n'est pas un oubli, c'est la seule contextualisation honnête possible pour elles ;
+// elles restent visibles au niveau Sujet/global (MemoriaNeedsYouBlock), jamais ici.
+export function filterMemoriaNeedsYouQuestionsForPoint(
+  questions: MemoriaNeedsYouQuestion[],
+  pointId: string,
+): MemoriaNeedsYouQuestion[] {
+  return questions.filter((q) => {
+    switch (q.category) {
+      case 'duplicate_points':
+        return q.entry.pointA.id === pointId || q.entry.pointB.id === pointId
+      case 'attach_information':
+        return q.entry.targets.some((t) => t.pointId === pointId)
+      case 'assign_resolution':
+        return q.entry.knownIdentityTargets.some((t) => t.pointId === pointId)
+          || q.entry.sameSubjectSuggestions.some((t) => t.pointId === pointId)
+      case 'confirm_trackability':
+      case 'clarify_evidence':
+        return false
+    }
+  })
+}
+
 export async function loadMemoriaNeedsYouSummary(siteId: string): Promise<MemoriaNeedsYouSummary> {
   const [consolidation, traceIdentity, trackability, resolution, evidenceScope] = await Promise.all([
     loadConsolidationQueue(siteId),

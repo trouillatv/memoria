@@ -4,7 +4,24 @@ import {
   proposalIdFromSource,
   buildHeadline,
   POINT_STATE_LABEL,
+  groupLinkedObjectsByTitle,
+  type PointDetailLinkedObject,
 } from '@/lib/knowledge/tracked-point-detail'
+
+function linkedObject(overrides: Partial<PointDetailLinkedObject> & { id: string; title: string }): PointDetailLinkedObject {
+  return {
+    objectType: 'site_action',
+    status: 'open',
+    statusLabel: 'En cours',
+    isDone: false,
+    isLate: false,
+    dueDate: null,
+    dueDateLabel: null,
+    responsible: null,
+    href: `/action/${overrides.id}`,
+    ...overrides,
+  }
+}
 
 describe('tracked-point-detail — toTrajectoryEntry', () => {
   it('mappe un événement de trajectoire vers son libellé fixe, sans recalcul d’état', () => {
@@ -104,6 +121,46 @@ describe('tracked-point-detail — buildHeadline (mise en mots, aucun recalcul d
       derivedState: 'unknown', documentaryDivergences: [], conflicts: [],
       openedAt: null, latestMeaningfulEventAt: null, mentionsCount: 0,
     })).toBe('État non déterminé — pas assez d’éléments pour se prononcer.')
+  })
+})
+
+describe('tracked-point-detail — groupLinkedObjectsByTitle (lot UX Point 3F, zéro fuzzy)', () => {
+  it('regroupe les titres exactement identiques (aux espaces de bord près)', () => {
+    const groups = groupLinkedObjectsByTitle([
+      linkedObject({ id: '1', title: 'Transmettre le listing et le plan des extincteurs' }),
+      linkedObject({ id: '2', title: 'Transmettre le listing et le plan des extincteurs' }),
+      linkedObject({ id: '3', title: 'Transmettre le listing et le plan des extincteurs ' }),
+    ])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].count).toBe(3)
+    expect(groups[0].items.map((o) => o.id)).toEqual(['1', '2', '3'])
+    expect(groups[0].representative.id).toBe('1')
+  })
+
+  it('ne fusionne jamais deux titres seulement proches (aucun fuzzy)', () => {
+    const groups = groupLinkedObjectsByTitle([
+      linkedObject({ id: '1', title: 'Transmettre le listing des extincteurs' }),
+      linkedObject({ id: '2', title: 'Transmettre le listing et le plan des extincteurs' }),
+    ])
+    expect(groups).toHaveLength(2)
+  })
+
+  it('ne fusionne jamais deux objectType différents portant le même titre', () => {
+    const groups = groupLinkedObjectsByTitle([
+      linkedObject({ id: '1', title: 'VGP', objectType: 'site_action' }),
+      linkedObject({ id: '2', title: 'VGP', objectType: 'site_reserve' }),
+    ])
+    expect(groups).toHaveLength(2)
+  })
+
+  it('un titre sans doublon reste un groupe de taille 1', () => {
+    const groups = groupLinkedObjectsByTitle([linkedObject({ id: '1', title: 'Vérifier la dotation des RIA' })])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].count).toBe(1)
+  })
+
+  it('liste vide → aucun groupe', () => {
+    expect(groupLinkedObjectsByTitle([])).toEqual([])
   })
 })
 

@@ -16,9 +16,16 @@
 // techniques », replié par défaut (<details> natif, zéro JS).
 
 import Link from 'next/link'
-import { ChevronRight, FileText } from 'lucide-react'
+import { ChevronRight, FileText, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { proposalIdFromSource, type TrackedPointDetail, type PointDetailLinkedObject } from '@/lib/knowledge/tracked-point-detail'
+import {
+  proposalIdFromSource,
+  type TrackedPointDetail,
+  type PointDetailLinkedObject,
+  type PointDetailLinkedObjectGroup,
+} from '@/lib/knowledge/tracked-point-detail'
+import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-categories'
+import type { MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 
 const STATE_CLS: Record<TrackedPointDetail['derivedState'], string> = {
   unknown: 'bg-muted text-muted-foreground ring-border',
@@ -73,8 +80,11 @@ const OBJECT_TYPE_LABEL: Record<PointDetailLinkedObject['objectType'], string> =
   site_action: 'Action', site_reserve: 'Réserve', site_deadline: 'Échéance',
 }
 
-function LinkedObjectsTable({ items, emptyLabel }: { items: PointDetailLinkedObject[]; emptyLabel: string }) {
-  if (items.length === 0) return <p className="px-1 py-2 text-[13px] text-muted-foreground">{emptyLabel}</p>
+// §1 « À faire » compacté (mandat Vincent, lot UX Point 3F) : une ligne par GROUPE (titre
+// exactement identique), jamais une ligne par occurrence — les champs affichés (responsable,
+// échéance, statut) viennent du représentant du groupe, purement visuel, aucune donnée modifiée.
+function LinkedObjectGroupsTable({ groups, emptyLabel }: { groups: PointDetailLinkedObjectGroup[]; emptyLabel: string }) {
+  if (groups.length === 0) return <p className="px-1 py-2 text-[13px] text-muted-foreground">{emptyLabel}</p>
   return (
     <div className="overflow-x-auto rounded-lg border">
       <table className="w-full text-sm">
@@ -87,33 +97,122 @@ function LinkedObjectsTable({ items, emptyLabel }: { items: PointDetailLinkedObj
           </tr>
         </thead>
         <tbody className="divide-y">
-          {items.map((o) => (
-            <tr key={`${o.objectType}:${o.id}`} className={cn(o.isLate && 'bg-rose-50/50 dark:bg-rose-950/10')}>
-              <td className="px-3 py-2">
-                <Link href={o.href} className="text-[13px] font-medium text-primary hover:underline">{o.title}</Link>
-                <div className="text-[11px] text-muted-foreground">{OBJECT_TYPE_LABEL[o.objectType]}</div>
-              </td>
-              <td className="px-3 py-2 text-[12.5px]"><ResponsibleLabel o={o} /></td>
-              <td className="px-3 py-2 text-[12.5px] text-muted-foreground">{o.dueDateLabel ?? '—'}</td>
-              <td className="px-3 py-2 text-right">
-                <span className={cn(
-                  'inline-block rounded-full px-2 py-0.5 text-[11px] font-medium',
-                  o.isLate ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
-                    : o.isDone ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
-                    : 'bg-muted text-muted-foreground',
-                )}>
-                  {o.isLate ? 'En retard' : o.statusLabel}
-                </span>
-              </td>
-            </tr>
-          ))}
+          {groups.map((g) => {
+            const o = g.representative
+            return (
+              <tr key={g.key} className={cn(o.isLate && 'bg-rose-50/50 dark:bg-rose-950/10')}>
+                <td className="px-3 py-2">
+                  <Link href={o.href} className="text-[13px] font-medium text-primary hover:underline">
+                    {g.title}{g.count > 1 && <span className="ml-1.5 text-muted-foreground">— {g.count} occurrences</span>}
+                  </Link>
+                  <div className="text-[11px] text-muted-foreground">{OBJECT_TYPE_LABEL[g.objectType]}</div>
+                </td>
+                <td className="px-3 py-2 text-[12.5px]"><ResponsibleLabel o={o} /></td>
+                <td className="px-3 py-2 text-[12.5px] text-muted-foreground">{o.dueDateLabel ?? '—'}</td>
+                <td className="px-3 py-2 text-right">
+                  <span className={cn(
+                    'inline-block rounded-full px-2 py-0.5 text-[11px] font-medium',
+                    o.isLate ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                      : o.isDone ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
+                      : 'bg-muted text-muted-foreground',
+                  )}>
+                    {o.isLate ? 'En retard' : o.statusLabel}
+                  </span>
+                </td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
   )
 }
 
-export function PointFicheView({ point, backHref, backLabel }: { point: TrackedPointDetail; backHref: string; backLabel: string }) {
+function ProvenanceSection({ p }: { p: TrackedPointDetail }) {
+  if (!p.provenance) return null
+  const ev = p.provenance
+  return (
+    <section className="rounded-[16px] border bg-card px-4 py-3 space-y-1">
+      <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {ev.isCausal ? `Pourquoi ce Point est « ${p.derivedStateLabel} »` : 'Dernière preuve enregistrée'}
+      </p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-muted-foreground">
+        {ev.dateLabel && <span>{ev.dateLabel}</span>}
+        {ev.documentFilename && <span>· {ev.documentFilename}</span>}
+        {ev.sourcePage && <span>· p.{ev.sourcePage}</span>}
+        {ev.href && (
+          <Link href={ev.href} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
+            Ouvrir dans le document <ChevronRight className="h-3 w-3" />
+          </Link>
+        )}
+      </div>
+      {ev.sourceExcerpt && <p className="text-[12.5px] italic leading-snug text-foreground/80">« {ev.sourceExcerpt} »</p>}
+    </section>
+  )
+}
+
+const NEEDS_YOU_CATEGORIES_FOR_POINT = MEMORIA_NEEDS_YOU_CATEGORY_ORDER.filter(
+  (c) => c === 'duplicate_points' || c === 'attach_information' || c === 'assign_resolution',
+)
+
+// NeedsYou contextuel à l'échelle du Point (mandat Vincent, lot UX Point 3F) : mêmes conventions
+// visuelles que MemoriaNeedsYouBlock.tsx (bloc violet), silence total si vide — jamais un
+// compteur à zéro. Bouton de traitement direct = la page besoin-de-toi du chantier (aucun
+// deep-link par question n'existe aujourd'hui ; hors périmètre de ce lot capé).
+function NeedsYouForPointSection({ questions, href }: { questions: MemoriaNeedsYouQuestion[]; href?: string }) {
+  if (questions.length === 0 || !href) return null
+  return (
+    <section className="rounded-[16px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/40">
+          <HelpCircle className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-[11.5px] font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-200">
+            MemorIA a besoin de toi sur ce Point
+          </h2>
+          <p className="text-[13px] font-semibold">
+            {questions.length} point{questions.length > 1 ? 's' : ''} à clarifier
+          </p>
+        </div>
+        <Link
+          href={href}
+          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
+        >
+          Répondre <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+      <ul className="mt-2.5 space-y-1">
+        {NEEDS_YOU_CATEGORIES_FOR_POINT.map((category) => {
+          const count = questions.filter((q) => q.category === category).length
+          if (count === 0) return null
+          return (
+            <li key={category} className="flex items-center gap-2 text-[12.5px] text-foreground/90">
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-100 px-1.5 text-[11px] font-semibold text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                {count}
+              </span>
+              <span>{MEMORIA_NEEDS_YOU_CATEGORY_LABELS[category]}</span>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+export function PointFicheView({
+  point,
+  backHref,
+  backLabel,
+  needsYouQuestions = [],
+  needsYouHref,
+}: {
+  point: TrackedPointDetail
+  backHref: string
+  backLabel: string
+  needsYouQuestions?: MemoriaNeedsYouQuestion[]
+  needsYouHref?: string
+}) {
   const p = point
 
   return (
@@ -147,6 +246,9 @@ export function PointFicheView({ point, backHref, backLabel }: { point: TrackedP
         ))}
       </section>
 
+      <ProvenanceSection p={p} />
+      <NeedsYouForPointSection questions={needsYouQuestions} href={needsYouHref} />
+
       {/* En-tête */}
       <section className="rounded-[22px] border bg-card p-5 shadow-sm">
         <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
@@ -176,7 +278,7 @@ export function PointFicheView({ point, backHref, backLabel }: { point: TrackedP
               répéter les mêmes éléments dans un §5 séparé + la colonne latérale). */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2.5">
             <h2 className={H2}>1. À faire</h2>
-            <LinkedObjectsTable items={p.openLinkedObjects} emptyLabel="Rien à faire actuellement sur ce Point." />
+            <LinkedObjectGroupsTable groups={p.openLinkedObjectGroups} emptyLabel="Rien à faire actuellement sur ce Point." />
             {p.closedLinkedObjects.length > 0 && (
               <details className="pt-1">
                 <summary className="cursor-pointer text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">

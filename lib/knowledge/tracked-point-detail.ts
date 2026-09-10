@@ -114,6 +114,24 @@ export interface PointDetailMergeSource {
   label: string
 }
 
+// Provenance affichée juste sous le bandeau d'état (mandat Vincent, lot UX Point 3F) :
+// isCausal=true quand la preuve fait partie de stateBasis (elle a RÉELLEMENT déterminé
+// derivedState) → « Pourquoi ce Point est … ? ». isCausal=false = repli honnête quand
+// stateBasis est vide (état venu d'un verdict CBO sans événement propre au Point) : on
+// montre alors la preuve la plus récente sans jamais prétendre qu'elle explique l'état.
+export interface PointDetailProvenance extends PointDetailEvidence {
+  isCausal: boolean
+}
+
+export interface PointDetailLinkedObjectGroup {
+  key: string
+  title: string
+  objectType: PointDetailLinkedObject['objectType']
+  count: number
+  items: PointDetailLinkedObject[]
+  representative: PointDetailLinkedObject
+}
+
 export interface TrackedPointDetail {
   id: string
   siteId: string
@@ -152,10 +170,16 @@ export interface TrackedPointDetail {
   // résolue ne doit jamais masquer une preuve ouverte plus récente : l'ordre seul
   // suffit, le state affiché vient déjà du reducer, jamais recalculé ici).
   evidence: PointDetailEvidence[]
+  // Provenance causale (lot UX Point 3F) — null seulement si aucune preuve documentaire
+  // n'existe pour ce Point (jamais fabriquée).
+  provenance: PointDetailProvenance | null
   // §2/§5 — actions/échéances/réserves liées, ouvertes ET terminées.
   linkedObjects: PointDetailLinkedObject[]
   openLinkedObjects: PointDetailLinkedObject[]
   closedLinkedObjects: PointDetailLinkedObject[]
+  // §1 « À faire » compacté (lot UX Point 3F) — regroupement VISUEL par titre exactement
+  // identique (zéro fuzzy, cf. doctrine dédup CBO) ; ne modifie aucune donnée sous-jacente.
+  openLinkedObjectGroups: PointDetailLinkedObjectGroup[]
   // §6 — acteurs explicitement liés (jamais déduits).
   actors: PointDetailActor[]
   // §7 — identité/mémoire (secondaire/admin).
@@ -182,6 +206,24 @@ export function toTrajectoryEntry(t: { effectiveAt: string; kind: PointEventKind
     isResolving: t.kind === 'resolution_signal' || t.kind === 'no_action_decided',
     source: t.source ?? null,
   }
+}
+
+/** Regroupe des objets liés au titre EXACTEMENT identique (même objectType) — zéro fuzzy,
+ *  même doctrine que la dédup CBO. Ordre d'entrée préservé (déjà trié par échéance) : ne
+ *  fait que compacter l'affichage, ne modifie ni la donnée ni son tri. */
+export function groupLinkedObjectsByTitle(items: PointDetailLinkedObject[]): PointDetailLinkedObjectGroup[] {
+  const groups = new Map<string, PointDetailLinkedObjectGroup>()
+  for (const item of items) {
+    const key = `${item.objectType}:${item.title.trim()}`
+    const existing = groups.get(key)
+    if (existing) {
+      existing.items.push(item)
+      existing.count += 1
+    } else {
+      groups.set(key, { key, title: item.title, objectType: item.objectType, count: 1, items: [item], representative: item })
+    }
+  }
+  return [...groups.values()]
 }
 
 /** Extrait un id de `document_extraction_proposal` d'une référence `proposal:<id>` de
@@ -323,6 +365,19 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
   }
   evidence.sort((a, b) => b.date.localeCompare(a.date))
   const latestEvidenceAt = evidence.length > 0 ? evidence[0].date : null
+
+  // ── Provenance causale (lot UX Point 3F) ──────────────────────────────────
+  // stateBasis (reduceTrackedPointLifecycle) = refs `${kind}@${effectiveAt}` des événements
+  // qui ont RÉELLEMENT déterminé derivedState. On ne recalcule rien : on matche juste les
+  // preuves déjà triées contre ces refs. Vide quand l'état vient d'un verdict CBO sans
+  // événement propre au Point → repli honnête sur la preuve la plus récente (isCausal=false),
+  // jamais présentée comme la preuve du constat.
+  const stateBasisRefs = new Set(canonicalEntry.stateBasis)
+  const causalEvidence = evidence.filter((e) => stateBasisRefs.has(`${e.kind}@${e.date}`))
+  const provenance: PointDetailProvenance | null =
+    causalEvidence.length > 0 ? { ...causalEvidence[0], isCausal: true }
+    : evidence.length > 0 ? { ...evidence[0], isCausal: false }
+    : null
 
   // ── §2/§5 — actions/échéances/réserves liées, via canonical_business_object_member ──
   const linkedObjects: PointDetailLinkedObject[] = []
@@ -483,9 +538,11 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
     mentionsCount,
     trajectory,
     evidence,
+    provenance,
     linkedObjects,
     openLinkedObjects,
     closedLinkedObjects,
+    openLinkedObjectGroups: groupLinkedObjectsByTitle(openLinkedObjects),
     actors,
     foundingKind: canonicalEntry.foundingKind,
     foundingSource: canonicalEntry.foundingSource,

@@ -8,12 +8,19 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildMemoriaNeedsYouSummary,
+  filterMemoriaNeedsYouQuestionsForPoint,
   MEMORIA_NEEDS_YOU_CATEGORY_ORDER,
+  type MemoriaNeedsYouQuestion,
 } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import type { ConsolidationQueue, ConsolidationQueueEntry, ConsolidationQueuePointSide } from '@/lib/knowledge/tracked-point-consolidation-queue'
-import type { TraceIdentityQueue, TraceIdentitySourceEntry } from '@/lib/knowledge/tracked-point-trace-queue'
+import type { TraceIdentityQueue, TraceIdentitySourceEntry, TraceIdentityTarget } from '@/lib/knowledge/tracked-point-trace-queue'
 import type { PendingTrackabilityQueue, PendingTrackabilityQueueEntry } from '@/lib/knowledge/tracked-point-pending-trackability-queue'
-import type { PendingResolutionQueue, PendingResolutionQueueEntry } from '@/lib/knowledge/tracked-point-pending-resolution-queue'
+import type {
+  PendingResolutionQueue,
+  PendingResolutionQueueEntry,
+  PendingResolutionKnownTarget,
+  PendingResolutionSubjectSuggestion,
+} from '@/lib/knowledge/tracked-point-pending-resolution-queue'
 import type { EvidenceScopeQueue, EvidenceScopeQueueEntry } from '@/lib/knowledge/tracked-point-evidence-scope-queue'
 
 const SITE_ID = 'site-1'
@@ -246,5 +253,75 @@ describe('buildMemoriaNeedsYouSummary', () => {
     expect(summary.latestPvDate).toBe('2026-03-01')
     expect(summary.latestPvCount).toBe(2) // trace-1 + trace-2, même date métier
     expect(summary.historicalCount).toBe(2) // pair-1 (sans date) + trace-3 (PV plus ancien)
+  })
+})
+
+function traceTarget(pointId: string): TraceIdentityTarget {
+  return {
+    candidateId: `cand-${pointId}`,
+    pointId,
+    canonicalPointId: null,
+    scope: 'thread',
+    label: null,
+    identityStatus: null,
+    derivedState: null,
+    subject: null,
+    subjectLabel: null,
+    latestMeaningfulEventAt: null,
+    cboCount: 0,
+    hardMemberCount: 0,
+    actionability: 'ACTIONABLE',
+    blockerReason: null,
+    classification: { category: 'SAFE_SINGLE_TRACE_THREAD', canonicalTargetId: null, sourceOwnPointId: null, relation: null, attachedAt: null, blockerReason: null },
+  }
+}
+
+function pointRef(pointId: string): PendingResolutionKnownTarget & PendingResolutionSubjectSuggestion {
+  return {
+    pointId,
+    candidateId: `cand-${pointId}`,
+    label: null,
+    identityStatus: null,
+    derivedState: null,
+    subjectId: null,
+    subjectLabel: null,
+    latestMeaningfulEventAt: null,
+  }
+}
+
+// Lot UX Point 3F (mandat Vincent) — filterMemoriaNeedsYouQuestionsForPoint : seules les
+// catégories dont la donnée référence RÉELLEMENT le Point qualifient (vérifié champ par champ,
+// zéro heuristique). confirm_trackability/clarify_evidence n'ont structurellement aucune
+// référence pointId — toujours exclues, jamais un oubli.
+describe('filterMemoriaNeedsYouQuestionsForPoint', () => {
+  it('duplicate_points : matche pointA OU pointB, exclut les paires étrangères', () => {
+    const entry = consolidationEntry('pair-1')
+    const match: MemoriaNeedsYouQuestion = { category: 'duplicate_points', id: 'pair-1', entry }
+    expect(filterMemoriaNeedsYouQuestionsForPoint([match], 'a')).toEqual([match])
+    expect(filterMemoriaNeedsYouQuestionsForPoint([match], 'b')).toEqual([match])
+    expect(filterMemoriaNeedsYouQuestionsForPoint([match], 'other')).toEqual([])
+  })
+
+  it('attach_information : matche si un des targets référence ce Point', () => {
+    const entry = { ...traceIdentityEntry('source-1'), targets: [traceTarget('point-x')] }
+    const question: MemoriaNeedsYouQuestion = { category: 'attach_information', id: 'source-1', entry }
+    expect(filterMemoriaNeedsYouQuestionsForPoint([question], 'point-x')).toEqual([question])
+    expect(filterMemoriaNeedsYouQuestionsForPoint([question], 'point-y')).toEqual([])
+  })
+
+  it('assign_resolution : matche via knownIdentityTargets OU sameSubjectSuggestions', () => {
+    const knownEntry = { ...resolutionEntry('trace-1', true), knownIdentityTargets: [pointRef('point-x')] }
+    const suggestedEntry = { ...resolutionEntry('trace-2', true), sameSubjectSuggestions: [pointRef('point-y')] }
+    const q1: MemoriaNeedsYouQuestion = { category: 'assign_resolution', id: 'trace-1', entry: knownEntry }
+    const q2: MemoriaNeedsYouQuestion = { category: 'assign_resolution', id: 'trace-2', entry: suggestedEntry }
+    expect(filterMemoriaNeedsYouQuestionsForPoint([q1], 'point-x')).toEqual([q1])
+    expect(filterMemoriaNeedsYouQuestionsForPoint([q2], 'point-y')).toEqual([q2])
+    expect(filterMemoriaNeedsYouQuestionsForPoint([q1, q2], 'point-z')).toEqual([])
+  })
+
+  it('confirm_trackability et clarify_evidence : toujours exclues, aucune référence Point possible', () => {
+    const trackability: MemoriaNeedsYouQuestion = { category: 'confirm_trackability', id: 'trace-1', entry: trackabilityEntry('trace-1', true) }
+    const evidence: MemoriaNeedsYouQuestion = { category: 'clarify_evidence', id: 'trace-1', entry: evidenceScopeEntry('trace-1', 'TRACKABILITY_UNDETERMINED') }
+    expect(filterMemoriaNeedsYouQuestionsForPoint([trackability, evidence], 'any-point')).toEqual([])
   })
 })
