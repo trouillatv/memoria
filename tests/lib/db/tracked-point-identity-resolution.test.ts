@@ -8,12 +8,16 @@
 // exécuter ce fichier avant l'application échouerait sur des erreurs Postgres "function does not
 // exist", pas sur un vrai défaut du wrapper. À exécuter dès que la migration 404 est appliquée.
 //
-// Couvre les 7 scénarios exigés par Vincent : dernier candidat rejeté → entrée encore visible
+// Couvre les scénarios exigés par Vincent : dernier candidat rejeté → entrée encore visible
 // (couvert côté pur par tests/lib/knowledge/tracked-point-trace-queue.test.ts, pas re-testé en
 // intégration ici) ; association libre réussie → membership + pending resolved ; rejeu même
 // cible → idempotent ; site différent → refusé ; création de Point → 1 Point PROVISIONAL + 1
 // membership + pending resolved ; rejeu de création → pas de doublon ; aucun changement d'état
 // métier non lié ne survient du seul fait de corriger l'identité.
+//
+// Micro-fix post-review (Vincent) : un candidat encore status='pending' sur le thread source doit
+// refuser les deux gestes libres (CANDIDATES_STILL_PENDING, aucune écriture) ; une fois tous les
+// candidats du thread rejetés, le comportement normal (succès) reste inchangé — non-régression.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -34,6 +38,17 @@ async function makePoint(overrides: Record<string, unknown> = {}, targetSiteId: 
   const { data, error } = await db
     .from('tracked_point')
     .insert({ site_id: targetSiteId, label: `${TAG} point`, founding_kind: 'manual', seed_source: 'manual', ...overrides })
+    .select('id')
+    .single()
+  if (error) throw error
+  return (data as { id: string }).id
+}
+
+async function makeCandidate(overrides: Record<string, unknown>, targetSiteId: string = siteId) {
+  const db = createAdminClient()
+  const { data, error } = await db
+    .from('tracked_point_identity_candidate')
+    .insert({ site_id: targetSiteId, subject_thread_id: randomUUID(), scope: 'thread', reason: 'test', ...overrides })
     .select('id')
     .single()
   if (error) throw error
@@ -115,6 +130,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   const db = createAdminClient()
+  await db.from('tracked_point_identity_candidate').delete().in('site_id', [siteId, otherSiteId])
   await db.from('tracked_point_pending_trace').delete().in('site_id', [siteId, otherSiteId])
   const { data: pts } = await db.from('tracked_point').select('id').in('site_id', [siteId, otherSiteId])
   const ptIds = ((pts ?? []) as Array<{ id: string }>).map((p) => p.id)
@@ -163,6 +179,40 @@ describe('associateIdentityTraceToPoint', () => {
     const result = await associateIdentityTraceToPoint({ siteId, pendingTraceId: pendingId, targetPointId: target })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toMatch(/ABORT|SITE_MISMATCH/)
+  })
+
+  it('CANDIDATES_STILL_PENDING : au moins un candidat pending sur le thread → association libre refusée, aucune écriture (micro-fix Vincent)', async () => {
+    const db = createAdminClient()
+    const threadX = randomUUID()
+    const target = await makePoint()
+    const candidateTarget = await makePoint()
+    const pendingId = await makePendingTrace({ source_thread_id: threadX })
+    await makeCandidate({ candidate_point_id: candidateTarget, subject_thread_id: threadX })
+
+    const result = await associateIdentityTraceToPoint({ siteId, pendingTraceId: pendingId, targetPointId: target })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/CANDIDATES_STILL_PENDING/)
+
+    const { data: pendingRow } = await db.from('tracked_point_pending_trace').select('status').eq('id', pendingId).single()
+    expect((pendingRow as { status: string }).status).toBe('pending')
+
+    const { data: members } = await db.from('tracked_point_member').select('id').eq('tracked_point_id', target).eq('subject_thread_id', threadX)
+    expect(members ?? []).toHaveLength(0)
+  })
+
+  it('après rejet de tous les candidats du thread → association libre inchangée (succès normal, micro-fix non régressif)', async () => {
+    const threadX = randomUUID()
+    const target = await makePoint()
+    const candidateTarget = await makePoint()
+    const pendingId = await makePendingTrace({ source_thread_id: threadX })
+    const candId = await makeCandidate({ candidate_point_id: candidateTarget, subject_thread_id: threadX })
+    const db = createAdminClient()
+    await db.from('tracked_point_identity_candidate').update({ status: 'rejected', resolved_at: new Date().toISOString() }).eq('id', candId)
+
+    const result = await associateIdentityTraceToPoint({ siteId, pendingTraceId: pendingId, targetPointId: target })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès : plus aucun candidat pending')
+    expect(result.result).toBe('associated')
   })
 
   it('succès : association libre à un Point existant → +1 membership HARD, pending resolved ; rejeu même cible → idempotent', async () => {
@@ -270,6 +320,42 @@ describe('createPointFromIdentityTrace', () => {
     const result = await createPointFromIdentityTrace({ siteId, pendingTraceId: pendingId })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error).toBe('SITE_MISMATCH')
+  })
+
+  it('CANDIDATES_STILL_PENDING : au moins un candidat pending sur le thread → création libre refusée, aucun Point créé (micro-fix Vincent)', async () => {
+    const db = createAdminClient()
+    const threadX = randomUUID()
+    const { documentId, extractionRunId } = await makeDocumentAndRun()
+    await makeProposal(threadX, documentId, extractionRunId, `${TAG} label candidates-still-pending`)
+    const candidateTarget = await makePoint()
+    const pendingId = await makePendingTrace({ source_thread_id: threadX })
+    await makeCandidate({ candidate_point_id: candidateTarget, subject_thread_id: threadX })
+
+    const result = await createPointFromIdentityTrace({ siteId, pendingTraceId: pendingId })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/CANDIDATES_STILL_PENDING/)
+
+    const { data: pendingRow } = await db.from('tracked_point_pending_trace').select('status').eq('id', pendingId).single()
+    expect((pendingRow as { status: string }).status).toBe('pending')
+
+    const { data: pointsCreated } = await db.from('tracked_point').select('id').eq('founding_kind', 'manual').eq('founding_reference', pendingId)
+    expect(pointsCreated ?? []).toHaveLength(0)
+  })
+
+  it('après rejet de tous les candidats du thread → création libre inchangée (succès normal, micro-fix non régressif)', async () => {
+    const db = createAdminClient()
+    const threadX = randomUUID()
+    const { documentId, extractionRunId } = await makeDocumentAndRun()
+    await makeProposal(threadX, documentId, extractionRunId, `${TAG} label rejected-candidate`)
+    const candidateTarget = await makePoint()
+    const pendingId = await makePendingTrace({ source_thread_id: threadX })
+    const candId = await makeCandidate({ candidate_point_id: candidateTarget, subject_thread_id: threadX })
+    await db.from('tracked_point_identity_candidate').update({ status: 'rejected', resolved_at: new Date().toISOString() }).eq('id', candId)
+
+    const result = await createPointFromIdentityTrace({ siteId, pendingTraceId: pendingId })
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error('attendu un succès : plus aucun candidat pending')
+    expect(result.result).toBe('created')
   })
 
   it('succès : crée exactement 1 Point PROVISIONAL + 1 membership HARD, pending resolved ; rejeu → pas de doublon', async () => {

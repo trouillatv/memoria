@@ -49,6 +49,14 @@
 -- (même ordre que 396, évite les deadlocks croisés avec accept_trace_identity_candidate qui
 -- verrouille candidat puis target — ici il n'y a pas de candidat à verrouiller).
 --
+-- Micro-fix post-review (Vincent) : les deux primitives n'étaient auparavant gardées que côté UI
+-- (le fallback ne s'affiche que quand plus aucun candidat n'est actionnable), sans invariant
+-- transactionnel équivalent en base. Ajout du guard CANDIDATES_STILL_PENDING dans les deux
+-- fonctions : tant qu'il subsiste un tracked_point_identity_candidate status='pending' pour le
+-- thread source, l'association libre et la création libre sont refusées explicitement, sans
+-- écriture. Empêche un appel direct (hors UI) de contourner le choix guidé pendant qu'il reste
+-- ouvert.
+--
 -- Migration écrite mais NON appliquée à ce lot (cf. mandat : OCEF non démarré, allowlist vide,
 -- Live Writer OFF).
 
@@ -63,6 +71,11 @@
 --   - status = 'resolved' vers un AUTRE target              → guard 4b : TARGET_MISMATCH
 --   - status = 'resolved' vers CE MÊME target                → guard 4a : idempotence,
 --     ALREADY_RESOLVED, 0 écriture (vérifie la membership HARD thread active)
+--   - au moins un tracked_point_identity_candidate status='pending' encore ouvert pour ce thread
+--                                                           → guard 5b : CANDIDATES_STILL_PENDING
+--     (micro-fix Vincent post-review : les deux gestes libres de fermeture d'IDENTITY_UNRESOLVED
+--     ne sont autorisés qu'après épuisement RÉEL des candidats proposés — invariant vérifié en
+--     transaction, jamais délégué au seul bouton affiché côté UI)
 --   - target introuvable                                   → guard 6 : INVALID_TARGET
 --   - target.status = 'merged' (jamais suivre merged_into_id)
 --                                                           → guard 7 : STALE_TARGET
@@ -140,6 +153,19 @@ BEGIN
   -- 5. Défensif : seul 'pending' doit subsister ici (CHECK mig 390 exclut toute autre valeur)
   IF v_pending.status <> 'pending' THEN
     RAISE EXCEPTION 'associate_identity_trace_to_point: INVALID_STATUS — pending trace (%) status=% (attendu pending)', p_pending_trace_id, v_pending.status;
+  END IF;
+
+  -- 5b. CANDIDATES_STILL_PENDING — l'association libre n'est autorisée qu'après épuisement réel
+  -- du choix guidé ; tant qu'un candidat proposé reste pending, l'humain doit d'abord le traiter
+  -- (accepter/rejeter) plutôt que de contourner le choix guidé par une association libre.
+  IF EXISTS (
+    SELECT 1 FROM public.tracked_point_identity_candidate tic
+    WHERE tic.subject_thread_id = v_pending.source_thread_id
+      AND tic.site_id = v_pending.site_id
+      AND tic.status = 'pending'
+  ) THEN
+    RAISE EXCEPTION 'associate_identity_trace_to_point: CANDIDATES_STILL_PENDING — au moins un tracked_point_identity_candidate status=pending existe encore pour le thread source (%) ; le choix guidé doit être épuisé avant une association libre',
+      v_pending.source_thread_id;
   END IF;
 
   -- 6. Charger + verrouiller la cible LITTÉRALE (jamais résolue via merged_into_id)
@@ -242,7 +268,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.associate_identity_trace_to_point(UUID, UUID) IS
-  'Fermeture humaine de IDENTITY_UNRESOLVED (sortie 1/2) : associe le thread source d''une pending trace IDENTITY_UNRESOLVED à un Point EXISTANT librement désigné par l''humain (pas nécessairement un candidat déjà proposé/rejeté), via UNE membership HARD scope=thread. Aucune evidence à figer pour ce kind (contrairement à associate_pending_resolution_to_point/396, RESOLUTION_WITHOUT_KNOWN_PROBLEM uniquement, non modifiée). Revalidation complète (kind, status, target actif/non-CONFLICTED/non-merged, cross-site toujours ABORT, non-collision) ; idempotent sur rejeu identique (ALREADY_RESOLVED / ALREADY_ASSOCIATED), TARGET_MISMATCH bruyant si rejeu avec une cible différente.';
+  'Fermeture humaine de IDENTITY_UNRESOLVED (sortie 1/2) : associe le thread source d''une pending trace IDENTITY_UNRESOLVED à un Point EXISTANT librement désigné par l''humain (pas nécessairement un candidat déjà proposé/rejeté), via UNE membership HARD scope=thread. Aucune evidence à figer pour ce kind (contrairement à associate_pending_resolution_to_point/396, RESOLUTION_WITHOUT_KNOWN_PROBLEM uniquement, non modifiée). N''est autorisée qu''après épuisement réel du choix guidé (CANDIDATES_STILL_PENDING si un tracked_point_identity_candidate status=pending subsiste pour ce thread — invariant transactionnel, pas seulement une garde UI). Revalidation complète (kind, status, target actif/non-CONFLICTED/non-merged, cross-site toujours ABORT, non-collision) ; idempotent sur rejeu identique (ALREADY_RESOLVED / ALREADY_ASSOCIATED), TARGET_MISMATCH bruyant si rejeu avec une cible différente.';
 
 -- ============================================================================
 -- 2. create_point_from_identity_trace
@@ -255,6 +281,10 @@ COMMENT ON FUNCTION public.associate_identity_trace_to_point(UUID, UUID) IS
 --   - status = 'resolved' déjà par CETTE fonction        → idempotence, ALREADY_RESOLVED,
 --     (founding_source = 'human_created_from_identity_unresolved' du target)  0 écriture
 --   - status = 'resolved' mais PAS par cette fonction    → guard 4 : INVALID_STATUS
+--   - au moins un tracked_point_identity_candidate status='pending' encore ouvert pour ce thread
+--                                                        → guard 5b : CANDIDATES_STILL_PENDING
+--     (micro-fix Vincent post-review, même invariant transactionnel que dans
+--     associate_identity_trace_to_point — jamais délégué au seul bouton affiché côté UI)
 --   - thread déjà fondateur/membre HARD d'un autre Point → guard 6 : STALE_ALREADY_TRACKED
 --   - subject_thread_identity d'un autre site que le pending (cross-site défensif)
 --                                                        → guard 7 : ABORT
@@ -338,6 +368,19 @@ BEGIN
     RAISE EXCEPTION 'create_point_from_identity_trace: INVALID_STATUS — pending trace (%) status=% (attendu pending)', p_pending_trace_id, v_pending.status;
   END IF;
 
+  -- 5b. CANDIDATES_STILL_PENDING — la création libre n'est autorisée qu'après épuisement réel du
+  -- choix guidé ; tant qu'un candidat proposé reste pending, l'humain doit d'abord le traiter
+  -- (accepter/rejeter) plutôt que de contourner le choix guidé par une création directe.
+  IF EXISTS (
+    SELECT 1 FROM public.tracked_point_identity_candidate tic
+    WHERE tic.subject_thread_id = v_pending.source_thread_id
+      AND tic.site_id = v_pending.site_id
+      AND tic.status = 'pending'
+  ) THEN
+    RAISE EXCEPTION 'create_point_from_identity_trace: CANDIDATES_STILL_PENDING — au moins un tracked_point_identity_candidate status=pending existe encore pour le thread source (%) ; le choix guidé doit être épuisé avant une création libre',
+      v_pending.source_thread_id;
+  END IF;
+
   -- 6. STALE_ALREADY_TRACKED — le thread source ne doit être ni fondateur ni membre HARD
   -- d'aucun Point (même mécanisme que confirm_pending_trackability guard 8, migration 395).
   IF EXISTS (
@@ -412,4 +455,4 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.create_point_from_identity_trace(UUID) IS
-  'Fermeture humaine de IDENTITY_UNRESOLVED (sortie 2/2) : fonde UN nouveau tracked_point PROVISIONAL/founding_kind=manual/founding_source=human_created_from_identity_unresolved + UNE membership HARD scope=thread, directement depuis la pending trace (jamais une reconstruction du pipeline historique). Label sourcé sur la proposition la plus récente du thread source (aucune evidence figée pour ce kind, contrairement à confirm_pending_trackability/395) ; LABEL_SOURCE_MISSING si aucune proposition n''existe. Revalidation live complète (kind, status, non-collision, cross-site) ; idempotent sur rejeu identique via founding_source dédié.';
+  'Fermeture humaine de IDENTITY_UNRESOLVED (sortie 2/2) : fonde UN nouveau tracked_point PROVISIONAL/founding_kind=manual/founding_source=human_created_from_identity_unresolved + UNE membership HARD scope=thread, directement depuis la pending trace (jamais une reconstruction du pipeline historique). N''est autorisée qu''après épuisement réel du choix guidé (CANDIDATES_STILL_PENDING si un tracked_point_identity_candidate status=pending subsiste pour ce thread — invariant transactionnel, pas seulement une garde UI). Label sourcé sur la proposition la plus récente du thread source (aucune evidence figée pour ce kind, contrairement à confirm_pending_trackability/395) ; LABEL_SOURCE_MISSING si aucune proposition n''existe. Revalidation live complète (kind, status, non-collision, cross-site) ; idempotent sur rejeu identique via founding_source dédié.';

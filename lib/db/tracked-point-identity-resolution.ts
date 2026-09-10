@@ -16,6 +16,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const ASSOCIATE_GUARD_CODES = [
   'INVALID_KIND',
   'INVALID_STATUS',
+  'CANDIDATES_STILL_PENDING',
   'TARGET_MISMATCH',
   'INVALID_TARGET',
   'STALE_TARGET',
@@ -24,7 +25,14 @@ const ASSOCIATE_GUARD_CODES = [
   'STALE_ALREADY_CONSUMED',
 ] as const
 
-const CREATE_GUARD_CODES = ['INVALID_KIND', 'INVALID_STATUS', 'STALE_ALREADY_TRACKED', 'ABORT', 'LABEL_SOURCE_MISSING'] as const
+const CREATE_GUARD_CODES = [
+  'INVALID_KIND',
+  'INVALID_STATUS',
+  'CANDIDATES_STILL_PENDING',
+  'STALE_ALREADY_TRACKED',
+  'ABORT',
+  'LABEL_SOURCE_MISSING',
+] as const
 
 function parseGuardCode(message: string, knownCodes: readonly string[]): string {
   const hit = knownCodes.find((code) => message.includes(code))
