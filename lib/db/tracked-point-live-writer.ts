@@ -29,6 +29,8 @@ import {
   type PlanUnitContext,
 } from '@/lib/knowledge/tracked-point-write-plan'
 import type { TrackedPointCandidate } from '@/lib/knowledge/tracked-point-membership-candidates'
+import type { IdentityJudge } from '@/lib/knowledge/tracked-point-identity-widening'
+import { trackedPointIdentityJudge } from '@/lib/ai/tracked-point-identity-judge'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -117,8 +119,9 @@ export async function reconcileTrackedPointUnit(params: {
   // D1 (Round 2, Vincent) : candidats de Points actifs du site déjà chargés par l'appelant,
   // utilisés UNIQUEMENT pour détecter une concurrence cross-thread avant l'auto-création
   // PROVISIONAL — jamais un second moteur de décision (crossThreadConcurrentPointIds réutilise
-  // evaluateMembershipCandidate tel quel, sans llmJudge). Le RPC revérifie chaque id sous
-  // verrou (FOR UPDATE OF tp, migration 401, Round 3) avant d'en tenir compte.
+  // le rail V2 élargi, tracked-point-identity-widening.ts : moteur déterministe Phase 4 d'abord,
+  // puis signature, puis juge Q1/Q2 seulement si le cas reste ambigu). Le RPC revérifie chaque
+  // id sous verrou (FOR UPDATE OF tp, migration 401, Round 3) avant d'en tenir compte.
   //
   // BUG 3b (Round 3, Vincent) : PAS de valeur par défaut. Un appelant qui omet ce paramètre
   // pour une unité encore éligible à l'auto-création PROVISIONAL (founding_kind=
@@ -126,8 +129,13 @@ export async function reconcileTrackedPointUnit(params: {
   // fichier) reçoit un refus explicite (MISSING_SITE_POINTS) plutôt qu'un `[]` silencieux
   // qui laisserait croire à "0 concurrent connu" et autoriserait une auto-création fausse.
   sitePoints?: TrackedPointCandidate[]
+  // P6 — rail V2 (mandat « raccordement du rail V2 d'identité Point ») : juge Q1/Q2 injectable,
+  // appelé par crossThreadConcurrentPointIds UNIQUEMENT pour les paires que le rail déterministe
+  // de signature laisse AMBIGUOUS. Par défaut le juge Gemini réel (lib/ai/tracked-point-identity-
+  // judge.ts) ; les tests injectent un stub déterministe pour ne dépendre d'aucun réseau.
+  identityJudge?: IdentityJudge
 }): Promise<ReconcileTrackedPointUnitResult> {
-  const { siteId, unit, ctx, sourceKind, sourceRefId, sitePoints } = params
+  const { siteId, unit, ctx, sourceKind, sourceRefId, sitePoints, identityJudge = trackedPointIdentityJudge } = params
 
   if (!UUID_RE.test(siteId)) return { ok: false, error: 'INVALID_SITE_ID' }
   if (!UUID_RE.test(unit.threadId)) return { ok: false, error: 'INVALID_THREAD_ID' }
@@ -149,7 +157,7 @@ export async function reconcileTrackedPointUnit(params: {
 
   const unitKey = foundingReferenceOf(unit)
   const { snapshot, fingerprint } = buildFingerprint(unit)
-  const crossThreadCandidateIds = crossThreadConcurrentPointIds(unit, sitePoints ?? [], ctx)
+  const crossThreadCandidateIds = await crossThreadConcurrentPointIds(unit, sitePoints ?? [], ctx, { identityJudge })
 
   const db = createAdminClient()
   const { data, error } = await db.rpc('fn_reconcile_tracked_point_unit', {

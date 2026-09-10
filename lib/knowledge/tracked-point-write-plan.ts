@@ -17,11 +17,8 @@
 // Frozen — voir docs/tracked-points/p6-live-writer-design.md §2.1, §2.2, §2.4, §7.
 
 import type { FoundingUnit, PropRow } from './tracked-point-founding'
-import {
-  evaluateMembershipCandidate,
-  type CandidateThreadInput,
-  type TrackedPointCandidate,
-} from './tracked-point-membership-candidates'
+import type { CandidateThreadInput, TrackedPointCandidate } from './tracked-point-membership-candidates'
+import { evaluateWidenedMembershipCandidate, type IdentityJudge } from './tracked-point-identity-widening'
 
 // ── classifyRootCause — copie fidèle (frozen, ne pas modifier). ────────────────────────────
 
@@ -208,26 +205,40 @@ export function fallbackPendingTraceForUnit(u: FoundingUnit): PlannedPendingTrac
 // Une identité concurrente connue cross-thread ne peut jamais être ignorée puis laisser le RPC
 // créer un nouveau Point (§ trackable_condition, jamais étendu à la branche CBO ni à la branche
 // pending/resolution — l'identité CBO est déjà arbitrée en amont, et la branche pending ne crée
-// jamais de Point). Réutilise tel quel le moteur déterministe de Phase 4
-// (evaluateMembershipCandidate, tracked-point-membership-candidates.ts) — pas un second moteur de
-// décision, aucun llmJudge branché (rail LLM non câblé, decision jamais UNCERTAIN en pratique).
+// jamais de Point). Réutilise le rail V2 élargi (evaluateWidenedMembershipCandidate,
+// tracked-point-identity-widening.ts) : moteur déterministe de Phase 4 d'abord (inchangé), puis
+// voisinage élargi par ancre/signature, puis juge LLM Q1/Q2 uniquement si `opts.identityJudge`
+// est injecté et le cas reste ambigu après le rail déterministe de signature.
+//
+// D3 (migration 403) force déjà NEEDS_HUMAN/CREATE_CANDIDATES dès qu'un id figure dans la liste
+// retournée, quel que soit son nombre — un candidat UNCERTAIN doit donc y figurer au même titre
+// qu'un SAME_POINT franc (mandat V2, objectif 5 : jamais de création silencieuse pendant qu'un
+// candidat crédible reste en concurrence). SAME_POINT et UNCERTAIN sont donc traités à égalité
+// ici ; seul DISTINCT_POINT exclut le point de la liste.
 //
 // La liste retournée ici n'est qu'une PROPOSITION calculée hors-lock : le RPC (migration 401)
 // revérifie chaque id sous verrou (tracked_point.status='active' AND identity_status<>'CONFLICTED')
 // avant d'en tenir compte — cette fonction ne décide jamais elle-même de l'écriture.
-export function crossThreadConcurrentPointIds(
+export async function crossThreadConcurrentPointIds(
   u: FoundingUnit,
   sitePoints: TrackedPointCandidate[],
   ctx: PlanUnitContext = {},
-): string[] {
+  opts: { identityJudge?: IdentityJudge } = {},
+): Promise<string[]> {
   const candidate: CandidateThreadInput = {
     threadId: u.threadId,
     label: u.threadLabel,
     subjectId: ctx.canonicalSubjectId ?? null,
     subjectLabel: ctx.canonicalSubjectLabel ?? null,
   }
-  return sitePoints
-    .filter((point) => evaluateMembershipCandidate(candidate, point).decision === 'SAME_POINT')
-    .map((point) => point.pointId)
+  const results = await Promise.all(
+    sitePoints.map(async (point) => ({
+      point,
+      decision: (await evaluateWidenedMembershipCandidate(candidate, point, opts)).decision,
+    })),
+  )
+  return results
+    .filter((r) => r.decision === 'SAME_POINT' || r.decision === 'UNCERTAIN')
+    .map((r) => r.point.pointId)
     .sort()
 }

@@ -16,7 +16,7 @@ const STOPWORDS = new Set([
 
 // Tokens trop génériques pour être discriminants seuls dans un containment match.
 // Un label court composé uniquement de ces tokens ne peut pas matcher par containment.
-const GENERIC_TOKENS = new Set([
+export const GENERIC_TOKENS = new Set([
   'plan','essais','travaux','fait','prevision','realisation',
   'acces','raccordement','mise','place','rapport','controle','verification',
   'inspection','suivi','bilan','point','test','visite','reunion','compte',

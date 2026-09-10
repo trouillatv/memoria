@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { FoundingOutcomeV2, FoundingUnit, PropRow } from './tracked-point-founding'
+import type { TrackedPointCandidate } from './tracked-point-membership-candidates'
 import {
   classifyRootCause,
+  crossThreadConcurrentPointIds,
   foundingReferenceOf,
   memberOf,
   planPendingTraceForUnit,
@@ -212,6 +214,130 @@ describe('planPointForUnit', () => {
     { kind: 'PENDING_TRACKABILITY' },
   ])('retourne null pour %o', (outcomeV2) => {
     expect(planPointForUnit(unit({ outcomeV2 }))).toBeNull()
+  })
+})
+
+function sitePoint(overrides: Partial<TrackedPointCandidate> & { pointId: string }): TrackedPointCandidate {
+  return {
+    pointId: overrides.pointId,
+    label: overrides.label ?? 'label',
+    ownerSubjectId: overrides.ownerSubjectId ?? 'subject-a',
+    ownerSubjectLabel: overrides.ownerSubjectLabel ?? 'Sujet A',
+    memberLabels: overrides.memberLabels ?? [],
+    memberCboIds: overrides.memberCboIds ?? [],
+    memberRunIds: overrides.memberRunIds ?? [],
+  }
+}
+
+// Rejoue au niveau write-plan (le chemin réel emprunté par reconcileTrackedPointUnit →
+// crossThreadConcurrentPointIds → p_cross_thread_candidate_point_ids) les témoins imposés par
+// le mandat « raccordement du rail V2 » : R7, zone après la dalle, CTA (anti-overmerge) et le
+// chemin UNCERTAIN → NeedsYou. Données réelles portées depuis le pilote OCEF (CR011/CR012).
+describe('crossThreadConcurrentPointIds — rail V2 au niveau write-plan (production)', () => {
+  it('R7 : le Point CR011 entre dans les candidats du write-plan (UNCERTAIN sans juge, jamais exclu)', async () => {
+    const r7Point = sitePoint({
+      pointId: 'a3713857-3fbd-4ca7-88f5-7dada975ddf0',
+      label: 'Surveillance des fissures du Regard R7 jusqu\'au prochain CR, sans réparation immédiate',
+      ownerSubjectId: '79e0509e',
+      ownerSubjectLabel: 'Assainissement sous plateforme (busages, regards, visite mairie)',
+      memberLabels: ['Fissures Regard R7 mesurées < 0,2 mm et limitées à la peau du béton'],
+    })
+    const cr012Unit = unit({
+      threadId: '7218166a-ed65-4db8-b319-61e918702480',
+      threadLabel: "OMNIS confirme l'absence de réparation nécessaire pour le Regard R7",
+      outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' },
+    })
+    const ids = await crossThreadConcurrentPointIds(cr012Unit, [r7Point], {
+      canonicalSubjectId: 'b1524a67',
+      canonicalSubjectLabel: 'Surveillance des fissures du Regard R7',
+    })
+    expect(ids).toContain(r7Point.pointId)
+  })
+
+  it('R7 : juge SAME_POINT explicite → le Point CR011 reste dans les candidats (fusion assumée, pas silencieuse)', async () => {
+    const r7Point = sitePoint({
+      pointId: 'a3713857-3fbd-4ca7-88f5-7dada975ddf0',
+      label: 'Surveillance des fissures du Regard R7 jusqu\'au prochain CR, sans réparation immédiate',
+      ownerSubjectId: '79e0509e',
+      ownerSubjectLabel: 'Assainissement sous plateforme (busages, regards, visite mairie)',
+      memberLabels: ['Fissures Regard R7 mesurées < 0,2 mm et limitées à la peau du béton'],
+    })
+    const cr012Unit = unit({
+      threadId: '7218166a-ed65-4db8-b319-61e918702480',
+      threadLabel: "OMNIS confirme l'absence de réparation nécessaire pour le Regard R7",
+      outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' },
+    })
+    const ids = await crossThreadConcurrentPointIds(
+      cr012Unit,
+      [r7Point],
+      { canonicalSubjectId: 'b1524a67', canonicalSubjectLabel: 'Surveillance des fissures du Regard R7' },
+      { identityJudge: async () => ({ decision: 'SAME_POINT', reasoning: 'même condition, même preuve de clôture' }) },
+    )
+    expect(ids).toContain(r7Point.pointId)
+  })
+
+  it('zone après la dalle : ne tombe pas directement en DISTINCT silencieux, le Point reste candidat', async () => {
+    const dallePoint = sitePoint({
+      pointId: '3e69ce84-e8ec-455d-9ee1-e5cb63adfbef',
+      label: 'Mise en demeure maintenue jusqu\'à contre-essais conformes pour la zone après la dalle',
+      ownerSubjectId: 'dc567108',
+      ownerSubjectLabel: 'Non-conformité zone après la dalle',
+      memberLabels: ['Essais PANDA non conformes'],
+    })
+    const moeUnit = unit({
+      threadId: '8a1e0e23-eb7e-45b6-9fcf-c2a7ddba6906',
+      threadLabel: 'Le MOE lève la réserve technique sur la zone après la dalle',
+      outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' },
+    })
+    const ids = await crossThreadConcurrentPointIds(moeUnit, [dallePoint], {
+      canonicalSubjectId: 'dc567108',
+      canonicalSubjectLabel: 'Non-conformité zone après la dalle',
+    })
+    expect(ids).toContain(dallePoint.pointId)
+  })
+
+  it('étalon CTA : ancrage générique commun ne provoque pas de fusion abusive, le Point est exclu (DISTINCT_POINT)', async () => {
+    const ctaPoint = sitePoint({
+      pointId: 'point-cta-programmation',
+      label: "Vérifier la programmation d'arrêt des CTA",
+      ownerSubjectId: 'subj-cta-programmation',
+      ownerSubjectLabel: "Programmation d'arrêt des CTA",
+    })
+    const raccordementUnit = unit({
+      threadId: 'kf-cta-raccordement',
+      threadLabel: 'Raccordement de la CTA au SSI',
+      outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' },
+    })
+    const ids = await crossThreadConcurrentPointIds(raccordementUnit, [ctaPoint], {
+      canonicalSubjectId: 'subj-cta-raccordement',
+      canonicalSubjectLabel: 'Raccordement CTA SSI',
+    })
+    expect(ids).not.toContain(ctaPoint.pointId)
+    expect(ids).toEqual([])
+  })
+
+  it('UNCERTAIN → NeedsYou : juge qui décline (null) laisse le Point candidat, jamais un défaut SAME/DISTINCT silencieux', async () => {
+    const p = sitePoint({ pointId: 'point-r7-ambigu', label: 'Surveillance des fissures du Regard R7', ownerSubjectId: 's1' })
+    const c = unit({
+      threadId: 'thread-r7-ambigu',
+      threadLabel: "Le Regard R7 fait l'objet d'un suivi renforcé",
+      outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' },
+    })
+    const ids = await crossThreadConcurrentPointIds(c, [p], { canonicalSubjectId: 's2', canonicalSubjectLabel: 'Sujet S2' }, {
+      identityJudge: async () => null,
+    })
+    expect(ids).toContain(p.pointId)
+  })
+
+  it('exact/CBO forts continuent de fonctionner sans régression (containment strict → SAME_POINT via moteur étroit)', async () => {
+    const p = sitePoint({ pointId: 'point-exact', label: 'Vérifier la programmation d\'arrêt des CTA', ownerSubjectId: 'subj-a', ownerSubjectLabel: 'Sujet A' })
+    const c = unit({
+      threadId: 'thread-exact',
+      threadLabel: 'Vérifier la programmation d\'arrêt des CTA',
+      outcomeV2: { kind: 'PROVISIONAL', triggerFamily: 'decision' },
+    })
+    const ids = await crossThreadConcurrentPointIds(c, [p], { canonicalSubjectId: 'subj-a', canonicalSubjectLabel: 'Sujet A' })
+    expect(ids).toContain(p.pointId)
   })
 })
 
