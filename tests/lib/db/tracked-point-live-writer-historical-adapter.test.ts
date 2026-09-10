@@ -219,6 +219,14 @@ describe('runTrackedPointLiveWriterForHistoricalRun — rollout (allowlist)', ()
     expect(result).not.toBeNull()
     expect(result).toEqual({ unitsProcessed: 0, verdictCounts: {}, refusals: 0 })
   })
+
+  it("rollout global ('*') → un site absent de toute allowlist passe quand même le portail", async () => {
+    process.env[ENV_KEY] = '*'
+    const { runId } = await makeDocAndRun()
+    const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId: otherSiteId })
+    expect(result).not.toBeNull()
+    expect(result).toEqual({ unitsProcessed: 0, verdictCounts: {}, refusals: 0 })
+  })
 })
 
 describe('runTrackedPointLiveWriterForHistoricalRun — site autorisé, exécution réelle', () => {

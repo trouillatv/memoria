@@ -63,4 +63,28 @@ describe('isTrackedPointLiveWriterEnabledForSite', () => {
     process.env[ENV_KEY] = ' , , '
     expect(isTrackedPointLiveWriterEnabledForSite(SITE_A)).toBe(false)
   })
+
+  it("valeur '*' (rollout global) → ON pour n'importe quel site", () => {
+    process.env[ENV_KEY] = '*'
+    expect(isTrackedPointLiveWriterEnabledForSite(SITE_A)).toBe(true)
+    expect(isTrackedPointLiveWriterEnabledForSite(SITE_B)).toBe(true)
+  })
+
+  it("'*' entouré d'espaces → ON pour tous", () => {
+    process.env[ENV_KEY] = '  *  '
+    expect(isTrackedPointLiveWriterEnabledForSite(SITE_A)).toBe(true)
+  })
+
+  it("kill-switch : variable vide → OFF même après un rollout global précédent (pas de cache)", () => {
+    process.env[ENV_KEY] = '*'
+    expect(isTrackedPointLiveWriterEnabledForSite(SITE_A)).toBe(true)
+    process.env[ENV_KEY] = ''
+    expect(isTrackedPointLiveWriterEnabledForSite(SITE_A)).toBe(false)
+  })
+
+  it("mélange '*' avec un UUID → configuration invalide → OFF pour tous (fail-closed)", () => {
+    process.env[ENV_KEY] = `*,${SITE_A}`
+    expect(isTrackedPointLiveWriterEnabledForSite(SITE_A)).toBe(false)
+    expect(isTrackedPointLiveWriterEnabledForSite(SITE_B)).toBe(false)
+  })
 })

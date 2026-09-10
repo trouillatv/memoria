@@ -204,16 +204,22 @@ export async function runHistoricalImportPostProcessing(
   })
   await attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId })
 
-  // P6 Live Writer — câblage inerte, premier producteur historical_pdf (mandat Vincent).
-  // Allowlist par site OFF par défaut (TRACKED_POINT_LIVE_WRITER_SITE_IDS,
-  // lib/db/tracked-point-live-writer-flag.ts) : aucun site réel n'est activé dans ce lot.
+  // P6 Live Writer (mandat Vincent, rollout global). Kill-switch fail-closed
+  // (TRACKED_POINT_LIVE_WRITER_SITE_IDS, lib/db/tracked-point-live-writer-flag.ts).
   // Best-effort, même doctrine que le pont documentaire ci-dessous : un échec ici ne fait
-  // jamais échouer l'import historique.
+  // jamais échouer l'import historique. Log une ligne par run exécuté (site/verdicts/refusals)
+  // pour le suivi du rollout (taux AUTO_LINKED/AUTO_CREATED, volume NEEDS_HUMAN, spikes par site).
   try {
-    await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
+    const liveWriterResult = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
+    if (liveWriterResult) {
+      console.log(
+        `[tracked-point-live-writer] site=${siteId} run=${runId} units=${liveWriterResult.unitsProcessed} ` +
+          `verdicts=${JSON.stringify(liveWriterResult.verdictCounts)} refusals=${liveWriterResult.refusals}`,
+      )
+    }
   } catch (err) {
     console.error(
-      '[historical-import-post-processing] tracked point live writer failed:',
+      `[historical-import-post-processing] tracked point live writer failed: site=${siteId} run=${runId}`,
       err instanceof Error ? err.message : String(err),
     )
   }
