@@ -288,7 +288,7 @@ describe('associateIdentityTraceToPoint', () => {
     const result = await associateIdentityTraceToPoint({ siteId, pendingTraceId: pendingId, targetPointId: target })
     expect(result.ok).toBe(true)
 
-    const { data: untouchedPointRow } = await db.from('tracked_point').select('status, derived_state').eq('id', untouchedPoint).single()
+    const { data: untouchedPointRow } = await db.from('tracked_point').select('status').eq('id', untouchedPoint).single()
     expect((untouchedPointRow as { status: string }).status).toBe('active')
 
     const { data: untouchedPendingRow } = await db
