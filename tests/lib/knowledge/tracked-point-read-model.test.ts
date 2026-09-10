@@ -5,10 +5,12 @@ import {
   projectPendingIdentityCandidates,
   selectEligibleProposalIds,
   assemblePointDocumentaryEvents,
+  sortPointsForSubjectDisplay,
   type TrackedPointRow,
   type PendingIdentityCandidateRow,
   type PointMembershipRow,
   type PointDocProposalProvenance,
+  type PointReadModelEntry,
 } from '@/lib/knowledge/tracked-point-read-model'
 import type { PointLifecycleEvent, PointCboMember } from '@/lib/knowledge/tracked-point-lifecycle-reducer'
 import type { CboComputedCurrentState } from '@/lib/knowledge/cbo-lifecycle-reducer'
@@ -358,5 +360,54 @@ describe('tracked-point-read-model — bridge HARD membership → événements d
       eventAt: '2026-04-01',
       source: 'proposal:prop-e',
     })
+  })
+})
+
+describe('tracked-point-read-model — sortPointsForSubjectDisplay (6F.1, tri d’affichage pur)', () => {
+  const point = (overrides: Partial<PointReadModelEntry> = {}): PointReadModelEntry => ({
+    id: 'p', siteId: 'site-1', ownerCanonicalSubjectId: 'subject-1', label: 'Point', status: 'active',
+    mergedIntoId: null, canonicalPointId: 'p', identityStatus: 'CONFIRMED', derivedState: 'open',
+    foundingKind: 'cbo', foundingSource: null, hasUpstreamDefect: false, cboIds: [], hardMemberThreadIds: [],
+    latestMeaningfulEventAt: null, trajectory: [], stateBasis: [], markers: [], documentaryDivergences: [],
+    conflicts: [], toConfirm: false, closedByDecision: false, awaitingDecision: false,
+    hasDocumentaryDivergence: false, hasConflict: false,
+    ...overrides,
+  })
+
+  it('Réouvert et Conflit passent avant Ouvert, qui passe avant Résolu', () => {
+    const resolved = point({ id: 'resolved', derivedState: 'resolved', latestMeaningfulEventAt: '2026-01-01' })
+    const open = point({ id: 'open', derivedState: 'open', latestMeaningfulEventAt: '2026-01-01' })
+    const conflict = point({ id: 'conflict', derivedState: 'conflict', latestMeaningfulEventAt: '2026-01-01' })
+    const reopened = point({ id: 'reopened', derivedState: 'reopened', latestMeaningfulEventAt: '2026-01-01' })
+
+    const sorted = sortPointsForSubjectDisplay([resolved, open, conflict, reopened]).map((p) => p.id)
+    expect(sorted.slice(0, 2).sort()).toEqual(['conflict', 'reopened'])
+    expect(sorted[2]).toBe('open')
+    expect(sorted[3]).toBe('resolved')
+  })
+
+  it('un Point Ouvert « à arbitrer » (toConfirm/awaitingDecision) passe devant les autres Ouverts', () => {
+    const plainOpen = point({ id: 'plain', derivedState: 'open', latestMeaningfulEventAt: '2026-01-01' })
+    const toConfirm = point({ id: 'to-confirm', derivedState: 'open', toConfirm: true, latestMeaningfulEventAt: '2026-01-01' })
+    const awaiting = point({ id: 'awaiting', derivedState: 'open', awaitingDecision: true, latestMeaningfulEventAt: '2026-01-01' })
+
+    const sorted = sortPointsForSubjectDisplay([plainOpen, toConfirm, awaiting]).map((p) => p.id)
+    expect(sorted.slice(0, 2).sort()).toEqual(['awaiting', 'to-confirm'])
+    expect(sorted[2]).toBe('plain')
+  })
+
+  it('à statut égal, la dernière évolution significative la plus récente vient en premier', () => {
+    const older = point({ id: 'older', derivedState: 'open', latestMeaningfulEventAt: '2026-01-01' })
+    const newer = point({ id: 'newer', derivedState: 'open', latestMeaningfulEventAt: '2026-06-01' })
+
+    expect(sortPointsForSubjectDisplay([older, newer]).map((p) => p.id)).toEqual(['newer', 'older'])
+  })
+
+  it('ne modifie pas le tableau d’entrée (copie pure)', () => {
+    const a = point({ id: 'a', derivedState: 'resolved' })
+    const b = point({ id: 'b', derivedState: 'reopened' })
+    const input = [a, b]
+    sortPointsForSubjectDisplay(input)
+    expect(input).toEqual([a, b])
   })
 })

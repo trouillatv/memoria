@@ -40,43 +40,70 @@ describe('tracked-point-detail — proposalIdFromSource', () => {
 
 describe('tracked-point-detail — buildHeadline (mise en mots, aucun recalcul d’état)', () => {
   it('reopened avec divergence documentaire connue → cite la divergence en priorité', () => {
-    const headline = buildHeadline(
-      { derivedState: 'reopened', documentaryDivergences: ['PV du 2026-02-01 signale une réapparition'], conflicts: [], latestMeaningfulEventAt: '2026-02-01' },
-      '1 février 2026',
-    )
+    const headline = buildHeadline({
+      derivedState: 'reopened', documentaryDivergences: ['PV du 2026-02-01 signale une réapparition'], conflicts: [],
+      openedAt: '2025-06-01', latestMeaningfulEventAt: '2026-02-01', mentionsCount: 2,
+    })
     expect(headline).toContain('Réouvert')
     expect(headline).toContain('réapparition')
   })
 
-  it('reopened sans divergence détaillée → phrase générique datée', () => {
-    const headline = buildHeadline(
-      { derivedState: 'reopened', documentaryDivergences: [], conflicts: [], latestMeaningfulEventAt: '2026-02-01' },
-      '1 février 2026',
-    )
+  it('reopened sans divergence détaillée → phrase générique datée sur le DERNIER événement', () => {
+    const headline = buildHeadline({
+      derivedState: 'reopened', documentaryDivergences: [], conflicts: [],
+      openedAt: '2025-06-01', latestMeaningfulEventAt: '2026-02-01', mentionsCount: 2,
+    })
     expect(headline).toBe('Réouvert depuis le 1 février 2026 — une preuve plus récente contredit une résolution antérieure.')
   })
 
   it('conflict cite le premier conflit connu', () => {
-    const headline = buildHeadline(
-      { derivedState: 'conflict', documentaryDivergences: [], conflicts: ['deux preuves incompatibles'], latestMeaningfulEventAt: null },
-      null,
-    )
+    const headline = buildHeadline({
+      derivedState: 'conflict', documentaryDivergences: [], conflicts: ['deux preuves incompatibles'],
+      openedAt: null, latestMeaningfulEventAt: null, mentionsCount: 0,
+    })
     expect(headline).toBe('En conflit — deux preuves incompatibles')
   })
 
   it('resolved sans date → phrase sans "depuis le"', () => {
-    expect(buildHeadline({ derivedState: 'resolved', documentaryDivergences: [], conflicts: [], latestMeaningfulEventAt: null }, null))
-      .toBe('Résolu.')
+    expect(buildHeadline({
+      derivedState: 'resolved', documentaryDivergences: [], conflicts: [],
+      openedAt: null, latestMeaningfulEventAt: null, mentionsCount: 0,
+    })).toBe('Résolu.')
   })
 
-  it('open avec date → phrase datée', () => {
-    expect(buildHeadline({ derivedState: 'open', documentaryDivergences: [], conflicts: [], latestMeaningfulEventAt: '2026-01-01' }, '1 janvier 2026'))
-      .toBe('Ouvert depuis le 1 janvier 2026 — aucune résolution constatée à ce jour.')
+  it('resolved avec mentions → cite le nombre d’occurrences', () => {
+    expect(buildHeadline({
+      derivedState: 'resolved', documentaryDivergences: [], conflicts: [],
+      openedAt: '2025-01-01', latestMeaningfulEventAt: '2026-01-01', mentionsCount: 3,
+    })).toBe('Résolu depuis le 1 janvier 2026, mentionné dans 3 occurrences.')
+  })
+
+  it('open avec plusieurs mentions étalées → date d’OUVERTURE (premier événement), pas la dernière mention', () => {
+    expect(buildHeadline({
+      derivedState: 'open', documentaryDivergences: [], conflicts: [],
+      openedAt: '2025-03-27', latestMeaningfulEventAt: '2026-02-19', mentionsCount: 5,
+    })).toBe('Ouvert depuis le 27 mars 2025, mentionné dans 5 occurrences — aucune résolution constatée à ce jour.')
+  })
+
+  it('open avec une seule mention → pas de clause de mentions', () => {
+    expect(buildHeadline({
+      derivedState: 'open', documentaryDivergences: [], conflicts: [],
+      openedAt: '2026-01-01', latestMeaningfulEventAt: '2026-01-01', mentionsCount: 1,
+    })).toBe('Ouvert depuis le 1 janvier 2026 — aucune résolution constatée à ce jour.')
+  })
+
+  it('open sans trajectoire (fondé par CBO, jamais de preuve documentaire) → phrase honnête sans date inventée', () => {
+    expect(buildHeadline({
+      derivedState: 'open', documentaryDivergences: [], conflicts: [],
+      openedAt: null, latestMeaningfulEventAt: null, mentionsCount: 0,
+    })).toBe('Ouvert — aucune résolution constatée à ce jour, aucune preuve documentaire retrouvée.')
   })
 
   it('unknown → phrase neutre fixe', () => {
-    expect(buildHeadline({ derivedState: 'unknown', documentaryDivergences: [], conflicts: [], latestMeaningfulEventAt: null }, null))
-      .toBe('État non déterminé — pas assez d’éléments pour se prononcer.')
+    expect(buildHeadline({
+      derivedState: 'unknown', documentaryDivergences: [], conflicts: [],
+      openedAt: null, latestMeaningfulEventAt: null, mentionsCount: 0,
+    })).toBe('État non déterminé — pas assez d’éléments pour se prononcer.')
   })
 })
 

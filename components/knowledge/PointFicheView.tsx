@@ -5,18 +5,20 @@
 // logique (état dérivé, tri des preuves, résolution du Point merged) vient de
 // `getTrackedPointDetail` — ce composant ne fait AUCUN calcul d'état.
 //
-// Priorité de lecture (mandat Vincent) : « ce qu'il faut retenir aujourd'hui »
-// tout en haut, puis Situation actuelle (pourquoi cet état), puis ce qu'il
-// reste à faire, puis l'évolution qui a mené à cet état.
+// Priorité de lecture (6F.1, mandat Vincent) : « ce qu'il faut retenir
+// aujourd'hui » tout en haut (synthèse + divergences/conflits non déjà cités),
+// puis §1 À faire (liste unique, dédupliquée), puis §2 Histoire et preuves
+// (trajectoire + preuves fusionnées en une lecture chronologique), puis §3
+// Acteurs. Informations/Documents liés restent secondaires en colonne latérale.
 //
 // UX : le conducteur ne doit jamais avoir besoin de comprendre canonical_subject,
 // CBO, membership ou les UUID — ces notions restent dans le bloc « Détails
-// techniques » (§7), replié par défaut (<details> natif, zéro JS).
+// techniques », replié par défaut (<details> natif, zéro JS).
 
 import Link from 'next/link'
 import { ChevronRight, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { TrackedPointDetail, PointDetailLinkedObject } from '@/lib/knowledge/tracked-point-detail'
+import { proposalIdFromSource, type TrackedPointDetail, type PointDetailLinkedObject } from '@/lib/knowledge/tracked-point-detail'
 
 const STATE_CLS: Record<TrackedPointDetail['derivedState'], string> = {
   unknown: 'bg-muted text-muted-foreground ring-border',
@@ -126,10 +128,23 @@ export function PointFicheView({ point, backHref, backLabel }: { point: TrackedP
         </p>
       )}
 
-      {/* Ce qu'il faut retenir aujourd'hui — priorité absolue, surtout mobile. */}
-      <section className={cn('rounded-2xl border-2 px-5 py-3.5', STATE_HERO_CLS[p.derivedState])}>
+      {/* Ce qu'il faut retenir aujourd'hui — priorité absolue, surtout mobile.
+          6F.1 : n'affiche que les divergences/conflits NON déjà cités dans le
+          headline (le premier de chaque liste y est déjà repris pour reopened/
+          conflict) — sinon la même information apparaissait deux fois. */}
+      <section className={cn('rounded-2xl border-2 px-5 py-3.5 space-y-2', STATE_HERO_CLS[p.derivedState])}>
         <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Ce qu’il faut retenir aujourd’hui</p>
         <p className="mt-1 text-[15px] font-semibold leading-snug sm:text-base">{p.headline}</p>
+        {(p.derivedState === 'reopened' ? p.documentaryDivergences.slice(1) : p.documentaryDivergences).map((d, i) => (
+          <p key={i} className="rounded-md bg-amber-50/60 px-2.5 py-1.5 text-[12.5px] text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+            Divergence documentaire : {d}
+          </p>
+        ))}
+        {(p.derivedState === 'conflict' ? p.conflicts.slice(1) : p.conflicts).map((c, i) => (
+          <p key={i} className="rounded-md bg-rose-50/60 px-2.5 py-1.5 text-[12.5px] text-rose-800 dark:bg-rose-950/20 dark:text-rose-300">
+            Conflit : {c}
+          </p>
+        ))}
       </section>
 
       {/* En-tête */}
@@ -157,131 +172,75 @@ export function PointFicheView({ point, backHref, backLabel }: { point: TrackedP
 
       <div className="grid gap-5 lg:grid-cols-[1fr_320px] lg:items-start">
         <div className="min-w-0 space-y-5">
-          {/* §1 — Situation actuelle : bloc central, volontairement le plus visible. */}
-          <section className={cn('rounded-[18px] border-2 px-5 py-4 space-y-2.5', STATE_HERO_CLS[p.derivedState])}>
-            <h2 className={H2}>1. Situation actuelle</h2>
-            <p className="text-[14px] leading-relaxed">
-              Ce Point est aujourd’hui <strong>{p.derivedStateLabel.toLowerCase()}</strong>
-              {p.ownerCanonicalSubjectLabel ? <> — dans le cadre du sujet « {p.ownerCanonicalSubjectLabel} »</> : null}.
-            </p>
-            {p.hasDocumentaryDivergence && p.documentaryDivergences.map((d, i) => (
-              <p key={i} className="rounded-md bg-amber-50/60 px-2.5 py-1.5 text-[12.5px] text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
-                Divergence documentaire : {d}
-              </p>
-            ))}
-            {p.hasConflict && p.conflicts.map((c, i) => (
-              <p key={i} className="rounded-md bg-rose-50/60 px-2.5 py-1.5 text-[12.5px] text-rose-800 dark:bg-rose-950/20 dark:text-rose-300">
-                Conflit : {c}
-              </p>
-            ))}
-            <p className="text-[12px] text-muted-foreground">
-              {p.latestMeaningfulEventLabel && <>Dernière évolution significative le {p.latestMeaningfulEventLabel}</>}
-              {p.latestMeaningfulEventLabel && p.latestEvidenceAt && ' · '}
-              {p.latestEvidenceAt && <>Dernière preuve vue le {p.evidence[0]?.dateLabel}</>}
-              {!p.latestMeaningfulEventLabel && !p.latestEvidenceAt && 'Aucune évolution enregistrée pour l’instant.'}
-            </p>
-          </section>
-
-          {/* §2 — Ce qu'il reste à faire */}
+          {/* §1 — À faire : SEULE liste d'actions/échéances/réserves (6F.1 — ne plus
+              répéter les mêmes éléments dans un §5 séparé + la colonne latérale). */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2.5">
-            <h2 className={H2}>2. Ce qu’il reste à faire</h2>
+            <h2 className={H2}>1. À faire</h2>
             <LinkedObjectsTable items={p.openLinkedObjects} emptyLabel="Rien à faire actuellement sur ce Point." />
+            {p.closedLinkedObjects.length > 0 && (
+              <details className="pt-1">
+                <summary className="cursor-pointer text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  Voir les {p.closedLinkedObjects.length} terminé{p.closedLinkedObjects.length > 1 ? 's' : ''}
+                </summary>
+                <ul className="mt-2 divide-y divide-border/60">
+                  {p.closedLinkedObjects.map((o) => <LinkedObjectRow key={`${o.objectType}:${o.id}`} o={o} />)}
+                </ul>
+              </details>
+            )}
           </section>
 
-          {/* §3 — Évolution */}
+          {/* §2 — Histoire et preuves : fusion Évolution + Preuves en une seule
+              lecture chronologique (6F.1). Chaque ligne de trajectoire montre sa
+              preuve documentaire quand elle en a une (jointure par proposalId) ;
+              un événement natif (décision) n'affiche que sa mise en mots — jamais
+              de preuve inventée. */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
-            <h2 className={H2}>3. Évolution</h2>
+            <h2 className={H2}>2. Histoire et preuves</h2>
             {p.trajectory.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Aucun événement significatif enregistré.</p>
+              <p className="text-[13px] text-muted-foreground">Aucun événement ni preuve documentaire enregistré pour ce Point.</p>
             ) : (
-              <ul className="space-y-2.5 border-l border-border pl-3.5">
-                {p.trajectory.map((t, i) => (
-                  <li key={i} className="relative text-[13px]">
-                    <span className={cn(
-                      'absolute -left-[18px] top-1 h-2 w-2 rounded-full ring-2 ring-background',
-                      t.isResolving ? 'bg-emerald-500' : 'bg-primary/70',
-                    )} />
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-medium">{t.kindLabel}</span>
-                      {t.dateLabel && <span className="text-[11px] text-muted-foreground/70">{t.dateLabel}</span>}
-                    </div>
-                  </li>
-                ))}
+              <ul className="space-y-3 border-l border-border pl-3.5">
+                {(() => {
+                  const evidenceByProposalId = new Map(p.evidence.map((e) => [e.proposalId, e]))
+                  return p.trajectory.map((t, i) => {
+                    const proposalId = proposalIdFromSource(t.source)
+                    const ev = proposalId ? evidenceByProposalId.get(proposalId) : undefined
+                    return (
+                      <li key={i} className="relative text-[13px]">
+                        <span className={cn(
+                          'absolute -left-[18px] top-1 h-2 w-2 rounded-full ring-2 ring-background',
+                          t.isResolving ? 'bg-emerald-500' : 'bg-primary/70',
+                        )} />
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className={cn('font-medium', t.isResolving && 'text-emerald-700 dark:text-emerald-400')}>{t.kindLabel}</span>
+                          {t.dateLabel && <span className="text-[11px] text-muted-foreground/70">{t.dateLabel}</span>}
+                        </div>
+                        {ev && (
+                          <div className="mt-1 text-[12px] text-muted-foreground">
+                            {ev.documentFilename ?? 'Document'}
+                            {ev.sourcePage && <span> · p.{ev.sourcePage}</span>}
+                            {ev.href && (
+                              <>
+                                {' · '}
+                                <Link href={ev.href} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
+                                  Ouvrir <ChevronRight className="h-3 w-3" />
+                                </Link>
+                              </>
+                            )}
+                            {ev.sourceExcerpt && <p className="mt-0.5 italic leading-snug">« {ev.sourceExcerpt} »</p>}
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })
+                })()}
               </ul>
             )}
           </section>
 
-          {/* §4 — Preuves et sources */}
-          <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2.5">
-            <h2 className={H2}>4. Preuves et sources</h2>
-            {p.evidence.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Aucune preuve documentaire rattachée.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/30">
-                    <tr>
-                      <th className={TH}>Date</th>
-                      <th className={TH}>Type</th>
-                      <th className={TH}>Source</th>
-                      <th className={TH} />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {p.evidence.map((e) => (
-                      <tr key={e.proposalId}>
-                        <td className="whitespace-nowrap px-3 py-2 text-[12.5px] text-muted-foreground">{e.dateLabel ?? '—'}</td>
-                        <td className="px-3 py-2 text-[12.5px]">
-                          <span className={cn('font-medium', e.isResolving ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground')}>
-                            {e.kindLabel}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-[12.5px]">
-                          {e.documentFilename ?? '—'}
-                          {e.sourcePage && <span className="text-muted-foreground"> · p.{e.sourcePage}</span>}
-                          {e.sourceExcerpt && <p className="mt-0.5 italic leading-snug text-muted-foreground">« {e.sourceExcerpt} »</p>}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {e.href && (
-                            <Link href={e.href} className="inline-flex items-center gap-0.5 text-[12px] font-medium text-primary hover:underline">
-                              Ouvrir <ChevronRight className="h-3.5 w-3.5" />
-                            </Link>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-
-          {/* §5 — Actions et délais liés (historique complet, fait + à faire) */}
+          {/* §3 — Acteurs */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
-            <h2 className={H2}>5. Actions et délais liés</h2>
-            {p.linkedObjects.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Aucune action, réserve ou échéance rattachée à ce Point.</p>
-            ) : (
-              <>
-                {p.openLinkedObjects.length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">À faire</p>
-                    <ul className="divide-y divide-border/60">{p.openLinkedObjects.map((o) => <LinkedObjectRow key={`${o.objectType}:${o.id}`} o={o} />)}</ul>
-                  </div>
-                )}
-                {p.closedLinkedObjects.length > 0 && (
-                  <div className="pt-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">Fait</p>
-                    <ul className="divide-y divide-border/60">{p.closedLinkedObjects.map((o) => <LinkedObjectRow key={`${o.objectType}:${o.id}`} o={o} />)}</ul>
-                  </div>
-                )}
-              </>
-            )}
-          </section>
-
-          {/* §6 — Acteurs */}
-          <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
-            <h2 className={H2}>6. Acteurs</h2>
+            <h2 className={H2}>3. Acteurs</h2>
             {p.actors.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">Aucun acteur explicitement identifié pour ce Point.</p>
             ) : (
@@ -350,22 +309,6 @@ export function PointFicheView({ point, backHref, backLabel }: { point: TrackedP
                       <FileText className="h-3.5 w-3.5 shrink-0" />
                       <span className="truncate">{e.documentFilename ?? 'Document'}</span>
                     </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="rounded-[16px] border bg-card px-4 py-3.5 space-y-2">
-            <h2 className={H2}>Actions et délais liés</h2>
-            {p.openLinkedObjects.length === 0 ? (
-              <p className="text-[12.5px] text-muted-foreground">Rien d’ouvert actuellement.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {p.openLinkedObjects.slice(0, 5).map((o) => (
-                  <li key={`${o.objectType}:${o.id}`} className="flex items-start justify-between gap-2">
-                    <Link href={o.href} className="min-w-0 truncate text-[12.5px] text-primary hover:underline">{o.title}</Link>
-                    {o.isLate && <span className="shrink-0 text-[10.5px] font-semibold text-rose-700 dark:text-rose-300">retard</span>}
                   </li>
                 ))}
               </ul>

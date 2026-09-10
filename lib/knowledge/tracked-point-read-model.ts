@@ -111,6 +111,30 @@ export type SubjectPointReadModel = {
   points: PointReadModelEntry[]
 }
 
+// 6F.1 — priorité d'affichage pure pour la liste « Points de suivi » (page Sujet).
+// Trie uniquement à partir de champs déjà calculés par le reducer (derivedState,
+// toConfirm, awaitingDecision, latestMeaningfulEventAt) : aucun recalcul d'état,
+// jamais un second moteur.
+const POINT_DISPLAY_TIER: Record<PointComputedCurrentState, number> = {
+  reopened: 0, conflict: 0, open: 1, unknown: 2, resolved: 3,
+}
+
+function needsArbitration(p: PointReadModelEntry): boolean {
+  return p.toConfirm || p.awaitingDecision
+}
+
+/** Réouvert / Conflit / À arbitrer d'abord, puis Ouvert, puis le reste — à statut
+ *  égal, dernière évolution significative la plus récente en premier. Tri d'affichage
+ *  seul (page Sujet) ; ne modifie ni le moteur de statut ni le read-model source. */
+export function sortPointsForSubjectDisplay(points: PointReadModelEntry[]): PointReadModelEntry[] {
+  return [...points].sort((a, b) => {
+    const tierA = needsArbitration(a) ? 0 : POINT_DISPLAY_TIER[a.derivedState]
+    const tierB = needsArbitration(b) ? 0 : POINT_DISPLAY_TIER[b.derivedState]
+    if (tierA !== tierB) return tierA - tierB
+    return (b.latestMeaningfulEventAt ?? '').localeCompare(a.latestMeaningfulEventAt ?? '')
+  })
+}
+
 export type PendingIdentityCandidateSource = 'membership_engine' | 'resolution_without_known_problem'
 
 export type PendingIdentityCandidateRow = {

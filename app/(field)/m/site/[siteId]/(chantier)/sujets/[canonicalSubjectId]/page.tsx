@@ -15,7 +15,7 @@ import type { ActorLinkedIdentity, ActorResponsibilities } from '@/lib/db/actor-
 import { SubjectTrajectorySection, SubjectTrajectorySkeleton } from './SubjectTrajectorySection'
 import SubjectContextGraph from './SubjectContextGraph'
 import { cn } from '@/lib/utils'
-import { loadTrackedPointReadModel, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
+import { loadTrackedPointReadModel, sortPointsForSubjectDisplay, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
 import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
 
 export const dynamic = 'force-dynamic'
@@ -701,7 +701,7 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
 
   // 6F — Points de suivi rattachés à ce sujet (lecture pure, aucun second moteur).
   const trackedPoints = await loadTrackedPointReadModel(siteId)
-    .then((r) => r.bySubject.get(canonicalSubjectId)?.points ?? [])
+    .then((r) => sortPointsForSubjectDisplay(r.bySubject.get(canonicalSubjectId)?.points ?? []))
     .catch(() => [] as PointReadModelEntry[])
 
   const realOccs = life.occurrences

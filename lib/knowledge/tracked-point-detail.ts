@@ -136,9 +136,16 @@ export interface TrackedPointDetail {
   conflicts: string[]
   ownerCanonicalSubjectId: string | null
   ownerCanonicalSubjectLabel: string | null
+  // Date d'ouverture réelle (premier événement de trajectoire, ordre ascendant garanti
+  // par le reducer) — distincte de latestMeaningfulEventAt qui est le DERNIER événement.
+  openedAt: string | null
+  openedAtLabel: string | null
   latestMeaningfulEventAt: string | null
   latestMeaningfulEventLabel: string | null
   latestEvidenceAt: string | null
+  // Nombre d'occurrences/mentions connues (longueur de la trajectoire) — compense
+  // en mots l'absence de trajectoire riche (6F.1), jamais un second score.
+  mentionsCount: number
   // §3 — Évolution : la trajectoire déjà réduite, mise en mots (aucun recalcul).
   trajectory: PointDetailTrajectoryEntry[]
   // §4 — Preuves et sources, triées la plus récente en premier (une preuve ancienne
@@ -186,25 +193,42 @@ export function proposalIdFromSource(source: string | null): string | null {
 
 /** « Ce qu'il faut retenir aujourd'hui » — une phrase déterministe, composée
  *  UNIQUEMENT à partir de champs déjà calculés par le reducer (derivedState,
- *  documentaryDivergences, conflicts, latestMeaningfulEventAt). Ne recalcule
- *  jamais l'état : c'est de la mise en mots, pas un second moteur. */
+ *  documentaryDivergences, conflicts, openedAt, latestMeaningfulEventAt,
+ *  mentionsCount). Ne recalcule jamais l'état : c'est de la mise en mots, pas
+ *  un second moteur.
+ *  openedAt = premier événement de trajectoire (date d'ouverture réelle) ;
+ *  latestMeaningfulEventAt = dernier événement (date de réouverture/résolution).
+ *  Les confondre pour l'état 'open' donnait une date d'ouverture fausse quand un
+ *  Point a plusieurs mentions étalées dans le temps — corrigé ici (6F.1). */
 export function buildHeadline(entry: {
   derivedState: PointComputedCurrentState
   documentaryDivergences: string[]
   conflicts: string[]
+  openedAt: string | null
   latestMeaningfulEventAt: string | null
-}, dateLabel: string | null): string {
+  mentionsCount: number
+}): string {
+  const latestLabel = frDate(entry.latestMeaningfulEventAt)
+  const openedLabel = frDate(entry.openedAt)
+  // Une seule mention == l'ouverture elle-même : ne rien ajouter (pas d'info nouvelle).
+  const mentionClause = (count: number): string =>
+    count > 1 ? `, mentionné dans ${count} occurrences` : ''
+
   switch (entry.derivedState) {
     case 'reopened':
       return entry.documentaryDivergences[0]
         ? `Réouvert — ${entry.documentaryDivergences[0]}`
-        : `Réouvert${dateLabel ? ` depuis le ${dateLabel}` : ''} — une preuve plus récente contredit une résolution antérieure.`
+        : `Réouvert${latestLabel ? ` depuis le ${latestLabel}` : ''} — une preuve plus récente contredit une résolution antérieure.`
     case 'conflict':
       return entry.conflicts[0] ? `En conflit — ${entry.conflicts[0]}` : 'En conflit — les preuves disponibles se contredisent.'
     case 'resolved':
-      return `Résolu${dateLabel ? ` depuis le ${dateLabel}` : ''}.`
+      return latestLabel
+        ? `Résolu depuis le ${latestLabel}${mentionClause(entry.mentionsCount)}.`
+        : entry.mentionsCount > 0 ? `Résolu${mentionClause(entry.mentionsCount)}.` : 'Résolu.'
     case 'open':
-      return `Ouvert${dateLabel ? ` depuis le ${dateLabel}` : ''} — aucune résolution constatée à ce jour.`
+      return openedLabel
+        ? `Ouvert depuis le ${openedLabel}${mentionClause(entry.mentionsCount)} — aucune résolution constatée à ce jour.`
+        : 'Ouvert — aucune résolution constatée à ce jour, aucune preuve documentaire retrouvée.'
     case 'unknown':
     default:
       return 'État non déterminé — pas assez d’éléments pour se prononcer.'
@@ -252,6 +276,10 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
   }
 
   // ── §3/§4 — trajectoire + hydratation des preuves documentaires ──────────
+  // trajectory est chronologiquement ascendante (invariant du reducer, cf.
+  // projectTrackedPoint) : le premier élément est la date d'ouverture réelle.
+  const openedAt = canonicalEntry.trajectory.length > 0 ? canonicalEntry.trajectory[0].effectiveAt : null
+  const mentionsCount = canonicalEntry.trajectory.length
   const trajectory = canonicalEntry.trajectory.map(toTrajectoryEntry)
   const proposalIds = [...new Set(
     canonicalEntry.trajectory.map((t) => proposalIdFromSource(t.source ?? null)).filter((id): id is string => !!id),
@@ -428,7 +456,14 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
     identityStatus: canonicalEntry.identityStatus,
     derivedState: canonicalEntry.derivedState,
     derivedStateLabel: POINT_STATE_LABEL[canonicalEntry.derivedState] ?? canonicalEntry.derivedState,
-    headline: buildHeadline(canonicalEntry, frDate(canonicalEntry.latestMeaningfulEventAt)),
+    headline: buildHeadline({
+      derivedState: canonicalEntry.derivedState,
+      documentaryDivergences: canonicalEntry.documentaryDivergences,
+      conflicts: canonicalEntry.conflicts,
+      openedAt,
+      latestMeaningfulEventAt: canonicalEntry.latestMeaningfulEventAt,
+      mentionsCount,
+    }),
     createdAt,
     createdAtLabel: frDate(createdAt),
     markers: canonicalEntry.markers,
@@ -440,9 +475,12 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
     conflicts: canonicalEntry.conflicts,
     ownerCanonicalSubjectId: canonicalEntry.ownerCanonicalSubjectId,
     ownerCanonicalSubjectLabel,
+    openedAt,
+    openedAtLabel: frDate(openedAt),
     latestMeaningfulEventAt: canonicalEntry.latestMeaningfulEventAt,
     latestMeaningfulEventLabel: frDate(canonicalEntry.latestMeaningfulEventAt),
     latestEvidenceAt,
+    mentionsCount,
     trajectory,
     evidence,
     linkedObjects,

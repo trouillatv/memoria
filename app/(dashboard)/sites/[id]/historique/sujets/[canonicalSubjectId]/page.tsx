@@ -14,7 +14,7 @@ import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-
 import { isTerminalCboState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import type { CboComputedCurrentState, CboEventKind } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import { partitionFilGroups } from '@/lib/knowledge/fil-metier-visibility'
-import { loadTrackedPointReadModel, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
+import { loadTrackedPointReadModel, sortPointsForSubjectDisplay, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
 import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
@@ -1436,7 +1436,7 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   const cboSummary = summarizeCboStates(businessObjectEntries, cboEvolutions)
   // 6F — Points de suivi rattachés à ce sujet (lecture pure, aucun second moteur).
   const trackedPoints = await loadTrackedPointReadModel(siteId)
-    .then((r) => r.bySubject.get(canonicalSubjectId)?.points ?? [])
+    .then((r) => sortPointsForSubjectDisplay(r.bySubject.get(canonicalSubjectId)?.points ?? []))
     .catch(() => [] as PointReadModelEntry[])
   // Le résumé CBO déterministe couvre déjà "l'état actuel" quand il est disponible ;
   // la synthèse narrative IA (sans connaissance des CBO) ne servirait alors qu'à se
