@@ -46,6 +46,7 @@ describe('site-today-synthesis — computeSiteTodaySynthesis (tally pur)', () =>
     ]
     const result = computeSiteTodaySynthesis(points, 3, TODAY)
     expect(result).toEqual({
+      totalPoints: 5,
       openPoints: 2,
       reopenedPoints: 1,
       resolvedRecently: 1,
@@ -64,6 +65,7 @@ describe('site-today-synthesis — computeSiteTodaySynthesis (tally pur)', () =>
 
   it('population vide → zéros, aucune activité', () => {
     expect(computeSiteTodaySynthesis([], 0, TODAY)).toEqual({
+      totalPoints: 0,
       openPoints: 0,
       reopenedPoints: 0,
       resolvedRecently: 0,

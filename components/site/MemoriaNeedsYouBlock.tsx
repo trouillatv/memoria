@@ -33,6 +33,7 @@ export function MemoriaNeedsYouBlock({
           <h2 id="memoria-besoin-de-toi" className="text-sm font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-200">
             MemorIA a besoin de toi
           </h2>
+          <p className="text-xs text-violet-700/80 dark:text-violet-300/70">Décisions ou clarifications humaines</p>
           <p className="text-base font-semibold">
             {summary.totalCount} point{summary.totalCount > 1 ? 's' : ''} à clarifier
           </p>

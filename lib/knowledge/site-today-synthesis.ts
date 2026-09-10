@@ -9,6 +9,7 @@ import type { PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-mod
 const RECENT_RESOLUTION_WINDOW_DAYS = 14
 
 export interface SiteTodaySynthesis {
+  totalPoints: number
   openPoints: number
   reopenedPoints: number
   resolvedRecently: number
@@ -45,5 +46,5 @@ export function computeSiteTodaySynthesis(
     }
   }
 
-  return { openPoints, reopenedPoints, resolvedRecently, needsYouCount, lastActivityAt }
+  return { totalPoints: points.length, openPoints, reopenedPoints, resolvedRecently, needsYouCount, lastActivityAt }
 }

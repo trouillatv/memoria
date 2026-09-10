@@ -34,6 +34,7 @@ const ALLOWED_TAB_KNOWLEDGE = [
   '@/lib/knowledge/tracked-point-needs-you-summary',
   '@/lib/knowledge/tracked-point-lingering',
   '@/lib/knowledge/site-today-synthesis',
+  '@/lib/knowledge/site-activity',
 ].sort()
 
 describe('SiteOverviewTab — doctrine des moteurs gelés (Lot 2 « Aujourd\'hui »)', () => {
@@ -68,6 +69,8 @@ const ALLOWED_MOBILE_KNOWLEDGE = [
   '@/lib/knowledge/tracked-point-needs-you-summary',
   '@/lib/knowledge/tracked-point-lingering',
   '@/lib/knowledge/tracked-point-verify-eligibility',
+  '@/lib/knowledge/site-today-synthesis',
+  '@/lib/knowledge/site-activity',
 ].sort()
 
 describe('Fiche mobile — Lot 2 « Aujourd\'hui » consomme les mêmes moteurs gelés', () => {

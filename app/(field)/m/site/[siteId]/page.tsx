@@ -33,9 +33,13 @@ import { loadMemoriaNeedsYouSummary } from '@/lib/knowledge/tracked-point-needs-
 import { deriveCanonicalAttentionItems } from '@/lib/knowledge/canonical-attention'
 import { loadTrackedPointReadModel } from '@/lib/knowledge/tracked-point-read-model'
 import { selectLingeringPoints, loadSitePvDates, loadOpenActionCountBySubject } from '@/lib/knowledge/tracked-point-lingering'
+import { computeSiteTodaySynthesis } from '@/lib/knowledge/site-today-synthesis'
+import { buildActivitySinceLastPv } from '@/lib/knowledge/site-activity'
+import { SiteTodaySynthesisLine } from '@/components/site/SiteTodaySynthesisLine'
 import { SiteTodayAttentionList } from '@/components/site/SiteTodayAttentionList'
 import { MemoriaNeedsYouBlock } from '@/components/site/MemoriaNeedsYouBlock'
 import { SiteLingeringPointsBlock } from '@/components/site/SiteLingeringPointsBlock'
+import { SincePvActivityBlock } from '@/components/site/SincePvActivityBlock'
 import { ChevronRight } from 'lucide-react'
 
 const INTV_STATUS_META: Record<string, { label: string; cls: string }> = {
@@ -168,8 +172,9 @@ export default async function FieldSitePage({
   let pointModel: Awaited<ReturnType<typeof loadTrackedPointReadModel>> = { points: [], mergedPoints: [], bySubject: new Map(), pendingIdentityCandidates: [] }
   let pvDates: Awaited<ReturnType<typeof loadSitePvDates>> = []
   let openActionCountBySubject: Awaited<ReturnType<typeof loadOpenActionCountBySubject>> = new Map()
+  let pvActivity: Awaited<ReturnType<typeof buildActivitySinceLastPv>> = null
   if (!activeVisit) {
-    const [status, since, steps, brief, needsYou, attention, points, pvs, openActionCounts] = await Promise.all([
+    const [status, since, steps, brief, needsYou, attention, points, pvs, openActionCounts, activity] = await Promise.all([
       buildSiteStatusSummary(siteId).catch(() => []),
       buildSinceLastVisitDelta(siteId, user.id).catch(() => null),
       getSiteNextSteps(siteId).catch(() => []),
@@ -179,6 +184,7 @@ export default async function FieldSitePage({
       loadTrackedPointReadModel(siteId).catch(() => ({ points: [], mergedPoints: [], bySubject: new Map(), pendingIdentityCandidates: [] })),
       loadSitePvDates(siteId).catch(() => []),
       loadOpenActionCountBySubject(siteId).catch(() => new Map<string, number>()),
+      buildActivitySinceLastPv(siteId).catch(() => null),
     ])
     siteStatus = status
     sinceLastVisit = since
@@ -189,6 +195,7 @@ export default async function FieldSitePage({
     pointModel = points
     pvDates = pvs
     openActionCountBySubject = openActionCounts
+    pvActivity = activity
   }
   // Panier terrain : si une visite est ouverte, on charge ses captures + les points
   // suivis (pour le geste « Vérifier un point »).
@@ -248,6 +255,7 @@ export default async function FieldSitePage({
   // qui me concerne ici, maintenant ? ».
   const todayIso = todayLocalIso()
   const lingering = selectLingeringPoints(pointModel.points, todayIso, pvDates, { attentionItems, openActionCountBySubject })
+  const todaySynthesis = computeSiteTodaySynthesis(pointModel.points, needsYouSummary?.totalCount ?? 0, todayIso)
   const pointHrefPrefix = `/m/site/${siteId}/point`
   await ensureTodayInterventionsForSites([siteId], 0).catch(() => {})
   const { data: siteMissionRows } = await supabase
@@ -315,6 +323,11 @@ export default async function FieldSitePage({
         </div>
       ) : (
         <div className="space-y-6">
+          {/* 0 — Synthèse chantier : LOT 2.1 (mandat Vincent 2026-09-10), une ligne compacte
+              réutilisant uniquement des métriques déjà calculées (computeSiteTodaySynthesis,
+              même moteur que le desktop). Jamais un nouveau tableau de bord. */}
+          <SiteTodaySynthesisLine synthesis={todaySynthesis} />
+
           {/* 1 — État du chantier : 4 mini-KPI sur une ligne (même vérité, compact),
               puis la TOOLBAR du chantier collée dessous. L'ordre porte la lecture :
               je comprends le chantier → j'ai mes outils → je lis ce qui mérite mon
@@ -340,6 +353,7 @@ export default async function FieldSitePage({
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               À surveiller
             </h2>
+            <p className="text-xs text-muted-foreground">Risques ou sujets qui demandent attention maintenant</p>
             <SiteTodayAttentionList
               items={attentionItems}
               bySubject={pointModel.bySubject}
@@ -350,12 +364,18 @@ export default async function FieldSitePage({
             />
           </section>
 
+          {/* 2ter — Depuis le dernier PV : LOT 2.1 (mandat Vincent 2026-09-10), réintégration
+              d'un bloc de l'ancien Aperçu — réouverts / réapparus / résolus depuis le dernier PV,
+              même moteur que le desktop (buildActivitySinceLastPv), aucune logique recréée. */}
+          {pvActivity && <SincePvActivityBlock activity={pvActivity} />}
+
           {/* 2bis — Points qui traînent : Lot 2 « Aujourd'hui », lecture pure du read-model
               Points (Lot 1), aucun nouveau moteur. */}
           <section className="space-y-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Points qui traînent
             </h2>
+            <p className="text-xs text-muted-foreground">Situations ouvertes qui stagnent malgré l&apos;activité du chantier</p>
             <SiteLingeringPointsBlock
               entries={lingering}
               seeAllHref={`/m/site/${siteId}/points`}

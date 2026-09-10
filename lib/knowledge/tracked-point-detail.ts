@@ -406,7 +406,7 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
         isLate: a.due_date_status === 'explicit' && due !== null && due < today && a.status !== 'done' && a.status !== 'cancelled',
         dueDate: due, dueDateLabel: frDate(due),
         responsible: responsibleFor(a.assigned_contact_id, a.assigned_company_id, a.assigned_to),
-        href: `/sites/${siteId}/actions/${a.id}`,
+        href: `/sites/${siteId}/actions`,
       })
     }
     for (const d of deadlineRows) {
