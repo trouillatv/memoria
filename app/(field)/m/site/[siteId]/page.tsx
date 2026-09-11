@@ -338,14 +338,10 @@ export default async function FieldSitePage({
             <SiteActionBar siteId={siteId} siteName={site.name} resumeReportId={resumeReportId} />
           </div>
 
-          {/* 1bis — MemorIA a besoin de toi : signal d'attention discret, jamais un bloc
-              principal. Après « État du chantier », avant « À surveiller » (mandat Vincent
-              2026-09-07) — le parcours mental est : comment va mon chantier ? MemorIA a-t-il
-              besoin de moi pour comprendre quelque chose ? qu'est-ce qui mérite mon attention ?
-              Lot 2 « Aujourd'hui » : même bloc partagé que le desktop (loadMemoriaNeedsYouSummary). */}
-          {needsYouSummary && (
-            <MemoriaNeedsYouBlock summary={needsYouSummary} seeAllHref={`/m/site/${siteId}/besoin-de-toi`} />
-          )}
+          {/* 1bis — Depuis le dernier PV : mandat Vincent 2026-09-11 (LOT UX Cockpit + Points),
+              ordre figé Synthèse → Depuis le dernier PV → À surveiller → Besoin de toi →
+              Points qui traînent. Même moteur que le desktop (buildActivitySinceLastPv). */}
+          {pvActivity && <SincePvActivityBlock activity={pvActivity} />}
 
           {/* 2 — À surveiller : Lot 2 « Aujourd'hui », même moteur gelé que le desktop
               (deriveCanonicalAttentionItems) — remplace l'ancien « À traiter ». */}
@@ -364,12 +360,14 @@ export default async function FieldSitePage({
             />
           </section>
 
-          {/* 2ter — Depuis le dernier PV : LOT 2.1 (mandat Vincent 2026-09-10), réintégration
-              d'un bloc de l'ancien Aperçu — réouverts / réapparus / résolus depuis le dernier PV,
-              même moteur que le desktop (buildActivitySinceLastPv), aucune logique recréée. */}
-          {pvActivity && <SincePvActivityBlock activity={pvActivity} />}
+          {/* 2bis — MemorIA a besoin de toi : signal d'attention discret, jamais un bloc
+              principal. Après « À surveiller », avant « Points qui traînent » (mandat Vincent
+              2026-09-11) — même bloc partagé que le desktop (loadMemoriaNeedsYouSummary). */}
+          {needsYouSummary && (
+            <MemoriaNeedsYouBlock summary={needsYouSummary} seeAllHref={`/m/site/${siteId}/besoin-de-toi`} />
+          )}
 
-          {/* 2bis — Points qui traînent : Lot 2 « Aujourd'hui », lecture pure du read-model
+          {/* 2ter — Points qui traînent : Lot 2 « Aujourd'hui », lecture pure du read-model
               Points (Lot 1), aucun nouveau moteur. */}
           <section className="space-y-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">

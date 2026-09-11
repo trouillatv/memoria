@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, Check, FileText, GitMerge, Link2, LayoutList, MoreHorizontal, Plus, Trash2, User, X } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, Building2, Calendar, ChevronRight, Check, FileText, GitMerge, HelpCircle, Link2, LayoutList, MoreHorizontal, Plus, Trash2, User, X } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getCanonicalSubjectLife, listSubjectsForPicker } from '@/lib/db/canonical-subject-life'
@@ -16,6 +16,14 @@ import type { CboComputedCurrentState, CboEventKind } from '@/lib/knowledge/cbo-
 import { partitionFilGroups } from '@/lib/knowledge/fil-metier-visibility'
 import { loadTrackedPointReadModel, sortPointsForSubjectDisplay, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
 import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
+import {
+  loadMemoriaNeedsYouSummary,
+  filterMemoriaNeedsYouQuestionsForSubject,
+  resolveMemoriaNeedsYouSubjectPointRef,
+  needsYouQuestionHref,
+  MEMORIA_NEEDS_YOU_CATEGORY_LABELS,
+  type MemoriaNeedsYouQuestion,
+} from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { cn } from '@/lib/utils'
@@ -1004,6 +1012,65 @@ function PointsSection({ points, siteId }: { points: PointReadModelEntry[]; site
   )
 }
 
+// NeedsYou contextuel à l'échelle du Sujet (mandat Vincent, lot UX Point 1.1) : mêmes conventions
+// visuelles que NeedsYouForPointSection (PointFicheView.tsx), silence total si vide — jamais un
+// compteur à zéro. Contrairement au bloc Point, aucune catégorie n'est exclue (les 5 read-models
+// sources portent tous un subjectId vérifié — cf. filterMemoriaNeedsYouQuestionsForSubject). Le
+// Point concerné n'est affiché que lorsque resolveMemoriaNeedsYouSubjectPointRef identifie un SEUL
+// Point candidat pour cette question précise (aucune heuristique de rattachement) ; le deep-link
+// `?q=<id>` (needsYouQuestionHref) n'est utilisé que lorsqu'une seule question concerne le sujet —
+// jamais un choix arbitraire parmi plusieurs.
+function NeedsYouForSubjectSection({
+  questions,
+  siteId,
+  canonicalSubjectId,
+}: {
+  questions: MemoriaNeedsYouQuestion[]
+  siteId: string
+  canonicalSubjectId: string
+}) {
+  if (questions.length === 0) return null
+  const baseHref = `/sites/${siteId}/besoin-de-toi`
+  const targetHref = questions.length === 1 ? needsYouQuestionHref(baseHref, questions[0].id) : baseHref
+  return (
+    <section className="rounded-[16px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/40">
+          <HelpCircle className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-[11.5px] font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-200">
+            MemorIA a besoin de toi sur ce sujet
+          </h2>
+          <p className="text-[13px] font-semibold">
+            {questions.length} question{questions.length > 1 ? 's' : ''} à clarifier
+          </p>
+        </div>
+        <Link
+          href={targetHref}
+          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
+        >
+          Répondre <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+      <ul className="mt-2.5 space-y-1">
+        {questions.map((q) => {
+          const pointRef = resolveMemoriaNeedsYouSubjectPointRef(q, canonicalSubjectId)
+          return (
+            <li key={q.id} className="flex items-center gap-2 text-[12.5px] text-foreground/90">
+              <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+              <span>{MEMORIA_NEEDS_YOU_CATEGORY_LABELS[q.category]}</span>
+              {pointRef?.pointLabel && (
+                <span className="min-w-0 truncate text-muted-foreground">· {pointRef.pointLabel}</span>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 function MaterializedEventsSection({
   entries,
   evolutions,
@@ -1438,6 +1505,19 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
   const trackedPoints = await loadTrackedPointReadModel(siteId)
     .then((r) => sortPointsForSubjectDisplay(r.bySubject.get(canonicalSubjectId)?.points ?? []))
     .catch(() => [] as PointReadModelEntry[])
+  // LOT UX Cockpit+Points (mandat Vincent 2026-09-11) — un CBO réellement rattaché à un
+  // Point (tracked_point_member.cbo_id, cf. PointReadModelEntry.cboIds) ne doit plus être
+  // affiché comme une seconde hiérarchie parallèle aux Points. Critère structurel uniquement
+  // (jamais déduit du seul canonical_subject_id) : un CBO groupé dont l'id figure dans
+  // cboIds d'un Point de ce sujet est considéré rattaché.
+  const cboIdsAttachedToPoint = new Set(trackedPoints.flatMap((p) => p.cboIds))
+  const unattachedBusinessObjectEntries = businessObjectEntries.filter(
+    (e) => !(e.isGrouped && cboIdsAttachedToPoint.has(e.key)),
+  )
+  // Lot UX Point 1.1 (mandat Vincent) — NeedsYou contextuel à l'échelle du sujet.
+  const needsYouForSubject = await loadMemoriaNeedsYouSummary(siteId)
+    .then((s) => filterMemoriaNeedsYouQuestionsForSubject(s.questions, canonicalSubjectId))
+    .catch(() => [] as MemoriaNeedsYouQuestion[])
   // Le résumé CBO déterministe couvre déjà "l'état actuel" quand il est disponible ;
   // la synthèse narrative IA (sans connaissance des CBO) ne servirait alors qu'à se
   // contredire ("aucune information disponible" à côté d'états connus).
@@ -1562,6 +1642,9 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
           </section>
         )}
 
+        {/* NeedsYou contextuel — questions MemorIA réellement rattachées à ce sujet (lot UX Point 1.1). */}
+        <NeedsYouForSubjectSection questions={needsYouForSubject} siteId={siteId} canonicalSubjectId={canonicalSubjectId} />
+
         {/* Points de suivi — situations précises et durables rattachées à ce sujet. */}
         {trackedPoints.length > 0 && (
           <section id="points" className="rounded-[18px] border bg-card px-5 py-4 space-y-1">
@@ -1573,15 +1656,16 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
           </section>
         )}
 
-        {/* Objets métier — identités durables (CBO-aware) ; toute trajectoire connue
-            (object_state_occurrence_signal, lecture pure, aucun appel IA) est dépliable ici. */}
-        {businessObjectEntries.length > 0 && (
+        {/* Éléments non rattachés — objets métier (CBO) sans Point réel (mandat Vincent
+            2026-09-11). Les CBO déjà absorbés par un Point de suivi restent visibles
+            UNIQUEMENT via ce Point, jamais ici en doublon. */}
+        {unattachedBusinessObjectEntries.length > 0 && (
           <section id="objets-metier" className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
             <h2 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               <LayoutList className="h-3.5 w-3.5" />
-              Objets métier ({businessObjectEntries.length})
+              Éléments non rattachés ({unattachedBusinessObjectEntries.length})
             </h2>
-            <MaterializedEventsSection entries={businessObjectEntries} evolutions={cboEvolutions} />
+            <MaterializedEventsSection entries={unattachedBusinessObjectEntries} evolutions={cboEvolutions} />
           </section>
         )}
 

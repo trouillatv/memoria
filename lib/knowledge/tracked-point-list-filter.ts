@@ -13,6 +13,9 @@ export interface PointListFilters {
   state: PointComputedCurrentState | 'all'
   subjectId: string | 'all'
   actor: string | 'all'
+  // Filtre « Besoin de moi » (mandat Vincent, lot UX Cockpit+Points) : ne garde que les
+  // Points référencés structurellement par NeedsYou (needsYouCount > 0).
+  needsYouOnly: boolean
 }
 
 export const DEFAULT_POINT_LIST_FILTERS: PointListFilters = {
@@ -20,6 +23,7 @@ export const DEFAULT_POINT_LIST_FILTERS: PointListFilters = {
   state: 'all',
   subjectId: 'all',
   actor: 'all',
+  needsYouOnly: false,
 }
 
 export function filterPointList(points: PointListEntry[], filters: PointListFilters): PointListEntry[] {
@@ -28,6 +32,7 @@ export function filterPointList(points: PointListEntry[], filters: PointListFilt
     if (filters.state !== 'all' && p.derivedState !== filters.state) return false
     if (filters.subjectId !== 'all' && p.ownerCanonicalSubjectId !== filters.subjectId) return false
     if (filters.actor !== 'all' && !p.actorNames.includes(filters.actor)) return false
+    if (filters.needsYouOnly && p.needsYouCount === 0) return false
     if (query && !p.label.toLowerCase().includes(query)) return false
     return true
   })

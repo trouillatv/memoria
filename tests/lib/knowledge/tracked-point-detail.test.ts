@@ -3,10 +3,29 @@ import {
   toTrajectoryEntry,
   proposalIdFromSource,
   buildHeadline,
+  resolveOrigin,
+  originMatchesProvenance,
   POINT_STATE_LABEL,
   groupLinkedObjectsByTitle,
   type PointDetailLinkedObject,
+  type PointDetailEvidence,
+  type PointDetailProvenance,
 } from '@/lib/knowledge/tracked-point-detail'
+
+function evidence(overrides: Partial<PointDetailEvidence> & { proposalId: string; kind: PointDetailEvidence['kind']; date: string }): PointDetailEvidence {
+  return {
+    documentId: null,
+    kindLabel: '',
+    dateLabel: null,
+    isResolving: false,
+    documentFilename: null,
+    documentType: null,
+    href: null,
+    sourcePage: null,
+    sourceExcerpt: null,
+    ...overrides,
+  }
+}
 
 function linkedObject(overrides: Partial<PointDetailLinkedObject> & { id: string; title: string }): PointDetailLinkedObject {
   return {
@@ -161,6 +180,67 @@ describe('tracked-point-detail — groupLinkedObjectsByTitle (lot UX Point 3F, z
 
   it('liste vide → aucun groupe', () => {
     expect(groupLinkedObjectsByTitle([])).toEqual([])
+  })
+})
+
+describe('tracked-point-detail — resolveOrigin / originMatchesProvenance (lot UX Cockpit+Points)', () => {
+  it('sans trajectoire → pas de preuve de genèse (jamais fabriquée)', () => {
+    const origin = resolveOrigin({ openedAtLabel: null, trajectory: [], evidence: [] })
+    expect(origin.dateLabel).toBeNull()
+    expect(origin.evidence).toBeNull()
+  })
+
+  it('trajectoire sans preuve documentaire pour l’événement d’ouverture → date seule', () => {
+    const origin = resolveOrigin({
+      openedAtLabel: '1 janvier 2026',
+      trajectory: [toTrajectoryEntry({ effectiveAt: '2026-01-01', kind: 'intent_set' })],
+      evidence: [],
+    })
+    expect(origin.dateLabel).toBe('1 janvier 2026')
+    expect(origin.evidence).toBeNull()
+  })
+
+  it('trajectoire avec preuve documentaire matchant kind+date de l’ouverture → jointe', () => {
+    const openEvidence = evidence({ proposalId: 'p1', kind: 'open_signal', date: '2026-01-01', documentFilename: 'pv-1.pdf' })
+    const origin = resolveOrigin({
+      openedAtLabel: '1 janvier 2026',
+      trajectory: [toTrajectoryEntry({ effectiveAt: '2026-01-01', kind: 'open_signal', source: 'proposal:p1' })],
+      evidence: [openEvidence],
+    })
+    expect(origin.evidence?.proposalId).toBe('p1')
+  })
+
+  it('sans provenance → jamais identique (rien à comparer)', () => {
+    const origin = resolveOrigin({
+      openedAtLabel: '1 janvier 2026',
+      trajectory: [toTrajectoryEntry({ effectiveAt: '2026-01-01', kind: 'open_signal', source: 'proposal:p1' })],
+      evidence: [evidence({ proposalId: 'p1', kind: 'open_signal', date: '2026-01-01' })],
+    })
+    expect(originMatchesProvenance(origin, null)).toBe(false)
+  })
+
+  it('provenance = même kind+date que l’ouverture → identique (pas de répétition)', () => {
+    const origin: ReturnType<typeof resolveOrigin> = {
+      dateLabel: '1 janvier 2026',
+      evidence: evidence({ proposalId: 'p1', kind: 'open_signal', date: '2026-01-01' }),
+    }
+    const provenance: PointDetailProvenance = { ...evidence({ proposalId: 'p1', kind: 'open_signal', date: '2026-01-01' }), isCausal: true }
+    expect(originMatchesProvenance(origin, provenance)).toBe(true)
+  })
+
+  it('provenance postérieure (Point réouvert) → distincte de la genèse, jamais fusionnée à tort', () => {
+    const origin: ReturnType<typeof resolveOrigin> = {
+      dateLabel: '1 janvier 2026',
+      evidence: evidence({ proposalId: 'p1', kind: 'open_signal', date: '2026-01-01' }),
+    }
+    const provenance: PointDetailProvenance = { ...evidence({ proposalId: 'p2', kind: 'open_signal', date: '2026-06-01' }), isCausal: true }
+    expect(originMatchesProvenance(origin, provenance)).toBe(false)
+  })
+
+  it('genèse sans preuve documentaire + provenance de repli → jamais présentée comme identique', () => {
+    const origin: ReturnType<typeof resolveOrigin> = { dateLabel: '1 janvier 2026', evidence: null }
+    const provenance: PointDetailProvenance = { ...evidence({ proposalId: 'p9', kind: 'intent_set', date: '2026-03-01' }), isCausal: false }
+    expect(originMatchesProvenance(origin, provenance)).toBe(false)
   })
 })
 

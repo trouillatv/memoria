@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import React, { Suspense } from 'react'
 import Link from 'next/link'
-import { AlertCircle, ArrowLeft, Building2, FileText, MapPin, User, Users } from 'lucide-react'
+import { AlertCircle, ArrowLeft, Building2, ChevronRight, FileText, HelpCircle, MapPin, User, Users } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCanonicalSubjectLife } from '@/lib/db/canonical-subject-life'
@@ -17,6 +17,14 @@ import SubjectContextGraph from './SubjectContextGraph'
 import { cn } from '@/lib/utils'
 import { loadTrackedPointReadModel, sortPointsForSubjectDisplay, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
 import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
+import {
+  loadMemoriaNeedsYouSummary,
+  filterMemoriaNeedsYouQuestionsForSubject,
+  resolveMemoriaNeedsYouSubjectPointRef,
+  needsYouQuestionHref,
+  MEMORIA_NEEDS_YOU_CATEGORY_LABELS,
+  type MemoriaNeedsYouQuestion,
+} from '@/lib/knowledge/tracked-point-needs-you-summary'
 
 export const dynamic = 'force-dynamic'
 
@@ -375,6 +383,64 @@ function PointsSection({ points, siteId }: { points: PointReadModelEntry[]; site
   )
 }
 
+// NeedsYou contextuel à l'échelle du Sujet (mandat Vincent, lot UX Point 1.1) : mêmes conventions
+// visuelles que le bloc violet MemoriaNeedsYouBlock.tsx, silence total si vide. Contrairement au
+// bloc Point, aucune catégorie n'est exclue (les 5 read-models sources portent tous un subjectId
+// vérifié — cf. filterMemoriaNeedsYouQuestionsForSubject). Le Point concerné n'est affiché que
+// lorsque resolveMemoriaNeedsYouSubjectPointRef identifie un SEUL Point candidat pour cette
+// question précise (aucune heuristique de rattachement) ; le deep-link `?q=<id>` n'est utilisé que
+// lorsqu'une seule question concerne le sujet — jamais un choix arbitraire parmi plusieurs.
+function NeedsYouForSubjectSection({
+  questions,
+  siteId,
+  canonicalSubjectId,
+}: {
+  questions: MemoriaNeedsYouQuestion[]
+  siteId: string
+  canonicalSubjectId: string
+}) {
+  if (questions.length === 0) return null
+  const baseHref = `/m/site/${siteId}/besoin-de-toi`
+  const targetHref = questions.length === 1 ? needsYouQuestionHref(baseHref, questions[0].id) : baseHref
+  return (
+    <section className="rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-900/40 dark:bg-violet-950/20">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-100 dark:bg-violet-900/40">
+          <HelpCircle className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-[10.5px] font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-200">
+            MemorIA a besoin de toi
+          </h2>
+          <p className="text-[12.5px] font-semibold">
+            {questions.length} question{questions.length > 1 ? 's' : ''} à clarifier
+          </p>
+        </div>
+        <Link
+          href={targetHref}
+          className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-[12.5px] font-medium text-violet-700 active:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
+        >
+          Répondre <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+      <ul className="mt-2 space-y-1">
+        {questions.map((q) => {
+          const pointRef = resolveMemoriaNeedsYouSubjectPointRef(q, canonicalSubjectId)
+          return (
+            <li key={q.id} className="flex items-center gap-2 text-[12px] text-foreground/90">
+              <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
+              <span>{MEMORIA_NEEDS_YOU_CATEGORY_LABELS[q.category]}</span>
+              {pointRef?.pointLabel && (
+                <span className="min-w-0 truncate text-muted-foreground">· {pointRef.pointLabel}</span>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
 // ── Actor fiche components ────────────────────────────────────────────────────
 
 interface ActorFicheProps {
@@ -703,6 +769,10 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   const trackedPoints = await loadTrackedPointReadModel(siteId)
     .then((r) => sortPointsForSubjectDisplay(r.bySubject.get(canonicalSubjectId)?.points ?? []))
     .catch(() => [] as PointReadModelEntry[])
+  // Lot UX Point 1.1 (mandat Vincent) — NeedsYou contextuel à l'échelle du sujet.
+  const needsYouForSubject = await loadMemoriaNeedsYouSummary(siteId)
+    .then((s) => filterMemoriaNeedsYouQuestionsForSubject(s.questions, canonicalSubjectId))
+    .catch(() => [] as MemoriaNeedsYouQuestion[])
 
   const realOccs = life.occurrences
     .filter((o) => !o.isGap)
@@ -724,12 +794,20 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   // unknown restent visibles. Réutilise des primitives GÉNÉRIQUES gelées ; aucun reducer mobile.
   const cboKnownEntityIds = new Set<string>()
   const cboTerminalEntityIds = new Set<string>()
+  // LOT UX Cockpit+Points (mandat Vincent 2026-09-11) — entityId des CBO réellement
+  // rattachés à un Point de ce sujet (cf. PointReadModelEntry.cboIds) : ne plus les
+  // afficher ici en seconde hiérarchie, ils restent visibles via le Point uniquement.
+  const pointAttachedEntityIds = new Set<string>()
+  const attachedCboIds = new Set(trackedPoints.flatMap((p) => p.cboIds))
   try {
     const [boEntries, cboStates] = await Promise.all([
       projectCanonicalBusinessObjects(life.materializedEvents),
       loadCboReducedStates(siteId, { canonicalSubjectId }),
     ])
     for (const entry of boEntries) {
+      if (entry.isGrouped && attachedCboIds.has(entry.key)) {
+        for (const m of entry.members) pointAttachedEntityIds.add(m.entityId)
+      }
       const ev = cboStates.get(entry.key)
       if (!ev) continue
       for (const m of entry.members) cboKnownEntityIds.add(m.entityId)
@@ -739,9 +817,12 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
   } catch { /* best-effort : repli sur le statut brut pour les objets sans CBO connu */ }
 
   // Objet CBO connu → C2A décide (terminal = replié) ; objet sans CBO (non modélisé C2A) → statut brut.
+  // Objet rattaché à un Point → jamais ici (ni actif ni terminé), déjà représenté par le Point.
   const visibleEvents  = life.materializedEvents.filter((e) =>
-    cboKnownEntityIds.has(e.entityId) ? !cboTerminalEntityIds.has(e.entityId) : (!e.status || ACTIVE_STATUSES.has(e.status)))
-  const terminalEvents = life.materializedEvents.filter((e) => cboTerminalEntityIds.has(e.entityId))
+    !pointAttachedEntityIds.has(e.entityId) &&
+    (cboKnownEntityIds.has(e.entityId) ? !cboTerminalEntityIds.has(e.entityId) : (!e.status || ACTIVE_STATUSES.has(e.status))))
+  const terminalEvents = life.materializedEvents.filter((e) =>
+    cboTerminalEntityIds.has(e.entityId) && !pointAttachedEntityIds.has(e.entityId))
 
   void siteRow // utilisé uniquement si l'orbe est réintégré plus tard
 
@@ -865,6 +946,9 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
               )}
             </section>
           )}
+
+          {/* NeedsYou contextuel — questions MemorIA réellement rattachées à ce sujet (lot UX Point 1.1). */}
+          <NeedsYouForSubjectSection questions={needsYouForSubject} siteId={siteId} canonicalSubjectId={canonicalSubjectId} />
 
           {/* Points de suivi — situations précises et durables rattachées à ce sujet. */}
           {trackedPoints.length > 0 && (

@@ -12,6 +12,8 @@ function entry(overrides: Partial<PointListEntry>): PointListEntry {
     ownerCanonicalSubjectId: 'subj-1',
     subjectLabel: 'Extincteurs',
     actorNames: [],
+    needsYouCount: 0,
+    needsYouQuestionId: null,
     ...overrides,
   }
 }
@@ -55,5 +57,15 @@ describe('tracked-point-list — filterPointList (filtrage pur, ET combiné)', (
   it('aucune correspondance → liste vide, jamais une erreur', () => {
     const result = filterPointList(points, { ...DEFAULT_POINT_LIST_FILTERS, actor: 'Inconnu' })
     expect(result).toEqual([])
+  })
+
+  it('filtre « Besoin de moi » : ne garde que les Points référencés par NeedsYou', () => {
+    const withNeedsYou: PointListEntry[] = [
+      entry({ id: 'p1', needsYouCount: 0, needsYouQuestionId: null }),
+      entry({ id: 'p2', needsYouCount: 2, needsYouQuestionId: null }),
+      entry({ id: 'p3', needsYouCount: 1, needsYouQuestionId: 'q-1' }),
+    ]
+    const result = filterPointList(withNeedsYou, { ...DEFAULT_POINT_LIST_FILTERS, needsYouOnly: true })
+    expect(result.map((p) => p.id)).toEqual(['p2', 'p3'])
   })
 })

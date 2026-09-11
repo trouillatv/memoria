@@ -19,6 +19,7 @@ import {
   type PointReadModelEntry,
 } from '@/lib/knowledge/tracked-point-read-model'
 import type { PointComputedCurrentState } from '@/lib/knowledge/tracked-point-lifecycle-reducer'
+import { loadMemoriaNeedsYouSummary, filterMemoriaNeedsYouQuestionsForPoint } from '@/lib/knowledge/tracked-point-needs-you-summary'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -31,6 +32,13 @@ export interface PointListEntry {
   ownerCanonicalSubjectId: string | null
   subjectLabel: string | null
   actorNames: string[]
+  // Badge/filtre « Besoin de toi » (mandat Vincent, lot UX Cockpit+Points) : nombre de
+  // questions NeedsYou qui référencent STRUCTURELLEMENT ce Point (cf.
+  // filterMemoriaNeedsYouQuestionsForPoint, zéro heuristique). needsYouQuestionId n'est
+  // renseigné que lorsqu'UNE SEULE question est concernée (deep-link ?q=<id> honnête,
+  // jamais un choix arbitraire parmi plusieurs — même convention que resolveMemoriaNeedsYouSubjectPointRef).
+  needsYouCount: number
+  needsYouQuestionId: string | null
 }
 
 export interface PointListFilterOptions {
@@ -185,21 +193,27 @@ export async function loadSiteTrackedPointList(siteId: string): Promise<SiteTrac
   const db = createAdminClient()
   const subjectIds = [...new Set(sorted.map((p) => p.ownerCanonicalSubjectId).filter((id): id is string => !!id))]
 
-  const [subjectLabelById, actorNamesByPoint] = await Promise.all([
+  const [subjectLabelById, actorNamesByPoint, needsYou] = await Promise.all([
     loadSubjectLabels(db, subjectIds),
     loadActorNamesByPoint(db, siteId, sorted),
+    loadMemoriaNeedsYouSummary(siteId),
   ])
 
-  const entries: PointListEntry[] = sorted.map((p) => ({
-    id: p.id,
-    siteId: p.siteId,
-    label: p.label,
-    derivedState: p.derivedState,
-    latestMeaningfulEventAt: p.latestMeaningfulEventAt,
-    ownerCanonicalSubjectId: p.ownerCanonicalSubjectId,
-    subjectLabel: p.ownerCanonicalSubjectId ? subjectLabelById.get(p.ownerCanonicalSubjectId) ?? null : null,
-    actorNames: actorNamesByPoint.get(p.id) ?? [],
-  }))
+  const entries: PointListEntry[] = sorted.map((p) => {
+    const needsYouMatches = filterMemoriaNeedsYouQuestionsForPoint(needsYou.questions, p.id)
+    return {
+      id: p.id,
+      siteId: p.siteId,
+      label: p.label,
+      derivedState: p.derivedState,
+      latestMeaningfulEventAt: p.latestMeaningfulEventAt,
+      ownerCanonicalSubjectId: p.ownerCanonicalSubjectId,
+      subjectLabel: p.ownerCanonicalSubjectId ? subjectLabelById.get(p.ownerCanonicalSubjectId) ?? null : null,
+      actorNames: actorNamesByPoint.get(p.id) ?? [],
+      needsYouCount: needsYouMatches.length,
+      needsYouQuestionId: needsYouMatches.length === 1 ? needsYouMatches[0].id : null,
+    }
+  })
 
   const subjects = [...subjectLabelById.entries()]
     .map(([id, label]) => ({ id, label }))

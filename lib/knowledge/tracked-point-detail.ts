@@ -277,6 +277,35 @@ export function buildHeadline(entry: {
   }
 }
 
+export interface PointOrigin {
+  dateLabel: string | null
+  evidence: PointDetailEvidence | null
+}
+
+/** Genèse du Point (mandat Vincent, lot UX Cockpit+Points) : date d'ouverture réelle
+ *  (déjà calculée, openedAt = trajectory[0]) + sa preuve documentaire SI elle en a une
+ *  (jointure par kind+date sur l'événement d'ouverture — jamais fabriquée). */
+export function resolveOrigin(entry: {
+  openedAtLabel: string | null
+  trajectory: PointDetailTrajectoryEntry[]
+  evidence: PointDetailEvidence[]
+}): PointOrigin {
+  const first = entry.trajectory[0] ?? null
+  const evidence = first
+    ? entry.evidence.find((e) => e.kind === first.kind && e.date === first.effectiveAt) ?? null
+    : null
+  return { dateLabel: entry.openedAtLabel, evidence }
+}
+
+/** true si la provenance courante (§ état) et la preuve de genèse sont LE MÊME
+ *  événement (même kind + même date) — évite d'afficher deux fois la même preuve
+ *  quand le Point n'a jamais évolué depuis son ouverture (mandat : « pas de
+ *  répétition si genèse et provenance courante sont identiques »). */
+export function originMatchesProvenance(origin: PointOrigin, provenance: PointDetailProvenance | null): boolean {
+  if (!provenance || !origin.evidence) return false
+  return provenance.kind === origin.evidence.kind && provenance.date === origin.evidence.date
+}
+
 export async function getTrackedPointDetail(siteId: string, pointId: string): Promise<TrackedPointDetail | null> {
   const db = createAdminClient()
 

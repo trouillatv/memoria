@@ -20,12 +20,15 @@ import { ChevronRight, FileText, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   proposalIdFromSource,
+  resolveOrigin,
+  originMatchesProvenance,
   type TrackedPointDetail,
+  type PointDetailEvidence,
   type PointDetailLinkedObject,
   type PointDetailLinkedObjectGroup,
 } from '@/lib/knowledge/tracked-point-detail'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-categories'
-import type { MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import { needsYouQuestionHref, type MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 
 const STATE_CLS: Record<TrackedPointDetail['derivedState'], string> = {
   unknown: 'bg-muted text-muted-foreground ring-border',
@@ -128,16 +131,11 @@ function LinkedObjectGroupsTable({ groups, emptyLabel }: { groups: PointDetailLi
   )
 }
 
-function ProvenanceSection({ p }: { p: TrackedPointDetail }) {
-  if (!p.provenance) return null
-  const ev = p.provenance
+function EvidenceLine({ ev, showDate = true }: { ev: PointDetailEvidence; showDate?: boolean }) {
   return (
-    <section className="rounded-[16px] border bg-card px-4 py-3 space-y-1">
-      <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {ev.isCausal ? `Pourquoi ce Point est « ${p.derivedStateLabel} »` : 'Dernière preuve enregistrée'}
-      </p>
+    <>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-muted-foreground">
-        {ev.dateLabel && <span>{ev.dateLabel}</span>}
+        {showDate && ev.dateLabel && <span>{ev.dateLabel}</span>}
         {ev.documentFilename && <span>· {ev.documentFilename}</span>}
         {ev.sourcePage && <span>· p.{ev.sourcePage}</span>}
         {ev.href && (
@@ -147,6 +145,41 @@ function ProvenanceSection({ p }: { p: TrackedPointDetail }) {
         )}
       </div>
       {ev.sourceExcerpt && <p className="text-[12.5px] italic leading-snug text-foreground/80">« {ev.sourceExcerpt} »</p>}
+    </>
+  )
+}
+
+// Genèse + provenance fusionnées (mandat Vincent, lot UX Cockpit+Points) : un seul bloc
+// « Pourquoi ce Point est suivi » au lieu de deux concepts distincts et non reliés. La
+// genèse (ouverture réelle) est toujours affichée quand elle existe ; la provenance de
+// l'état courant n'est ajoutée en dessous QUE si elle désigne un événement différent —
+// jamais la même preuve répétée deux fois.
+function WhyTrackedSection({ p }: { p: TrackedPointDetail }) {
+  const origin = resolveOrigin(p)
+  const sameEvent = originMatchesProvenance(origin, p.provenance)
+  if (!origin.dateLabel && !p.provenance) return null
+
+  return (
+    <section className="rounded-[16px] border bg-card px-4 py-3 space-y-2.5">
+      <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+        Pourquoi ce Point est suivi
+      </p>
+
+      {origin.dateLabel && (
+        <div className="space-y-1">
+          <p className="text-[12.5px] font-medium text-foreground">Suivi depuis le {origin.dateLabel}</p>
+          {origin.evidence && <EvidenceLine ev={origin.evidence} showDate={false} />}
+        </div>
+      )}
+
+      {p.provenance && !sameEvent && (
+        <div className="space-y-1 border-t pt-2">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            {p.provenance.isCausal ? `Pourquoi c’est « ${p.derivedStateLabel} » aujourd’hui` : 'Dernière preuve enregistrée'}
+          </p>
+          <EvidenceLine ev={p.provenance} />
+        </div>
+      )}
     </section>
   )
 }
@@ -155,12 +188,14 @@ const NEEDS_YOU_CATEGORIES_FOR_POINT = MEMORIA_NEEDS_YOU_CATEGORY_ORDER.filter(
   (c) => c === 'duplicate_points' || c === 'attach_information' || c === 'assign_resolution',
 )
 
-// NeedsYou contextuel à l'échelle du Point (mandat Vincent, lot UX Point 3F) : mêmes conventions
-// visuelles que MemoriaNeedsYouBlock.tsx (bloc violet), silence total si vide — jamais un
-// compteur à zéro. Bouton de traitement direct = la page besoin-de-toi du chantier (aucun
-// deep-link par question n'existe aujourd'hui ; hors périmètre de ce lot capé).
+// NeedsYou contextuel à l'échelle du Point (mandat Vincent, lot UX Point 3F puis 1.1) : mêmes
+// conventions visuelles que MemoriaNeedsYouBlock.tsx (bloc violet), silence total si vide — jamais
+// un compteur à zéro. Bouton de traitement direct = deep-link `?q=<id>` vers la question précise
+// (needsYouQuestionHref) quand une seule question concerne ce Point ; sinon page besoin-de-toi du
+// chantier — jamais un choix arbitraire parmi plusieurs questions concernées.
 function NeedsYouForPointSection({ questions, href }: { questions: MemoriaNeedsYouQuestion[]; href?: string }) {
   if (questions.length === 0 || !href) return null
+  const targetHref = questions.length === 1 ? needsYouQuestionHref(href, questions[0].id) : href
   return (
     <section className="rounded-[16px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -176,7 +211,7 @@ function NeedsYouForPointSection({ questions, href }: { questions: MemoriaNeedsY
           </p>
         </div>
         <Link
-          href={href}
+          href={targetHref}
           className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
         >
           Répondre <ChevronRight className="h-3.5 w-3.5" />
@@ -246,7 +281,7 @@ export function PointFicheView({
         ))}
       </section>
 
-      <ProvenanceSection p={p} />
+      <WhyTrackedSection p={p} />
       <NeedsYouForPointSection questions={needsYouQuestions} href={needsYouHref} />
 
       {/* En-tête */}
