@@ -12,7 +12,7 @@
 // l'état. La provenance (manuel vs documentaire) est LUE de computedCurrentState, jamais du status brut.
 
 import Link from 'next/link'
-import { useState, useTransition, useMemo } from 'react'
+import { useState, useTransition, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle, Search, X, MoreHorizontal, XCircle, Eye } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -307,11 +307,33 @@ const FILTERS: Array<{ key: ActionsFilter; label: string }> = [
   { key: 'treated', label: 'Terminés' },
 ]
 
+// Ciblage `?actionId=` (mini-lot Vincent, provenance des Actions depuis la fiche Point) :
+// déplie les deux niveaux de <details> ancêtres de la formulation visée et la met en
+// évidence — sans nouveau moteur de navigation, juste le DOM déjà rendu. `useSearchParams()`
+// exigerait un Suspense boundary ; on lit `window.location.search` au montage à la place.
+function useHighlightFormulationFromUrl() {
+  useEffect(() => {
+    const actionId = new URLSearchParams(window.location.search).get('actionId')
+    if (!actionId) return
+    const el = document.getElementById(`formulation-${actionId}`)
+    if (!el) return
+    const histDetails = el.closest('details')
+    if (histDetails instanceof HTMLDetailsElement) histDetails.open = true
+    const subjDetails = histDetails?.parentElement?.closest('details')
+    if (subjDetails instanceof HTMLDetailsElement) subjDetails.open = true
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    el.classList.add('ring-2', 'ring-primary', 'bg-primary/5')
+    const t = setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'bg-primary/5'), 3000)
+    return () => clearTimeout(t)
+  }, [])
+}
+
 export function ActionsPilotageClient({ subjects, siteId }: { subjects: PilotageSubject[]; siteId: string }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ActionsFilter>('all')
   const counts = useMemo(() => countByFilter(subjects, query), [subjects, query])
   const visible = useMemo(() => filterPilotageSubjects(subjects, query, filter), [subjects, query, filter])
+  useHighlightFormulationFromUrl()
 
   if (subjects.length === 0) {
     return (
@@ -417,7 +439,7 @@ export function ActionsPilotageClient({ subjects, siteId }: { subjects: Pilotage
                       {/* P0-UX — chaque formulation porte sa provenance : date métier + PV cliquable.
                           Ordre : du PV le plus récent au plus ancien (trié par le read-model). */}
                       {s.formulations.map((f) => (
-                        <li key={f.id} className="text-xs text-muted-foreground">
+                        <li key={f.id} id={`formulation-${f.id}`} className="rounded-md text-xs text-muted-foreground transition-colors">
                           {(f.pvLabel || f.pvDate) && (
                             f.pvHref ? (
                               <Link href={f.pvHref} className="font-medium text-primary hover:underline">

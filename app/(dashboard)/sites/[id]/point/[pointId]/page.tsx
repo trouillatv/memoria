@@ -23,7 +23,7 @@ export default async function PointFichePage({
   const { id, pointId } = await params
   const [identity, point, needsYouSummary, responsibleCandidates, companies] = await Promise.all([
     getSiteIdentity(id),
-    getTrackedPointDetail(id, pointId).catch(() => null),
+    getTrackedPointDetail(id, pointId, `/sites/${id}/actions`).catch(() => null),
     loadMemoriaNeedsYouSummary(id).catch(() => null),
     listSiteActionResponsibleCandidates(id).catch(() => []),
     listSiteCandidateCompanies(id).catch(() => []),

@@ -5,9 +5,10 @@
 // Réutilise EXCLUSIVEMENT les server actions déjà existantes de
 // app/(dashboard)/actions/actions.ts (closeActionAction/reopenActionAction pour
 // le cycle de vie, updateActionAssignmentAction pour Responsable/Entreprise/
-// Échéance) — aucun nouveau moteur d'état. « Voir le détail » reste un lien
-// secondaire vers la destination actuelle (le titre de la ligne n'est plus
-// cliquable : le Point devient le cockpit local des Actions).
+// Échéance) — aucun nouveau moteur d'état. « Voir dans Actions » reste un lien
+// secondaire vers la page Actions du site (?actionId= cible/surligne la ligne),
+// le titre de la ligne n'est plus cliquable : le Point devient le cockpit
+// local des Actions.
 //
 // Suggestion GAP 1 : jamais appliquée automatiquement — seul un clic explicite
 // sur « Utiliser <nom> » copie la suggestion dans le champ Responsable/Entreprise
@@ -137,7 +138,7 @@ export function PointActionMenu({
           </button>
           <Link href={action.href} onClick={() => setMode(null)}
             className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] text-muted-foreground hover:bg-muted/60">
-            <Eye className="h-3.5 w-3.5" /> Voir le détail
+            <Eye className="h-3.5 w-3.5" /> Voir dans Actions
           </Link>
         </div>
       )}

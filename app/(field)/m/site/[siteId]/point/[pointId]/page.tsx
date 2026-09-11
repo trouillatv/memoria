@@ -17,7 +17,7 @@ export default async function MobilePointFichePage({
   const { siteId, pointId } = await params
   await requireSiteAccess(siteId)
   const [point, needsYouSummary, responsibleCandidates, companies] = await Promise.all([
-    getTrackedPointDetail(siteId, pointId).catch(() => null),
+    getTrackedPointDetail(siteId, pointId, `/m/site/${siteId}/actions`).catch(() => null),
     loadMemoriaNeedsYouSummary(siteId).catch(() => null),
     listSiteActionResponsibleCandidates(siteId).catch(() => []),
     listSiteCandidateCompanies(siteId).catch(() => []),

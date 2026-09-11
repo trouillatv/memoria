@@ -40,6 +40,7 @@ function linkedObject(overrides: Partial<PointDetailLinkedObject> & { id: string
     dueDateLabel: null,
     responsible: null,
     suggestedResponsibleName: null,
+    sources: [],
     href: `/action/${overrides.id}`,
     ...overrides,
   }

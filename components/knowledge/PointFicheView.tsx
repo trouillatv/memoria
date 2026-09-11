@@ -131,6 +131,7 @@ function LinkedObjectGroupsTable({
                     {g.title}{g.count > 1 && <span className="ml-1.5 text-muted-foreground">— {g.count} occurrences</span>}
                   </span>
                   <div className="text-[11px] text-muted-foreground">{OBJECT_TYPE_LABEL[g.objectType]}</div>
+                  {g.objectType === 'site_action' && <ActionSourcesLine group={g} />}
                 </td>
                 <td className="px-3 py-2 text-[12.5px]"><ResponsibleLabel o={o} /></td>
                 <td className="px-3 py-2 text-[12.5px] text-muted-foreground">{o.dueDateLabel ?? '—'}</td>
@@ -155,6 +156,54 @@ function LinkedObjectGroupsTable({
         </tbody>
       </table>
     </div>
+  )
+}
+
+// Provenance documentaire d'un groupe d'Actions (mini-lot Vincent, « provenance des
+// Actions dans la fiche Point ») — agrège les sources de TOUS les items du groupe
+// (une occurrence = un site_actions.id, éventuellement sa propre source). Silence total
+// si aucune source connue (saisie humaine/Copilote — jamais un manque affiché). Une seule
+// source → ligne discrète cliquable ; plusieurs → `<details>` natif (zéro JS) listant
+// chaque occurrence avec date, document, page, extrait, « Ouvrir dans le document » — la
+// table principale elle-même n'affiche jamais le nom complet du document.
+function ActionSourcesLine({ group }: { group: PointDetailLinkedObjectGroup }) {
+  const sources = [...group.items.flatMap((i) => i.sources)].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+  if (sources.length === 0) return null
+
+  if (sources.length === 1) {
+    const s = sources[0]
+    return (
+      <div className="mt-0.5 text-[11px] text-muted-foreground">
+        Source :{' '}
+        <Link href={s.href} className="font-medium text-primary hover:underline">
+          PV du {s.dateLabel ?? '—'}{s.sourcePage ? ` · p.${s.sourcePage}` : ''}
+        </Link>
+      </div>
+    )
+  }
+
+  const dates = sources.map((s) => s.dateLabel).filter((d): d is string => !!d)
+  return (
+    <details className="mt-0.5 text-[11px] text-muted-foreground">
+      <summary className="cursor-pointer">
+        {dates.length > 0 && <>PV {dates.join(' · ')} · </>}Voir les sources
+      </summary>
+      <ul className="mt-1.5 space-y-1.5 border-l pl-2.5">
+        {sources.map((s, i) => (
+          <li key={`${s.documentId}-${i}`}>
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              {s.dateLabel && <span>{s.dateLabel}</span>}
+              {s.documentFilename && <span>· {s.documentFilename}</span>}
+              {s.sourcePage && <span>· p.{s.sourcePage}</span>}
+              <Link href={s.href} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
+                Ouvrir dans le document <ChevronRight className="h-3 w-3" />
+              </Link>
+            </div>
+            {s.sourceExcerpt && <p className="italic leading-snug text-foreground/80">« {s.sourceExcerpt} »</p>}
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 

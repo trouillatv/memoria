@@ -88,6 +88,21 @@ export type PointDetailResponsible =
   | { kind: 'company'; name: string }
   | { kind: 'text'; label: string }
 
+// Provenance documentaire d'une Action (mandat Vincent, mini-lot « provenance des Actions
+// dans la fiche Point ») — construite depuis `document_proposal_materialization`
+// (target_entity_type='site_action'), jamais fabriquée : une Action de saisie humaine ou
+// Copilote (sans matérialisation) a `sources: []`, ce n'est pas un manque à combler.
+export interface PointDetailActionSource {
+  documentId: string
+  documentFilename: string | null
+  documentType: string | null
+  href: string
+  date: string | null
+  dateLabel: string | null
+  sourcePage: number | null
+  sourceExcerpt: string | null
+}
+
 export interface PointDetailLinkedObject {
   objectType: 'site_action' | 'site_reserve' | 'site_deadline'
   id: string
@@ -104,6 +119,9 @@ export interface PointDetailLinkedObject {
   // (substring, zéro fuzzy) dans ce titre — uniquement quand `responsible` est null et
   // qu'un seul acteur correspond. Toujours une suggestion, jamais une affectation.
   suggestedResponsibleName: string | null
+  // Provenance documentaire (site_action uniquement) — toujours [] pour reserve/deadline
+  // (hors périmètre du mini-lot provenance).
+  sources: PointDetailActionSource[]
   href: string
 }
 
@@ -372,7 +390,15 @@ export function originMatchesProvenance(origin: PointOrigin, provenance: PointDe
   return provenance.kind === origin.evidence.kind && provenance.date === origin.evidence.date
 }
 
-export async function getTrackedPointDetail(siteId: string, pointId: string): Promise<TrackedPointDetail | null> {
+export async function getTrackedPointDetail(
+  siteId: string,
+  pointId: string,
+  // Base de la page Actions du SURFACE APPELANT (desktop `/sites/${id}/actions`, mobile
+  // `/m/site/${siteId}/actions`) — corrige un bug latent où « Voir le détail » pointait
+  // toujours vers le desktop, y compris depuis la fiche Point mobile. Défaut = desktop,
+  // pour ne jamais casser un appelant qui ne le fournirait pas encore.
+  actionsHref: string = `/sites/${siteId}/actions`,
+): Promise<TrackedPointDetail | null> {
   const db = createAdminClient()
 
   const { data: site } = await db.from('sites').select('id, organization_id').eq('id', siteId).maybeSingle()
@@ -506,6 +532,69 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
       for (const a of actionRows) { if (a.assigned_contact_id) contactIds.add(a.assigned_contact_id); if (a.assigned_company_id) companyIds.add(a.assigned_company_id) }
     }
 
+    // ── Provenance documentaire des Actions (mini-lot Vincent, « provenance des
+    //    Actions dans la fiche Point ») — via document_proposal_materialization,
+    //    JAMAIS une heuristique : lien structuré posé à l'import historique
+    //    (materialize_historical_visit). Une Action de saisie humaine/Copilote
+    //    n'a simplement aucune ligne ici → sources: [] (fait honnête, pas un manque). ──
+    const actionSourcesById = new Map<string, PointDetailActionSource[]>()
+    if (actionIds.size > 0) {
+      const { data: materializationRows } = await db.from('document_proposal_materialization')
+        .select('target_entity_id, proposal_id')
+        .eq('target_entity_type', 'site_action')
+        .in('target_entity_id', [...actionIds])
+      const proposalIdByActionId = new Map<string, string[]>()
+      for (const m of materializationRows ?? []) {
+        const actionId = m.target_entity_id as string
+        const proposalId = m.proposal_id as string | null
+        if (!proposalId) continue
+        const list = proposalIdByActionId.get(actionId) ?? []
+        list.push(proposalId)
+        proposalIdByActionId.set(actionId, list)
+      }
+      const sourceProposalIds = [...new Set([...proposalIdByActionId.values()].flat())]
+      if (sourceProposalIds.length > 0) {
+        const { data: sourceProposalRows } = await db.from('document_extraction_proposal')
+          .select('id, document_id, source_page, source_excerpt').in('id', sourceProposalIds)
+        const sourceProposalById = new Map((sourceProposalRows ?? []).map((r) => [r.id as string, r as {
+          id: string; document_id: string | null; source_page: number | null; source_excerpt: string | null
+        }]))
+        const sourceDocIds = [...new Set([...sourceProposalById.values()].map((p) => p.document_id).filter((id): id is string => !!id))]
+        const sourceDocById = new Map<string, { filename: string | null; document_type: string | null; effective_date: string | null }>()
+        if (sourceDocIds.length > 0) {
+          const { data: sourceDocRows } = await db.from('documents').select('id, filename, document_type, effective_date').in('id', sourceDocIds)
+          for (const d of sourceDocRows ?? []) {
+            sourceDocById.set(d.id as string, {
+              filename: d.filename as string | null,
+              document_type: d.document_type as string | null,
+              effective_date: (d.effective_date as string | null)?.slice(0, 10) ?? null,
+            })
+          }
+        }
+        for (const [actionId, proposalIdList] of proposalIdByActionId) {
+          const sources: PointDetailActionSource[] = []
+          for (const proposalId of proposalIdList) {
+            const proposal = sourceProposalById.get(proposalId)
+            if (!proposal?.document_id) continue
+            const doc = sourceDocById.get(proposal.document_id)
+            if (!doc) continue
+            sources.push({
+              documentId: proposal.document_id,
+              documentFilename: doc.filename,
+              documentType: doc.document_type,
+              href: documentHref({ id: proposal.document_id, document_type: doc.document_type ?? '' }, siteId),
+              date: doc.effective_date,
+              dateLabel: frDate(doc.effective_date),
+              sourcePage: proposal.source_page,
+              sourceExcerpt: proposal.source_excerpt?.trim() || null,
+            })
+          }
+          sources.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+          if (sources.length > 0) actionSourcesById.set(actionId, sources)
+        }
+      }
+    }
+
     type DeadlineRow = {
       id: string; title: string; status: DeadlineStatus; due_date: string | null
       assigned_contact_id: string | null; assigned_company_id: string | null
@@ -557,7 +646,8 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
         dueDate: due, dueDateLabel: frDate(due),
         responsible: responsibleFor(a.assigned_contact_id, a.assigned_company_id, a.assigned_to),
         suggestedResponsibleName: null,
-        href: `/sites/${siteId}/actions`,
+        sources: actionSourcesById.get(a.id) ?? [],
+        href: `${actionsHref}?actionId=${a.id}`,
       })
     }
     for (const d of deadlineRows) {
@@ -570,6 +660,7 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
         dueDate: due, dueDateLabel: frDate(due),
         responsible: responsibleFor(d.assigned_contact_id, d.assigned_company_id, null),
         suggestedResponsibleName: null,
+        sources: [],
         href: `/sites/${siteId}/echeances`,
       })
     }
@@ -581,6 +672,7 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
         dueDate: null, dueDateLabel: null,
         responsible: responsibleFor(null, r.responsible_company_id, null),
         suggestedResponsibleName: null,
+        sources: [],
         href: `/sites/${siteId}/reserves`,
       })
     }
