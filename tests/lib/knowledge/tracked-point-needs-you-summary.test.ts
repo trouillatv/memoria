@@ -9,6 +9,9 @@ import { describe, it, expect } from 'vitest'
 import {
   buildMemoriaNeedsYouSummary,
   filterMemoriaNeedsYouQuestionsForPoint,
+  filterMemoriaNeedsYouQuestionsForSubject,
+  resolveMemoriaNeedsYouSubjectPointRef,
+  needsYouQuestionHref,
   MEMORIA_NEEDS_YOU_CATEGORY_ORDER,
   type MemoriaNeedsYouQuestion,
 } from '@/lib/knowledge/tracked-point-needs-you-summary'
@@ -323,5 +326,135 @@ describe('filterMemoriaNeedsYouQuestionsForPoint', () => {
     const trackability: MemoriaNeedsYouQuestion = { category: 'confirm_trackability', id: 'trace-1', entry: trackabilityEntry('trace-1', true) }
     const evidence: MemoriaNeedsYouQuestion = { category: 'clarify_evidence', id: 'trace-1', entry: evidenceScopeEntry('trace-1', 'TRACKABILITY_UNDETERMINED') }
     expect(filterMemoriaNeedsYouQuestionsForPoint([trackability, evidence], 'any-point')).toEqual([])
+  })
+})
+
+// Lot UX Point 1.1 (mandat Vincent) — filterMemoriaNeedsYouQuestionsForSubject : contrairement au
+// filtre Point, les 5 catégories portent toutes un subjectId/subject vérifié dans leur source —
+// aucune n'est structurellement exclue.
+describe('filterMemoriaNeedsYouQuestionsForSubject (lot UX Point 1.1)', () => {
+  it('duplicate_points : matche pointA OU pointB via leur subjectId', () => {
+    const entry = {
+      ...consolidationEntry('pair-1'),
+      pointA: { ...pointSide('a'), subjectId: 'subj-1' },
+      pointB: { ...pointSide('b'), subjectId: 'subj-2' },
+    }
+    const q: MemoriaNeedsYouQuestion = { category: 'duplicate_points', id: 'pair-1', entry }
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-1')).toEqual([q])
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-2')).toEqual([q])
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-other')).toEqual([])
+  })
+
+  it('attach_information : matche si un target référence ce sujet (champ `subject`, pas `subjectId`)', () => {
+    const entry = { ...traceIdentityEntry('source-1'), targets: [{ ...traceTarget('point-x'), subject: 'subj-1' }] }
+    const q: MemoriaNeedsYouQuestion = { category: 'attach_information', id: 'source-1', entry }
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-1')).toEqual([q])
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-2')).toEqual([])
+  })
+
+  it('confirm_trackability : matche via son subjectId (contrairement au filtre Point, JAMAIS exclue)', () => {
+    const entry = { ...trackabilityEntry('trace-1', true), subjectId: 'subj-1' }
+    const q: MemoriaNeedsYouQuestion = { category: 'confirm_trackability', id: 'trace-1', entry }
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-1')).toEqual([q])
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-2')).toEqual([])
+  })
+
+  it('clarify_evidence : matche via son subjectId (contrairement au filtre Point, JAMAIS exclue)', () => {
+    const entry = { ...evidenceScopeEntry('trace-1', 'TRACKABILITY_UNDETERMINED'), subjectId: 'subj-1' }
+    const q: MemoriaNeedsYouQuestion = { category: 'clarify_evidence', id: 'trace-1', entry }
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-1')).toEqual([q])
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q], 'subj-2')).toEqual([])
+  })
+
+  it('assign_resolution : matche via knownIdentityTargets OU sameSubjectSuggestions', () => {
+    const knownEntry = { ...resolutionEntry('trace-1', true), knownIdentityTargets: [{ ...pointRef('point-x'), subjectId: 'subj-1' }] }
+    const suggestedEntry = { ...resolutionEntry('trace-2', true), sameSubjectSuggestions: [{ ...pointRef('point-y'), subjectId: 'subj-2' }] }
+    const q1: MemoriaNeedsYouQuestion = { category: 'assign_resolution', id: 'trace-1', entry: knownEntry }
+    const q2: MemoriaNeedsYouQuestion = { category: 'assign_resolution', id: 'trace-2', entry: suggestedEntry }
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q1], 'subj-1')).toEqual([q1])
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q2], 'subj-2')).toEqual([q2])
+    expect(filterMemoriaNeedsYouQuestionsForSubject([q1, q2], 'subj-other')).toEqual([])
+  })
+})
+
+// Lot UX Point 1.1 (mandat Vincent) — resolveMemoriaNeedsYouSubjectPointRef : n'affiche le Point
+// concerné que lorsqu'un SEUL Point candidat référence ce sujet pour cette question précise ;
+// jamais un choix arbitraire parmi plusieurs Points distincts (zéro heuristique).
+describe('resolveMemoriaNeedsYouSubjectPointRef (lot UX Point 1.1, zéro heuristique)', () => {
+  it('duplicate_points : un seul Point du sujet candidat → retourne ce Point', () => {
+    const entry = {
+      ...consolidationEntry('pair-1'),
+      pointA: { ...pointSide('a'), subjectId: 'subj-1', label: 'Point A' },
+      pointB: { ...pointSide('b'), subjectId: 'subj-2', label: 'Point B' },
+    }
+    const q: MemoriaNeedsYouQuestion = { category: 'duplicate_points', id: 'pair-1', entry }
+    expect(resolveMemoriaNeedsYouSubjectPointRef(q, 'subj-1')).toEqual({ pointId: 'a', pointLabel: 'Point A' })
+  })
+
+  it('duplicate_points : pointA ET pointB appartiennent au même sujet mais sont des Points DISTINCTS → null (aucun choix arbitraire)', () => {
+    const entry = {
+      ...consolidationEntry('pair-1'),
+      pointA: { ...pointSide('a'), subjectId: 'subj-1' },
+      pointB: { ...pointSide('b'), subjectId: 'subj-1' },
+    }
+    const q: MemoriaNeedsYouQuestion = { category: 'duplicate_points', id: 'pair-1', entry }
+    expect(resolveMemoriaNeedsYouSubjectPointRef(q, 'subj-1')).toBeNull()
+  })
+
+  it('attach_information : un seul target du sujet → retourne ce Point', () => {
+    const entry = { ...traceIdentityEntry('source-1'), targets: [{ ...traceTarget('point-x'), subject: 'subj-1', label: 'Point X' }] }
+    const q: MemoriaNeedsYouQuestion = { category: 'attach_information', id: 'source-1', entry }
+    expect(resolveMemoriaNeedsYouSubjectPointRef(q, 'subj-1')).toEqual({ pointId: 'point-x', pointLabel: 'Point X' })
+  })
+
+  it('attach_information : deux targets distincts du même sujet → null', () => {
+    const entry = {
+      ...traceIdentityEntry('source-1'),
+      targets: [
+        { ...traceTarget('point-x'), subject: 'subj-1' },
+        { ...traceTarget('point-y'), subject: 'subj-1' },
+      ],
+    }
+    const q: MemoriaNeedsYouQuestion = { category: 'attach_information', id: 'source-1', entry }
+    expect(resolveMemoriaNeedsYouSubjectPointRef(q, 'subj-1')).toBeNull()
+  })
+
+  it('assign_resolution : un seul candidat (known ou suggéré) du sujet → retourne ce Point', () => {
+    const entry = { ...resolutionEntry('trace-1', true), knownIdentityTargets: [{ ...pointRef('point-x'), subjectId: 'subj-1', label: 'Point X' }] }
+    const q: MemoriaNeedsYouQuestion = { category: 'assign_resolution', id: 'trace-1', entry }
+    expect(resolveMemoriaNeedsYouSubjectPointRef(q, 'subj-1')).toEqual({ pointId: 'point-x', pointLabel: 'Point X' })
+  })
+
+  it('assign_resolution : knownIdentityTargets et sameSubjectSuggestions pointent vers des Points distincts du même sujet → null', () => {
+    const entry = {
+      ...resolutionEntry('trace-1', true),
+      knownIdentityTargets: [{ ...pointRef('point-x'), subjectId: 'subj-1' }],
+      sameSubjectSuggestions: [{ ...pointRef('point-y'), subjectId: 'subj-1' }],
+    }
+    const q: MemoriaNeedsYouQuestion = { category: 'assign_resolution', id: 'trace-1', entry }
+    expect(resolveMemoriaNeedsYouSubjectPointRef(q, 'subj-1')).toBeNull()
+  })
+
+  it('confirm_trackability et clarify_evidence : toujours null, aucune référence Point possible dans leur source', () => {
+    const trackability: MemoriaNeedsYouQuestion = { category: 'confirm_trackability', id: 'trace-1', entry: { ...trackabilityEntry('trace-1', true), subjectId: 'subj-1' } }
+    const evidence: MemoriaNeedsYouQuestion = { category: 'clarify_evidence', id: 'trace-1', entry: { ...evidenceScopeEntry('trace-1', 'TRACKABILITY_UNDETERMINED'), subjectId: 'subj-1' } }
+    expect(resolveMemoriaNeedsYouSubjectPointRef(trackability, 'subj-1')).toBeNull()
+    expect(resolveMemoriaNeedsYouSubjectPointRef(evidence, 'subj-1')).toBeNull()
+  })
+})
+
+// Lot UX Point 1.1 (mandat Vincent) — needsYouQuestionHref : deep-link `?q=<id>` vers la question
+// précise, jamais un simple renvoi vers la page générale.
+describe('needsYouQuestionHref (lot UX Point 1.1)', () => {
+  it('ajoute ?q=<id> à une URL sans query existante', () => {
+    expect(needsYouQuestionHref('/sites/site-1/besoin-de-toi', 'q-1')).toBe('/sites/site-1/besoin-de-toi?q=q-1')
+  })
+
+  it('ajoute &q=<id> quand une query existe déjà', () => {
+    expect(needsYouQuestionHref('/sites/site-1/besoin-de-toi?tab=x', 'q-1')).toBe('/sites/site-1/besoin-de-toi?tab=x&q=q-1')
+  })
+
+  it("encode l'identifiant de question", () => {
+    expect(needsYouQuestionHref('/sites/site-1/besoin-de-toi', 'q 1&x')).toBe('/sites/site-1/besoin-de-toi?q=q%201%26x')
   })
 })

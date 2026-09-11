@@ -10,8 +10,8 @@
 // router.refresh() revalide le serveur (queues + bannière Aperçu) — même geste que
 // MemoryReviewPanel/ReviewCard (`onDone` + re-render serveur).
 
-import { useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { CheckCircle2, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QuestionCard, CATEGORY_TONE, CATEGORY_ICON, type ActionResult, type SitePointOption } from './NeedsYouCards'
@@ -181,6 +181,18 @@ export function NeedsYouClient({
   sitePoints: SitePointOption[]
 }) {
   const router = useRouter()
+  // Lot UX Point 1.1 (mandat Vincent) — deep-link `?q=<id>` depuis la boîte globale ou un bloc
+  // contextuel (Point/Sujet) : `id` est le même identifiant stable que `key={q.id}` plus bas
+  // (pairId/sourceKey/pendingTraceId selon la catégorie), déjà porté par MemoriaNeedsYouQuestion —
+  // aucun nouveau schéma. Lu une seule fois à l'initialisation ; un changement d'URL en cours de
+  // session ne redéclenche jamais un second saut (mandat implicite : ne pas perturber un filtre
+  // déjà choisi par l'utilisateur).
+  const searchParams = useSearchParams()
+  const targetQuestionId = searchParams.get('q')
+  const targetQuestion = useMemo(
+    () => (targetQuestionId ? questions.find((q) => q.id === targetQuestionId) ?? null : null),
+    [targetQuestionId, questions],
+  )
   const [, startTransition] = useTransition()
   const [pending, setPending] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -191,7 +203,10 @@ export function NeedsYouClient({
   const [recapEntries, setRecapEntries] = useState<MemoriaNeedsYouRecapEntry[]>([])
   // 6E.8A — append-only comme recapEntries, mais un canal distinct (cf. DeferredNoticesCard).
   const [deferredNotices, setDeferredNotices] = useState<DeferredNotice[]>([])
-  const [filter, setFilter] = useState<FilterValue>('all')
+  // Deep-link : le filtre catégorie s'ouvre directement sur celle de la question ciblée (sinon
+  // elle pourrait rester masquée sous un autre filtre par défaut) — priorité/PV/tri restent à
+  // leur valeur par défaut ('all'/'priority'), aucun des deux n'exclut la question ciblée.
+  const [filter, setFilter] = useState<FilterValue>(() => targetQuestion?.category ?? 'all')
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilterValue>('all')
   const [sortMode, setSortMode] = useState<SortMode>('priority')
   // 6E.4A.5 — 'all' | 'latest' | date-only (YYYY-MM-DD) sélectionnée dans le menu "PV du ...".
@@ -200,6 +215,9 @@ export function NeedsYouClient({
   // filtre/tri/PV change (setFilter/setSortMode/setPvMode enveloppés ci-dessous), sinon un lot
   // affiché sous un ancien filtre resterait affiché après un changement de sélection.
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  // Deep-link — surbrillance temporaire de la carte ciblée, retirée après le premier reveal.
+  const [highlightedId, setHighlightedId] = useState<string | null>(() => targetQuestion?.id ?? null)
+  const hasRevealedTarget = useRef(false)
 
   function updateFilter(next: FilterValue) {
     setFilter(next)
@@ -295,6 +313,25 @@ export function NeedsYouClient({
 
   const visibleQuestions = sorted.slice(0, visibleCount)
   const remainingToShow = sorted.length - visibleQuestions.length
+
+  // Deep-link — révèle la carte ciblée : agrandit `visibleCount` si elle est encore au-delà de la
+  // page courante, puis scrolle dès qu'elle est réellement dans le DOM. Ne s'exécute qu'une seule
+  // fois (hasRevealedTarget) : un rerender ultérieur (action sur une autre carte, etc.) ne doit
+  // jamais re-scroller la page sous les pieds de l'utilisateur.
+  useEffect(() => {
+    if (!targetQuestion || hasRevealedTarget.current) return
+    const el = document.getElementById(`needsyou-${targetQuestion.id}`)
+    if (el) {
+      hasRevealedTarget.current = true
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      const timeout = setTimeout(() => setHighlightedId(null), 4000)
+      return () => clearTimeout(timeout)
+    }
+    const index = sorted.findIndex((q) => q.id === targetQuestion.id)
+    if (index >= 0 && index >= visibleCount) {
+      setVisibleCount(index + 1)
+    }
+  }, [sorted, visibleCount, targetQuestion])
 
   function runActionFor(questionId: string, category: MemoriaNeedsYouCategory) {
     // 6E.4D — `recapLabel` omis (undefined) par un rejet/report ("Ce n'est pas ce suivi", "Non",
@@ -460,16 +497,23 @@ export function NeedsYouClient({
             </div>
           )}
           {visibleQuestions.map((q) => (
-            <QuestionCard
+            <div
               key={q.id}
-              question={q}
-              siteId={siteId}
-              pending={pending.has(q.id)}
-              error={errors[q.id]}
-              sitePoints={sitePoints}
-              priority={computeQuestionPriority(q)}
-              runAction={runActionFor(q.id, q.category)}
-            />
+              id={`needsyou-${q.id}`}
+              className={cn(
+                highlightedId === q.id && 'rounded-2xl ring-2 ring-violet-400 ring-offset-2 ring-offset-background',
+              )}
+            >
+              <QuestionCard
+                question={q}
+                siteId={siteId}
+                pending={pending.has(q.id)}
+                error={errors[q.id]}
+                sitePoints={sitePoints}
+                priority={computeQuestionPriority(q)}
+                runAction={runActionFor(q.id, q.category)}
+              />
+            </div>
           ))}
         </div>
 
