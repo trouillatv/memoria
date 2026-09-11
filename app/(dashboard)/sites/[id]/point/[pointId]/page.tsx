@@ -3,6 +3,8 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getTrackedPointDetail } from '@/lib/knowledge/tracked-point-detail'
 import { loadMemoriaNeedsYouSummary, filterMemoriaNeedsYouQuestionsForPoint } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
+import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { PointFicheView } from '@/components/knowledge/PointFicheView'
 
 export const dynamic = 'force-dynamic'
@@ -19,10 +21,12 @@ export default async function PointFichePage({
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, pointId } = await params
-  const [identity, point, needsYouSummary] = await Promise.all([
+  const [identity, point, needsYouSummary, responsibleCandidates, companies] = await Promise.all([
     getSiteIdentity(id),
     getTrackedPointDetail(id, pointId).catch(() => null),
     loadMemoriaNeedsYouSummary(id).catch(() => null),
+    listSiteActionResponsibleCandidates(id).catch(() => []),
+    listSiteCandidateCompanies(id).catch(() => []),
   ])
   if (!identity || !point) notFound()
 
@@ -47,6 +51,8 @@ export default async function PointFichePage({
         backLabel={backLabel}
         needsYouQuestions={needsYouQuestions}
         needsYouHref={`/sites/${id}/besoin-de-toi`}
+        responsibleCandidates={responsibleCandidates}
+        companies={companies}
       />
     </div>
   )

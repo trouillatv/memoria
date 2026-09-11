@@ -29,6 +29,9 @@ import {
 } from '@/lib/knowledge/tracked-point-detail'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { needsYouQuestionHref, type MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import { PointActionMenu } from '@/components/knowledge/PointActionMenu'
+import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
+import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
 
 const STATE_CLS: Record<TrackedPointDetail['derivedState'], string> = {
   unknown: 'bg-muted text-muted-foreground ring-border',
@@ -86,7 +89,25 @@ const OBJECT_TYPE_LABEL: Record<PointDetailLinkedObject['objectType'], string> =
 // §1 « À faire » compacté (mandat Vincent, lot UX Point 3F) : une ligne par GROUPE (titre
 // exactement identique), jamais une ligne par occurrence — les champs affichés (responsable,
 // échéance, statut) viennent du représentant du groupe, purement visuel, aucune donnée modifiée.
-function LinkedObjectGroupsTable({ groups, emptyLabel }: { groups: PointDetailLinkedObjectGroup[]; emptyLabel: string }) {
+//
+// Lot Point Actions inline (mandat Vincent) : le titre n'est PLUS un lien — le Point devient
+// le cockpit local des Actions plutôt qu'une destination de navigation concurrente. Le menu
+// « … » (uniquement pour objectType === 'site_action') porte les gestes déjà supportés
+// ailleurs (marquer traitée / rouvrir / modifier Responsable-Entreprise-Échéance) ; « Voir le
+// détail » reste disponible mais en élément secondaire du menu.
+function LinkedObjectGroupsTable({
+  groups,
+  emptyLabel,
+  siteId,
+  responsibleCandidates,
+  companies,
+}: {
+  groups: PointDetailLinkedObjectGroup[]
+  emptyLabel: string
+  siteId: string
+  responsibleCandidates: ResponsibleCandidate[]
+  companies: SiteCandidateCompany[]
+}) {
   if (groups.length === 0) return <p className="px-1 py-2 text-[13px] text-muted-foreground">{emptyLabel}</p>
   return (
     <div className="overflow-x-auto rounded-lg border">
@@ -97,6 +118,7 @@ function LinkedObjectGroupsTable({ groups, emptyLabel }: { groups: PointDetailLi
             <th className={TH}>Responsable</th>
             <th className={TH}>Échéance</th>
             <th className={cn(TH, 'text-right')}>Statut</th>
+            <th className={TH} aria-label="Gestes" />
           </tr>
         </thead>
         <tbody className="divide-y">
@@ -105,9 +127,9 @@ function LinkedObjectGroupsTable({ groups, emptyLabel }: { groups: PointDetailLi
             return (
               <tr key={g.key} className={cn(o.isLate && 'bg-rose-50/50 dark:bg-rose-950/10')}>
                 <td className="px-3 py-2">
-                  <Link href={o.href} className="text-[13px] font-medium text-primary hover:underline">
+                  <span className="text-[13px] font-medium">
                     {g.title}{g.count > 1 && <span className="ml-1.5 text-muted-foreground">— {g.count} occurrences</span>}
-                  </Link>
+                  </span>
                   <div className="text-[11px] text-muted-foreground">{OBJECT_TYPE_LABEL[g.objectType]}</div>
                 </td>
                 <td className="px-3 py-2 text-[12.5px]"><ResponsibleLabel o={o} /></td>
@@ -121,6 +143,11 @@ function LinkedObjectGroupsTable({ groups, emptyLabel }: { groups: PointDetailLi
                   )}>
                     {o.isLate ? 'En retard' : o.statusLabel}
                   </span>
+                </td>
+                <td className="px-2 py-2 text-right">
+                  {o.objectType === 'site_action' && (
+                    <PointActionMenu action={o} siteId={siteId} responsibleCandidates={responsibleCandidates} companies={companies} />
+                  )}
                 </td>
               </tr>
             )
@@ -241,12 +268,16 @@ export function PointFicheView({
   backLabel,
   needsYouQuestions = [],
   needsYouHref,
+  responsibleCandidates = [],
+  companies = [],
 }: {
   point: TrackedPointDetail
   backHref: string
   backLabel: string
   needsYouQuestions?: MemoriaNeedsYouQuestion[]
   needsYouHref?: string
+  responsibleCandidates?: ResponsibleCandidate[]
+  companies?: SiteCandidateCompany[]
 }) {
   const p = point
 
@@ -313,7 +344,13 @@ export function PointFicheView({
               répéter les mêmes éléments dans un §5 séparé + la colonne latérale). */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2.5">
             <h2 className={H2}>1. À faire</h2>
-            <LinkedObjectGroupsTable groups={p.openLinkedObjectGroups} emptyLabel="Rien à faire actuellement sur ce Point." />
+            <LinkedObjectGroupsTable
+              groups={p.openLinkedObjectGroups}
+              emptyLabel="Rien à faire actuellement sur ce Point."
+              siteId={p.siteId}
+              responsibleCandidates={responsibleCandidates}
+              companies={companies}
+            />
             {p.closedLinkedObjects.length > 0 && (
               <details className="pt-1">
                 <summary className="cursor-pointer text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground/70">
@@ -375,18 +412,31 @@ export function PointFicheView({
             )}
           </section>
 
-          {/* §3 — Acteurs */}
+          {/* §3 — Acteurs. Mandat Vincent : distinguer explicitement « acteur mentionné » de
+              « responsable d'une Action précise » — jamais un total agrégé qui efface cette
+              distinction, jamais une propagation automatique vers un rôle de responsable. */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
             <h2 className={H2}>3. Acteurs</h2>
             {p.actors.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">Aucun acteur explicitement identifié pour ce Point.</p>
             ) : (
               <ul className="flex flex-wrap gap-2">
-                {p.actors.map((a) => (
-                  <li key={a.id} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
-                    {a.name}{a.fonction ? ` · ${a.fonction}` : ''}
-                  </li>
-                ))}
+                {p.actors.map((a) => {
+                  const responsibleCount = a.responsibleActionCount + a.responsibleReserveCount + a.responsibleDeadlineCount
+                  const detail: string[] = []
+                  if (a.responsibleActionCount > 0) detail.push(`responsable de ${a.responsibleActionCount} action${a.responsibleActionCount > 1 ? 's' : ''}`)
+                  if (a.responsibleReserveCount > 0) detail.push(`de ${a.responsibleReserveCount} réserve${a.responsibleReserveCount > 1 ? 's' : ''}`)
+                  if (a.responsibleDeadlineCount > 0) detail.push(`de ${a.responsibleDeadlineCount} échéance${a.responsibleDeadlineCount > 1 ? 's' : ''}`)
+                  return (
+                    <li key={a.id} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
+                      {a.name}{a.fonction ? ` · ${a.fonction}` : ''}
+                      <span className="text-muted-foreground">
+                        {' — '}
+                        {responsibleCount > 0 ? detail.join(', ') : 'mentionné, rôle non précisé'}
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </section>

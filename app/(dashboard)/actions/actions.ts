@@ -19,6 +19,8 @@ import { createIntervention } from '@/lib/db/interventions'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
 import { promoteProposal, dismissProposal } from '@/lib/db/knowledge-proposals'
 import { trackAiOutcome } from '@/lib/db/ai-outcome-events'
+import { listSiteActionResponsibleCandidates, resolveActionResponsibility } from '@/lib/knowledge/action-responsible-candidates'
+import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 
 const IdSchema = z.string().uuid()
 const CommentSchema = z.string().trim().min(1, 'Un commentaire est requis').max(1000)
@@ -694,4 +696,91 @@ export async function setActionDueDateAction(
   } catch {
     return { ok: false, error: 'Échec de la planification' }
   }
+}
+
+/**
+ * Modifie Responsable / Entreprise / Échéance d'une action existante (lot
+ * « Point Actions inline »). Le `site_id` du client N'EST JAMAIS utilisé pour
+ * scoper les candidats : il sert ici à résoudre le casting, donc on le relit
+ * AUTORITATIVEMENT depuis `site_actions` (même logique que `editActionAction`
+ * dans pv-actions.ts, qui dérive site_id de `getSiteReport`, jamais du client).
+ */
+export async function updateActionAssignmentAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string; requiresConfirmation?: boolean }> {
+  const id = formData.get('id')
+  if (typeof id !== 'string' || !IdSchema.safeParse(id).success) return { ok: false, error: 'Action invalide' }
+  const contactIdRaw = formData.get('assigned_contact_id')
+  const companyIdRaw = formData.get('assigned_company_id')
+  const assignedContactIdInput = typeof contactIdRaw === 'string' && contactIdRaw ? contactIdRaw : null
+  const assignedCompanyIdInput = typeof companyIdRaw === 'string' && companyIdRaw ? companyIdRaw : null
+  const confirmMismatch = formData.get('confirm_mismatch') === 'true'
+  const dueDateRaw = formData.get('due_date')
+  const dueDate = typeof dueDateRaw === 'string' && dueDateRaw ? dueDateRaw : null
+  if (dueDate && !DateSchema.safeParse(dueDate).success) return { ok: false, error: 'Date invalide' }
+
+  const access = await requireSiteActionWriteAccess(id)
+  if (!access.ok) return access
+
+  const { data: current } = await createAdminClient()
+    .from('site_actions')
+    .select('site_id, assigned_company_id, assigned_contact_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!current) return { ok: false, error: 'Action introuvable' }
+  const siteId = current.site_id as string
+
+  let assignedTo: string | null = null
+  let finalContactId: string | null = null
+  let finalCompanyId: string | null = null
+
+  if (assignedContactIdInput || assignedCompanyIdInput) {
+    const [candidates, companies] = await Promise.all([
+      listSiteActionResponsibleCandidates(siteId),
+      listSiteCandidateCompanies(siteId),
+    ])
+    let contactCompanyId: string | null = null
+    if (assignedContactIdInput && assignedCompanyIdInput) {
+      const { data } = await createAdminClient()
+        .from('company_contacts')
+        .select('company_id')
+        .eq('id', assignedContactIdInput)
+        .maybeSingle()
+      contactCompanyId = (data as { company_id: string | null } | null)?.company_id ?? null
+    }
+    const decision = resolveActionResponsibility({
+      companyId: assignedCompanyIdInput,
+      contactId: assignedContactIdInput,
+      candidateCompanyIds: new Set(companies.map((c) => c.id)),
+      candidateContactIds: new Set(candidates.map((c) => c.contactId)),
+      contactCompanyId,
+      confirmMismatch,
+      currentCompanyId: current.assigned_company_id ?? null,
+      currentContactId: current.assigned_contact_id ?? null,
+    })
+    if (!decision.ok) return { ok: false, error: decision.error, requiresConfirmation: decision.requiresConfirmation }
+    const contact = decision.assignedContactId ? candidates.find((x) => x.contactId === decision.assignedContactId) : null
+    const company = decision.assignedCompanyId ? companies.find((x) => x.id === decision.assignedCompanyId) : null
+    assignedTo = contact?.fullName ?? company?.name ?? null
+    finalContactId = decision.assignedContactId
+    finalCompanyId = decision.assignedCompanyId
+  }
+
+  try {
+    await updateSiteAction(
+      id,
+      {
+        assigned_to: assignedTo,
+        assigned_contact_id: finalContactId,
+        assigned_company_id: finalCompanyId,
+        due_date: dueDate,
+        due_date_status: dueDate ? 'explicit' : null,
+      },
+      access.userId,
+    )
+  } catch {
+    return { ok: false, error: 'Échec de la modification' }
+  }
+  revalidateActionSurfaces(siteId)
+  return { ok: true }
 }

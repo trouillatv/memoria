@@ -99,6 +99,11 @@ export interface PointDetailLinkedObject {
   dueDate: string | null
   dueDateLabel: string | null
   responsible: PointDetailResponsible | null
+  // Suggestion GAP 1 (mandat Vincent, lot Point Actions inline) : nom d'un acteur DÉJÀ
+  // structuré sur ce Point (cf. `actors`) dont le nom apparaît en containment EXACT
+  // (substring, zéro fuzzy) dans ce titre — uniquement quand `responsible` est null et
+  // qu'un seul acteur correspond. Toujours une suggestion, jamais une affectation.
+  suggestedResponsibleName: string | null
   href: string
 }
 
@@ -107,6 +112,13 @@ export interface PointDetailActor {
   id: string
   name: string
   fonction: string | null
+  // Comptage honnête de responsabilité par type d'objet lié à CE Point (mandat Vincent :
+  // distinguer « acteur mentionné » de « responsable d'une Action précise ») — jamais un
+  // total agrégé qui effacerait la distinction, jamais une métrique de « citation » non
+  // mesurée (aucune donnée de ce type n'existe aujourd'hui).
+  responsibleActionCount: number
+  responsibleReserveCount: number
+  responsibleDeadlineCount: number
 }
 
 export interface PointDetailMergeSource {
@@ -224,6 +236,60 @@ export function groupLinkedObjectsByTitle(items: PointDetailLinkedObject[]): Poi
     }
   }
   return [...groups.values()]
+}
+
+/** Dérive les acteurs §6 : union des responsables déjà structurés (contact/entreprise)
+ *  des objets liés, JAMAIS une déduction — un acteur sans FK explicite n'apparaît pas
+ *  ici. Comptage honnête par type d'objet (mandat Vincent, lot Point Actions inline) :
+ *  distingue « acteur mentionné » de « responsable d'une Action précise », jamais un
+ *  total agrégé qui effacerait cette distinction. */
+export function computePointActors(linkedObjects: PointDetailLinkedObject[]): PointDetailActor[] {
+  const actorsMap = new Map<string, PointDetailActor>()
+  for (const o of linkedObjects) {
+    const responsible = o.responsible
+    if (!responsible) continue
+    let key: string | null = null
+    let name: string | null = null
+    let fonction: string | null = null
+    if (responsible.kind === 'contact') { key = `contact:${responsible.name}`; name = responsible.name; fonction = responsible.fonction }
+    else if (responsible.kind === 'company') { key = `company:${responsible.name}`; name = responsible.name }
+    if (!key || !name) continue
+    let actor = actorsMap.get(key)
+    if (!actor) {
+      actor = {
+        kind: responsible.kind === 'contact' ? 'contact' : 'company',
+        id: key,
+        name,
+        fonction,
+        responsibleActionCount: 0,
+        responsibleReserveCount: 0,
+        responsibleDeadlineCount: 0,
+      }
+      actorsMap.set(key, actor)
+    }
+    if (o.objectType === 'site_action') actor.responsibleActionCount += 1
+    else if (o.objectType === 'site_reserve') actor.responsibleReserveCount += 1
+    else if (o.objectType === 'site_deadline') actor.responsibleDeadlineCount += 1
+  }
+  return [...actorsMap.values()]
+}
+
+/** Suggestion GAP 1 (mandat Vincent, lot Point Actions inline) : pour chaque objet SANS
+ *  responsable, propose le nom d'un acteur DÉJÀ structuré sur ce Point (responsable d'au
+ *  moins un autre objet lié) dont le nom apparaît en containment EXACT (substring, zéro
+ *  fuzzy) dans le titre. Silence (null) si aucun acteur ne correspond ou si plusieurs
+ *  correspondent — jamais un choix arbitraire parmi plusieurs (même doctrine que
+ *  needsYouQuestionId). Retourne un NOUVEAU tableau, ne mute jamais l'entrée. */
+export function suggestResponsibleNames(
+  items: PointDetailLinkedObject[],
+  actorNames: string[],
+): PointDetailLinkedObject[] {
+  if (actorNames.length === 0) return items
+  return items.map((o) => {
+    if (o.responsible) return o
+    const matches = actorNames.filter((name) => o.title.includes(name))
+    return matches.length === 1 ? { ...o, suggestedResponsibleName: matches[0] } : o
+  })
 }
 
 /** Extrait un id de `document_extraction_proposal` d'une référence `proposal:<id>` de
@@ -490,6 +556,7 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
         isLate: a.due_date_status === 'explicit' && due !== null && due < today && a.status !== 'done' && a.status !== 'cancelled',
         dueDate: due, dueDateLabel: frDate(due),
         responsible: responsibleFor(a.assigned_contact_id, a.assigned_company_id, a.assigned_to),
+        suggestedResponsibleName: null,
         href: `/sites/${siteId}/actions`,
       })
     }
@@ -502,6 +569,7 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
         isLate: !terminal && due !== null && due < today,
         dueDate: due, dueDateLabel: frDate(due),
         responsible: responsibleFor(d.assigned_contact_id, d.assigned_company_id, null),
+        suggestedResponsibleName: null,
         href: `/sites/${siteId}/echeances`,
       })
     }
@@ -512,23 +580,20 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
         isLate: false,
         dueDate: null, dueDateLabel: null,
         responsible: responsibleFor(null, r.responsible_company_id, null),
+        suggestedResponsibleName: null,
         href: `/sites/${siteId}/reserves`,
       })
     }
   }
   linkedObjects.sort((a, b) => (a.dueDate ?? '').localeCompare(b.dueDate ?? ''))
-  const openLinkedObjects = linkedObjects.filter((o) => !o.isDone)
-  const closedLinkedObjects = linkedObjects.filter((o) => o.isDone)
 
   // ── §6 — acteurs explicitement liés : union des responsables des objets liés,
   //    JAMAIS une déduction (un acteur sans FK explicite n'apparaît pas ici). ──
-  const actorsMap = new Map<string, PointDetailActor>()
-  for (const o of linkedObjects) {
-    if (!o.responsible) continue
-    if (o.responsible.kind === 'contact') actorsMap.set(`contact:${o.responsible.name}`, { kind: 'contact', id: `contact:${o.responsible.name}`, name: o.responsible.name, fonction: o.responsible.fonction })
-    else if (o.responsible.kind === 'company') actorsMap.set(`company:${o.responsible.name}`, { kind: 'company', id: `company:${o.responsible.name}`, name: o.responsible.name, fonction: null })
-  }
-  const actors = [...actorsMap.values()]
+  const actors = computePointActors(linkedObjects)
+  // ── Suggestion GAP 1 (mandat Vincent, lot Point Actions inline) ────────────
+  const linkedObjectsWithSuggestions = suggestResponsibleNames(linkedObjects, actors.map((a) => a.name))
+  const openLinkedObjects = linkedObjectsWithSuggestions.filter((o) => !o.isDone)
+  const closedLinkedObjects = linkedObjectsWithSuggestions.filter((o) => o.isDone)
 
   const markerLabels = canonicalEntry.markers.map((m) => POINT_MARKER_LABEL[m] ?? m)
 
@@ -568,7 +633,7 @@ export async function getTrackedPointDetail(siteId: string, pointId: string): Pr
     trajectory,
     evidence,
     provenance,
-    linkedObjects,
+    linkedObjects: linkedObjectsWithSuggestions,
     openLinkedObjects,
     closedLinkedObjects,
     openLinkedObjectGroups: groupLinkedObjectsByTitle(openLinkedObjects),

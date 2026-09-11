@@ -7,6 +7,8 @@ import {
   originMatchesProvenance,
   POINT_STATE_LABEL,
   groupLinkedObjectsByTitle,
+  computePointActors,
+  suggestResponsibleNames,
   type PointDetailLinkedObject,
   type PointDetailEvidence,
   type PointDetailProvenance,
@@ -37,6 +39,7 @@ function linkedObject(overrides: Partial<PointDetailLinkedObject> & { id: string
     dueDate: null,
     dueDateLabel: null,
     responsible: null,
+    suggestedResponsibleName: null,
     href: `/action/${overrides.id}`,
     ...overrides,
   }
@@ -180,6 +183,75 @@ describe('tracked-point-detail — groupLinkedObjectsByTitle (lot UX Point 3F, z
 
   it('liste vide → aucun groupe', () => {
     expect(groupLinkedObjectsByTitle([])).toEqual([])
+  })
+})
+
+describe('tracked-point-detail — computePointActors (lot Point Actions inline, mandat Vincent)', () => {
+  it('un objet sans responsable ne produit aucun acteur (jamais une déduction)', () => {
+    expect(computePointActors([linkedObject({ id: '1', title: 'X', responsible: null })])).toEqual([])
+  })
+
+  it('compte honnêtement par type d’objet, jamais un total agrégé', () => {
+    const actors = computePointActors([
+      linkedObject({ id: '1', title: 'A', objectType: 'site_action', responsible: { kind: 'contact', name: 'Lylo', fonction: null } }),
+      linkedObject({ id: '2', title: 'B', objectType: 'site_action', responsible: { kind: 'contact', name: 'Lylo', fonction: null } }),
+      linkedObject({ id: '3', title: 'C', objectType: 'site_reserve', responsible: { kind: 'contact', name: 'Lylo', fonction: null } }),
+    ])
+    expect(actors).toHaveLength(1)
+    expect(actors[0]).toMatchObject({ name: 'Lylo', responsibleActionCount: 2, responsibleReserveCount: 1, responsibleDeadlineCount: 0 })
+  })
+
+  it('un responsable "text" (libre) n’est jamais promu en acteur structuré', () => {
+    expect(computePointActors([linkedObject({ id: '1', title: 'X', responsible: { kind: 'text', label: 'quelqu’un' } })])).toEqual([])
+  })
+
+  it('deux entreprises distinctes restent deux acteurs distincts', () => {
+    const actors = computePointActors([
+      linkedObject({ id: '1', title: 'A', responsible: { kind: 'company', name: 'ARES' } }),
+      linkedObject({ id: '2', title: 'B', responsible: { kind: 'company', name: 'MIES' } }),
+    ])
+    expect(actors.map((a) => a.name).sort()).toEqual(['ARES', 'MIES'])
+  })
+})
+
+describe('tracked-point-detail — suggestResponsibleNames (GAP 1, containment exact, zéro fuzzy)', () => {
+  it('propose un acteur déjà structuré dont le nom est contenu dans le titre', () => {
+    const result = suggestResponsibleNames(
+      [linkedObject({ id: '1', title: 'Relancer Lylo pour le listing des extincteurs' })],
+      ['Lylo'],
+    )
+    expect(result[0].suggestedResponsibleName).toBe('Lylo')
+  })
+
+  it('ne propose rien si l’objet a déjà un responsable', () => {
+    const result = suggestResponsibleNames(
+      [linkedObject({ id: '1', title: 'Relancer Lylo', responsible: { kind: 'contact', name: 'Lylo', fonction: null } })],
+      ['Lylo'],
+    )
+    expect(result[0].suggestedResponsibleName).toBeNull()
+  })
+
+  it('aucun acteur ne correspond → silence (null), jamais une invention', () => {
+    const result = suggestResponsibleNames([linkedObject({ id: '1', title: 'Vérifier la dotation des RIA' })], ['Lylo'])
+    expect(result[0].suggestedResponsibleName).toBeNull()
+  })
+
+  it('plusieurs acteurs correspondent au même titre → ambiguïté, jamais un choix arbitraire', () => {
+    const result = suggestResponsibleNames(
+      [linkedObject({ id: '1', title: 'Réunion ARES et MIES sur le planning' })],
+      ['ARES', 'MIES'],
+    )
+    expect(result[0].suggestedResponsibleName).toBeNull()
+  })
+
+  it('ne fusionne jamais deux noms seulement proches (aucun fuzzy)', () => {
+    const result = suggestResponsibleNames([linkedObject({ id: '1', title: 'Contacter Lyl pour le devis' })], ['Lylo'])
+    expect(result[0].suggestedResponsibleName).toBeNull()
+  })
+
+  it('liste d’acteurs vide → retourne les objets inchangés', () => {
+    const items = [linkedObject({ id: '1', title: 'Relancer Lylo' })]
+    expect(suggestResponsibleNames(items, [])).toBe(items)
   })
 })
 

@@ -2,6 +2,8 @@ import { notFound } from 'next/navigation'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { getTrackedPointDetail } from '@/lib/knowledge/tracked-point-detail'
 import { loadMemoriaNeedsYouSummary, filterMemoriaNeedsYouQuestionsForPoint } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
+import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { PointFicheView } from '@/components/knowledge/PointFicheView'
 
 export const dynamic = 'force-dynamic'
@@ -14,9 +16,11 @@ export default async function MobilePointFichePage({
 }) {
   const { siteId, pointId } = await params
   await requireSiteAccess(siteId)
-  const [point, needsYouSummary] = await Promise.all([
+  const [point, needsYouSummary, responsibleCandidates, companies] = await Promise.all([
     getTrackedPointDetail(siteId, pointId).catch(() => null),
     loadMemoriaNeedsYouSummary(siteId).catch(() => null),
+    listSiteActionResponsibleCandidates(siteId).catch(() => []),
+    listSiteCandidateCompanies(siteId).catch(() => []),
   ])
   if (!point) notFound()
 
@@ -39,6 +43,8 @@ export default async function MobilePointFichePage({
         backLabel={backLabel}
         needsYouQuestions={needsYouQuestions}
         needsYouHref={`/m/site/${siteId}/besoin-de-toi`}
+        responsibleCandidates={responsibleCandidates}
+        companies={companies}
       />
     </div>
   )
