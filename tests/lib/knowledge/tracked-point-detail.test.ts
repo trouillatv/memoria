@@ -10,9 +10,11 @@ import {
   computePointActors,
   suggestResponsibleNames,
   computeCitedCompanies,
+  buildPointFilm,
   type PointDetailLinkedObject,
   type PointDetailEvidence,
   type PointDetailProvenance,
+  type PointFilmItem,
 } from '@/lib/knowledge/tracked-point-detail'
 import type { ActorSubject } from '@/lib/db/actor-citation'
 
@@ -44,6 +46,11 @@ function linkedObject(overrides: Partial<PointDetailLinkedObject> & { id: string
     suggestedResponsibleName: null,
     sources: [],
     href: `/action/${overrides.id}`,
+    createdAt: null,
+    wasMaterialized: false,
+    doneAt: null,
+    issuedOn: null,
+    liftedAt: null,
     ...overrides,
   }
 }
@@ -358,5 +365,301 @@ describe('tracked-point-detail — resolveOrigin / originMatchesProvenance (lot 
 describe('tracked-point-detail — POINT_STATE_LABEL', () => {
   it('couvre les 5 états dérivés du reducer (contrat gelé)', () => {
     expect(Object.keys(POINT_STATE_LABEL).sort()).toEqual(['conflict', 'open', 'reopened', 'resolved', 'unknown'].sort())
+  })
+})
+
+function majorEvents(items: PointFilmItem[]) {
+  return items.filter((i): i is Extract<PointFilmItem, { type: 'major' }> => i.type === 'major').map((i) => i.event)
+}
+
+function mentionGroups(items: PointFilmItem[]) {
+  return items.filter((i): i is Extract<PointFilmItem, { type: 'mentions' }> => i.type === 'mentions').map((i) => i.group)
+}
+
+describe('tracked-point-detail — buildPointFilm (Film du Point V1, GO Vincent 2026-09-14)', () => {
+  it('1re occurrence de trajectoire = Apparition majeure', () => {
+    const film = buildPointFilm({
+      trajectory: [toTrajectoryEntry({ effectiveAt: '2026-01-10', kind: 'open_signal', source: 'proposal:p1' })],
+      evidence: [],
+      linkedObjects: [],
+      derivedStateLabel: 'Ouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    const events = majorEvents(film.items)
+    expect(events).toHaveLength(1)
+    expect(events[0].kind).toBe('apparition')
+    expect(events[0].label).toBe('Point apparu')
+  })
+
+  it('répétition du même kind = mention compacte regroupée, jamais une ligne développée par occurrence', () => {
+    const film = buildPointFilm({
+      trajectory: [
+        toTrajectoryEntry({ effectiveAt: '2026-01-10', kind: 'open_signal' }),
+        toTrajectoryEntry({ effectiveAt: '2026-02-10', kind: 'open_signal' }),
+        toTrajectoryEntry({ effectiveAt: '2026-03-10', kind: 'open_signal' }),
+      ],
+      evidence: [],
+      linkedObjects: [],
+      derivedStateLabel: 'Ouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    expect(majorEvents(film.items)).toHaveLength(1) // seule l'Apparition
+    const groups = mentionGroups(film.items)
+    expect(groups).toHaveLength(1)
+    expect(groups[0].count).toBe(2)
+    expect(groups[0].label).toBe('2 passages sans changement')
+    expect(groups[0].stateLabel).toBe('toujours ouvert')
+  })
+
+  it('changement de kind = transition majeure ; resolution_signal après open_signal = Résolution constatée', () => {
+    const film = buildPointFilm({
+      trajectory: [
+        toTrajectoryEntry({ effectiveAt: '2026-01-10', kind: 'open_signal' }),
+        toTrajectoryEntry({ effectiveAt: '2026-02-10', kind: 'resolution_signal' }),
+      ],
+      evidence: [],
+      linkedObjects: [],
+      derivedStateLabel: 'Résolu',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    const events = majorEvents(film.items)
+    expect(events.map((e) => e.kind)).toEqual(['apparition', 'resolution_constatee'])
+    expect(events[1].label).toBe('Résolution constatée')
+  })
+
+  it('open_signal après resolution_signal = Réouverture (distincte d’une simple transition native)', () => {
+    const film = buildPointFilm({
+      trajectory: [
+        toTrajectoryEntry({ effectiveAt: '2026-01-10', kind: 'open_signal' }),
+        toTrajectoryEntry({ effectiveAt: '2026-02-10', kind: 'resolution_signal' }),
+        toTrajectoryEntry({ effectiveAt: '2026-03-10', kind: 'open_signal' }),
+      ],
+      evidence: [],
+      linkedObjects: [],
+      derivedStateLabel: 'Réouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    const events = majorEvents(film.items)
+    expect(events.map((e) => e.kind)).toEqual(['apparition', 'resolution_constatee', 'reouverture'])
+  })
+
+  it('resolution_claimed n’a jamais de catégorie dédiée (V1 exclu, aucun producteur réel) — retombe en transition native', () => {
+    const film = buildPointFilm({
+      trajectory: [
+        toTrajectoryEntry({ effectiveAt: '2026-01-10', kind: 'open_signal' }),
+        toTrajectoryEntry({ effectiveAt: '2026-02-10', kind: 'resolution_claimed' }),
+      ],
+      evidence: [],
+      linkedObjects: [],
+      derivedStateLabel: 'Ouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    const events = majorEvents(film.items)
+    expect(events[1].kind).toBe('transition_native')
+    expect(events[1].kind).not.toBe('resolution_claimed')
+  })
+
+  it('deux Actions au titre exactement identique (doublon CBO) → un seul événement créée + un seul clôturée', () => {
+    const film = buildPointFilm({
+      trajectory: [],
+      evidence: [],
+      linkedObjects: [
+        linkedObject({
+          id: '1', title: 'Transmettre le listing des extincteurs',
+          createdAt: '2026-01-05T00:00:00Z', wasMaterialized: false, doneAt: '2026-02-01T00:00:00Z',
+        }),
+        linkedObject({
+          id: '2', title: 'Transmettre le listing des extincteurs',
+          createdAt: '2026-01-06T00:00:00Z', wasMaterialized: false, doneAt: null,
+        }),
+      ],
+      derivedStateLabel: 'Résolu',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    const events = majorEvents(film.items)
+    const creees = events.filter((e) => e.kind === 'action_creee')
+    const cloturees = events.filter((e) => e.kind === 'action_cloturee')
+    expect(creees).toHaveLength(1)
+    expect(cloturees).toHaveLength(1)
+    expect(creees[0].date).toBe('2026-01-05') // la plus ancienne des deux lignes dupliquées
+  })
+
+  it('Action jamais matérialisée → date = created_at, avec la note de source honnête', () => {
+    const film = buildPointFilm({
+      trajectory: [],
+      evidence: [],
+      linkedObjects: [
+        linkedObject({ id: '1', title: 'Relancer le prestataire', createdAt: '2026-03-01T00:00:00Z', wasMaterialized: false }),
+      ],
+      derivedStateLabel: 'Ouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    const [creee] = majorEvents(film.items)
+    expect(creee.date).toBe('2026-03-01')
+    expect(creee.sourceNote).toBe('Source : Action MemorIA')
+    expect(creee.href).toBeNull()
+  })
+
+  it('Action matérialisée depuis un PV → date = date de la preuve documentaire, jamais created_at (date du batch d’import)', () => {
+    const film = buildPointFilm({
+      trajectory: [],
+      evidence: [],
+      linkedObjects: [
+        linkedObject({
+          id: '1', title: 'Réparer la vanne',
+          createdAt: '2026-09-01T00:00:00Z', // date d'import, non fiable
+          wasMaterialized: true,
+          sources: [{
+            documentId: 'doc-1', documentFilename: 'pv-1.pdf', documentType: 'pv', href: '/documents/doc-1',
+            date: '2026-01-15', dateLabel: '15 janvier 2026', sourcePage: null, sourceExcerpt: null,
+          }],
+        }),
+      ],
+      derivedStateLabel: 'Ouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    const [creee] = majorEvents(film.items)
+    expect(creee.date).toBe('2026-01-15')
+    expect(creee.documentLabel).toBe('pv-1.pdf')
+    expect(creee.sourceNote).toBeNull()
+  })
+
+  it('Action matérialisée mais preuve non résolue (sources vides) → silence, jamais une date inventée', () => {
+    const film = buildPointFilm({
+      trajectory: [],
+      evidence: [],
+      linkedObjects: [
+        linkedObject({ id: '1', title: 'Vérifier le compresseur', createdAt: '2026-09-01T00:00:00Z', wasMaterialized: true, sources: [] }),
+      ],
+      derivedStateLabel: 'Ouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    expect(majorEvents(film.items)).toHaveLength(0)
+  })
+
+  it('Réserve : création (issued_on) et levée (lifted_at) produisent deux événements distincts', () => {
+    const film = buildPointFilm({
+      trajectory: [],
+      evidence: [],
+      linkedObjects: [
+        linkedObject({
+          id: '1', title: 'Réserve étanchéité toiture', objectType: 'site_reserve',
+          issuedOn: '2025-11-01', liftedAt: '2026-04-01T00:00:00Z',
+        }),
+      ],
+      derivedStateLabel: 'Résolu',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    const events = majorEvents(film.items)
+    expect(events.map((e) => e.kind)).toEqual(['reserve_creee', 'reserve_levee'])
+    expect(events[0].date).toBe('2025-11-01')
+    expect(events[1].date).toBe('2026-04-01')
+  })
+
+  it('échéances (site_deadline) exclues du V1, même si liées au Point', () => {
+    const film = buildPointFilm({
+      trajectory: [],
+      evidence: [],
+      linkedObjects: [
+        linkedObject({ id: '1', title: 'Échéance VGP', objectType: 'site_deadline', dueDate: '2026-05-01' }),
+      ],
+      derivedStateLabel: 'Ouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    expect(film.items).toHaveLength(0)
+  })
+
+  it('mergedFrom non vide → disclaimer honnête sur l’historique potentiellement partiel', () => {
+    const film = buildPointFilm({
+      trajectory: [], evidence: [], linkedObjects: [],
+      derivedStateLabel: 'Ouvert', latestMeaningfulEventAt: null, daysSinceLastEvent: null, passagesSinceLastEvent: null,
+      mergedFrom: [{ id: 'p-old', label: 'Ancien suivi' }],
+    })
+    expect(film.mergeDisclaimer).toContain('regroupe plusieurs anciens suivis')
+  })
+
+  it('mergedFrom vide → aucun disclaimer', () => {
+    const film = buildPointFilm({
+      trajectory: [], evidence: [], linkedObjects: [],
+      derivedStateLabel: 'Ouvert', latestMeaningfulEventAt: null, daysSinceLastEvent: null, passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    expect(film.mergeDisclaimer).toBeNull()
+  })
+
+  it('sinceSummary composé à partir de daysSinceLastEvent + passagesSinceLastEvent, jamais recalculé', () => {
+    const film = buildPointFilm({
+      trajectory: [], evidence: [], linkedObjects: [],
+      derivedStateLabel: 'Ouvert', latestMeaningfulEventAt: '2026-01-01', daysSinceLastEvent: 45, passagesSinceLastEvent: 3,
+      mergedFrom: [],
+    })
+    expect(film.sinceSummary).toBe('45 jours · 3 passages sans évolution')
+  })
+
+  it('latestMeaningfulEventAt absent → sinceSummary null, jamais une valeur fabriquée', () => {
+    const film = buildPointFilm({
+      trajectory: [], evidence: [], linkedObjects: [],
+      derivedStateLabel: 'Inconnu', latestMeaningfulEventAt: null, daysSinceLastEvent: null, passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    expect(film.sinceSummary).toBeNull()
+  })
+
+  it('todayLabel reprend l’état dérivé tel quel, jamais un second calcul d’état', () => {
+    const film = buildPointFilm({
+      trajectory: [], evidence: [], linkedObjects: [],
+      derivedStateLabel: 'Réouvert', latestMeaningfulEventAt: null, daysSinceLastEvent: null, passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    expect(film.todayLabel).toBe('Aujourd’hui — Réouvert')
+  })
+
+  it('items triés chronologiquement tous types confondus (trajectoire + cycle de vie Actions/Réserves)', () => {
+    const film = buildPointFilm({
+      trajectory: [toTrajectoryEntry({ effectiveAt: '2026-03-01', kind: 'open_signal' })],
+      evidence: [],
+      linkedObjects: [
+        linkedObject({ id: '1', title: 'Réserve X', objectType: 'site_reserve', issuedOn: '2026-01-01' }),
+      ],
+      derivedStateLabel: 'Ouvert',
+      latestMeaningfulEventAt: null,
+      daysSinceLastEvent: null,
+      passagesSinceLastEvent: null,
+      mergedFrom: [],
+    })
+    expect(film.items.map((i) => i.sortDate)).toEqual(['2026-01-01', '2026-03-01'])
   })
 })

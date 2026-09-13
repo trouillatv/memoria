@@ -7,9 +7,10 @@
 //
 // Priorité de lecture (6F.1, mandat Vincent) : « ce qu'il faut retenir
 // aujourd'hui » tout en haut (synthèse + divergences/conflits non déjà cités),
-// puis §1 À faire (liste unique, dédupliquée), puis §2 Histoire et preuves
-// (trajectoire + preuves fusionnées en une lecture chronologique), puis §3
-// Acteurs. Informations/Documents liés restent secondaires en colonne latérale.
+// puis §1 À faire (liste unique, dédupliquée), puis §2 Film du Point (mandat
+// Vincent 2026-09-14 : trajectoire documentaire + création/clôture Actions/
+// Réserves, dédupliquée par buildPointFilm), puis §3 Acteurs. Informations/
+// Documents liés restent secondaires en colonne latérale.
 //
 // UX : le conducteur ne doit jamais avoir besoin de comprendre canonical_subject,
 // CBO, membership ou les UUID — ces notions restent dans le bloc « Détails
@@ -19,13 +20,15 @@ import Link from 'next/link'
 import { ChevronRight, FileText, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
-  proposalIdFromSource,
   resolveOrigin,
   originMatchesProvenance,
   type TrackedPointDetail,
   type PointDetailEvidence,
   type PointDetailLinkedObject,
   type PointDetailLinkedObjectGroup,
+  type PointFilmMajorEvent,
+  type PointFilmMajorKind,
+  type PointFilmMentionGroup,
 } from '@/lib/knowledge/tracked-point-detail'
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { needsYouQuestionHref, type MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
@@ -211,6 +214,72 @@ function EvidenceLine({ ev, showDate = true }: { ev: PointDetailEvidence; showDa
       </div>
       {ev.sourceExcerpt && <p className="text-[12.5px] italic leading-snug text-foreground/80">« {ev.sourceExcerpt} »</p>}
     </>
+  )
+}
+
+// Film du Point (mandat Vincent, GO 2026-09-14) — deux niveaux de densité imposés : un
+// événement majeur par ligne développée (date, preuve/source, lien) ; les répétitions
+// sans changement d'état regroupées en une seule ligne compacte (jamais une frise de
+// 40 mètres sur un Point ancien). Couleur du point = même doctrine que l'ancien §2
+// (émeraude = clôture/résolution constatée, orange = réouverture, primaire sinon).
+const FILM_DOT_CLS: Record<PointFilmMajorKind, string> = {
+  apparition: 'bg-primary/70',
+  resolution_constatee: 'bg-emerald-500',
+  reouverture: 'bg-orange-500',
+  transition_native: 'bg-primary/70',
+  action_creee: 'bg-sky-500',
+  action_cloturee: 'bg-emerald-500',
+  reserve_creee: 'bg-sky-500',
+  reserve_levee: 'bg-emerald-500',
+}
+const FILM_EMPHASIS_KINDS: PointFilmMajorKind[] = ['resolution_constatee', 'action_cloturee', 'reserve_levee']
+
+function FilmMajorEventRow({ event }: { event: PointFilmMajorEvent }) {
+  return (
+    <li className="relative text-[13px]">
+      <span className={cn('absolute -left-[18px] top-1 h-2 w-2 rounded-full ring-2 ring-background', FILM_DOT_CLS[event.kind])} />
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <span className={cn('font-medium', FILM_EMPHASIS_KINDS.includes(event.kind) && 'text-emerald-700 dark:text-emerald-400')}>
+          {event.label}
+        </span>
+        {event.dateLabel && <span className="text-[11px] text-muted-foreground/70">{event.dateLabel}</span>}
+      </div>
+      {(event.href || event.documentLabel || event.sourceNote) && (
+        <div className="mt-1 text-[12px] text-muted-foreground">
+          {event.documentLabel && <span>{event.documentLabel}</span>}
+          {event.href ? (
+            <>
+              {event.documentLabel && ' · '}
+              <Link href={event.href} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
+                Ouvrir dans le document <ChevronRight className="h-3 w-3" />
+              </Link>
+            </>
+          ) : (
+            event.sourceNote && <span>{event.sourceNote}</span>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+// Ligne compacte des ré-occurrences sans changement d'état — dates repliées, lien
+// « Voir les preuves » uniquement si une preuve documentaire existe pour le bloc.
+function FilmMentionGroupRow({ group }: { group: PointFilmMentionGroup }) {
+  return (
+    <li className="relative text-[12.5px] text-muted-foreground/90">
+      <span className="absolute -left-[15px] top-1.5 h-1.5 w-1.5 rounded-full bg-muted-foreground/30 ring-2 ring-background" />
+      <span>{group.label} <span className="text-muted-foreground/70">({group.stateLabel})</span></span>
+      {group.dateLabels.length > 0 && <span className="text-muted-foreground/70"> — {group.dateLabels.join(' · ')}</span>}
+      {group.href && (
+        <>
+          {' — '}
+          <Link href={group.href} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
+            Voir les preuves <ChevronRight className="h-3 w-3" />
+          </Link>
+        </>
+      )}
+    </li>
   )
 }
 
@@ -418,53 +487,36 @@ export function PointFicheView({
             )}
           </section>
 
-          {/* §2 — Histoire et preuves : fusion Évolution + Preuves en une seule
-              lecture chronologique (6F.1). Chaque ligne de trajectoire montre sa
-              preuve documentaire quand elle en a une (jointure par proposalId) ;
-              un événement natif (décision) n'affiche que sa mise en mots — jamais
-              de preuve inventée. */}
+          {/* §2 — Film du Point (mandat Vincent, GO 2026-09-14) : composition unique
+              (trajectoire documentaire + création/clôture Actions/Réserves), dédupliquée
+              en amont par `buildPointFilm`. Deux niveaux de densité : événements majeurs
+              développés, ré-occurrences sans changement regroupées en une ligne compacte.
+              Échéances et resolution_claimed hors périmètre V1 — jamais d'historique
+              d'état natif intermédiaire (cf. lib/knowledge/tracked-point-detail.ts). */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
-            <h2 className={H2}>2. Histoire et preuves</h2>
-            {p.trajectory.length === 0 ? (
+            <div>
+              <h2 className={H2}>2. Film du Point</h2>
+              <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+                Toute l’histoire connue de ce Point, dans l’ordre chronologique.
+              </p>
+            </div>
+            {p.film.mergeDisclaimer && (
+              <p className="rounded-md bg-amber-50/60 px-2.5 py-1.5 text-[12px] text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+                {p.film.mergeDisclaimer}
+              </p>
+            )}
+            {p.film.items.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">Aucun événement ni preuve documentaire enregistré pour ce Point.</p>
             ) : (
               <ul className="space-y-3 border-l border-border pl-3.5">
-                {(() => {
-                  const evidenceByProposalId = new Map(p.evidence.map((e) => [e.proposalId, e]))
-                  return p.trajectory.map((t, i) => {
-                    const proposalId = proposalIdFromSource(t.source)
-                    const ev = proposalId ? evidenceByProposalId.get(proposalId) : undefined
-                    return (
-                      <li key={i} className="relative text-[13px]">
-                        <span className={cn(
-                          'absolute -left-[18px] top-1 h-2 w-2 rounded-full ring-2 ring-background',
-                          t.isResolving ? 'bg-emerald-500' : 'bg-primary/70',
-                        )} />
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                          <span className={cn('font-medium', t.isResolving && 'text-emerald-700 dark:text-emerald-400')}>{t.kindLabel}</span>
-                          {t.dateLabel && <span className="text-[11px] text-muted-foreground/70">{t.dateLabel}</span>}
-                        </div>
-                        {ev && (
-                          <div className="mt-1 text-[12px] text-muted-foreground">
-                            {ev.documentFilename ?? 'Document'}
-                            {ev.sourcePage && <span> · p.{ev.sourcePage}</span>}
-                            {ev.href && (
-                              <>
-                                {' · '}
-                                <Link href={ev.href} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
-                                  Ouvrir <ChevronRight className="h-3 w-3" />
-                                </Link>
-                              </>
-                            )}
-                            {ev.sourceExcerpt && <p className="mt-0.5 italic leading-snug">« {ev.sourceExcerpt} »</p>}
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })
-                })()}
+                {p.film.items.map((item) => item.type === 'major'
+                  ? <FilmMajorEventRow key={item.event.key} event={item.event} />
+                  : <FilmMentionGroupRow key={item.group.key} group={item.group} />)}
               </ul>
             )}
+            <p className="pt-1 text-[12px] font-medium text-muted-foreground">
+              {p.film.todayLabel}{p.film.sinceSummary ? ` · ${p.film.sinceSummary}` : ''}
+            </p>
           </section>
 
           {/* §3 — Acteurs. Mandat Vincent : distinguer explicitement « acteur mentionné » de

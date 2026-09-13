@@ -101,13 +101,16 @@ const URGENCY_RANK: Record<'critical' | 'high' | 'medium' | 'low' | 'none', numb
   critical: 0, high: 1, medium: 2, low: 3, none: 4,
 }
 
-function daysSince(iso: string, today: string): number {
+// Exportées (Film du Point, mandat Vincent 2026-09-14) — même calcul que le bloc
+// lingering de Pilotage, réutilisé tel quel pour « X jours · Y passages sans évolution »
+// dans le résumé du Film, jamais recalculé indépendamment.
+export function daysSince(iso: string, today: string): number {
   const days = Math.round((new Date(today).getTime() - new Date(iso).getTime()) / 86_400_000)
   return Number.isFinite(days) ? Math.max(0, days) : 0
 }
 
 /** Nombre de passages du chantier postérieurs à `afterIso`. */
-function countPassagesAfter(pvDates: readonly string[], afterIso: string): number {
+export function countPassagesAfter(pvDates: readonly string[], afterIso: string): number {
   return pvDates.reduce((n, d) => (d > afterIso ? n + 1 : n), 0)
 }
 

@@ -27,6 +27,7 @@ import {
 import type { PointComputedCurrentState, PointMarker, PointEventKind } from '@/lib/knowledge/tracked-point-lifecycle-reducer'
 import { documentHref } from '@/lib/knowledge/document-href'
 import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
+import { loadSitePvDates, daysSince, countPassagesAfter } from '@/lib/knowledge/tracked-point-lingering'
 
 const ACTION_STATUS_LABEL: Record<SiteActionStatus, string> = {
   open: 'Ouverte', planned: 'Planifiée', done: 'Terminée', cancelled: 'Annulée',
@@ -124,6 +125,18 @@ export interface PointDetailLinkedObject {
   // (hors périmètre du mini-lot provenance).
   sources: PointDetailActionSource[]
   href: string
+  // ── Dates de cycle de vie (Film du Point, mandat Vincent 2026-09-14) ──────
+  // Additives, null quand non pertinentes pour l'objectType. `createdAt` n'est
+  // fiable QUE pour une Action jamais matérialisée depuis un document : pour une
+  // Action importée depuis un PV historique, `site_actions.created_at` vaut la
+  // date du batch d'import (défaut `now()` de `materialize_historical_visit()`,
+  // jamais corrigé même après mig 374), pas la date réelle du fait — d'où
+  // `wasMaterialized` qui commande quelle date le Film peut réellement afficher.
+  createdAt: string | null
+  wasMaterialized: boolean
+  doneAt: string | null
+  issuedOn: string | null
+  liftedAt: string | null
 }
 
 export interface PointDetailActor {
@@ -206,6 +219,9 @@ export interface TrackedPointDetail {
   mentionsCount: number
   // §3 — Évolution : la trajectoire déjà réduite, mise en mots (aucun recalcul).
   trajectory: PointDetailTrajectoryEntry[]
+  // §2 — FILM DU POINT (mandat Vincent 2026-09-14) : composition unique de présentation
+  // de la trajectoire + cycle de vie Actions/Réserves, dédupliquée, prête à rendre.
+  film: PointFilm
   // §4 — Preuves et sources, triées la plus récente en premier (une preuve ancienne
   // résolue ne doit jamais masquer une preuve ouverte plus récente : l'ordre seul
   // suffit, le state affiché vient déjà du reducer, jamais recalculé ici).
@@ -430,6 +446,296 @@ export function originMatchesProvenance(origin: PointOrigin, provenance: PointDe
   return provenance.kind === origin.evidence.kind && provenance.date === origin.evidence.date
 }
 
+// ── FILM DU POINT (mandat Vincent, GO 2026-09-14) ─────────────────────────────
+//
+// Transformation en place de l'ancien §2 « Histoire et preuves » : composition PURE des
+// primitives déjà calculées ci-dessus (trajectory, evidence, linkedObjects), AUCUN nouveau
+// moteur, AUCUNE modification de tracked-point-lifecycle-reducer.ts. Périmètre V1 gelé par
+// Vincent : trajectoire documentaire + création/clôture Actions/Réserves ; échéances et
+// resolution_claimed exclus ; pas d'historique d'état natif intermédiaire (le state
+// composé final peut diverger de reduceNative, cf. audit film-du-point-audit.md).
+
+export type PointFilmMajorKind =
+  | 'apparition'
+  | 'resolution_constatee'
+  | 'reouverture'
+  | 'transition_native'
+  | 'action_creee'
+  | 'action_cloturee'
+  | 'reserve_creee'
+  | 'reserve_levee'
+
+export interface PointFilmMajorEvent {
+  key: string
+  date: string
+  dateLabel: string | null
+  kind: PointFilmMajorKind
+  label: string
+  href: string | null
+  documentLabel: string | null
+  sourceNote: string | null
+}
+
+export interface PointFilmMentionGroup {
+  key: string
+  count: number
+  label: string
+  stateLabel: string
+  dates: string[]
+  dateLabels: string[]
+  href: string | null
+}
+
+export type PointFilmItem =
+  | { type: 'major'; sortDate: string; event: PointFilmMajorEvent }
+  | { type: 'mentions'; sortDate: string; group: PointFilmMentionGroup }
+
+export interface PointFilm {
+  items: PointFilmItem[]
+  todayLabel: string
+  sinceSummary: string | null
+  mergeDisclaimer: string | null
+}
+
+// Libellé des ré-occurrences SANS changement d'état (mandat : compacter, jamais une
+// ligne développée par occurrence — sinon « frise de 40 mètres » sur les gros Points).
+const MENTION_STATE_LABEL: Record<PointEventKind, string> = {
+  intent_set: 'intention reconfirmée',
+  decision_pending: 'décision toujours en attente',
+  no_action_decided: 'toujours clos par décision',
+  resolution_signal: 'toujours résolu',
+  open_signal: 'toujours ouvert',
+  resolution_claimed: 'résolution annoncée', // jamais atteint : aucun producteur réel (V1 exclu)
+}
+
+function transitionLabel(kind: PointEventKind, lastKind: PointEventKind | null): { kind: PointFilmMajorKind; label: string } {
+  if (kind === 'resolution_signal') return { kind: 'resolution_constatee', label: 'Résolution constatée' }
+  if (kind === 'open_signal' && lastKind === 'resolution_signal') {
+    return { kind: 'reouverture', label: 'Réouverture — nouvelle preuve d’ouverture après une résolution constatée' }
+  }
+  return { kind: 'transition_native', label: POINT_EVENT_LABEL[kind] ?? kind }
+}
+
+/** Dérive les événements DOCUMENTAIRES du Film à partir de la trajectoire déjà réduite :
+ *  1re occurrence = Apparition (majeur) ; changement de kind = transition (majeur) ;
+ *  répétition du même kind = mention compacte (regroupée par bloc, jamais individuelle).
+ *  `resolution_claimed` n'apparaît jamais ici (aucun producteur réel, exclu V1 par Vincent). */
+function buildDocumentaryItems(
+  trajectory: PointDetailTrajectoryEntry[],
+  evidence: PointDetailEvidence[],
+): PointFilmItem[] {
+  const evidenceByKindDate = new Map(evidence.map((e) => [`${e.kind}@${e.date}`, e]))
+  const items: PointFilmItem[] = []
+  let lastKind: PointEventKind | null = null
+  let pending: PointDetailTrajectoryEntry[] = []
+
+  const flushPending = () => {
+    if (pending.length === 0) return
+    const kind = pending[0].kind
+    const first = pending[0]
+    const evRef = evidenceByKindDate.get(`${first.kind}@${first.effectiveAt}`)
+    items.push({
+      type: 'mentions',
+      sortDate: first.effectiveAt,
+      group: {
+        key: `mentions:${first.kind}:${first.effectiveAt}`,
+        count: pending.length,
+        label: pending.length > 1 ? `${pending.length} passages sans changement` : 'Toujours mentionné',
+        stateLabel: MENTION_STATE_LABEL[kind] ?? kind,
+        dates: pending.map((p) => p.effectiveAt),
+        dateLabels: pending.map((p) => p.dateLabel).filter((d): d is string => !!d),
+        href: evRef?.href ?? null,
+      },
+    })
+    pending = []
+  }
+
+  trajectory.forEach((t, i) => {
+    if (i === 0) {
+      const evRef = evidenceByKindDate.get(`${t.kind}@${t.effectiveAt}`)
+      items.push({
+        type: 'major',
+        sortDate: t.effectiveAt,
+        event: {
+          key: `apparition:${t.effectiveAt}`,
+          date: t.effectiveAt,
+          dateLabel: t.dateLabel,
+          kind: 'apparition',
+          label: 'Point apparu',
+          href: evRef?.href ?? null,
+          documentLabel: evRef?.documentFilename ?? null,
+          sourceNote: null,
+        },
+      })
+      lastKind = t.kind
+      return
+    }
+    if (t.kind === lastKind) {
+      pending.push(t)
+      return
+    }
+    flushPending()
+    const evRef = evidenceByKindDate.get(`${t.kind}@${t.effectiveAt}`)
+    const { kind: majorKind, label } = transitionLabel(t.kind, lastKind)
+    items.push({
+      type: 'major',
+      sortDate: t.effectiveAt,
+      event: {
+        key: `${majorKind}:${t.effectiveAt}`,
+        date: t.effectiveAt,
+        dateLabel: t.dateLabel,
+        kind: majorKind,
+        label,
+        href: evRef?.href ?? null,
+        documentLabel: evRef?.documentFilename ?? null,
+        sourceNote: null,
+      },
+    })
+    lastKind = t.kind
+  })
+  flushPending()
+  return items
+}
+
+/** Événements de cycle de vie Actions/Réserves (mandat Vincent : « pas seulement PV → PV →
+ *  PV », V1 = trajectoire + création/clôture Actions/Réserves). Dédup obligatoire : une
+ *  Action dupliquée en plusieurs lignes site_actions (même titre exact, cf. audit CBO
+ *  multiplicité) ne doit produire qu'UN SEUL événement « créée » et qu'UN SEUL « clôturée »
+ *  — réutilise `groupLinkedObjectsByTitle`, aucune nouvelle logique de dédup. Échéances
+ *  explicitement exclues du V1 (Vincent). */
+function buildObjectLifecycleItems(linkedObjects: PointDetailLinkedObject[]): PointFilmItem[] {
+  const groups = groupLinkedObjectsByTitle(linkedObjects.filter((o) => o.objectType !== 'site_deadline'))
+  const items: PointFilmItem[] = []
+
+  for (const group of groups) {
+    if (group.objectType === 'site_action') {
+      // Date de création fiable : preuve documentaire (Action matérialisée depuis un PV) en
+      // priorité, sinon `created_at` UNIQUEMENT si l'Action n'a jamais été matérialisée
+      // (created_at vaut la date d'IMPORT, pas la date réelle, pour toute Action historique —
+      // vérifié sur materialize_historical_visit(), mig 374 incluse). Silence si matérialisée
+      // sans preuve résolue : aucune date fiable, on n'invente rien.
+      let bestDate: string | null = null
+      let bestHref: string | null = null
+      let bestDoc: string | null = null
+      let bestSourceNote: string | null = null
+      for (const item of group.items) {
+        let date: string | null = null
+        let href: string | null = null
+        let doc: string | null = null
+        let sourceNote: string | null = null
+        if (item.wasMaterialized) {
+          const earliest = item.sources.length > 0 ? item.sources[item.sources.length - 1] : null
+          if (earliest?.date) { date = earliest.date; href = earliest.href; doc = earliest.documentFilename }
+        } else if (item.createdAt) {
+          date = item.createdAt.slice(0, 10)
+          sourceNote = 'Source : Action MemorIA'
+        }
+        if (date && (!bestDate || date < bestDate)) { bestDate = date; bestHref = href; bestDoc = doc; bestSourceNote = sourceNote }
+      }
+      if (bestDate) {
+        items.push({
+          type: 'major',
+          sortDate: bestDate,
+          event: {
+            key: `action-creee:${group.key}`,
+            date: bestDate,
+            dateLabel: frDate(bestDate),
+            kind: 'action_creee',
+            label: `Action créée : ${group.representative.title}`,
+            href: bestHref,
+            documentLabel: bestDoc,
+            sourceNote: bestSourceNote,
+          },
+        })
+      }
+      const doneDates = group.items.map((i) => i.doneAt).filter((d): d is string => !!d).sort()
+      if (doneDates.length > 0) {
+        const doneDate = doneDates[0].slice(0, 10)
+        items.push({
+          type: 'major',
+          sortDate: doneDate,
+          event: {
+            key: `action-cloturee:${group.key}`,
+            date: doneDate,
+            dateLabel: frDate(doneDate),
+            kind: 'action_cloturee',
+            label: `Action clôturée : ${group.representative.title}`,
+            href: null,
+            documentLabel: null,
+            sourceNote: 'Clôturée dans MemorIA',
+          },
+        })
+      }
+    } else if (group.objectType === 'site_reserve') {
+      const issuedDates = group.items.map((i) => i.issuedOn).filter((d): d is string => !!d).sort()
+      if (issuedDates.length > 0) {
+        const issuedDate = issuedDates[0]
+        items.push({
+          type: 'major',
+          sortDate: issuedDate,
+          event: {
+            key: `reserve-creee:${group.key}`,
+            date: issuedDate,
+            dateLabel: frDate(issuedDate),
+            kind: 'reserve_creee',
+            label: `Réserve créée : ${group.representative.title}`,
+            href: null,
+            documentLabel: null,
+            sourceNote: 'Source : Réserve MemorIA',
+          },
+        })
+      }
+      const liftedDates = group.items.map((i) => i.liftedAt).filter((d): d is string => !!d).sort()
+      if (liftedDates.length > 0) {
+        const liftedDate = liftedDates[0].slice(0, 10)
+        items.push({
+          type: 'major',
+          sortDate: liftedDate,
+          event: {
+            key: `reserve-levee:${group.key}`,
+            date: liftedDate,
+            dateLabel: frDate(liftedDate),
+            kind: 'reserve_levee',
+            label: `Réserve levée : ${group.representative.title}`,
+            href: null,
+            documentLabel: null,
+            sourceNote: 'Levée dans MemorIA',
+          },
+        })
+      }
+    }
+  }
+  return items
+}
+
+export function buildPointFilm(input: {
+  trajectory: PointDetailTrajectoryEntry[]
+  evidence: PointDetailEvidence[]
+  linkedObjects: PointDetailLinkedObject[]
+  derivedStateLabel: string
+  latestMeaningfulEventAt: string | null
+  daysSinceLastEvent: number | null
+  passagesSinceLastEvent: number | null
+  mergedFrom: PointDetailMergeSource[]
+}): PointFilm {
+  const items = [...buildDocumentaryItems(input.trajectory, input.evidence), ...buildObjectLifecycleItems(input.linkedObjects)]
+  items.sort((a, b) => a.sortDate.localeCompare(b.sortDate))
+
+  const sinceSummary = input.latestMeaningfulEventAt && input.daysSinceLastEvent !== null
+    ? `${input.daysSinceLastEvent} jour${input.daysSinceLastEvent !== 1 ? 's' : ''}`
+      + (input.passagesSinceLastEvent ? ` · ${input.passagesSinceLastEvent} passage${input.passagesSinceLastEvent !== 1 ? 's' : ''} sans évolution` : '')
+    : null
+
+  return {
+    items,
+    todayLabel: `Aujourd’hui — ${input.derivedStateLabel}`,
+    sinceSummary,
+    mergeDisclaimer: input.mergedFrom.length > 0
+      ? 'Ce Point regroupe plusieurs anciens suivis. L’historique affiché ici peut être partiel avant leur fusion.'
+      : null,
+  }
+}
+
 export async function getTrackedPointDetail(
   siteId: string,
   pointId: string,
@@ -562,11 +868,12 @@ export async function getTrackedPointDetail(
     type ActionRow = {
       id: string; title: string; status: SiteActionStatus; due_date: string | null; due_date_status: 'explicit' | 'estimated' | null
       assigned_to: string | null; assigned_contact_id: string | null; assigned_company_id: string | null
+      created_at: string | null; done_at: string | null
     }
     let actionRows: ActionRow[] = []
     if (actionIds.size > 0) {
       const { data } = await db.from('site_actions')
-        .select('id, title, status, due_date, due_date_status, assigned_to, assigned_contact_id, assigned_company_id')
+        .select('id, title, status, due_date, due_date_status, assigned_to, assigned_contact_id, assigned_company_id, created_at, done_at')
         .in('id', [...actionIds]).eq('site_id', siteId)
       actionRows = (data ?? []) as ActionRow[]
       for (const a of actionRows) { if (a.assigned_contact_id) contactIds.add(a.assigned_contact_id); if (a.assigned_company_id) companyIds.add(a.assigned_company_id) }
@@ -578,6 +885,11 @@ export async function getTrackedPointDetail(
     //    (materialize_historical_visit). Une Action de saisie humaine/Copilote
     //    n'a simplement aucune ligne ici → sources: [] (fait honnête, pas un manque). ──
     const actionSourcesById = new Map<string, PointDetailActionSource[]>()
+    // Vrai dès qu'une ligne `document_proposal_materialization` existe pour l'Action —
+    // AVANT résolution proposal→document, qui peut échouer sans que ça change l'origine
+    // réelle de l'Action (importée d'un PV). Sert à décider si `created_at` est fiable
+    // (Film du Point, mandat Vincent 2026-09-14) : jamais utilisé si materialized=true.
+    const wasMaterializedActionIds = new Set<string>()
     if (actionIds.size > 0) {
       const { data: materializationRows } = await db.from('document_proposal_materialization')
         .select('target_entity_id, proposal_id')
@@ -586,6 +898,7 @@ export async function getTrackedPointDetail(
       const proposalIdByActionId = new Map<string, string[]>()
       for (const m of materializationRows ?? []) {
         const actionId = m.target_entity_id as string
+        wasMaterializedActionIds.add(actionId)
         const proposalId = m.proposal_id as string | null
         if (!proposalId) continue
         const list = proposalIdByActionId.get(actionId) ?? []
@@ -648,11 +961,14 @@ export async function getTrackedPointDetail(
       for (const d of deadlineRows) { if (d.assigned_contact_id) contactIds.add(d.assigned_contact_id); if (d.assigned_company_id) companyIds.add(d.assigned_company_id) }
     }
 
-    type ReserveRow = { id: string; label: string; status: ReserveStatus; responsible_company_id: string | null }
+    type ReserveRow = {
+      id: string; label: string; status: ReserveStatus; responsible_company_id: string | null
+      issued_on: string | null; lifted_at: string | null
+    }
     let reserveRows: ReserveRow[] = []
     if (reserveIds.size > 0) {
       const { data } = await db.from('site_reserve')
-        .select('id, label, status, responsible_company_id')
+        .select('id, label, status, responsible_company_id, issued_on, lifted_at')
         .in('id', [...reserveIds]).eq('site_id', siteId)
       reserveRows = (data ?? []) as ReserveRow[]
       for (const r of reserveRows) { if (r.responsible_company_id) companyIds.add(r.responsible_company_id) }
@@ -688,6 +1004,11 @@ export async function getTrackedPointDetail(
         suggestedResponsibleName: null,
         sources: actionSourcesById.get(a.id) ?? [],
         href: `${actionsHref}?actionId=${a.id}`,
+        createdAt: a.created_at,
+        wasMaterialized: wasMaterializedActionIds.has(a.id),
+        doneAt: a.done_at,
+        issuedOn: null,
+        liftedAt: null,
       })
     }
     for (const d of deadlineRows) {
@@ -702,6 +1023,11 @@ export async function getTrackedPointDetail(
         suggestedResponsibleName: null,
         sources: [],
         href: `/sites/${siteId}/echeances`,
+        createdAt: null,
+        wasMaterialized: false,
+        doneAt: null,
+        issuedOn: null,
+        liftedAt: null,
       })
     }
     for (const r of reserveRows) {
@@ -714,6 +1040,11 @@ export async function getTrackedPointDetail(
         suggestedResponsibleName: null,
         sources: [],
         href: `/sites/${siteId}/reserves`,
+        createdAt: null,
+        wasMaterialized: false,
+        doneAt: null,
+        issuedOn: r.issued_on,
+        liftedAt: r.lifted_at,
       })
     }
   }
@@ -744,6 +1075,27 @@ export async function getTrackedPointDetail(
   const closedLinkedObjects = linkedObjectsWithSuggestions.filter((o) => o.isDone)
 
   const markerLabels = canonicalEntry.markers.map((m) => POINT_MARKER_LABEL[m] ?? m)
+
+  // ── FILM DU POINT — « X jours · Y passages sans évolution » (mandat Vincent) ────
+  // Réutilise le même calcul que le bloc lingering de Pilotage (daysSince/countPassagesAfter),
+  // jamais un second calcul : un Point sans latestMeaningfulEventAt n'a simplement pas de
+  // résumé de délai (silence honnête), pas une valeur fabriquée.
+  const pvDates = await loadSitePvDates(siteId)
+  const today = todayLocalIso()
+  const daysSinceLastEvent = canonicalEntry.latestMeaningfulEventAt ? daysSince(canonicalEntry.latestMeaningfulEventAt, today) : null
+  const passagesSinceLastEvent = canonicalEntry.latestMeaningfulEventAt
+    ? countPassagesAfter(pvDates, canonicalEntry.latestMeaningfulEventAt)
+    : null
+  const film = buildPointFilm({
+    trajectory,
+    evidence,
+    linkedObjects: linkedObjectsWithSuggestions,
+    derivedStateLabel: POINT_STATE_LABEL[canonicalEntry.derivedState] ?? canonicalEntry.derivedState,
+    latestMeaningfulEventAt: canonicalEntry.latestMeaningfulEventAt,
+    daysSinceLastEvent,
+    passagesSinceLastEvent,
+    mergedFrom,
+  })
 
   return {
     id: canonicalEntry.id,
@@ -779,6 +1131,7 @@ export async function getTrackedPointDetail(
     latestEvidenceAt,
     mentionsCount,
     trajectory,
+    film,
     evidence,
     provenance,
     linkedObjects: linkedObjectsWithSuggestions,
