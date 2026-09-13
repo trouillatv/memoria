@@ -50,13 +50,6 @@ const STATE_HERO_CLS: Record<TrackedPointDetail['derivedState'], string> = {
 }
 
 const H2 = 'text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground'
-const TH = 'px-3 py-2 text-left text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground'
-
-function ResponsibleLabel({ o }: { o: PointDetailLinkedObject }) {
-  if (!o.responsible) return <span className="text-muted-foreground/60">—</span>
-  if (o.responsible.kind === 'text') return <span>{o.responsible.label}</span>
-  return <span>{o.responsible.name}</span>
-}
 
 function LinkedObjectRow({ o }: { o: PointDetailLinkedObject }) {
   return (
@@ -112,52 +105,46 @@ function LinkedObjectGroupsTable({
 }) {
   if (groups.length === 0) return <p className="px-1 py-2 text-[13px] text-muted-foreground">{emptyLabel}</p>
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/30">
-          <tr>
-            <th className={TH}>Type</th>
-            <th className={TH}>Responsable</th>
-            <th className={TH}>Échéance</th>
-            <th className={cn(TH, 'text-right')}>Statut</th>
-            <th className={TH} aria-label="Gestes" />
-          </tr>
-        </thead>
-        <tbody className="divide-y">
-          {groups.map((g) => {
-            const o = g.representative
-            return (
-              <tr key={g.key} className={cn(o.isLate && 'bg-rose-50/50 dark:bg-rose-950/10')}>
-                <td className="px-3 py-2">
-                  <span className="text-[13px] font-medium">
-                    {g.title}{g.count > 1 && <span className="ml-1.5 text-muted-foreground">— {g.count} occurrences</span>}
+    <ul className="divide-y rounded-lg border">
+      {groups.map((g) => {
+        const o = g.representative
+        return (
+          <li
+            key={g.key}
+            className={cn('flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-3 py-2.5', o.isLate && 'bg-rose-50/50 dark:bg-rose-950/10')}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium">
+                {g.title}{g.count > 1 && <span className="ml-1.5 text-muted-foreground">— {g.count} occurrences</span>}
+              </p>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-muted-foreground">
+                <span>{OBJECT_TYPE_LABEL[g.objectType]}</span>
+                {o.responsible && (
+                  <span>
+                    · {o.responsible.kind === 'text' ? `resp. (ancien suivi) ${o.responsible.label}` : o.responsible.name}
                   </span>
-                  <div className="text-[11px] text-muted-foreground">{OBJECT_TYPE_LABEL[g.objectType]}</div>
-                  {g.objectType === 'site_action' && <ActionSourcesLine group={g} />}
-                </td>
-                <td className="px-3 py-2 text-[12.5px]"><ResponsibleLabel o={o} /></td>
-                <td className="px-3 py-2 text-[12.5px] text-muted-foreground">{o.dueDateLabel ?? '—'}</td>
-                <td className="px-3 py-2 text-right">
-                  <span className={cn(
-                    'inline-block rounded-full px-2 py-0.5 text-[11px] font-medium',
-                    o.isLate ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
-                      : o.isDone ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
-                      : 'bg-muted text-muted-foreground',
-                  )}>
-                    {o.isLate ? 'En retard' : o.statusLabel}
-                  </span>
-                </td>
-                <td className="px-2 py-2 text-right">
-                  {o.objectType === 'site_action' && (
-                    <PointActionMenu action={o} siteId={siteId} pointId={pointId} responsibleCandidates={responsibleCandidates} companies={companies} />
-                  )}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
+                )}
+                {o.dueDateLabel && <span>· échéance {o.dueDateLabel}</span>}
+              </div>
+              {g.objectType === 'site_action' && <ActionSourcesLine group={g} />}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className={cn(
+                'inline-block rounded-full px-2 py-0.5 text-[11px] font-medium',
+                o.isLate ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300'
+                  : o.isDone ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
+                  : 'bg-muted text-muted-foreground',
+              )}>
+                {o.isLate ? 'En retard' : o.statusLabel}
+              </span>
+              {o.objectType === 'site_action' && (
+                <PointActionMenu action={o} siteId={siteId} pointId={pointId} responsibleCandidates={responsibleCandidates} companies={companies} />
+              )}
+            </div>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

@@ -224,7 +224,7 @@ export function PointsListView({
           value={filters.query}
           onChange={(e) => setFilters((f) => ({ ...f, query: e.target.value }))}
           placeholder="Rechercher un Point…"
-          className="min-w-[180px] flex-1 rounded-lg border bg-background px-3 py-1.5 text-[13px]"
+          className="w-full rounded-lg border bg-background px-3 py-1.5 text-[13px] sm:w-auto sm:min-w-[180px] sm:flex-1"
         />
         <select
           value={filters.state}
