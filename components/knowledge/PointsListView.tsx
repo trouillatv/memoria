@@ -62,14 +62,18 @@ interface PointRowProps {
   pointHrefPrefix: string
   subjectHrefPrefix: string
   showSubject: boolean
+  /** Rendu compact réservé à l'onglet « Liste » (Retrouver) : rien à voir avec l'état ou les
+   *  données du Point, uniquement la densité verticale de la ligne. « Par sujet » (Comprendre)
+   *  garde le rendu par défaut, plus aéré. */
+  dense?: boolean
 }
 
-function PointRow({ p, pointHrefPrefix, subjectHrefPrefix, showSubject }: PointRowProps) {
+function PointRow({ p, pointHrefPrefix, subjectHrefPrefix, showSubject, dense = false }: PointRowProps) {
   return (
-    <li className="rounded-xl border px-4 py-3">
+    <li className={cn('rounded-xl border', dense ? 'px-3 py-2' : 'px-4 py-3')}>
       <div className="flex items-start justify-between gap-3">
         <Link href={pointHref(pointHrefPrefix, p)} className="min-w-0 flex-1">
-          <p className="truncate text-[14px] font-medium text-foreground hover:underline">{p.label}</p>
+          <p className={cn('truncate font-medium text-foreground hover:underline', dense ? 'text-[13px]' : 'text-[14px]')}>{p.label}</p>
         </Link>
         <div className="flex shrink-0 items-center gap-1.5">
           {p.needsYouCount > 0 && (
@@ -85,7 +89,7 @@ function PointRow({ p, pointHrefPrefix, subjectHrefPrefix, showSubject }: PointR
           </span>
         </div>
       </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
+      <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground', dense ? 'mt-1 text-[11.5px]' : 'mt-1.5 text-[12px]')}>
         {showSubject && p.subjectLabel && p.ownerCanonicalSubjectId && (
           <Link href={`${subjectHrefPrefix}/${p.ownerCanonicalSubjectId}`} className="hover:underline hover:text-foreground">
             Sujet : {p.subjectLabel}
@@ -300,9 +304,9 @@ export function PointsListView({
           Aucun Point ne correspond à ces filtres.
         </p>
       ) : effectiveView === 'list' ? (
-        <ul className="space-y-2">
+        <ul className="space-y-1.5">
           {filtered.map((p) => (
-            <PointRow key={p.id} p={p} pointHrefPrefix={pointHrefPrefix} subjectHrefPrefix={subjectHrefPrefix} showSubject />
+            <PointRow key={p.id} p={p} pointHrefPrefix={pointHrefPrefix} subjectHrefPrefix={subjectHrefPrefix} showSubject dense />
           ))}
         </ul>
       ) : (
