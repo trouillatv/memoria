@@ -60,7 +60,6 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
         subjectHrefPrefix={`/sites/${id}/historique/sujets`}
         siteId={id}
         lastPvDate={list.lastPvDate}
-        pointsHref={`/sites/${id}/points`}
         defaultTab={tab === 'delta' ? 'delta' : undefined}
       />
     </div>

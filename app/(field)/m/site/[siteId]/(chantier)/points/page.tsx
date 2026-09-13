@@ -44,7 +44,6 @@ export default async function MobilePointsPage({
         subjectHrefPrefix={`/m/site/${siteId}/sujets`}
         siteId={siteId}
         lastPvDate={list.lastPvDate}
-        pointsHref={`/m/site/${siteId}/points`}
         defaultTab={tab === 'delta' ? 'delta' : undefined}
       />
     </div>

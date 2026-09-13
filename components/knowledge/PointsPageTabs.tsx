@@ -36,7 +36,6 @@ export function PointsPageTabs({
   subjectHrefPrefix,
   siteId,
   lastPvDate,
-  pointsHref,
   defaultTab,
 }: {
   points: PointListEntry[]
@@ -45,9 +44,6 @@ export function PointsPageTabs({
   subjectHrefPrefix: string
   siteId: string
   lastPvDate: string | null
-  /** Racine de la page Points (ex. `/sites/id/points`) — lien « Voir dans Pilotage » et
-   *  base du retour `?tab=delta` depuis la fiche Point (recette Vincent 2026-09-14). */
-  pointsHref: string
   /** Onglet initial. Permet à `?tab=delta` de rouvrir directement Delta chantier après
    *  un retour depuis la fiche Point, sans perdre le contexte de David. */
   defaultTab?: Tab
@@ -104,7 +100,7 @@ export function PointsPageTabs({
       )}
 
       {tab === 'delta' && (
-        <PointsDeltaView points={points} pointHrefPrefix={pointHrefPrefix} lastPvDate={lastPvDate} pilotageHref={pointsHref} />
+        <PointsDeltaView points={points} pointHrefPrefix={pointHrefPrefix} lastPvDate={lastPvDate} />
       )}
     </div>
   )

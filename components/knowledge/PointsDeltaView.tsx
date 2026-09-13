@@ -13,7 +13,7 @@
 // des Points changés au dernier PV (nouveau > réouvert > résolu > modifié, ordre business) ;
 // « Toujours bloqués » est un axe indépendant (lingering), peut chevaucher marginalement.
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, CheckCircle2, Clock, RotateCcw, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -94,19 +94,26 @@ function DeltaSection({
   )
 }
 
-// Résumé compact (recette Vincent 2026-09-14 : la liste exhaustive des 20 Points lingering
-// faisait doublon avec le bucket « Toujours bloqués » de Pilotage — ici on ne montre que les
-// 3 plus anciens + un lien vers Pilotage pour le reste, jamais la liste complète).
+const TOUJOURS_BLOQUES_COLLAPSED_COUNT = 3
+
+// Résumé repliable (recette Vincent 2026-09-14, 2e passe) : la liste exhaustive des 20 Points
+// lingering faisait doublon avec Pilotage ; « Voir dans Pilotage » promettait une navigation que
+// Pilotage ne tient pas (98 Points à revoir, pas les 20 lingering isolés). On garde donc
+// l'information dans le Delta lui-même — repliée par défaut (3 plus anciens), dépliable à la
+// demande, sans jamais quitter la vue : les changements restent toujours visibles, la
+// stagnation est résumée mais consultable sur un clic.
 function ToujoursBloquesSummary({
   points,
   pointHrefPrefix,
-  pilotageHref,
 }: {
   points: PointListEntry[]
   pointHrefPrefix: string
-  pilotageHref: string
 }) {
+  const [expanded, setExpanded] = useState(false)
   const worst = points[0]
+  const visible = expanded ? points : points.slice(0, TOUJOURS_BLOQUES_COLLAPSED_COUNT)
+  const remaining = points.length - TOUJOURS_BLOQUES_COLLAPSED_COUNT
+
   return (
     <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4 dark:border-rose-900/40 dark:bg-rose-950/10">
       <p className="inline-flex items-center gap-1.5 text-[13px] font-medium text-rose-700 dark:text-rose-300">
@@ -120,7 +127,7 @@ function ToujoursBloquesSummary({
         </p>
       )}
       <ul className="mt-2 space-y-1">
-        {points.slice(0, 3).map((p) => (
+        {visible.map((p) => (
           <li key={p.id}>
             <Link href={pointHref(pointHrefPrefix, p)} className="truncate text-[13px] text-foreground hover:underline">
               {p.label}
@@ -128,9 +135,15 @@ function ToujoursBloquesSummary({
           </li>
         ))}
       </ul>
-      <Link href={pilotageHref} className="mt-2 inline-block text-[12.5px] font-medium text-rose-700 hover:underline dark:text-rose-300">
-        Voir dans Pilotage →
-      </Link>
+      {remaining > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-2 text-[12.5px] font-medium text-rose-700 hover:underline dark:text-rose-300"
+        >
+          {expanded ? 'Réduire ↑' : `Voir les ${remaining} autres ↓`}
+        </button>
+      )}
     </div>
   )
 }
@@ -139,12 +152,10 @@ export function PointsDeltaView({
   points,
   pointHrefPrefix,
   lastPvDate,
-  pilotageHref,
 }: {
   points: PointListEntry[]
   pointHrefPrefix: string
   lastPvDate: string | null
-  pilotageHref: string
 }) {
   const { nouveaux, reouverts, resolus, modifies, toujoursBloques, changedTotal, unchangedCount } = useMemo(() => {
     const nouveaux: PointListEntry[] = []
@@ -231,7 +242,7 @@ export function PointsDeltaView({
             pointHrefPrefix={pointHrefPrefix}
           />
           {toujoursBloques.length > 0 && (
-            <ToujoursBloquesSummary points={toujoursBloques} pointHrefPrefix={pointHrefPrefix} pilotageHref={pilotageHref} />
+            <ToujoursBloquesSummary points={toujoursBloques} pointHrefPrefix={pointHrefPrefix} />
           )}
         </>
       )}
