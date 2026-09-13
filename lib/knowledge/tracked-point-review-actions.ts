@@ -1,8 +1,9 @@
 'use server'
 
 // Couche 1.1 « Mémoire de revue » (mandat Vincent, mig 405) — geste explicite
-// « ✓ Revu, rien à faire ». Ne modifie jamais tracked_point ni son état dérivé : enregistre
-// uniquement que CET utilisateur a examiné ce Point dans son état COURANT.
+// « ✓ Marquer comme revu » (libellé ajusté 2026-09-13 : « rien à faire » pouvait être faux côté
+// chantier). Ne modifie jamais tracked_point ni son état dérivé : enregistre uniquement que CET
+// utilisateur a examiné ce Point dans son état COURANT.
 //
 // Le fingerprint n'est JAMAIS fourni par le client : il est recalculé ici, côté serveur, en
 // rechargeant l'état courant du Point via `loadSiteTrackedPointList` — la même voie de lecture

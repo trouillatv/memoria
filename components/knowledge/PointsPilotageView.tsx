@@ -11,17 +11,18 @@
 // attention canonique). « Revus par moi » = l'inverse (isReviewed === true) : disparaît
 // automatiquement dès qu'un signal réel change (nouveau fingerprint), sans action de nettoyage.
 //
-// Le geste central « ✓ Revu, rien à faire » enregistre le fingerprint COURANT (jamais fourni par
-// le client — recalculé serveur dans recordPointReviewedAction). « Passer »/« Suivant » ne font
-// AUCUNE écriture, c'est une navigation pure. « Ouvrir » pointe vers la fiche Point existante —
-// aucun geste n'est réimplémenté ici.
+// Le geste central « ✓ Marquer comme revu » (retour Vincent 2026-09-13 : « Revu, rien à faire »
+// était trompeur — le chantier peut nécessiter des travaux même quand David n'a rien à faire dans
+// MemorIA) enregistre le fingerprint COURANT (jamais fourni par le client — recalculé serveur dans
+// recordPointReviewedAction). « Passer »/« Suivant » ne font AUCUNE écriture, c'est une navigation
+// pure. « Ouvrir » pointe vers la fiche Point existante — aucun geste n'est réimplémenté ici.
 //
 // « Déjà revu » signifie « revu PAR CET UTILISATEUR », jamais « traité par l'équipe » : l'état
 // métier réel du Point (résolu/ouvert/réouvert) reste totalement indépendant de cette mémoire.
 //
 // NeedsYou ⊂ À revoir (mandat Vincent, recette 2026-09-13) : une question MemorIA active est un
 // sous-ensemble de « à revoir », jamais une file séparée. Tant qu'elle reste active sur ce Point,
-// le geste « Revu, rien à faire » n'est pas proposé (répondre à MemorIA n'est pas un geste
+// le geste « Marquer comme revu » n'est pas proposé (répondre à MemorIA n'est pas un geste
 // d'acquittement fingerprint) et le bouton « Clarifier » ouvre directement la question précise sur
 // la page de clarification (jamais la fiche Point, jamais la boîte générale) quand elle est
 // identifiable sans ambiguïté (`needsYouQuestionId`).
@@ -46,16 +47,14 @@ function pointHref(pointHrefPrefix: string, p: PointListEntry): string {
 }
 
 // Lien direct vers la question NeedsYou précise (jamais via la fiche Point, qui ignore `?q=`
-// aujourd'hui — cf. audit mandat item 5). `fromPoint`/`fromLabel` permettent à besoin-de-toi
-// d'afficher le Point d'origine et un retour explicite.
+// aujourd'hui — cf. audit mandat item 5). `fromPoint`/`fromLabel` sont TOUJOURS présents dès
+// que le Point est identifié : ils permettent à besoin-de-toi de se recentrer sur les questions
+// de ce Point (retour recette Vincent 2026-09-13, correction 3), même quand plusieurs questions
+// concernent le Point (`needsYouQuestionId` alors null, `q` omis — pas de choix arbitraire).
 function needsYouClarifyHref(siteId: string, p: PointListEntry): string {
   const base = `/sites/${siteId}/besoin-de-toi`
-  if (!p.needsYouQuestionId) return base
-  const params = new URLSearchParams({
-    q: p.needsYouQuestionId,
-    fromPoint: p.id,
-    fromLabel: p.label,
-  })
+  const params = new URLSearchParams({ fromPoint: p.id, fromLabel: p.label })
+  if (p.needsYouQuestionId) params.set('q', p.needsYouQuestionId)
   return `${base}?${params.toString()}`
 }
 
@@ -80,7 +79,7 @@ function MarkReviewedButton({ siteId, pointId }: { siteId: string; pointId: stri
         className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 px-3 py-1.5 text-[13px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
       >
         {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-        Revu, rien à faire
+        Marquer comme revu
       </button>
       {error && <p className="text-[11px] text-red-600">{error}</p>}
     </div>

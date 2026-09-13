@@ -271,8 +271,10 @@ const NEEDS_YOU_CATEGORIES_FOR_POINT = MEMORIA_NEEDS_YOU_CATEGORY_ORDER.filter(
 // un compteur à zéro. Bouton de traitement direct = deep-link `?q=<id>` vers la question précise
 // (needsYouQuestionHref) quand une seule question concerne ce Point ; sinon page besoin-de-toi du
 // chantier — jamais un choix arbitraire parmi plusieurs questions concernées. `fromPoint`/
-// `fromLabel` (mandat item 6, 2026-09-13) permettent à besoin-de-toi d'afficher le Point d'origine
-// et un retour explicite.
+// `fromLabel` (mandat item 6, 2026-09-13 ; TOUJOURS présents depuis la correction recette du même
+// jour, y compris quand plusieurs questions concernent le Point) permettent à besoin-de-toi
+// d'afficher le Point d'origine, un retour explicite, ET de se recentrer sur les seules questions
+// de ce Point plutôt que la boîte générale (correction 3).
 function NeedsYouForPointSection({
   questions,
   href,
@@ -285,11 +287,9 @@ function NeedsYouForPointSection({
   pointLabel: string
 }) {
   if (questions.length === 0 || !href) return null
-  let targetHref = questions.length === 1 ? needsYouQuestionHref(href, questions[0].id) : href
-  if (questions.length === 1) {
-    const params = new URLSearchParams({ fromPoint: pointId, fromLabel: pointLabel })
-    targetHref = `${targetHref}&${params.toString()}`
-  }
+  const base = questions.length === 1 ? needsYouQuestionHref(href, questions[0].id) : href
+  const params = new URLSearchParams({ fromPoint: pointId, fromLabel: pointLabel })
+  const targetHref = `${base}${base.includes('?') ? '&' : '?'}${params.toString()}`
   return (
     <section className="rounded-[16px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

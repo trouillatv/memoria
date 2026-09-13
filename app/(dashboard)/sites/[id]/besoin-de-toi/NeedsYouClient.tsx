@@ -19,7 +19,11 @@ import { QuestionCard, CATEGORY_TONE, CATEGORY_ICON, type ActionResult, type Sit
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER, type MemoriaNeedsYouCategory } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { computeQuestionPriority, MEMORIA_NEEDS_YOU_PRIORITY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-priority'
 import type { MemoriaNeedsYouPriority } from '@/lib/knowledge/tracked-point-needs-you-priority'
-import type { MemoriaNeedsYouCategorySummary, MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import {
+  filterMemoriaNeedsYouQuestionsForPoint,
+  type MemoriaNeedsYouCategorySummary,
+  type MemoriaNeedsYouQuestion,
+} from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { buildMemoriaNeedsYouRecap, type MemoriaNeedsYouRecapEntry } from '@/lib/knowledge/tracked-point-needs-you-recap'
 
 type FilterValue = 'all' | MemoriaNeedsYouCategory
@@ -171,22 +175,63 @@ function DeferredNoticesCard({ notices }: { notices: DeferredNotice[] }) {
   )
 }
 
-// Retour au Point d'origine (mandat item 6, 2026-09-13) : quand l'arrivée vient d'un CTA
-// « Clarifier » de Points > Pilotage ou de la fiche Point, on rappelle le Point source et on
-// propose un retour explicite — jamais affiché en dehors de ce parcours (pas de fromPoint/
-// fromLabel dans l'URL).
-function PointSourceBanner({ siteId, pointId, pointLabel }: { siteId: string; pointId: string; pointLabel: string }) {
+// Retour au Point d'origine (mandat item 6, révisé 2026-09-13 correction 2/3) : quand l'arrivée
+// vient d'un CTA « Clarifier » de Points > Pilotage ou de la fiche Point, on rappelle le Point
+// source de façon PERSISTANTE au scroll (sticky, retour Vincent : la bannière disparaissait dès
+// qu'on descendait dans la liste) et on explique pourquoi la file est recentrée sur ce Point —
+// jamais affiché en dehors de ce parcours (pas de fromPoint/fromLabel dans l'URL). L'accès global
+// « N avec question MemorIA » de Pilotage ne passe jamais fromPoint : il continue d'ouvrir la
+// boîte complète sans cette bannière.
+function PointSourceBanner({
+  siteId,
+  pointId,
+  pointLabel,
+  scopedCount,
+  isScoped,
+  showAllQuestions,
+  hasResolutionQuestions,
+  onToggleShowAll,
+}: {
+  siteId: string
+  pointId: string
+  pointLabel: string
+  scopedCount: number
+  isScoped: boolean
+  showAllQuestions: boolean
+  hasResolutionQuestions: boolean
+  onToggleShowAll: () => void
+}) {
   return (
-    <div className="rounded-[14px] border border-violet-200 bg-violet-50/40 px-4 py-2.5 text-[13px] dark:border-violet-900/40 dark:bg-violet-950/15">
-      <p className="text-foreground/90">
-        Tu es ici parce que le Point « {pointLabel} » semble correspondre à cette question.
-      </p>
-      <Link
-        href={`/sites/${siteId}/point/${pointId}`}
-        className="mt-1 inline-flex items-center gap-1 font-medium text-violet-700 hover:underline dark:text-violet-300"
-      >
-        ← Retour au Point « {pointLabel} »
-      </Link>
+    <div className="sticky top-2 z-20 rounded-[14px] border border-violet-200 bg-violet-50/95 px-4 py-2.5 text-[13px] shadow-sm backdrop-blur dark:border-violet-900/40 dark:bg-violet-950/90">
+      <p className="font-medium text-foreground/90">Depuis le Point « {pointLabel} »</p>
+      {scopedCount === 0 ? (
+        <p className="mt-0.5 text-foreground/80">Plus rien à clarifier pour ce Point.</p>
+      ) : isScoped ? (
+        <p className="mt-0.5 text-foreground/80">
+          {scopedCount} clarification{scopedCount > 1 ? 's' : ''} pour ce Point.
+          {hasResolutionQuestions &&
+            ` MemorIA a trouvé une preuve qui pourrait résoudre l'un des suivis de ce Point ci-dessous.`}
+        </p>
+      ) : (
+        <p className="mt-0.5 text-foreground/80">Tu vois ici toutes les questions du chantier.</p>
+      )}
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+        <Link
+          href={`/sites/${siteId}/point/${pointId}`}
+          className="inline-flex items-center gap-1 font-medium text-violet-700 hover:underline dark:text-violet-300"
+        >
+          ← Retour au Point « {pointLabel} »
+        </Link>
+        {scopedCount > 0 && (
+          <button
+            type="button"
+            onClick={onToggleShowAll}
+            className="font-medium text-violet-700 hover:underline dark:text-violet-300"
+          >
+            {showAllQuestions ? 'Revenir aux questions de ce Point' : 'Voir toutes les questions du chantier'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -218,10 +263,30 @@ export function NeedsYouClient({
   // CTA « Clarifier » côté Point (Pilotage ou fiche), jamais depuis la boîte générale.
   const fromPointId = searchParams.get('fromPoint')
   const fromPointLabel = searchParams.get('fromLabel')
+  // Correction 3 (retour recette Vincent 2026-09-13) : depuis une fiche Point, la file se recentre
+  // sur les questions de CE Point plutôt que d'ouvrir la boîte globale — jamais l'inverse
+  // (Pilotage > « N avec question MemorIA » ne passe pas fromPoint, reste un accès global).
+  // Primitive réutilisée telle quelle (filterMemoriaNeedsYouQuestionsForPoint), aucune nouvelle
+  // logique de filtrage. `showAllQuestions` est l'échappatoire explicite vers la liste complète,
+  // jamais un repli automatique — sauf si le point-scoping ne trouve rien (lien obsolète), auquel
+  // cas on préfère montrer la liste complète plutôt qu'un vide trompeur.
+  const [showAllQuestions, setShowAllQuestions] = useState(false)
+  const pointScopedQuestions = useMemo(
+    () => (fromPointId ? filterMemoriaNeedsYouQuestionsForPoint(questions, fromPointId) : []),
+    [questions, fromPointId],
+  )
   const [, startTransition] = useTransition()
   const [pending, setPending] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Set<string>>(new Set())
+  // Compteur affiché par la bannière : filtré par `done` pour rester exact pendant la session
+  // (retrait optimiste), jamais le total brut de `pointScopedQuestions` qui ne bouge pas tant que
+  // le serveur n'a pas revalidé.
+  const scopedRemainingCount = useMemo(
+    () => pointScopedQuestions.filter((q) => !done.has(q.id)).length,
+    [pointScopedQuestions, done],
+  )
+  const isPointScoped = fromPointId !== null && !showAllQuestions && scopedRemainingCount > 0
   // 6E.4D — recap de session : append-only, uniquement sur confirmation positive (ok:true ET
   // recapLabel passé par la carte), jamais recalculé depuis `remaining`/`done`. Une clarification
   // déjà comptée ne peut pas être retirée par un simple rerender (setState d'ajout pur).
@@ -230,8 +295,11 @@ export function NeedsYouClient({
   const [deferredNotices, setDeferredNotices] = useState<DeferredNotice[]>([])
   // Deep-link : le filtre catégorie s'ouvre directement sur celle de la question ciblée (sinon
   // elle pourrait rester masquée sous un autre filtre par défaut) — priorité/PV/tri restent à
-  // leur valeur par défaut ('all'/'priority'), aucun des deux n'exclut la question ciblée.
-  const [filter, setFilter] = useState<FilterValue>(() => targetQuestion?.category ?? 'all')
+  // leur valeur par défaut ('all'/'priority'), aucun des deux n'exclut la question ciblée. Quand
+  // l'arrivée vient d'un Point (fromPointId), le point-scoping fait déjà ce travail de réduction :
+  // appliquer EN PLUS un filtre catégorie masquerait les autres catégories de ce même Point
+  // (ex. duplicate_points + assign_resolution sur un même Point) sans échappatoire visible.
+  const [filter, setFilter] = useState<FilterValue>(() => (fromPointId ? 'all' : targetQuestion?.category ?? 'all'))
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilterValue>('all')
   const [sortMode, setSortMode] = useState<SortMode>('priority')
   // 6E.4A.5 — 'all' | 'latest' | date-only (YYYY-MM-DD) sélectionnée dans le menu "PV du ...".
@@ -264,7 +332,8 @@ export function NeedsYouClient({
     setVisibleCount(PAGE_SIZE)
   }
 
-  const remaining = questions.filter((q) => !done.has(q.id))
+  const effectiveQuestions = isPointScoped ? pointScopedQuestions : questions
+  const remaining = effectiveQuestions.filter((q) => !done.has(q.id))
 
   const counts = useMemo(() => {
     const c: Record<MemoriaNeedsYouCategory, number> = {
@@ -406,13 +475,43 @@ export function NeedsYouClient({
   const sessionRecap = useMemo(() => buildMemoriaNeedsYouRecap(recapEntries), [recapEntries])
 
   if (remaining.length === 0) {
+    // Point-scoping épuisé (correction 3) : ce Point n'a plus rien à clarifier, mais le chantier
+    // peut encore avoir des questions ailleurs — jamais un vide trompeur, toujours l'échappatoire
+    // explicite vers la liste complète plutôt qu'un repli automatique.
+    const globalRemainingCount = questions.filter((q) => !done.has(q.id)).length
     return (
       <div className="space-y-4">
+        {fromPointId && fromPointLabel && (
+          <PointSourceBanner
+            siteId={siteId}
+            pointId={fromPointId}
+            pointLabel={fromPointLabel}
+            scopedCount={0}
+            isScoped={isPointScoped}
+            showAllQuestions={showAllQuestions}
+            hasResolutionQuestions={false}
+            onToggleShowAll={() => {
+              setShowAllQuestions((v) => !v)
+              setVisibleCount(PAGE_SIZE)
+            }}
+          />
+        )}
         <SessionRecapCard recap={sessionRecap} />
         <DeferredNoticesCard notices={deferredNotices} />
         <div className="rounded-2xl border border-dashed bg-card/50 px-4 py-8 text-center">
-          <p className="text-sm font-medium">Rien à clarifier pour le moment.</p>
+          <p className="text-sm font-medium">
+            {fromPointId ? 'Rien à clarifier pour ce Point.' : 'Rien à clarifier pour le moment.'}
+          </p>
           <p className="mt-1 text-[12px] text-muted-foreground">La mémoire du chantier est à jour.</p>
+          {fromPointId && !showAllQuestions && globalRemainingCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAllQuestions(true)}
+              className="mt-3 text-[12.5px] font-medium text-violet-700 hover:underline dark:text-violet-300"
+            >
+              Voir les {globalRemainingCount} autres questions du chantier
+            </button>
+          )}
         </div>
       </div>
     )
@@ -421,102 +520,118 @@ export function NeedsYouClient({
   return (
     <div className="lg:grid lg:grid-cols-[1fr_280px] lg:items-start lg:gap-4">
       <div className="space-y-4">
-        {targetQuestion && fromPointId && fromPointLabel && (
-          <PointSourceBanner siteId={siteId} pointId={fromPointId} pointLabel={fromPointLabel} />
+        {fromPointId && fromPointLabel && (
+          <PointSourceBanner
+            siteId={siteId}
+            pointId={fromPointId}
+            pointLabel={fromPointLabel}
+            scopedCount={scopedRemainingCount}
+            isScoped={isPointScoped}
+            showAllQuestions={showAllQuestions}
+            hasResolutionQuestions={pointScopedQuestions.some((q) => q.category === 'assign_resolution' && !done.has(q.id))}
+            onToggleShowAll={() => {
+              setShowAllQuestions((v) => !v)
+              setVisibleCount(PAGE_SIZE)
+            }}
+          />
         )}
         <SessionRecapCard recap={sessionRecap} />
         <DeferredNoticesCard notices={deferredNotices} />
         {/* Zone de filtres — sections nommées (Type de question / Période / Importance / Trier
             par) : Importance FILTRE la file, Trier par ORDONNE la sélection filtrée. Les deux
             axes ne sont jamais fusionnés dans un seul contrôle (mandat Vincent : "Historique ≠
-            faible importance, Récent ≠ important"). */}
-        <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
-          <div>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Type de question</p>
-            <div className="flex flex-wrap gap-1.5">
-              {FILTER_ORDER.filter((f) => f === 'all' || counts[f] > 0).map((f) => {
-                const count = f === 'all' ? remaining.length : counts[f]
-                const active = filter === f
-                return (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => updateFilter(f)}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 text-xs font-medium',
-                      active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
-                    )}
-                  >
-                    {FILTER_LABELS[f]} <span className="tabular-nums">{count}</span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* 6E.4A.5 — Mode Dernier PV : n'apparaît que si au moins une question porte une date
-              métier (duplicate_points seules ne l'affiche jamais, rien à filtrer par PV). */}
-          {distinctPvDates.length > 0 && (
+            faible importance, Récent ≠ important"). Masquée en mode point-scoped (correction 3) :
+            la file est déjà réduite aux questions de ce Point, ajouter des filtres génériques par
+            dessus n'aiderait pas et masquerait sans échappatoire visible. */}
+        {!isPointScoped && (
+          <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
             <div>
-              <label htmlFor="pv-mode" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Période
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Type de question</p>
+              <div className="flex flex-wrap gap-1.5">
+                {FILTER_ORDER.filter((f) => f === 'all' || counts[f] > 0).map((f) => {
+                  const count = f === 'all' ? remaining.length : counts[f]
+                  const active = filter === f
+                  return (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => updateFilter(f)}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-xs font-medium',
+                        active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
+                      )}
+                    >
+                      {FILTER_LABELS[f]} <span className="tabular-nums">{count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* 6E.4A.5 — Mode Dernier PV : n'apparaît que si au moins une question porte une date
+                métier (duplicate_points seules ne l'affiche jamais, rien à filtrer par PV). */}
+            {distinctPvDates.length > 0 && (
+              <div>
+                <label htmlFor="pv-mode" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Période
+                </label>
+                <select
+                  id="pv-mode"
+                  value={pvMode}
+                  onChange={(e) => updatePvMode(e.target.value)}
+                  className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <option value="all">Tous les PV</option>
+                  {latestPvDate && <option value="latest">Dernier PV ({formatPvOptionDate(latestPvDate)})</option>}
+                  {olderPvDates.map((d) => (
+                    <option key={d} value={d}>
+                      PV du {formatPvOptionDate(d)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Importance</p>
+              <div className="flex flex-wrap gap-1.5">
+                {PRIORITY_FILTER_ORDER.filter((p) => p === 'all' || priorityCounts[p] > 0).map((p) => {
+                  const count = p === 'all' ? remaining.length : priorityCounts[p]
+                  const active = priorityFilter === p
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => updatePriorityFilter(p)}
+                      className={cn(
+                        'rounded-full border px-2.5 py-1 text-xs font-medium',
+                        active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
+                      )}
+                    >
+                      {PRIORITY_FILTER_LABELS[p]} <span className="tabular-nums">{count}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="sort-mode" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Trier par
               </label>
               <select
-                id="pv-mode"
-                value={pvMode}
-                onChange={(e) => updatePvMode(e.target.value)}
+                id="sort-mode"
+                value={sortMode}
+                onChange={(e) => updateSortMode(e.target.value as SortMode)}
                 className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
               >
-                <option value="all">Tous les PV</option>
-                {latestPvDate && <option value="latest">Dernier PV ({formatPvOptionDate(latestPvDate)})</option>}
-                {olderPvDates.map((d) => (
-                  <option key={d} value={d}>
-                    PV du {formatPvOptionDate(d)}
-                  </option>
-                ))}
+                <option value="priority">Priorité</option>
+                <option value="recent">Plus récent</option>
+                <option value="oldest">Plus ancien</option>
               </select>
             </div>
-          )}
-
-          <div>
-            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Importance</p>
-            <div className="flex flex-wrap gap-1.5">
-              {PRIORITY_FILTER_ORDER.filter((p) => p === 'all' || priorityCounts[p] > 0).map((p) => {
-                const count = p === 'all' ? remaining.length : priorityCounts[p]
-                const active = priorityFilter === p
-                return (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => updatePriorityFilter(p)}
-                    className={cn(
-                      'rounded-full border px-2.5 py-1 text-xs font-medium',
-                      active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted/60',
-                    )}
-                  >
-                    {PRIORITY_FILTER_LABELS[p]} <span className="tabular-nums">{count}</span>
-                  </button>
-                )
-              })}
-            </div>
           </div>
-
-          <div>
-            <label htmlFor="sort-mode" className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Trier par
-            </label>
-            <select
-              id="sort-mode"
-              value={sortMode}
-              onChange={(e) => updateSortMode(e.target.value as SortMode)}
-              className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-            >
-              <option value="priority">Priorité</option>
-              <option value="recent">Plus récent</option>
-              <option value="oldest">Plus ancien</option>
-            </select>
-          </div>
-        </div>
+        )}
 
         <div className="space-y-3">
           {sorted.length === 0 && (
