@@ -122,11 +122,19 @@ function ReviewCard({ p, pointHrefPrefix, siteId }: { p: PointListEntry; pointHr
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Link
-          href={isNeedsYou ? needsYouClarifyHref(siteId, p) : pointHref(pointHrefPrefix, p)}
+          href={pointHref(pointHrefPrefix, p)}
           className="inline-flex items-center rounded-lg border px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-muted"
         >
-          {isNeedsYou ? 'Clarifier' : 'Ouvrir'}
+          Ouvrir
         </Link>
+        {isNeedsYou && (
+          <Link
+            href={needsYouClarifyHref(siteId, p)}
+            className="inline-flex items-center rounded-lg border border-violet-300 px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950/30"
+          >
+            Clarifier
+          </Link>
+        )}
         {!isNeedsYou && <MarkReviewedButton siteId={siteId} pointId={p.id} />}
       </div>
     </div>
@@ -304,10 +312,10 @@ export function PointsPilotageView({
 
       <div className="rounded-xl border p-4">
         <p className="text-[14.5px] font-medium text-foreground">
-          À revoir — {toReview.length} Point{toReview.length !== 1 ? 's' : ''}
+          {toReview.length} Point{toReview.length !== 1 ? 's' : ''} à revoir
         </p>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
-          {reopenedCount} réouvert{reopenedCount !== 1 ? 's' : ''} ·{' '}
+          dont {reopenedCount} réouvert{reopenedCount !== 1 ? 's' : ''} ·{' '}
           {needsYouCount > 0 ? (
             <Link href={`/sites/${siteId}/besoin-de-toi`} className="font-medium text-violet-700 hover:underline dark:text-violet-300">
               {needsYouCount} avec question MemorIA
