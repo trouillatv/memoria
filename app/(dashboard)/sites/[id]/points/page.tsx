@@ -9,14 +9,16 @@ import { SiteChantierNav } from '../SiteChantierNav'
 
 interface PageProps {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
 }
 
-export default async function SitePointsPage({ params }: PageProps) {
+export default async function SitePointsPage({ params, searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
+  const { tab } = await searchParams
   const [identity, list] = await Promise.all([
     getSiteIdentity(id),
     loadSiteTrackedPointList(id, user.id),
@@ -58,6 +60,8 @@ export default async function SitePointsPage({ params }: PageProps) {
         subjectHrefPrefix={`/sites/${id}/historique/sujets`}
         siteId={id}
         lastPvDate={list.lastPvDate}
+        pointsHref={`/sites/${id}/points`}
+        defaultTab={tab === 'delta' ? 'delta' : undefined}
       />
     </div>
   )

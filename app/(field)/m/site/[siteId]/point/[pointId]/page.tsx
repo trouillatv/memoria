@@ -11,10 +11,13 @@ export const dynamic = 'force-dynamic'
 // Retour → le Sujet propriétaire (doctrine nav : précédent = revenir à l'objet).
 export default async function MobilePointFichePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ siteId: string; pointId: string }>
+  searchParams: Promise<{ from?: string }>
 }) {
   const { siteId, pointId } = await params
+  const { from } = await searchParams
   await requireSiteAccess(siteId)
   const [point, needsYouSummary, responsibleCandidates, companies] = await Promise.all([
     getTrackedPointDetail(siteId, pointId, `/m/site/${siteId}/actions`).catch(() => null),
@@ -24,12 +27,18 @@ export default async function MobilePointFichePage({
   ])
   if (!point) notFound()
 
-  const backHref = point.ownerCanonicalSubjectId
-    ? `/m/site/${siteId}/sujets/${point.ownerCanonicalSubjectId}`
-    : `/m/site/${siteId}`
-  const backLabel = point.ownerCanonicalSubjectLabel
-    ? `Retour au sujet « ${point.ownerCanonicalSubjectLabel} »`
-    : 'Retour au chantier'
+  // Retour au Delta chantier si on en vient (recette Vincent 2026-09-14) : préserve le
+  // contexte de David dans sa revue plutôt que de le renvoyer systématiquement au sujet.
+  const backHref = from === 'delta'
+    ? `/m/site/${siteId}/points?tab=delta`
+    : point.ownerCanonicalSubjectId
+      ? `/m/site/${siteId}/sujets/${point.ownerCanonicalSubjectId}`
+      : `/m/site/${siteId}`
+  const backLabel = from === 'delta'
+    ? 'Retour au Delta chantier'
+    : point.ownerCanonicalSubjectLabel
+      ? `Retour au sujet « ${point.ownerCanonicalSubjectLabel} »`
+      : 'Retour au chantier'
 
   const needsYouQuestions = needsYouSummary
     ? filterMemoriaNeedsYouQuestionsForPoint(needsYouSummary.questions, point.id)

@@ -8,10 +8,13 @@ export const dynamic = 'force-dynamic'
 
 export default async function MobilePointsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ siteId: string }>
+  searchParams: Promise<{ tab?: string }>
 }) {
   const { siteId } = await params
+  const { tab } = await searchParams
   const { user } = await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
@@ -41,6 +44,8 @@ export default async function MobilePointsPage({
         subjectHrefPrefix={`/m/site/${siteId}/sujets`}
         siteId={siteId}
         lastPvDate={list.lastPvDate}
+        pointsHref={`/m/site/${siteId}/points`}
+        defaultTab={tab === 'delta' ? 'delta' : undefined}
       />
     </div>
   )

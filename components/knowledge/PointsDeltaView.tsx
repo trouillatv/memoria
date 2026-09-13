@@ -22,8 +22,10 @@ import type { PointListEntry } from '@/lib/knowledge/tracked-point-list'
 const DATE_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric' })
 const frDate = (iso: string | null): string | null => (iso ? DATE_FMT.format(new Date(iso)) : null)
 
+// `?from=delta` : lu par la page fiche Point pour renvoyer « ← Retour au Delta chantier »
+// au lieu du retour par défaut vers le sujet propriétaire (mandat recette Vincent 2026-09-14).
 function pointHref(pointHrefPrefix: string, p: PointListEntry): string {
-  return `${pointHrefPrefix}/${p.id}`
+  return `${pointHrefPrefix}/${p.id}?from=delta`
 }
 
 type DeltaCategory = 'new' | 'reopened' | 'resolved' | 'modified'
@@ -92,14 +94,57 @@ function DeltaSection({
   )
 }
 
+// Résumé compact (recette Vincent 2026-09-14 : la liste exhaustive des 20 Points lingering
+// faisait doublon avec le bucket « Toujours bloqués » de Pilotage — ici on ne montre que les
+// 3 plus anciens + un lien vers Pilotage pour le reste, jamais la liste complète).
+function ToujoursBloquesSummary({
+  points,
+  pointHrefPrefix,
+  pilotageHref,
+}: {
+  points: PointListEntry[]
+  pointHrefPrefix: string
+  pilotageHref: string
+}) {
+  const worst = points[0]
+  return (
+    <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4 dark:border-rose-900/40 dark:bg-rose-950/10">
+      <p className="inline-flex items-center gap-1.5 text-[13px] font-medium text-rose-700 dark:text-rose-300">
+        <Clock className="h-3.5 w-3.5" />
+        Toujours bloqués ({points.length})
+      </p>
+      {worst?.daysSinceLastEvent != null && (
+        <p className="mt-1 text-[12.5px] text-muted-foreground">
+          Jusqu&apos;à {worst.daysSinceLastEvent} jour{worst.daysSinceLastEvent !== 1 ? 's' : ''}
+          {worst.passagesSinceEvent ? ` · ${worst.passagesSinceEvent} passage${worst.passagesSinceEvent !== 1 ? 's' : ''}` : ''} sans évolution
+        </p>
+      )}
+      <ul className="mt-2 space-y-1">
+        {points.slice(0, 3).map((p) => (
+          <li key={p.id}>
+            <Link href={pointHref(pointHrefPrefix, p)} className="truncate text-[13px] text-foreground hover:underline">
+              {p.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <Link href={pilotageHref} className="mt-2 inline-block text-[12.5px] font-medium text-rose-700 hover:underline dark:text-rose-300">
+        Voir dans Pilotage →
+      </Link>
+    </div>
+  )
+}
+
 export function PointsDeltaView({
   points,
   pointHrefPrefix,
   lastPvDate,
+  pilotageHref,
 }: {
   points: PointListEntry[]
   pointHrefPrefix: string
   lastPvDate: string | null
+  pilotageHref: string
 }) {
   const { nouveaux, reouverts, resolus, modifies, toujoursBloques, changedTotal, unchangedCount } = useMemo(() => {
     const nouveaux: PointListEntry[] = []
@@ -185,18 +230,9 @@ export function PointsDeltaView({
             points={modifies}
             pointHrefPrefix={pointHrefPrefix}
           />
-          <DeltaSection
-            title="Toujours bloqués"
-            icon={<Clock className="h-3.5 w-3.5" />}
-            accentCls="text-rose-700 dark:text-rose-300"
-            points={toujoursBloques}
-            pointHrefPrefix={pointHrefPrefix}
-            detailFor={(p) =>
-              p.daysSinceLastEvent !== null
-                ? `Sans évolution depuis ${p.daysSinceLastEvent} j${p.passagesSinceEvent ? `, ${p.passagesSinceEvent} passage${p.passagesSinceEvent !== 1 ? 's' : ''}` : ''}`
-                : undefined
-            }
-          />
+          {toujoursBloques.length > 0 && (
+            <ToujoursBloquesSummary points={toujoursBloques} pointHrefPrefix={pointHrefPrefix} pilotageHref={pilotageHref} />
+          )}
         </>
       )}
     </div>
