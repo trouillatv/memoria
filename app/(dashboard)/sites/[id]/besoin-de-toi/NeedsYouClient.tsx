@@ -23,7 +23,7 @@ import {
   filterMemoriaNeedsYouQuestionsForPoint,
   type MemoriaNeedsYouCategorySummary,
   type MemoriaNeedsYouQuestion,
-} from '@/lib/knowledge/tracked-point-needs-you-summary'
+} from '@/lib/knowledge/tracked-point-needs-you-question'
 import { buildMemoriaNeedsYouRecap, type MemoriaNeedsYouRecapEntry } from '@/lib/knowledge/tracked-point-needs-you-recap'
 
 type FilterValue = 'all' | MemoriaNeedsYouCategory
