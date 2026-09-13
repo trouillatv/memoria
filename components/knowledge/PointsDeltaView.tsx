@@ -11,7 +11,10 @@
 // derivedState, daysSinceLastEvent) — même convention que PointsPilotageView.tsx qui catégorise
 // déjà `toReview` par useMemo sans passer par un fichier séparé. Partition mutuellement exclusive
 // des Points changés au dernier PV (nouveau > réouvert > résolu > modifié, ordre business) ;
-// « Toujours bloqués » est un axe indépendant (lingering), peut chevaucher marginalement.
+// « Sans évolution prolongée » est un axe indépendant (lingering), peut chevaucher marginalement.
+// Vocabulaire délibérément factuel (recette Vincent 2026-09-14, 3e passe) : « bloqué »
+// suggérerait un obstacle identifié que MemorIA ne connaît pas — seule la durée sans
+// évolution malgré plusieurs passages est une donnée réelle.
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -118,7 +121,7 @@ function ToujoursBloquesSummary({
     <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-4 dark:border-rose-900/40 dark:bg-rose-950/10">
       <p className="inline-flex items-center gap-1.5 text-[13px] font-medium text-rose-700 dark:text-rose-300">
         <Clock className="h-3.5 w-3.5" />
-        Toujours bloqués ({points.length})
+        Sans évolution prolongée ({points.length})
       </p>
       {worst?.daysSinceLastEvent != null && (
         <p className="mt-1 text-[12.5px] text-muted-foreground">
@@ -129,7 +132,10 @@ function ToujoursBloquesSummary({
       <ul className="mt-2 space-y-1">
         {visible.map((p) => (
           <li key={p.id}>
-            <Link href={pointHref(pointHrefPrefix, p)} className="truncate text-[13px] text-foreground hover:underline">
+            <Link
+              href={pointHref(pointHrefPrefix, p)}
+              className="block truncate rounded-md px-1.5 py-0.5 -mx-1.5 text-[13px] text-foreground hover:bg-rose-100/60 hover:underline dark:hover:bg-rose-900/20"
+            >
               {p.label}
             </Link>
           </li>
@@ -201,14 +207,17 @@ export function PointsDeltaView({
         </p>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
           {nouveaux.length} nouveau{nouveaux.length !== 1 ? 'x' : ''} · {resolus.length} résolu{resolus.length !== 1 ? 's' : ''} ·{' '}
-          {reouverts.length} réouvert{reouverts.length !== 1 ? 's' : ''} · {modifies.length} modifié{modifies.length !== 1 ? 's' : ''} ·{' '}
+          {reouverts.length} réouvert{reouverts.length !== 1 ? 's' : ''} · {modifies.length} modifié{modifies.length !== 1 ? 's' : ''}
+        </p>
+        <p className="text-[12.5px] text-muted-foreground">
           {unchangedCount} sans évolution notable
+          {toujoursBloques.length > 0 ? `, dont ${toujoursBloques.length} sans évolution prolongée` : ''}
         </p>
       </div>
 
       {!hasAnyDelta ? (
         <p className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-muted-foreground">
-          Rien de nouveau depuis le dernier PV : aucun Point nouveau, résolu, réouvert ou bloqué.
+          Rien de nouveau depuis le dernier PV : aucun Point nouveau, résolu, réouvert ou sans évolution prolongée.
         </p>
       ) : (
         <>
