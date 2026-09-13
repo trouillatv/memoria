@@ -26,6 +26,7 @@ import {
 } from '@/lib/knowledge/tracked-point-read-model'
 import type { PointComputedCurrentState, PointMarker, PointEventKind } from '@/lib/knowledge/tracked-point-lifecycle-reducer'
 import { documentHref } from '@/lib/knowledge/document-href'
+import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
 
 const ACTION_STATUS_LABEL: Record<SiteActionStatus, string> = {
   open: 'Ouverte', planned: 'Planifiée', done: 'Terminée', cancelled: 'Annulée',
@@ -139,6 +140,15 @@ export interface PointDetailActor {
   responsibleDeadlineCount: number
 }
 
+// Entreprise citée dans le titre du Point ou dans le texte des preuves, mais jamais
+// affectée `assigned_company_id`/`responsible_company_id` sur un objet lié (mandat
+// Vincent, lot Acteurs/entreprise citée, cas Clim Exp'Air) — cf. `computeCitedCompanies`.
+// Distincte de `PointDetailActor` : une citation n'est jamais une responsabilité.
+export interface PointDetailCitedCompany {
+  id: string
+  name: string
+}
+
 export interface PointDetailMergeSource {
   id: string
   label: string
@@ -212,6 +222,10 @@ export interface TrackedPointDetail {
   openLinkedObjectGroups: PointDetailLinkedObjectGroup[]
   // §6 — acteurs explicitement liés (jamais déduits).
   actors: PointDetailActor[]
+  // §6bis — entreprises CITÉES (titre du Point ou texte des preuves) mais jamais
+  // affectées comme responsable sur ce Point — jamais une promotion automatique
+  // vers `actors` (mandat Vincent, lot Acteurs/entreprise citée, cas Clim Exp'Air).
+  citedCompanies: PointDetailCitedCompany[]
   // §7 — identité/mémoire (secondaire/admin).
   foundingKind: string
   foundingSource: string | null
@@ -308,6 +322,32 @@ export function suggestResponsibleNames(
     const matches = actorNames.filter((name) => o.title.includes(name))
     return matches.length === 1 ? { ...o, suggestedResponsibleName: matches[0] } : o
   })
+}
+
+/** §6bis — Entreprises citées mais jamais castées en Responsable (mandat Vincent, lot
+ *  Acteurs/entreprise citée, cas Clim Exp'Air : « L'exploitant doit lever le doute avec
+ *  Clim'Expair », citée dans le titre d'une Action sans jamais être `assigned_company_id`).
+ *  Réutilise `detectActorRelations` (P1-C1b, même détection déterministe à bornes de mot
+ *  que la citation d'occurrence) — jamais une nouvelle heuristique de matching. Une
+ *  entreprise déjà DANS `actors` (déjà responsable d'un objet lié à ce Point) n'est jamais
+ *  redondamment listée ici : citée et responsable sont mutuellement exclusives dans une
+ *  même fiche, jamais une promotion automatique de l'une vers l'autre. */
+export function computeCitedCompanies(
+  texts: Array<string | null | undefined>,
+  candidates: ActorSubject[],
+  excludeNames: string[],
+): PointDetailCitedCompany[] {
+  if (candidates.length === 0) return []
+  const excluded = new Set(excludeNames.map((n) => n.trim().toLowerCase()))
+  const byId = new Map(candidates.map((c) => [c.id, c]))
+  const out: PointDetailCitedCompany[] = []
+  for (const relation of detectActorRelations(texts, candidates)) {
+    const candidate = byId.get(relation.actorId)
+    if (!candidate) continue
+    if (excluded.has(candidate.label.trim().toLowerCase())) continue
+    out.push({ id: candidate.id, name: candidate.label })
+  }
+  return out
 }
 
 /** Extrait un id de `document_extraction_proposal` d'une référence `proposal:<id>` de
@@ -684,6 +724,22 @@ export async function getTrackedPointDetail(
   const actors = computePointActors(linkedObjects)
   // ── Suggestion GAP 1 (mandat Vincent, lot Point Actions inline) ────────────
   const linkedObjectsWithSuggestions = suggestResponsibleNames(linkedObjects, actors.map((a) => a.name))
+
+  // ── §6bis — entreprises citées (mandat Vincent, lot Acteurs/entreprise citée) ──
+  // Pool = toutes les entreprises identifiées comme acteur sur CE site (canonical_subject
+  // kind=actor), indépendamment du casting site_intervenants — c'est précisément ce qui
+  // manque à `listSiteCandidateCompanies` pour couvrir le cas Clim Exp'Air.
+  type ActorCompanyRow = { company_id: string; label: string; aliases: string[] | null }
+  const { data: actorCompanyRows } = await db.from('canonical_subject')
+    .select('company_id, label, aliases')
+    .eq('site_id', siteId).eq('kind', 'actor').eq('status', 'active').not('company_id', 'is', null)
+  const citedCompanyCandidates: ActorSubject[] = ((actorCompanyRows ?? []) as ActorCompanyRow[])
+    .map((r) => ({ id: r.company_id, label: r.label, aliases: r.aliases ?? [] }))
+  const citedCompanies = computeCitedCompanies(
+    [canonicalEntry.label, ...linkedObjects.map((o) => o.title), ...evidence.map((e) => e.sourceExcerpt)],
+    citedCompanyCandidates,
+    actors.map((a) => a.name),
+  )
   const openLinkedObjects = linkedObjectsWithSuggestions.filter((o) => !o.isDone)
   const closedLinkedObjects = linkedObjectsWithSuggestions.filter((o) => o.isDone)
 
@@ -730,6 +786,7 @@ export async function getTrackedPointDetail(
     closedLinkedObjects,
     openLinkedObjectGroups: groupLinkedObjectsByTitle(openLinkedObjects),
     actors,
+    citedCompanies,
     foundingKind: canonicalEntry.foundingKind,
     foundingSource: canonicalEntry.foundingSource,
     hasUpstreamDefect: canonicalEntry.hasUpstreamDefect,

@@ -9,10 +9,12 @@ import {
   groupLinkedObjectsByTitle,
   computePointActors,
   suggestResponsibleNames,
+  computeCitedCompanies,
   type PointDetailLinkedObject,
   type PointDetailEvidence,
   type PointDetailProvenance,
 } from '@/lib/knowledge/tracked-point-detail'
+import type { ActorSubject } from '@/lib/db/actor-citation'
 
 function evidence(overrides: Partial<PointDetailEvidence> & { proposalId: string; kind: PointDetailEvidence['kind']; date: string }): PointDetailEvidence {
   return {
@@ -253,6 +255,42 @@ describe('tracked-point-detail — suggestResponsibleNames (GAP 1, containment e
   it('liste d’acteurs vide → retourne les objets inchangés', () => {
     const items = [linkedObject({ id: '1', title: 'Relancer Lylo' })]
     expect(suggestResponsibleNames(items, [])).toBe(items)
+  })
+})
+
+describe('tracked-point-detail — computeCitedCompanies (lot Acteurs/entreprise citée, cas Clim Exp\'Air)', () => {
+  const climExpair: ActorSubject = { id: 'company-1', label: "Clim'Expair" }
+
+  it('une entreprise citée dans le titre d\'un objet lié est remontée comme citée', () => {
+    const result = computeCitedCompanies(
+      ["L'exploitant doit lever le doute avec Clim'Expair"],
+      [climExpair],
+      [],
+    )
+    expect(result).toEqual([{ id: 'company-1', name: "Clim'Expair" }])
+  })
+
+  it('une entreprise DÉJÀ responsable d\'un objet lié (dans actors) n\'est jamais aussi listée comme citée', () => {
+    const result = computeCitedCompanies(
+      ["Intervention de Clim'Expair sur le local batterie"],
+      [climExpair],
+      ["Clim'Expair"],
+    )
+    expect(result).toEqual([])
+  })
+
+  it('aucune mention dans les textes → silence, jamais une invention', () => {
+    const result = computeCitedCompanies(['Vérifier la dotation des RIA'], [climExpair], [])
+    expect(result).toEqual([])
+  })
+
+  it('liste de candidats vide → retourne un tableau vide', () => {
+    expect(computeCitedCompanies(["Clim'Expair"], [], [])).toEqual([])
+  })
+
+  it('ne fusionne jamais deux noms seulement proches (aucun fuzzy, hérité de detectActorRelations)', () => {
+    const result = computeCitedCompanies(['Contacter Clim pour le devis'], [climExpair], [])
+    expect(result).toEqual([])
   })
 })
 

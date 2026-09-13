@@ -507,6 +507,20 @@ export function PointFicheView({
                 })}
               </ul>
             )}
+            {p.citedCompanies.length > 0 && (
+              <div className="pt-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  Entreprise{p.citedCompanies.length > 1 ? 's' : ''} citée{p.citedCompanies.length > 1 ? 's' : ''} dans le titre ou les preuves — jamais un responsable
+                </p>
+                <ul className="mt-1 flex flex-wrap gap-2">
+                  {p.citedCompanies.map((c) => (
+                    <li key={c.id} className="rounded-lg border border-dashed px-2.5 py-1 text-[12.5px] text-muted-foreground">
+                      {c.name}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
         </div>
 
