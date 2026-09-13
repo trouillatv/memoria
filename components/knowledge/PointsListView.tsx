@@ -98,7 +98,7 @@ function PointRow({ p, pointHrefPrefix, subjectHrefPrefix, showSubject }: PointR
   )
 }
 
-interface SubjectGroup {
+export interface SubjectGroup {
   subjectId: string | null
   subjectLabel: string
   points: PointListEntry[]
@@ -108,7 +108,7 @@ interface SubjectGroup {
 // Points »). Aucune requête, aucun recalcul d'état : le tri interne à chaque groupe est celui
 // déjà produit par `loadSiteTrackedPointList`/`sortPointsForSubjectDisplay`. L'ordre des groupes
 // suit le premier Point rencontré (donc les sujets les plus prioritaires apparaissent en premier).
-function groupPointsBySubject(points: PointListEntry[]): SubjectGroup[] {
+export function groupPointsBySubject(points: PointListEntry[]): SubjectGroup[] {
   const groups = new Map<string, SubjectGroup>()
   for (const p of points) {
     const key = p.ownerCanonicalSubjectId ?? '__sans_sujet__'
@@ -126,7 +126,7 @@ function groupPointsBySubject(points: PointListEntry[]): SubjectGroup[] {
   return [...groups.values()]
 }
 
-function SubjectGroupCard({
+export function SubjectGroupCard({
   group,
   pointHrefPrefix,
   subjectHrefPrefix,
@@ -192,6 +192,7 @@ export function PointsListView({
   filterOptions,
   pointHrefPrefix,
   subjectHrefPrefix,
+  allowSubjectGrouping = true,
 }: {
   points: PointListEntry[]
   filterOptions: PointListFilterOptions
@@ -199,9 +200,14 @@ export function PointsListView({
   pointHrefPrefix: string
   /** ex. `/sites/<id>/historique/sujets` ou `/m/site/<siteId>/sujets` */
   subjectHrefPrefix: string
+  /** false quand un niveau de navigation supérieur (onglet « Par sujet ») fait déjà ce
+   *  regroupement — évite la redondance « Par sujet » à deux endroits (mandat ajustement
+   *  Pilotage, item 3). Masque le bascule interne et force la vue liste. */
+  allowSubjectGrouping?: boolean
 }) {
   const [filters, setFilters] = useState<PointListFilters>(DEFAULT_POINT_LIST_FILTERS)
   const [view, setView] = useState<'list' | 'subject'>('list')
+  const effectiveView = allowSubjectGrouping ? view : 'list'
   const filtered = useMemo(() => filterPointList(points, filters), [points, filters])
   const needsYouTotal = useMemo(() => points.filter((p) => p.needsYouCount > 0).length, [points])
   const subjectGroups = useMemo(() => groupPointsBySubject(filtered), [filtered])
@@ -264,22 +270,24 @@ export function PointsListView({
             <HelpCircle className="h-3.5 w-3.5" /> Besoin de moi ({needsYouTotal})
           </button>
         )}
-        <div className="ml-auto inline-flex items-center rounded-lg border p-0.5 text-[13px]">
-          <button
-            type="button"
-            onClick={() => setView('list')}
-            className={cn('rounded-md px-2.5 py-1 font-medium', view === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground')}
-          >
-            Liste
-          </button>
-          <button
-            type="button"
-            onClick={() => setView('subject')}
-            className={cn('rounded-md px-2.5 py-1 font-medium', view === 'subject' ? 'bg-muted text-foreground' : 'text-muted-foreground')}
-          >
-            Par sujet
-          </button>
-        </div>
+        {allowSubjectGrouping && (
+          <div className="ml-auto inline-flex items-center rounded-lg border p-0.5 text-[13px]">
+            <button
+              type="button"
+              onClick={() => setView('list')}
+              className={cn('rounded-md px-2.5 py-1 font-medium', view === 'list' ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+            >
+              Liste
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('subject')}
+              className={cn('rounded-md px-2.5 py-1 font-medium', view === 'subject' ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+            >
+              Par sujet
+            </button>
+          </div>
+        )}
       </div>
 
       <p className="text-[12.5px] text-muted-foreground">
@@ -291,7 +299,7 @@ export function PointsListView({
         <p className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-muted-foreground">
           Aucun Point ne correspond à ces filtres.
         </p>
-      ) : view === 'list' ? (
+      ) : effectiveView === 'list' ? (
         <ul className="space-y-2">
           {filtered.map((p) => (
             <PointRow key={p.id} p={p} pointHrefPrefix={pointHrefPrefix} subjectHrefPrefix={subjectHrefPrefix} showSubject />

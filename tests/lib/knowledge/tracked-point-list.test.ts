@@ -14,6 +14,13 @@ function entry(overrides: Partial<PointListEntry>): PointListEntry {
     actorNames: [],
     needsYouCount: 0,
     needsYouQuestionId: null,
+    reviewReasons: [],
+    mentionsCount: 1,
+    openedAt: null,
+    passagesSinceEvent: null,
+    reviewFingerprint: null,
+    isReviewed: false,
+    reviewedAt: null,
     ...overrides,
   }
 }

@@ -4,7 +4,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { loadSiteTrackedPointList } from '@/lib/knowledge/tracked-point-list'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
-import { PointsListView } from '@/components/knowledge/PointsListView'
+import { PointsPageTabs } from '@/components/knowledge/PointsPageTabs'
 import { SiteChantierNav } from '../SiteChantierNav'
 
 interface PageProps {
@@ -19,7 +19,7 @@ export default async function SitePointsPage({ params }: PageProps) {
   const { id } = await params
   const [identity, list] = await Promise.all([
     getSiteIdentity(id),
-    loadSiteTrackedPointList(id),
+    loadSiteTrackedPointList(id, user.id),
   ])
   if (!identity) notFound()
 
@@ -51,11 +51,12 @@ export default async function SitePointsPage({ params }: PageProps) {
         </p>
       </header>
 
-      <PointsListView
+      <PointsPageTabs
         points={list.points}
         filterOptions={list.filters}
         pointHrefPrefix={`/sites/${id}/point`}
         subjectHrefPrefix={`/sites/${id}/historique/sujets`}
+        siteId={id}
       />
     </div>
   )

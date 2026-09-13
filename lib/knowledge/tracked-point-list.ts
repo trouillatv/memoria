@@ -20,6 +20,21 @@ import {
 } from '@/lib/knowledge/tracked-point-read-model'
 import type { PointComputedCurrentState } from '@/lib/knowledge/tracked-point-lifecycle-reducer'
 import { loadMemoriaNeedsYouSummary, filterMemoriaNeedsYouQuestionsForPoint } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, type MemoriaNeedsYouCategory } from '@/lib/knowledge/tracked-point-needs-you-categories'
+import {
+  selectLingeringPoints,
+  loadSitePvDates,
+  loadOpenActionCountBySubject,
+  type LingeringPointEntry,
+} from '@/lib/knowledge/tracked-point-lingering'
+import { deriveCanonicalAttentionItems, type CanonicalSignal } from '@/lib/knowledge/canonical-attention'
+import { todayLocalIso, frDayMonthYearLocal } from '@/lib/time/local-date'
+import {
+  computeTrackedPointReviewFingerprint,
+  isTrackedPointReviewed,
+  type TrackedPointReviewSignalInput,
+} from '@/lib/knowledge/tracked-point-review'
+import { getTrackedPointReviews } from '@/lib/db/tracked-point-reviews'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -39,6 +54,30 @@ export interface PointListEntry {
   // jamais un choix arbitraire parmi plusieurs — même convention que resolveMemoriaNeedsYouSubjectPointRef).
   needsYouCount: number
   needsYouQuestionId: string | null
+  // Raisons déterministes « Pourquoi maintenant » (mandat Vincent, ajustement Pilotage
+  // avant recette) : composition, SANS nouveau moteur, de signaux déjà gelés ailleurs
+  // (réouverture, NeedsYou, changement lors du dernier PV, Points qui traînent, attention
+  // canonique pertinente). Un Point peut porter plusieurs raisons ; tableau vide = pas de
+  // raison de revue actuelle. Jamais un score.
+  reviewReasons: string[]
+  // Compteurs d'affichage « si disponible » (mandat ajustement Pilotage) — dérivés à coût nul
+  // de la trajectoire déjà chargée par tracked-point-read-model.ts (même bornage que
+  // mentionsCount/openedAt de tracked-point-detail.ts, jamais une 2e heuristique).
+  // passagesSinceEvent = null quand latestMeaningfulEventAt est inconnu (jamais confondu
+  // avec 0 passage réel).
+  mentionsCount: number
+  openedAt: string | null
+  passagesSinceEvent: number | null
+  // Couche 1.1 « Mémoire de revue » (mandat Vincent, mig 405) : `reviewFingerprint` est la
+  // signature COURANTE calculée par l'unique primitive pure computeTrackedPointReviewFingerprint
+  // (lib/knowledge/tracked-point-review.ts) à partir des MÊMES signaux que reviewReasons — donc
+  // `reviewFingerprint !== null` coïncide structurellement avec `reviewReasons.length > 0`.
+  // `isReviewed` = ce fingerprint courant est strictement identique à celui déjà enregistré pour
+  // CET utilisateur (« David a revu ce Point dans cet état précis », jamais « le Point est traité » :
+  // l'état métier du Point reste indépendant). `reviewedAt` n'est renseigné que si une revue existe.
+  reviewFingerprint: string | null
+  isReviewed: boolean
+  reviewedAt: string | null
 }
 
 export interface PointListFilterOptions {
@@ -186,21 +225,132 @@ async function loadActorNamesByPoint(
   return result
 }
 
-export async function loadSiteTrackedPointList(siteId: string): Promise<SiteTrackedPointList> {
+// Dupliqué de `tracked-point-lingering.ts` (countPassagesAfter, non exporté) : même calcul pur
+// (comparaison de dates ISO), mais requis ICI pour TOUS les Points à évolution connue
+// (affichage « si disponible », mandat item 2) — pas seulement les candidats « qui traînent »
+// que ce module sélectionne et plafonne pour son propre usage.
+function countPassagesSince(pvDates: readonly string[], afterIso: string): number {
+  return pvDates.reduce((n, d) => (d > afterIso ? n + 1 : n), 0)
+}
+
+// « Pourquoi maintenant » (mandat Vincent, ajustement Pilotage avant recette) : compose, SANS
+// nouveau moteur ni score, les signaux déjà gelés ailleurs. Ordre = celui du mandat (réouverture ;
+// NeedsYou ; changé/nouveau depuis dernier PV ; lingering ; attention canonique pertinente). Un
+// Point peut cumuler plusieurs raisons — jamais un choix arbitraire entre elles.
+function buildReviewReasons(params: {
+  derivedState: PointComputedCurrentState
+  documentaryDivergences: string[]
+  needsYouCategories: MemoriaNeedsYouCategory[]
+  lastPvDate: string | null
+  lingering: LingeringPointEntry | undefined
+  latestMeaningfulEventAt: string | null
+  attentionReason: string | null
+}): string[] {
+  const reasons: string[] = []
+  if (params.derivedState === 'reopened') {
+    reasons.push(params.documentaryDivergences[0] ?? 'Une preuve plus récente contredit une résolution antérieure.')
+  }
+  if (params.needsYouCategories.length > 0) {
+    const distinct = [...new Set(params.needsYouCategories)]
+    reasons.push(
+      distinct.length === 1
+        ? MEMORIA_NEEDS_YOU_CATEGORY_LABELS[distinct[0]]
+        : 'MemorIA a plusieurs questions ouvertes sur ce Point.',
+    )
+  }
+  if (params.lastPvDate && params.latestMeaningfulEventAt === params.lastPvDate) {
+    reasons.push(`Changé ou apparu lors du dernier PV (${frDayMonthYearLocal(params.lastPvDate)}).`)
+  }
+  if (params.lingering) {
+    const passages = params.lingering.passagesSinceEvent
+    reasons.push(
+      `Sans évolution depuis ${params.lingering.daysSinceLastEvent} j, malgré ${passages} passage${passages !== 1 ? 's' : ''} du chantier.`,
+    )
+  }
+  if (params.attentionReason) {
+    reasons.push(params.attentionReason)
+  }
+  return reasons
+}
+
+// Signaux STRUCTURÉS (identité/version, jamais un texte) consommés par
+// computeTrackedPointReviewFingerprint — mêmes conditions d'activation que buildReviewReasons
+// ci-dessus, pour que « à revoir » (reviewReasons non vide) et « a un fingerprint courant »
+// restent, par construction, le même ensemble de Points (mandat Vincent, Couche 1.1).
+function buildReviewSignalInput(params: {
+  derivedState: PointComputedCurrentState
+  needsYouQuestionIds: string[]
+  lastPvDate: string | null
+  latestMeaningfulEventAt: string | null
+  lingering: LingeringPointEntry | undefined
+  attentionSignals: readonly CanonicalSignal[] | null
+}): TrackedPointReviewSignalInput {
+  return {
+    reopened: params.derivedState === 'reopened' ? { latestMeaningfulEventAt: params.latestMeaningfulEventAt } : null,
+    needsYou: params.needsYouQuestionIds.length > 0 ? { questionIds: params.needsYouQuestionIds } : null,
+    changedSinceLastPv:
+      params.lastPvDate && params.latestMeaningfulEventAt === params.lastPvDate ? { lastPvDate: params.lastPvDate } : null,
+    lingering:
+      params.lingering && params.lastPvDate
+        ? { latestMeaningfulEventAt: params.latestMeaningfulEventAt, lastPvDate: params.lastPvDate }
+        : null,
+    canonicalAttention:
+      params.attentionSignals && params.attentionSignals.length > 0 ? { signals: params.attentionSignals } : null,
+  }
+}
+
+export async function loadSiteTrackedPointList(siteId: string, userId: string): Promise<SiteTrackedPointList> {
   const { points } = await loadTrackedPointReadModel(siteId)
   const sorted = sortPointsForSubjectDisplay(points)
 
   const db = createAdminClient()
   const subjectIds = [...new Set(sorted.map((p) => p.ownerCanonicalSubjectId).filter((id): id is string => !!id))]
 
-  const [subjectLabelById, actorNamesByPoint, needsYou] = await Promise.all([
-    loadSubjectLabels(db, subjectIds),
-    loadActorNamesByPoint(db, siteId, sorted),
-    loadMemoriaNeedsYouSummary(siteId),
-  ])
+  const [subjectLabelById, actorNamesByPoint, needsYou, pvDates, openActionCountBySubject, attentionItems, storedReviews] =
+    await Promise.all([
+      loadSubjectLabels(db, subjectIds),
+      loadActorNamesByPoint(db, siteId, sorted),
+      loadMemoriaNeedsYouSummary(siteId),
+      loadSitePvDates(siteId),
+      loadOpenActionCountBySubject(siteId),
+      deriveCanonicalAttentionItems(siteId),
+      getTrackedPointReviews(siteId, userId),
+    ])
+
+  const today = todayLocalIso()
+  const lastPvDate = pvDates.length > 0 ? pvDates.reduce((max, d) => (d > max ? d : max)) : null
+  const lingeringById = new Map(
+    selectLingeringPoints(sorted, today, pvDates, { attentionItems, openActionCountBySubject }).map((l) => [l.id, l]),
+  )
+  // « Attention canonique pertinente » (mandat item 1) : `act_now` est la catégorie déjà gelée
+  // par canonical-attention.ts pour « une preuve métier qualifiée intervention immédiate existe » —
+  // aucun nouveau seuil d'urgence inventé ici. `signals` (jamais `score`) alimente aussi le
+  // fingerprint de revue (Couche 1.1) : une recalibration de score ne doit jamais, à elle seule,
+  // faire réapparaître un Point déjà revu.
+  const actNowInfoBySubject = new Map(
+    attentionItems
+      .filter((it) => it.category === 'act_now')
+      .map((it) => [
+        it.canonicalSubjectId,
+        { reason: it.reasons[0] ?? 'Sujet porteur en intervention immédiate (attention MemorIA).', signals: it.signals },
+      ]),
+  )
 
   const entries: PointListEntry[] = sorted.map((p) => {
     const needsYouMatches = filterMemoriaNeedsYouQuestionsForPoint(needsYou.questions, p.id)
+    const lingering = lingeringById.get(p.id)
+    const attentionInfo = p.ownerCanonicalSubjectId ? actNowInfoBySubject.get(p.ownerCanonicalSubjectId) ?? null : null
+    const reviewFingerprint = computeTrackedPointReviewFingerprint(
+      buildReviewSignalInput({
+        derivedState: p.derivedState,
+        needsYouQuestionIds: needsYouMatches.map((q) => q.id),
+        lastPvDate,
+        latestMeaningfulEventAt: p.latestMeaningfulEventAt,
+        lingering,
+        attentionSignals: attentionInfo?.signals ?? null,
+      }),
+    )
+    const storedReview = storedReviews.get(p.id)
     return {
       id: p.id,
       siteId: p.siteId,
@@ -212,6 +362,21 @@ export async function loadSiteTrackedPointList(siteId: string): Promise<SiteTrac
       actorNames: actorNamesByPoint.get(p.id) ?? [],
       needsYouCount: needsYouMatches.length,
       needsYouQuestionId: needsYouMatches.length === 1 ? needsYouMatches[0].id : null,
+      reviewReasons: buildReviewReasons({
+        derivedState: p.derivedState,
+        documentaryDivergences: p.documentaryDivergences,
+        needsYouCategories: needsYouMatches.map((q) => q.category),
+        lastPvDate,
+        lingering,
+        latestMeaningfulEventAt: p.latestMeaningfulEventAt,
+        attentionReason: attentionInfo?.reason ?? null,
+      }),
+      mentionsCount: p.trajectory.length,
+      openedAt: p.trajectory[0]?.effectiveAt ?? null,
+      passagesSinceEvent: p.latestMeaningfulEventAt ? countPassagesSince(pvDates, p.latestMeaningfulEventAt) : null,
+      reviewFingerprint,
+      isReviewed: isTrackedPointReviewed(reviewFingerprint, storedReview?.fingerprint),
+      reviewedAt: storedReview?.reviewedAt ?? null,
     }
   })
 

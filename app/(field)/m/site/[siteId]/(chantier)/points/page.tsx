@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadSiteTrackedPointList } from '@/lib/knowledge/tracked-point-list'
-import { PointsListView } from '@/components/knowledge/PointsListView'
+import { PointsPageTabs } from '@/components/knowledge/PointsPageTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,7 +12,7 @@ export default async function MobilePointsPage({
   params: Promise<{ siteId: string }>
 }) {
   const { siteId } = await params
-  await requireSiteAccess(siteId)
+  const { user } = await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
   const { data: site } = await supabase
@@ -23,7 +23,7 @@ export default async function MobilePointsPage({
     .maybeSingle()
   if (!site) notFound()
 
-  const list = await loadSiteTrackedPointList(siteId)
+  const list = await loadSiteTrackedPointList(siteId, user.id)
 
   return (
     <div className="max-w-md space-y-4 pb-16">
@@ -34,11 +34,12 @@ export default async function MobilePointsPage({
         </p>
       </header>
 
-      <PointsListView
+      <PointsPageTabs
         points={list.points}
         filterOptions={list.filters}
         pointHrefPrefix={`/m/site/${siteId}/point`}
         subjectHrefPrefix={`/m/site/${siteId}/sujets`}
+        siteId={siteId}
       />
     </div>
   )
