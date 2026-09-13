@@ -1,13 +1,15 @@
 'use client'
 
-// ── POINTS — 3 onglets (mandat Vincent « POINTS — PILOTAGE COUCHE 1 ») ──
+// ── POINTS — 4 onglets (mandat Vincent « POINTS — PILOTAGE COUCHE 1 » + « GO Delta chantier »
+// 2026-09-14) ──
 //
-// Navigation : Pilotage | Par sujet | Liste (renommé depuis « Tous les Points », mini-lot densité
-// 2026-09-13). Chaque onglet a un rôle distinct et perceptible sans explication : Pilotage = Agir,
-// Par sujet = Comprendre, Liste = Retrouver. « Par acteur » n'est PAS exposé dans ce lot. « Liste »
-// remonte `PointsListView` (filtres, vue liste dense uniquement — son bascule interne Liste/Par
-// sujet est masqué via `allowSubjectGrouping={false}` pour ne pas dupliquer le niveau de nav
-// « Par sujet » ci-dessus, mandat ajustement Pilotage item 3). « Par sujet » réutilise le même
+// Navigation : Pilotage | Par sujet | Liste | Delta chantier. Chaque onglet a un rôle distinct et
+// perceptible sans explication : Pilotage = Agir, Par sujet = Comprendre, Liste = Retrouver,
+// Delta chantier = Reprendre (qu'est-ce qui a changé sur ce chantier, sans repartir chercher le
+// débrief de telle visite — cf. PointsDeltaView.tsx). « Par acteur » n'est PAS exposé dans ce lot.
+// « Liste » remonte `PointsListView` (filtres, vue liste dense uniquement — son bascule interne
+// Liste/Par sujet est masqué via `allowSubjectGrouping={false}` pour ne pas dupliquer le niveau de
+// nav « Par sujet » ci-dessus, mandat ajustement Pilotage item 3). « Par sujet » réutilise le même
 // regroupement pur (`groupPointsBySubject`/`SubjectGroupCard`) déjà utilisé par `PointsListView`,
 // sans filtres ni état supplémentaire.
 
@@ -15,14 +17,16 @@ import { useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { PointsListView, groupPointsBySubject, SubjectGroupCard } from '@/components/knowledge/PointsListView'
 import { PointsPilotageView } from '@/components/knowledge/PointsPilotageView'
+import { PointsDeltaView } from '@/components/knowledge/PointsDeltaView'
 import type { PointListEntry, PointListFilterOptions } from '@/lib/knowledge/tracked-point-list'
 
-type Tab = 'pilotage' | 'subject' | 'all'
+type Tab = 'pilotage' | 'subject' | 'all' | 'delta'
 
 const TABS: Array<{ key: Tab; label: string; caption: string }> = [
   { key: 'pilotage', label: 'Pilotage', caption: "Agir — ce qui a besoin d'une décision maintenant" },
   { key: 'subject', label: 'Par sujet', caption: 'Comprendre — les Points regroupés par sujet' },
   { key: 'all', label: 'Liste', caption: 'Retrouver — tous les Points, recherche et filtres' },
+  { key: 'delta', label: 'Delta chantier', caption: 'Reprendre — ce qui a changé depuis le dernier PV' },
 ]
 
 export function PointsPageTabs({
@@ -31,12 +35,14 @@ export function PointsPageTabs({
   pointHrefPrefix,
   subjectHrefPrefix,
   siteId,
+  lastPvDate,
 }: {
   points: PointListEntry[]
   filterOptions: PointListFilterOptions
   pointHrefPrefix: string
   subjectHrefPrefix: string
   siteId: string
+  lastPvDate: string | null
 }) {
   const [tab, setTab] = useState<Tab>('pilotage')
   const subjectGroups = useMemo(() => groupPointsBySubject(points), [points])
@@ -87,6 +93,10 @@ export function PointsPageTabs({
           subjectHrefPrefix={subjectHrefPrefix}
           allowSubjectGrouping={false}
         />
+      )}
+
+      {tab === 'delta' && (
+        <PointsDeltaView points={points} pointHrefPrefix={pointHrefPrefix} lastPvDate={lastPvDate} />
       )}
     </div>
   )

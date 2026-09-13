@@ -20,6 +20,7 @@ function entry(overrides: Partial<PointListEntry>): PointListEntry {
     mentionsCount: 1,
     openedAt: null,
     passagesSinceEvent: null,
+    daysSinceLastEvent: null,
     reviewFingerprint: null,
     isReviewed: false,
     reviewedAt: null,

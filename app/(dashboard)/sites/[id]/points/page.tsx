@@ -57,6 +57,7 @@ export default async function SitePointsPage({ params }: PageProps) {
         pointHrefPrefix={`/sites/${id}/point`}
         subjectHrefPrefix={`/sites/${id}/historique/sujets`}
         siteId={id}
+        lastPvDate={list.lastPvDate}
       />
     </div>
   )

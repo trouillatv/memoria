@@ -74,6 +74,10 @@ export interface PointListEntry {
   mentionsCount: number
   openedAt: string | null
   passagesSinceEvent: number | null
+  // Ancienneté du blocage « si disponible » (mandat Vincent, Delta chantier) : dupliquée depuis
+  // `LingeringPointEntry.daysSinceLastEvent` (déjà calculée par `selectLingeringPoints` ci-dessus,
+  // jamais un second calcul) — null quand le Point n'est pas dans la sélection lingering.
+  daysSinceLastEvent: number | null
   // Couche 1.1 « Mémoire de revue » (mandat Vincent, mig 405) : `reviewFingerprint` est la
   // signature COURANTE calculée par l'unique primitive pure computeTrackedPointReviewFingerprint
   // (lib/knowledge/tracked-point-review.ts) à partir des MÊMES signaux que reviewReasons — donc
@@ -94,6 +98,10 @@ export interface PointListFilterOptions {
 export interface SiteTrackedPointList {
   points: PointListEntry[]
   filters: PointListFilterOptions
+  // Date du dernier PV/visite terrain du chantier (mandat Vincent, Delta chantier) — même valeur
+  // que celle utilisée en interne pour `isChangedSinceLastPv`, exposée ici pour l'affichage
+  // (bannière « Depuis le dernier PV du... »), jamais recalculée par un consommateur.
+  lastPvDate: string | null
 }
 
 async function loadSubjectLabels(db: AdminClient, subjectIds: string[]): Promise<Map<string, string>> {
@@ -382,6 +390,7 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
       mentionsCount: p.trajectory.length,
       openedAt: p.trajectory[0]?.effectiveAt ?? null,
       passagesSinceEvent: p.latestMeaningfulEventAt ? countPassagesSince(pvDates, p.latestMeaningfulEventAt) : null,
+      daysSinceLastEvent: lingering?.daysSinceLastEvent ?? null,
       reviewFingerprint,
       isReviewed: isTrackedPointReviewed(reviewFingerprint, storedReview?.fingerprint),
       reviewedAt: storedReview?.reviewedAt ?? null,
@@ -393,5 +402,5 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
     .sort((a, b) => a.label.localeCompare(b.label))
   const actors = [...new Set(entries.flatMap((e) => e.actorNames))].sort((a, b) => a.localeCompare(b))
 
-  return { points: entries, filters: { subjects, actors } }
+  return { points: entries, filters: { subjects, actors }, lastPvDate }
 }

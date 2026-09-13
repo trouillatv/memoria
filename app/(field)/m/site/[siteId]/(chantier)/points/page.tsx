@@ -40,6 +40,7 @@ export default async function MobilePointsPage({
         pointHrefPrefix={`/m/site/${siteId}/point`}
         subjectHrefPrefix={`/m/site/${siteId}/sujets`}
         siteId={siteId}
+        lastPvDate={list.lastPvDate}
       />
     </div>
   )
