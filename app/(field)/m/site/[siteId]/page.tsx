@@ -37,7 +37,6 @@ import { computeSiteTodaySynthesis } from '@/lib/knowledge/site-today-synthesis'
 import { buildActivitySinceLastPv } from '@/lib/knowledge/site-activity'
 import { SiteTodaySynthesisLine } from '@/components/site/SiteTodaySynthesisLine'
 import { SiteTodayAttentionList } from '@/components/site/SiteTodayAttentionList'
-import { MemoriaNeedsYouBlock } from '@/components/site/MemoriaNeedsYouBlock'
 import { SiteLingeringPointsBlock } from '@/components/site/SiteLingeringPointsBlock'
 import { SincePvActivityBlock } from '@/components/site/SincePvActivityBlock'
 import { ChevronRight } from 'lucide-react'
@@ -360,12 +359,10 @@ export default async function FieldSitePage({
             />
           </section>
 
-          {/* 2bis — MemorIA a besoin de toi : signal d'attention discret, jamais un bloc
-              principal. Après « À surveiller », avant « Points qui traînent » (mandat Vincent
-              2026-09-11) — même bloc partagé que le desktop (loadMemoriaNeedsYouSummary). */}
-          {needsYouSummary && (
-            <MemoriaNeedsYouBlock summary={needsYouSummary} seeAllHref={`/m/site/${siteId}/besoin-de-toi`} />
-          )}
+          {/* MemorIA a besoin de toi a quitté Aujourd'hui (mandat Vincent 2026-09-13, révision
+              ciblée du mandat 2026-09-11) : NeedsYou est désormais une capacité de
+              Points > Pilotage, jamais une 2e porte d'entrée vers la même file. `needsYouSummary`
+              reste utilisé pour la phrase de synthèse (computeSiteTodaySynthesis) seulement. */}
 
           {/* 2ter — Points qui traînent : Lot 2 « Aujourd'hui », lecture pure du read-model
               Points (Lot 1), aucun nouveau moteur. */}

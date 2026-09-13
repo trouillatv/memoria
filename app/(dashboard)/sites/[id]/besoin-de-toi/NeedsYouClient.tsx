@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { CheckCircle2, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { QuestionCard, CATEGORY_TONE, CATEGORY_ICON, type ActionResult, type SitePointOption } from './NeedsYouCards'
@@ -170,6 +171,26 @@ function DeferredNoticesCard({ notices }: { notices: DeferredNotice[] }) {
   )
 }
 
+// Retour au Point d'origine (mandat item 6, 2026-09-13) : quand l'arrivée vient d'un CTA
+// « Clarifier » de Points > Pilotage ou de la fiche Point, on rappelle le Point source et on
+// propose un retour explicite — jamais affiché en dehors de ce parcours (pas de fromPoint/
+// fromLabel dans l'URL).
+function PointSourceBanner({ siteId, pointId, pointLabel }: { siteId: string; pointId: string; pointLabel: string }) {
+  return (
+    <div className="rounded-[14px] border border-violet-200 bg-violet-50/40 px-4 py-2.5 text-[13px] dark:border-violet-900/40 dark:bg-violet-950/15">
+      <p className="text-foreground/90">
+        Tu es ici parce que le Point « {pointLabel} » semble correspondre à cette question.
+      </p>
+      <Link
+        href={`/sites/${siteId}/point/${pointId}`}
+        className="mt-1 inline-flex items-center gap-1 font-medium text-violet-700 hover:underline dark:text-violet-300"
+      >
+        ← Retour au Point « {pointLabel} »
+      </Link>
+    </div>
+  )
+}
+
 export function NeedsYouClient({
   siteId,
   questions,
@@ -193,6 +214,10 @@ export function NeedsYouClient({
     () => (targetQuestionId ? questions.find((q) => q.id === targetQuestionId) ?? null : null),
     [targetQuestionId, questions],
   )
+  // Retour au Point d'origine (mandat item 6) — présent uniquement quand l'arrivée vient d'un
+  // CTA « Clarifier » côté Point (Pilotage ou fiche), jamais depuis la boîte générale.
+  const fromPointId = searchParams.get('fromPoint')
+  const fromPointLabel = searchParams.get('fromLabel')
   const [, startTransition] = useTransition()
   const [pending, setPending] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -396,6 +421,9 @@ export function NeedsYouClient({
   return (
     <div className="lg:grid lg:grid-cols-[1fr_280px] lg:items-start lg:gap-4">
       <div className="space-y-4">
+        {targetQuestion && fromPointId && fromPointLabel && (
+          <PointSourceBanner siteId={siteId} pointId={fromPointId} pointLabel={fromPointLabel} />
+        )}
         <SessionRecapCard recap={sessionRecap} />
         <DeferredNoticesCard notices={deferredNotices} />
         {/* Zone de filtres — sections nommées (Type de question / Période / Importance / Trier

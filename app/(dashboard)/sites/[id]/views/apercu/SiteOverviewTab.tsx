@@ -7,7 +7,6 @@ import { buildActivitySinceLastPv } from '@/lib/knowledge/site-activity'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { SiteTodaySynthesisLine } from '@/components/site/SiteTodaySynthesisLine'
 import { SiteTodayAttentionList } from '@/components/site/SiteTodayAttentionList'
-import { MemoriaNeedsYouBlock } from '@/components/site/MemoriaNeedsYouBlock'
 import { SiteLingeringPointsBlock } from '@/components/site/SiteLingeringPointsBlock'
 import { SincePvActivityBlock } from '@/components/site/SincePvActivityBlock'
 import { CopilotBlock } from './CopilotBlock'
@@ -15,14 +14,17 @@ import { CopilotBlock } from './CopilotBlock'
 // ── ONGLET « AUJOURD'HUI » (LOT 2 + LOT 2.1 + LOT UX Cockpit+Points, mandat Vincent) ─
 //
 // Réponse à UNE question : « qu'est-ce qui mérite mon attention maintenant sur ce
-// chantier ? ». Ordre figé (mandat Vincent 2026-09-11) : Synthèse chantier → Depuis le
-// dernier PV → À surveiller → MemorIA a besoin de toi → Points qui traînent → Demander à
-// MemorIA. Chaque bloc réutilise un moteur déjà gelé — aucun recalcul de score, d'état ou de tri :
+// chantier ? ». Ordre figé (mandat Vincent 2026-09-11), révisé sur UN point le 2026-09-13 :
+// Synthèse chantier → Depuis le dernier PV → À surveiller → Points qui traînent → Demander à
+// MemorIA. « MemorIA a besoin de toi » a quitté cet onglet (mandat 2026-09-13) : NeedsYou est
+// désormais une capacité de Points > Pilotage (cf. PointsPilotageView.tsx), jamais une 2e porte
+// d'entrée vers la même file. Le compte `needsYou.totalCount` reste utilisé ici pour la phrase de
+// synthèse (computeSiteTodaySynthesis), c'est la seule trace qui en subsiste sur cet onglet.
+// Chaque bloc réutilise un moteur déjà gelé — aucun recalcul de score, d'état ou de tri :
 //   - Synthèse chantier     : computeSiteTodaySynthesis (LOT 2.1, tally pur)
 //   - Depuis le dernier PV  : buildActivitySinceLastPv (#230, LOT 2.1 — réintégration de
 //                             l'ancien Aperçu, aucune logique recréée)
 //   - À surveiller          : deriveCanonicalAttentionItems (P0-C/P2-2)
-//   - MemorIA a besoin de toi : loadMemoriaNeedsYouSummary (6E.4A)
 //   - Points qui traînent   : selectLingeringPoints (Lot 1 + attention canonique + actions ouvertes
 //                             pour le départage, aucun nouveau score — cf. tracked-point-lingering.ts)
 //   - Demander à MemorIA    : CopilotBlock (composant existant, réintégré tel quel — LOT 2.1)
@@ -73,10 +75,6 @@ export async function SiteOverviewTab({ siteId }: { siteId: string }) {
           pointHrefPrefix={pointHrefPrefix}
         />
       </section>
-
-      {needsYou && (
-        <MemoriaNeedsYouBlock summary={needsYou} seeAllHref={`/sites/${siteId}/besoin-de-toi`} />
-      )}
 
       <section aria-labelledby="today-lingering" className="space-y-3">
         <div>

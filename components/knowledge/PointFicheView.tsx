@@ -270,10 +270,26 @@ const NEEDS_YOU_CATEGORIES_FOR_POINT = MEMORIA_NEEDS_YOU_CATEGORY_ORDER.filter(
 // conventions visuelles que MemoriaNeedsYouBlock.tsx (bloc violet), silence total si vide — jamais
 // un compteur à zéro. Bouton de traitement direct = deep-link `?q=<id>` vers la question précise
 // (needsYouQuestionHref) quand une seule question concerne ce Point ; sinon page besoin-de-toi du
-// chantier — jamais un choix arbitraire parmi plusieurs questions concernées.
-function NeedsYouForPointSection({ questions, href }: { questions: MemoriaNeedsYouQuestion[]; href?: string }) {
+// chantier — jamais un choix arbitraire parmi plusieurs questions concernées. `fromPoint`/
+// `fromLabel` (mandat item 6, 2026-09-13) permettent à besoin-de-toi d'afficher le Point d'origine
+// et un retour explicite.
+function NeedsYouForPointSection({
+  questions,
+  href,
+  pointId,
+  pointLabel,
+}: {
+  questions: MemoriaNeedsYouQuestion[]
+  href?: string
+  pointId: string
+  pointLabel: string
+}) {
   if (questions.length === 0 || !href) return null
-  const targetHref = questions.length === 1 ? needsYouQuestionHref(href, questions[0].id) : href
+  let targetHref = questions.length === 1 ? needsYouQuestionHref(href, questions[0].id) : href
+  if (questions.length === 1) {
+    const params = new URLSearchParams({ fromPoint: pointId, fromLabel: pointLabel })
+    targetHref = `${targetHref}&${params.toString()}`
+  }
   return (
     <section className="rounded-[16px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -292,7 +308,7 @@ function NeedsYouForPointSection({ questions, href }: { questions: MemoriaNeedsY
           href={targetHref}
           className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
         >
-          Répondre <ChevronRight className="h-3.5 w-3.5" />
+          Clarifier <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
       <ul className="mt-2.5 space-y-1">
@@ -364,7 +380,7 @@ export function PointFicheView({
       </section>
 
       <WhyTrackedSection p={p} />
-      <NeedsYouForPointSection questions={needsYouQuestions} href={needsYouHref} />
+      <NeedsYouForPointSection questions={needsYouQuestions} href={needsYouHref} pointId={p.id} pointLabel={p.label} />
 
       {/* En-tête */}
       <section className="rounded-[22px] border bg-card p-5 shadow-sm">

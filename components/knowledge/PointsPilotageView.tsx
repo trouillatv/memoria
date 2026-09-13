@@ -13,11 +13,18 @@
 //
 // Le geste central « ✓ Revu, rien à faire » enregistre le fingerprint COURANT (jamais fourni par
 // le client — recalculé serveur dans recordPointReviewedAction). « Passer »/« Suivant » ne font
-// AUCUNE écriture, c'est une navigation pure. « Ouvrir »/« Répondre » pointent vers la fiche Point
-// existante — aucun geste n'est réimplémenté ici.
+// AUCUNE écriture, c'est une navigation pure. « Ouvrir » pointe vers la fiche Point existante —
+// aucun geste n'est réimplémenté ici.
 //
 // « Déjà revu » signifie « revu PAR CET UTILISATEUR », jamais « traité par l'équipe » : l'état
 // métier réel du Point (résolu/ouvert/réouvert) reste totalement indépendant de cette mémoire.
+//
+// NeedsYou ⊂ À revoir (mandat Vincent, recette 2026-09-13) : une question MemorIA active est un
+// sous-ensemble de « à revoir », jamais une file séparée. Tant qu'elle reste active sur ce Point,
+// le geste « Revu, rien à faire » n'est pas proposé (répondre à MemorIA n'est pas un geste
+// d'acquittement fingerprint) et le bouton « Clarifier » ouvre directement la question précise sur
+// la page de clarification (jamais la fiche Point, jamais la boîte générale) quand elle est
+// identifiable sans ambiguïté (`needsYouQuestionId`).
 
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
@@ -35,8 +42,21 @@ const frDate = (iso: string | null): string | null => (iso ? DATE_FMT.format(new
 const frTime = (iso: string): string => TIME_FMT.format(new Date(iso))
 
 function pointHref(pointHrefPrefix: string, p: PointListEntry): string {
-  const base = `${pointHrefPrefix}/${p.id}`
-  return p.needsYouQuestionId ? `${base}?q=${encodeURIComponent(p.needsYouQuestionId)}` : base
+  return `${pointHrefPrefix}/${p.id}`
+}
+
+// Lien direct vers la question NeedsYou précise (jamais via la fiche Point, qui ignore `?q=`
+// aujourd'hui — cf. audit mandat item 5). `fromPoint`/`fromLabel` permettent à besoin-de-toi
+// d'afficher le Point d'origine et un retour explicite.
+function needsYouClarifyHref(siteId: string, p: PointListEntry): string {
+  const base = `/sites/${siteId}/besoin-de-toi`
+  if (!p.needsYouQuestionId) return base
+  const params = new URLSearchParams({
+    q: p.needsYouQuestionId,
+    fromPoint: p.id,
+    fromLabel: p.label,
+  })
+  return `${base}?${params.toString()}`
 }
 
 function MarkReviewedButton({ siteId, pointId }: { siteId: string; pointId: string }) {
@@ -103,12 +123,12 @@ function ReviewCard({ p, pointHrefPrefix, siteId }: { p: PointListEntry; pointHr
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Link
-          href={pointHref(pointHrefPrefix, p)}
+          href={isNeedsYou ? needsYouClarifyHref(siteId, p) : pointHref(pointHrefPrefix, p)}
           className="inline-flex items-center rounded-lg border px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-muted"
         >
-          {isNeedsYou ? 'Répondre' : 'Ouvrir'}
+          {isNeedsYou ? 'Clarifier' : 'Ouvrir'}
         </Link>
-        <MarkReviewedButton siteId={siteId} pointId={p.id} />
+        {!isNeedsYou && <MarkReviewedButton siteId={siteId} pointId={p.id} />}
       </div>
     </div>
   )
@@ -274,7 +294,14 @@ export function PointsPilotageView({
           À revoir — {toReview.length} Point{toReview.length !== 1 ? 's' : ''}
         </p>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
-          {reopenedCount} réouvert{reopenedCount !== 1 ? 's' : ''} · {needsYouCount} avec question MemorIA
+          {reopenedCount} réouvert{reopenedCount !== 1 ? 's' : ''} ·{' '}
+          {needsYouCount > 0 ? (
+            <Link href={`/sites/${siteId}/besoin-de-toi`} className="font-medium text-violet-700 hover:underline dark:text-violet-300">
+              {needsYouCount} avec question MemorIA
+            </Link>
+          ) : (
+            <>{needsYouCount} avec question MemorIA</>
+          )}
           {otherSignalCount > 0 && <> · {otherSignalCount} autre signal{otherSignalCount !== 1 ? 's' : ''}</>}
         </p>
         <button
