@@ -15,6 +15,8 @@ function entry(overrides: Partial<PointListEntry>): PointListEntry {
     needsYouCount: 0,
     needsYouQuestionId: null,
     reviewReasons: [],
+    isLingering: false,
+    isChangedSinceLastPv: false,
     mentionsCount: 1,
     openedAt: null,
     passagesSinceEvent: null,

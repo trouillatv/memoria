@@ -173,11 +173,25 @@ export function PointsPilotageView({
   )
   const reopenedCount = useMemo(() => toReview.filter((p) => p.derivedState === 'reopened').length, [toReview])
   const needsYouCount = useMemo(() => toReview.filter((p) => p.needsYouCount > 0).length, [toReview])
-  // « Autre signal » = ni réouvert ni NeedsYou : la raison vient uniquement de changé/nouveau
-  // depuis le dernier PV, de Points qui traînent, ou d'une attention canonique pertinente —
-  // comptage par soustraction, aucune 2e étiquette à maintenir en parallèle des reviewReasons.
+  // Habillage résumé Pilotage (mandat Vincent, item 3 lot 3 — « ça ne demande aucun nouveau
+  // moteur, les catégories existent déjà ») : décomposition du bucket résiduel en ses 2 vraies
+  // catégories nommées via isLingering/isChangedSinceLastPv (mêmes flags que reviewReasons).
+  const lingeringCount = useMemo(
+    () => toReview.filter((p) => p.derivedState !== 'reopened' && p.needsYouCount === 0 && p.isLingering).length,
+    [toReview],
+  )
+  const changedCount = useMemo(
+    () => toReview.filter((p) => p.derivedState !== 'reopened' && p.needsYouCount === 0 && p.isChangedSinceLastPv).length,
+    [toReview],
+  )
+  // Filet de sécurité : tout Point ni réouvert, ni NeedsYou, ni lingering, ni changé au dernier
+  // PV (aujourd'hui uniquement une attention canonique pertinente sans les autres raisons —
+  // act_now=0 sur le corpus observé, cf. audit Lot 3). Jamais masqué si non nul.
   const otherSignalCount = useMemo(
-    () => toReview.filter((p) => p.derivedState !== 'reopened' && p.needsYouCount === 0).length,
+    () =>
+      toReview.filter(
+        (p) => p.derivedState !== 'reopened' && p.needsYouCount === 0 && !p.isLingering && !p.isChangedSinceLastPv,
+      ).length,
     [toReview],
   )
 
@@ -301,6 +315,8 @@ export function PointsPilotageView({
           ) : (
             <>{needsYouCount} avec question MemorIA</>
           )}
+          {lingeringCount > 0 && <> · {lingeringCount} qui traîne{lingeringCount !== 1 ? 'nt' : ''}</>}
+          {changedCount > 0 && <> · {changedCount} changé{changedCount !== 1 ? 's' : ''} au dernier PV</>}
           {otherSignalCount > 0 && <> · {otherSignalCount} autre signal{otherSignalCount !== 1 ? 's' : ''}</>}
         </p>
         <button

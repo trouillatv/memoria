@@ -60,6 +60,12 @@ export interface PointListEntry {
   // canonique pertinente). Un Point peut porter plusieurs raisons ; tableau vide = pas de
   // raison de revue actuelle. Jamais un score.
   reviewReasons: string[]
+  // Flags structurés dérivés des MÊMES conditions que reviewReasons/buildReviewSignalInput
+  // ci-dessous (mandat Vincent, habillage résumé Pilotage — item 3 lot 3) : permettent de
+  // décomposer le bucket résiduel « autre signal » en ses 2 vraies catégories nommées
+  // (changé au dernier PV, Points qui traînent) sans nouveau moteur ni recalcul.
+  isLingering: boolean
+  isChangedSinceLastPv: boolean
   // Compteurs d'affichage « si disponible » (mandat ajustement Pilotage) — dérivés à coût nul
   // de la trajectoire déjà chargée par tracked-point-read-model.ts (même bornage que
   // mentionsCount/openedAt de tracked-point-detail.ts, jamais une 2e heuristique).
@@ -371,6 +377,8 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
         latestMeaningfulEventAt: p.latestMeaningfulEventAt,
         attentionReason: attentionInfo?.reason ?? null,
       }),
+      isLingering: Boolean(lingering),
+      isChangedSinceLastPv: Boolean(lastPvDate && p.latestMeaningfulEventAt === lastPvDate),
       mentionsCount: p.trajectory.length,
       openedAt: p.trajectory[0]?.effectiveAt ?? null,
       passagesSinceEvent: p.latestMeaningfulEventAt ? countPassagesSince(pvDates, p.latestMeaningfulEventAt) : null,
