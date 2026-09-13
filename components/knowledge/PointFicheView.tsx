@@ -99,12 +99,14 @@ function LinkedObjectGroupsTable({
   groups,
   emptyLabel,
   siteId,
+  pointId,
   responsibleCandidates,
   companies,
 }: {
   groups: PointDetailLinkedObjectGroup[]
   emptyLabel: string
   siteId: string
+  pointId: string
   responsibleCandidates: ResponsibleCandidate[]
   companies: SiteCandidateCompany[]
 }) {
@@ -147,7 +149,7 @@ function LinkedObjectGroupsTable({
                 </td>
                 <td className="px-2 py-2 text-right">
                   {o.objectType === 'site_action' && (
-                    <PointActionMenu action={o} siteId={siteId} responsibleCandidates={responsibleCandidates} companies={companies} />
+                    <PointActionMenu action={o} siteId={siteId} pointId={pointId} responsibleCandidates={responsibleCandidates} companies={companies} />
                   )}
                 </td>
               </tr>
@@ -397,6 +399,7 @@ export function PointFicheView({
               groups={p.openLinkedObjectGroups}
               emptyLabel="Rien à faire actuellement sur ce Point."
               siteId={p.siteId}
+              pointId={p.id}
               responsibleCandidates={responsibleCandidates}
               companies={companies}
             />

@@ -42,3 +42,28 @@ export async function recordPointReviewedAction(
   })
   return { ok: true }
 }
+
+// Revue implicite (mandat Vincent, mini-lot « geste métier = revue implicite ») : certains gestes
+// métier prouvent que David vient d'examiner ce Point dans son état courant (marquer une Action
+// traitée, rouvrir, modifier responsable/entreprise/échéance). On enregistre alors la revue avec
+// le fingerprint recalculé APRÈS l'écriture métier — jamais celui d'avant (sinon le Point
+// ressortirait instantanément dans « À revoir » alors que David vient de le traiter).
+//
+// Best-effort et silencieux : appelé APRÈS le succès du geste métier lui-même, dont le résultat ne
+// doit jamais être conditionné à cette écriture secondaire. Si le Point n'a plus rien à revoir
+// (fingerprint devenu null), il n'y a rien à enregistrer — ce n'est jamais une erreur.
+export async function recordPointReviewedAfterGesture(siteId: string, pointId: string): Promise<void> {
+  const access = await requireSiteReadAccess(siteId)
+  if (!access.ok) return
+
+  const list = await loadSiteTrackedPointList(siteId, access.userId)
+  const point = list.points.find((p) => p.id === pointId)
+  if (!point || point.reviewFingerprint === null) return
+
+  await recordTrackedPointReview({
+    siteId,
+    userId: access.userId,
+    trackedPointId: pointId,
+    reviewFingerprint: point.reviewFingerprint,
+  })
+}

@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { MoreHorizontal, Loader2, Check, RotateCcw, Pencil, Eye } from 'lucide-react'
 import { closeActionAction, reopenActionAction, updateActionAssignmentAction } from '@/app/(dashboard)/actions/actions'
+import { recordPointReviewedAfterGesture } from '@/lib/knowledge/tracked-point-review-actions'
 import type { PointDetailLinkedObject } from '@/lib/knowledge/tracked-point-detail'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
 import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
@@ -28,11 +29,13 @@ type Mode = null | 'menu' | 'treat' | 'reopen' | 'edit'
 export function PointActionMenu({
   action,
   siteId,
+  pointId,
   responsibleCandidates,
   companies,
 }: {
   action: PointDetailLinkedObject
   siteId: string
+  pointId: string
   responsibleCandidates: ResponsibleCandidate[]
   companies: SiteCandidateCompany[]
 }) {
@@ -66,6 +69,7 @@ export function PointActionMenu({
     startTransition(async () => {
       const r = await closeActionAction(fd)
       if (!r.ok) { setError(r.error); return }
+      await recordPointReviewedAfterGesture(siteId, pointId)
       closeMenus(); router.refresh()
     })
   }
@@ -77,6 +81,7 @@ export function PointActionMenu({
     startTransition(async () => {
       const r = await reopenActionAction(fd)
       if (!r.ok) { setError(r.error); return }
+      await recordPointReviewedAfterGesture(siteId, pointId)
       closeMenus(); router.refresh()
     })
   }
@@ -96,6 +101,7 @@ export function PointActionMenu({
         if (r.requiresConfirmation) setConfirmMismatch(true)
         return
       }
+      await recordPointReviewedAfterGesture(siteId, pointId)
       closeMenus(); router.refresh()
     })
   }
