@@ -124,4 +124,28 @@ describe('buildSiteIntervenantsConsolidated', () => {
     expect(r.gaps.length).toBeGreaterThan(0)
     expect(r.gaps.join(' ')).toMatch(/Points où citée/)
   })
+
+  it('une Action clôturée/annulée ne compte pas dans "Actions ouvertes" (même ensemble que site-intervenants-view/company-fiche)', () => {
+    const r = buildSiteIntervenantsConsolidated({
+      ...base(),
+      actions: [{
+        id: 'a1', title: 'Déjà traitée', dueDate: null, dueDateStatus: null, status: 'done',
+        createdAt: '2026-06-01', assignedCompanyId: PACIFIC_FROID, assignedContactId: null,
+      }],
+    })
+    const pacific = r.intervenants.find((i) => i.companyId === PACIFIC_FROID)
+    expect(pacific).toBeUndefined() // aucune autre dimension ne la fait apparaître
+  })
+
+  it('un contact sans Action apparaît quand même dans l\'annuaire "Contacts" (actionsCount: 0)', () => {
+    const r = buildSiteIntervenantsConsolidated({
+      ...base(),
+      casting: [{ id: 'si1', companyId: CLIM_EXPAIR, role: 'ETV', effectiveFrom: '2026-01-01', effectiveTo: null }],
+      contactById: new Map([['ct1', { id: 'ct1', name: 'Marie Martin', function: 'Assistante', companyId: CLIM_EXPAIR }]]),
+    })
+    const climExpair = r.intervenants.find((i) => i.companyId === CLIM_EXPAIR)!
+    expect(climExpair.contacts).toHaveLength(1)
+    expect(climExpair.contacts[0]!.name).toBe('Marie Martin')
+    expect(climExpair.contacts[0]!.actionsCount).toBe(0)
+  })
 })

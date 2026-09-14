@@ -20,8 +20,12 @@ import 'server-only'
 // donc hors de portée de ce fichier par construction).
 //
 // Dimensions couvertes :
-//   1. Actions responsables   — site_actions.assigned_company_id
-//   2. Contacts responsables  — site_actions.assigned_contact_id → company_contacts.company_id
+//   1. Actions responsables   — site_actions.assigned_company_id (open/planned seulement,
+//      même ensemble que site-intervenants-view.ts et company-fiche.ts : une Action
+//      terminée/annulée n'est plus une charge de travail en cours)
+//   2. Contacts               — annuaire COMPLET de company_contacts pour chaque entreprise
+//      déjà pertinente sur ce site (casting/actions/points), pas seulement les contacts
+//      portant une Action ; actionsCount reste précis via assigned_contact_id
 //   3. Points pilotés         — tracked_point_responsible_companies (mig 406)
 //   4. Présence dans les PV   — site_intervenants (casting), dédupliquée par canonique
 // Dimension EXPLICITEMENT DIFFÉRÉE (gap documenté, pas un oubli) :
@@ -153,8 +157,12 @@ export function buildSiteIntervenantsConsolidated(input: ConsolidatedInputs): Si
   }
 
   // ── 1 & 2. Actions responsables (entreprise directe OU via contact) ───────
+  // « Actions ouvertes » : seuls open/planned comptent (même ensemble que
+  // site-intervenants-view.ts et company-fiche.ts) — une Action terminée/annulée
+  // n'est plus une charge de travail en cours.
   const contactActionCounts = new Map<string, number>()
   for (const a of input.actions) {
+    if (a.status !== 'open' && a.status !== 'planned') continue
     const directCompanyId = a.assignedCompanyId ? canon(a.assignedCompanyId) : null
     const contact = a.assignedContactId ? input.contactById.get(a.assignedContactId) : null
     const contactCompanyId = contact?.companyId ? canon(contact.companyId) : null
@@ -174,13 +182,23 @@ export function buildSiteIntervenantsConsolidated(input: ConsolidatedInputs): Si
       contactActionCounts.set(contact.id, (contactActionCounts.get(contact.id) ?? 0) + 1)
     }
   }
-  // Contacts responsables (uniquement ceux qui portent réellement au moins une Action
-  // dans ce site, jamais tout l'annuaire de l'entreprise).
-  for (const [contactId, count] of contactActionCounts) {
-    const contact = input.contactById.get(contactId)
-    if (!contact?.companyId) continue
-    const entry = get(canon(contact.companyId))
-    entry.contacts.push({ id: contact.id, name: contact.name, function: contact.function, actionsCount: count, href: `/intervenants/personne/${contact.id}` })
+  // Contacts — annuaire COMPLET des personnes rattachées à l'entreprise (bloc
+  // « Contacts » du Lot 3), pas seulement celles qui portent une Action. Le
+  // compteur d'actions reste précis pour celles qui en portent (contactActionCounts).
+  const contactsByCanonicalCompany = new Map<string, ConsolidatedContactRow[]>()
+  for (const contact of input.contactById.values()) {
+    if (!contact.companyId) continue
+    const canonicalId = canon(contact.companyId)
+    const list = contactsByCanonicalCompany.get(canonicalId) ?? []
+    list.push({
+      id: contact.id, name: contact.name, function: contact.function,
+      actionsCount: contactActionCounts.get(contact.id) ?? 0,
+      href: `/intervenants/personne/${contact.id}`,
+    })
+    contactsByCanonicalCompany.set(canonicalId, list)
+  }
+  for (const [companyId, contacts] of contactsByCanonicalCompany) {
+    get(companyId).contacts = contacts
   }
 
   // ── 3. Points pilotés ───────────────────────────────────────────────────
@@ -203,7 +221,7 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
 
   const [castRes, actRes, pointRespRes] = await Promise.all([
     db.from('site_intervenants').select('id, company_id, role, effective_from, effective_to').eq('site_id', siteId).not('company_id', 'is', null),
-    db.from('site_actions').select('id, title, due_date, due_date_status, status, created_at, assigned_company_id, assigned_contact_id').eq('site_id', siteId),
+    db.from('site_actions').select('id, title, due_date, due_date_status, status, created_at, assigned_company_id, assigned_contact_id').eq('site_id', siteId).in('status', ['open', 'planned']),
     db.from('tracked_point_responsible_companies').select('id, company_id, designated_at, tracked_point_id').eq('site_id', siteId).is('revoked_at', null),
   ])
   const casting = (castRes.data ?? []) as Array<{ id: string; company_id: string; role: string; effective_from: string | null; effective_to: string | null }>
@@ -214,14 +232,14 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
   const pointsResponsibleRaw = (pointRespRes.data ?? []) as Array<{ id: string; company_id: string; designated_at: string; tracked_point_id: string }>
 
   const relevantActions = actions.filter((a) => a.assigned_company_id || a.assigned_contact_id)
-  const contactIds = [...new Set(relevantActions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v))]
-  const { data: contactRows } = contactIds.length
-    ? await db.from('company_contacts').select('id, full_name, function, company_id').in('id', contactIds)
-    : { data: [] as Array<{ id: string; full_name: string; function: string | null; company_id: string | null }> }
-  const contactById = new Map(
-    ((contactRows ?? []) as Array<{ id: string; full_name: string; function: string | null; company_id: string | null }>)
-      .map((c) => [c.id, { id: c.id, name: c.full_name, function: c.function, companyId: c.company_id }]),
-  )
+  // Contacts référencés DIRECTEMENT par une Action — sert d'abord à résoudre
+  // l'entreprise du contact (canon), avant même de connaître `companyIds`.
+  const directContactIds = [...new Set(relevantActions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v))]
+  const { data: directContactRows } = directContactIds.length
+    ? await db.from('company_contacts').select('id, company_id').in('id', directContactIds)
+    : { data: [] as Array<{ id: string; company_id: string | null }> }
+  const directContactCompanyIds = ((directContactRows ?? []) as Array<{ company_id: string | null }>)
+    .map((c) => c.company_id).filter((v): v is string => !!v)
 
   const pointIds = [...new Set(pointsResponsibleRaw.map((p) => p.tracked_point_id))]
   const { data: pointRows } = pointIds.length
@@ -236,9 +254,20 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
   const companyIds = [...new Set([
     ...casting.map((c) => c.company_id),
     ...relevantActions.map((a) => a.assigned_company_id).filter((v): v is string => !!v),
-    ...[...contactById.values()].map((c) => c.companyId).filter((v): v is string => !!v),
+    ...directContactCompanyIds,
     ...pointsResponsible.map((p) => p.companyId),
   ])]
+
+  // Annuaire COMPLET des contacts (bloc « Contacts », Lot 3) — toutes les personnes
+  // rattachées à une entreprise déjà pertinente sur ce site, pas seulement celles
+  // qui portent une Action (cf. commentaire de tête de fichier, gap fermé).
+  const { data: allContactRows } = companyIds.length
+    ? await db.from('company_contacts').select('id, full_name, function, company_id').in('company_id', companyIds).is('deleted_at', null)
+    : { data: [] as Array<{ id: string; full_name: string; function: string | null; company_id: string | null }> }
+  const contactById = new Map(
+    ((allContactRows ?? []) as Array<{ id: string; full_name: string; function: string | null; company_id: string | null }>)
+      .map((c) => [c.id, { id: c.id, name: c.full_name, function: c.function, companyId: c.company_id }]),
+  )
   // Toute entreprise ALIAS peut pointer vers une entreprise absente de `companyIds` (jamais
   // citée directement sur ce site) : un second aller-retour résout ces cibles pour que
   // `resolveCanonicalCompanyId` retombe toujours sur un nom connu, jamais sur l'id brut.
@@ -272,4 +301,12 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
     contactById,
     pointsResponsible,
   })
+}
+
+/** Une seule entrée de la consolidation (fiche entreprise, Lot 3) — `companyId`
+ *  est déjà résolu au canonique par construction : tous les liens de fiche sont
+ *  émis à partir de `ConsolidatedIntervenant.companyId`, jamais d'un id alias. */
+export async function getSiteCompanyFiche(siteId: string, companyId: string): Promise<ConsolidatedIntervenant | null> {
+  const result = await getSiteIntervenantsConsolidated(siteId)
+  return result?.intervenants.find((i) => i.companyId === companyId) ?? null
 }

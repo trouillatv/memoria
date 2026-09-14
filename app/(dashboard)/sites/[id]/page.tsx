@@ -41,9 +41,8 @@ import { listSiteProofDossiers } from '@/lib/db/proof-dossier'
 import { getSiteQrHistory, getSiteQrInfo } from '@/lib/db/site-qr'
 import { getSiteGraph } from '@/lib/knowledge/site-graph'
 import { getSiteIntervenantsView, getSiteIntervenantFiche } from '@/lib/knowledge/site-intervenants-view'
-import { buildIntervenantsDashboard } from '@/lib/knowledge/intervenants-dashboard-model'
+import { getSiteIntervenantsConsolidated } from '@/lib/knowledge/site-intervenants-consolidated'
 import { IntervenantsLeaderboard } from './views/intervenants/IntervenantsLeaderboard'
-import { todayLocalIso } from '@/lib/time/local-date'
 import { PersistentFicheSheet } from './views/PersistentFicheSheet'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
 import { getSiteDecisionFiche } from '@/lib/knowledge/decision-fiche'
@@ -634,15 +633,19 @@ function captureKindLabel(kind: string): string {
 }
 
 async function IntervenantsView({ siteId }: { siteId: string }) {
-  const view = await getSiteIntervenantsView(siteId).catch(() => null)
-  if (!view) return null
+  // Lot 3 (mandat Vincent 2026-09-14) : le tableau agrège désormais par
+  // ENTREPRISE CANONIQUE (Lot 2A/2B) ; `getSiteIntervenantsView` reste la source
+  // du pipeline « À identifier » (personne, IA) — inchangé, deux lectures
+  // distinctes, deux vérités distinctes.
+  const [view, consolidated] = await Promise.all([
+    getSiteIntervenantsView(siteId).catch(() => null),
+    getSiteIntervenantsConsolidated(siteId).catch(() => null),
+  ])
+  if (!view || !consolidated) return null
   // La décision « l'onglet a-t-il sa place ? » se prendra sur l'usage réel
   // (arbitrage 2026-07-18 : en observation) — best-effort, ne retarde rien.
   void logUsageEvent({ event: 'intervenants_opened', siteId })
-  // Projection leaderboard depuis la MÊME lecture (pas de second fetch) : mêmes
-  // personnes, même vérité que la fiche.
-  const dashboard = buildIntervenantsDashboard(siteId, view.groups.flatMap((g) => g.people), view.toIdentifyCount, todayLocalIso())
-  return <IntervenantsLeaderboard siteId={siteId} dashboard={dashboard} toIdentify={view.toIdentify} />
+  return <IntervenantsLeaderboard siteId={siteId} consolidated={consolidated} toIdentify={view.toIdentify} />
 }
 
 async function ExplorerView({ siteId }: { siteId: string }) {
