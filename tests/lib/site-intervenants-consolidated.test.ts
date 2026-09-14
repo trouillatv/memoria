@@ -26,6 +26,7 @@ function base(): ConsolidatedInputs {
       { id: PACIFIC_FROID, name: 'Pacific Froid Clim', status: 'active', aliasOfCompanyId: null },
     ]),
     casting: [], actions: [], contactById: new Map(), pointsResponsible: [],
+    decisions: [], obligations: [],
   }
 }
 
@@ -147,5 +148,51 @@ describe('buildSiteIntervenantsConsolidated', () => {
     expect(climExpair.contacts).toHaveLength(1)
     expect(climExpair.contacts[0]!.name).toBe('Marie Martin')
     expect(climExpair.contacts[0]!.actionsCount).toBe(0)
+  })
+
+  it('Décision portée directement par l\'entreprise (decisionnaire_company_id, mig 284) apparaît sous le canonique', () => {
+    const r = buildSiteIntervenantsConsolidated({
+      ...base(),
+      decisions: [{ id: 'd1', titre: 'Remplacer la centrale', statut: 'actee', dateDecision: '2026-08-15', companyId: CLIM_EXPAIR_ALIAS, contactId: null }],
+    })
+    const climExpair = r.intervenants.find((i) => i.companyId === CLIM_EXPAIR)!
+    expect(climExpair.decisions).toHaveLength(1)
+    expect(climExpair.decisions[0]!.titre).toBe('Remplacer la centrale')
+    expect(climExpair.decisions[0]!.href).toBe('/sites/site-rus/decision/d1')
+    expect(climExpair.lastActivityAt).toBe('2026-08-15')
+  })
+
+  it('Décision portée via un contact (decisionnaire_contact_id) roule vers l\'entreprise du contact, résolue au canonique', () => {
+    const r = buildSiteIntervenantsConsolidated({
+      ...base(),
+      contactById: new Map([['ct1', { id: 'ct1', name: 'Jean Dupont', function: 'Technicien', companyId: PACIFIC_FROID }]]),
+      decisions: [{ id: 'd1', titre: 'Valider le devis', statut: 'proposee', dateDecision: null, companyId: null, contactId: 'ct1' }],
+    })
+    const pacific = r.intervenants.find((i) => i.companyId === PACIFIC_FROID)!
+    expect(pacific.decisions).toHaveLength(1)
+    expect(pacific.decisions[0]!.id).toBe('d1')
+  })
+
+  it('une Décision caduque/contredite ne compte pas comme engagement actif', () => {
+    const r = buildSiteIntervenantsConsolidated({
+      ...base(),
+      decisions: [{ id: 'd1', titre: 'Décision abandonnée', statut: 'caduque', dateDecision: '2026-01-01', companyId: PACIFIC_FROID, contactId: null }],
+    })
+    const pacific = r.intervenants.find((i) => i.companyId === PACIFIC_FROID)
+    expect(pacific).toBeUndefined()
+  })
+
+  it('Obligation ouverte (a_produire/en_cours) portée via contact incrémente openObligationsCount, résolue au canonique', () => {
+    const r = buildSiteIntervenantsConsolidated({
+      ...base(),
+      contactById: new Map([['ct1', { id: 'ct1', name: 'Marie Martin', function: 'Assistante', companyId: CLIM_EXPAIR_ALIAS }]]),
+      obligations: [
+        { contactId: 'ct1', status: 'a_produire' },
+        { contactId: 'ct1', status: 'en_cours' },
+        { contactId: 'ct1', status: 'satisfaite' },
+      ],
+    })
+    const climExpair = r.intervenants.find((i) => i.companyId === CLIM_EXPAIR)!
+    expect(climExpair.openObligationsCount).toBe(2)
   })
 })

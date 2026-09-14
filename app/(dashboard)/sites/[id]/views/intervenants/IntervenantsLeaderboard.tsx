@@ -1,24 +1,28 @@
 'use client'
 
-// ── PAGE INTERVENANTS (pilotage) — coquille ──────────────────────────────────
-// Lot 3 (mandat Vincent 2026-09-14) : le tableau agrège désormais PAR ENTREPRISE
-// CANONIQUE (lib/knowledge/site-intervenants-consolidated.ts, Lot 2A/2B), plus
-// par personne — les doublons de nom (Clim Exp'Air/Clim'Expair) fusionnent, les
-// compteurs d'activité comptent enfin l'Action portée par l'entreprise seule.
-// Colonnes Engagements/Décisions/Obligations retirées (plus la bonne unité de
-// lecture) ; un clic ouvre la fiche entreprise (4 blocs : À faire, Points,
-// Présence chantier, Contacts). Les propositions IA (pipeline personne) restent
-// une bannière de WORKFLOW séparée, inchangée.
+// ── PAGE INTERVENANTS (pilotage) — Intervenants V2 ───────────────────────────
+// Mandat Vincent 2026-09-14 (GO accélération) : faire de cet onglet une vraie
+// vue de pilotage des acteurs, pas un annuaire à zéros. Le tableau plat cède la
+// place à une hiérarchie à 4 niveaux (En retard / Engagements actifs / Sans
+// activité récente / Cités-castés sans engagement), calculée uniquement à partir
+// de champs déjà datés du read-model consolidé (lib/knowledge/site-intervenants-consolidated.ts,
+// Lot 2A/2B/3) — aucune catégorie sans substrat mesuré. Une ligne = une carte
+// responsive (flex-col mobile → flex-row desktop), jamais un tableau comprimé.
+// Un clic/tap ouvre la fiche entreprise (À faire, Décisions, Obligations,
+// Points, Présence chantier, Contacts). Les propositions IA (pipeline personne)
+// restent une bannière de WORKFLOW séparée, inchangée.
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useFicheHref } from '@/components/knowledge/use-fiche-href'
 import { Building2, ListChecks, Clock, MapPin, UserPlus, ChevronRight } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import type { ConsolidatedIntervenant, SiteIntervenantsConsolidated } from '@/lib/knowledge/site-intervenants-consolidated'
 import type { ToIdentifyItem } from '@/lib/knowledge/site-intervenants-view'
 import { IdentifyCard } from './IdentifyCard'
+
+const STALE_AFTER_DAYS = 30 // même seuil que site_visit_stale/longNoVisitBoost (cohérence transverse)
 
 function frDate(iso: string | null): string {
   if (!iso) return '—'
@@ -28,6 +32,14 @@ function frDate(iso: string | null): string {
 
 function formatRole(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1)
+}
+
+function hasActiveEngagement(r: ConsolidatedIntervenant): boolean {
+  return r.actions.length > 0 || r.decisions.length > 0 || r.openObligationsCount > 0 || r.pointsPiloted.length > 0
+}
+
+function engagementScore(r: ConsolidatedIntervenant): number {
+  return r.actions.length + r.decisions.length + r.openObligationsCount + r.pointsPiloted.length
 }
 
 // KPI avec icône ronde colorée
@@ -46,12 +58,76 @@ function Kpi({ icon: Icon, label, value, sub, tint }: { icon: typeof Building2; 
   )
 }
 
-type QuickFilter = 'all' | 'open' | 'late' | 'points'
-type SortKey = 'actions' | 'late' | 'recent' | 'name'
-const CHIPS: Array<{ key: QuickFilter; label: string }> = [
-  { key: 'all', label: 'Toutes' }, { key: 'open', label: 'Actions ouvertes' },
-  { key: 'late', label: 'En retard' }, { key: 'points', label: 'Points pilotés' },
-]
+const BUCKET_ACCENT = {
+  rose: 'border-rose-200 dark:border-rose-900/40',
+  default: 'border-border/60',
+  muted: 'border-border/60',
+} as const
+
+/** Une carte responsive — flex-col sur mobile, flex-row sur desktop. Un seul
+ *  balisage pour les deux tailles (pas de duplication table/carte). */
+function IntervenantRow({ r, siteId, ficheHref }: {
+  r: ConsolidatedIntervenant
+  siteId: string
+  ficheHref: (href: string) => string | null
+}) {
+  const roles = [...new Set(r.casting.map((c) => formatRole(c.role)))]
+  const href = ficheHref(`/sites/${siteId}/entreprise/${r.companyId}`) ?? `/sites/${siteId}/entreprise/${r.companyId}`
+  const engagementParts = [
+    r.actions.length > 0 ? `${r.actions.length} action${r.actions.length > 1 ? 's' : ''}` : null,
+    r.decisions.length > 0 ? `${r.decisions.length} décision${r.decisions.length > 1 ? 's' : ''}` : null,
+    r.openObligationsCount > 0 ? `${r.openObligationsCount} obligation${r.openObligationsCount > 1 ? 's' : ''}` : null,
+    r.pointsPiloted.length > 0 ? `${r.pointsPiloted.length} Point${r.pointsPiloted.length > 1 ? 's' : ''} piloté${r.pointsPiloted.length > 1 ? 's' : ''}` : null,
+  ].filter((v): v is string => v !== null)
+
+  return (
+    <Link href={href} scroll={false}
+      className="group flex flex-col gap-2 rounded-xl border bg-card px-4 py-3 shadow-sm transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Building2 className="h-4 w-4" /></span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <b className="min-w-0 truncate text-[13.5px] font-semibold">{r.companyName}</b>
+          <span className="text-[12px] text-muted-foreground">{roles.length > 0 ? roles.join(' · ') : 'Rôle non précisé'}</span>
+        </div>
+        <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
+          {engagementParts.length > 0 ? engagementParts.join(' · ') : 'Aucun engagement actif'}
+          {r.overdueActionsCount > 0 && (
+            <span className="ml-2 font-medium text-rose-600 dark:text-rose-400">
+              {r.overdueActionsCount} en retard
+            </span>
+          )}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2.5 text-[11.5px] text-muted-foreground">
+        <span>Dernière activité {frDate(r.lastActivityAt)}</span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground" />
+      </div>
+    </Link>
+  )
+}
+
+function IntervenantBucket({ title, hint, items, siteId, ficheHref, accent }: {
+  title: string
+  hint: string
+  items: ConsolidatedIntervenant[]
+  siteId: string
+  ficheHref: (href: string) => string | null
+  accent: keyof typeof BUCKET_ACCENT
+}) {
+  if (items.length === 0) return null
+  return (
+    <section>
+      <div className="mb-2 flex items-baseline gap-2">
+        <h2 className="text-[13px] font-semibold">{title}</h2>
+        <span className="rounded-full bg-muted px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">{items.length}</span>
+        <span className="text-[11.5px] text-muted-foreground">{hint}</span>
+      </div>
+      <div className={`space-y-2 rounded-2xl border border-dashed p-2 ${BUCKET_ACCENT[accent]}`}>
+        {items.map((r) => <IntervenantRow key={r.companyId} r={r} siteId={siteId} ficheHref={ficheHref} />)}
+      </div>
+    </section>
+  )
+}
 
 export function IntervenantsLeaderboard({ siteId, consolidated, toIdentify }: {
   siteId: string
@@ -63,8 +139,6 @@ export function IntervenantsLeaderboard({ siteId, consolidated, toIdentify }: {
   // Ouvrir une fiche entreprise garde l'onglet Intervenants derrière le panneau.
   const ficheHref = useFicheHref()
   const [search, setSearch] = useState('')
-  const [chip, setChip] = useState<QuickFilter>('all')
-  const [sort, setSort] = useState<SortKey>('actions')
   const [showToId, setShowToId] = useState(false)
 
   const kpis = useMemo(() => ({
@@ -74,23 +148,33 @@ export function IntervenantsLeaderboard({ siteId, consolidated, toIdentify }: {
     pointsPiloted: rows.reduce((n, r) => n + r.pointsPiloted.length, 0),
   }), [rows])
 
-  const visible = useMemo(() => {
+  // Hiérarchie à 4 niveaux — répond en un coup d'œil à « qui a du travail / qui
+  // est en retard / qui est simplement cité ». Aucun scoring inventé : chaque
+  // bucket dérive de champs déjà réels et datés du read-model.
+  const buckets = useMemo(() => {
     const q = search.trim().toLowerCase()
-    const out = rows.filter((r) => {
-      if (chip === 'open' && r.actions.length === 0) return false
-      if (chip === 'late' && r.overdueActionsCount === 0) return false
-      if (chip === 'points' && r.pointsPiloted.length === 0) return false
-      if (q && !r.companyName.toLowerCase().includes(q)) return false
-      return true
-    })
+    const filtered = q ? rows.filter((r) => r.companyName.toLowerCase().includes(q)) : rows
+    const staleThreshold = addDaysLocal(todayLocalIso(), -STALE_AFTER_DAYS)
     const byName = (a: ConsolidatedIntervenant, b: ConsolidatedIntervenant) => a.companyName.localeCompare(b.companyName, 'fr') || a.companyId.localeCompare(b.companyId)
-    return [...out].sort((a, b) => {
-      if (sort === 'name') return byName(a, b)
-      if (sort === 'late') return b.overdueActionsCount - a.overdueActionsCount || byName(a, b)
-      if (sort === 'recent') return (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '') || byName(a, b)
-      return b.actions.length - a.actions.length || b.overdueActionsCount - a.overdueActionsCount || byName(a, b)
-    })
-  }, [rows, search, chip, sort])
+
+    const late: ConsolidatedIntervenant[] = []
+    const active: ConsolidatedIntervenant[] = []
+    const stale: ConsolidatedIntervenant[] = []
+    const cited: ConsolidatedIntervenant[] = []
+    for (const r of filtered) {
+      if (r.overdueActionsCount > 0) { late.push(r); continue }
+      if (hasActiveEngagement(r)) { active.push(r); continue }
+      if (r.lastActivityAt && r.lastActivityAt < staleThreshold) { stale.push(r); continue }
+      cited.push(r)
+    }
+    late.sort((a, b) => b.overdueActionsCount - a.overdueActionsCount || byName(a, b))
+    active.sort((a, b) => engagementScore(b) - engagementScore(a) || byName(a, b))
+    stale.sort(byName)
+    cited.sort(byName)
+    return { late, active, stale, cited }
+  }, [rows, search])
+
+  const totalVisible = buckets.late.length + buckets.active.length + buckets.stale.length + buckets.cited.length
 
   return (
     <div className="space-y-4">
@@ -141,67 +225,17 @@ export function IntervenantsLeaderboard({ siteId, consolidated, toIdentify }: {
         </div>
       )}
 
-      {/* Chips de filtre rapide + tri */}
-      <div className="flex flex-wrap items-center gap-2">
-        {CHIPS.map((c) => (
-          <button key={c.key} onClick={() => setChip(c.key)}
-            className={cn('rounded-lg border px-3 py-1.5 text-[12.5px]', chip === c.key ? 'border-foreground bg-foreground text-background font-medium' : 'bg-card text-muted-foreground hover:text-foreground')}>
-            {c.label}
-          </button>
-        ))}
-        <div className="ml-auto flex items-center gap-2 text-[12.5px] text-muted-foreground">
-          <span>Trier par</span>
-          <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-lg border bg-card px-2.5 py-1.5">
-            <option value="actions">Actions ouvertes</option>
-            <option value="late">Retards</option>
-            <option value="recent">Dernière activité</option>
-            <option value="name">Nom</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Leaderboard — par entreprise canonique */}
-      <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-        <table className="w-full min-w-[820px] border-collapse">
-          <thead>
-            <tr className="border-b text-[10.5px] uppercase tracking-wide text-muted-foreground">
-              <th className="px-4 py-3 text-left font-semibold">Intervenant</th>
-              <th className="px-3 py-3 text-left font-semibold">Rôles</th>
-              <th className="px-3 py-3 text-center font-semibold">Actions ouvertes</th>
-              <th className="px-3 py-3 text-center font-semibold">Points pilotés</th>
-              <th className="px-3 py-3 text-center font-semibold">Retard</th>
-              <th className="px-4 py-3 text-left font-semibold">Dernière activité</th>
-              <th className="w-8"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((r) => {
-              const roles = [...new Set(r.casting.map((c) => formatRole(c.role)))]
-              const href = ficheHref(`/sites/${siteId}/entreprise/${r.companyId}`) ?? `/sites/${siteId}/entreprise/${r.companyId}`
-              return (
-                <tr key={r.companyId} className="group border-b border-border/50 last:border-0 hover:bg-muted/40">
-                  <td className="px-4 py-3">
-                    <Link href={href} scroll={false} className="flex items-center gap-3">
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-[11px] font-bold text-primary"><Building2 className="h-4 w-4" /></span>
-                      <b className="min-w-0 truncate text-[13.5px] font-semibold">{r.companyName}</b>
-                    </Link>
-                  </td>
-                  <td className="px-3 py-3 text-[12.5px] text-muted-foreground">{roles.length > 0 ? roles.join(' · ') : '—'}</td>
-                  <td className="px-3 py-3 text-center text-[14px] font-semibold tabular-nums">{r.actions.length}</td>
-                  <td className={cn('px-3 py-3 text-center text-[14px] font-semibold tabular-nums', r.pointsPiloted.length === 0 && 'font-normal text-muted-foreground/50')}>{r.pointsPiloted.length}</td>
-                  <td className="px-3 py-3 text-center text-[14px] font-semibold tabular-nums">
-                    {r.overdueActionsCount > 0
-                      ? <span className="text-rose-600 dark:text-rose-400">{r.overdueActionsCount}</span>
-                      : <span className="text-muted-foreground/50">—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-[12.5px] text-muted-foreground">{frDate(r.lastActivityAt)}</td>
-                  <td className="pr-3 text-right"><ChevronRight className="inline h-4 w-4 text-muted-foreground/40 group-hover:text-muted-foreground" /></td>
-                </tr>
-              )
-            })}
-            {visible.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-muted-foreground">Aucune entreprise ne correspond à ces filtres.</td></tr>}
-          </tbody>
-        </table>
+      {/* Hiérarchie des intervenants — 4 niveaux, aucun tableau comprimé (recherche déjà dans le header) */}
+      <div className="space-y-5">
+        <IntervenantBucket title="En retard" hint="Échéance dépassée sur au moins une Action portée" items={buckets.late} siteId={siteId} ficheHref={ficheHref} accent="rose" />
+        <IntervenantBucket title="Engagements actifs" hint="Actions, décisions, obligations ou Points portés" items={buckets.active} siteId={siteId} ficheHref={ficheHref} accent="default" />
+        <IntervenantBucket title="Sans activité récente" hint={`Aucune mention depuis plus de ${STALE_AFTER_DAYS} jours`} items={buckets.stale} siteId={siteId} ficheHref={ficheHref} accent="muted" />
+        <IntervenantBucket title="Cités ou castés, sans engagement" hint="Présents au casting du chantier, aucune charge en cours" items={buckets.cited} siteId={siteId} ficheHref={ficheHref} accent="muted" />
+        {totalVisible === 0 && (
+          <div className="rounded-xl border bg-card px-4 py-10 text-center text-sm text-muted-foreground shadow-sm">
+            Aucune entreprise ne correspond à cette recherche.
+          </div>
+        )}
       </div>
 
       {/* Ce qui alimente la page — la frontière de la connaissance, rendue explicite */}
@@ -211,6 +245,8 @@ export function IntervenantsLeaderboard({ siteId, consolidated, toIdentify }: {
           <ul className="space-y-1 text-muted-foreground">
             <li><span className="text-emerald-600">✓</span> Casting intervenants (rôles, entreprises, périodes)</li>
             <li><span className="text-emerald-600">✓</span> Actions assignées à l’entreprise ou à l’un de ses contacts (ouvertes, en retard)</li>
+            <li><span className="text-emerald-600">✓</span> Décisions actives portées par l’entreprise ou l’un de ses contacts</li>
+            <li><span className="text-emerald-600">✓</span> Obligations ouvertes portées via un contact (compte seul, pas encore de fiche dédiée)</li>
             <li><span className="text-emerald-600">✓</span> Points pilotés (désignation humaine explicite)</li>
           </ul>
         </div>
@@ -225,6 +261,7 @@ export function IntervenantsLeaderboard({ siteId, consolidated, toIdentify }: {
           <ul className="space-y-1 text-muted-foreground">
             <li><span className="text-rose-500">✗</span> Points où citée (détection textuelle non batchée sur un site entier)</li>
             <li><span className="text-rose-500">✗</span> Présence à des visites/réunions (participants non structurés)</li>
+            <li><span className="text-rose-500">✗</span> Nombre de chantiers (résolution d’alias org-wide non construite, signal secondaire)</li>
           </ul>
         </div>
       </div>

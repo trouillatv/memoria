@@ -70,6 +70,25 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
           )}
         </FicheSection>
 
+        <FicheSection title="Décisions" count={c.decisions.length}>
+          {c.decisions.length === 0 ? (
+            <FicheEmpty>Ne porte aucune décision active sur ce chantier.</FicheEmpty>
+          ) : (
+            c.decisions.map((d) => (
+              <FicheLinkRow key={d.id} href={withContext(d.href)} icon="⚑" label={d.titre} />
+            ))
+          )}
+        </FicheSection>
+
+        <FicheSection title="Obligations" count={c.openObligationsCount}>
+          {c.openObligationsCount === 0 ? (
+            <FicheEmpty>Aucune obligation ouverte sur ce chantier.</FicheEmpty>
+          ) : (
+            <FicheRow icon="▤" label={`${c.openObligationsCount} obligation${c.openObligationsCount > 1 ? 's' : ''} ouverte${c.openObligationsCount > 1 ? 's' : ''}`}
+              sub="Pas encore de fiche dédiée — compte uniquement." />
+          )}
+        </FicheSection>
+
         <FicheSection title="Points" count={c.pointsPiloted.length}>
           {c.pointsPiloted.length === 0 ? (
             <FicheEmpty>Ne pilote aucun Point sur ce chantier.</FicheEmpty>

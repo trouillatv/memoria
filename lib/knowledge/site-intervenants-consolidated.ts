@@ -64,6 +64,12 @@ export interface ConsolidatedPointRow {
   href: string
 }
 
+export interface ConsolidatedDecisionRow {
+  id: string
+  titre: string
+  href: string
+}
+
 export interface ConsolidatedCastingRow {
   id: string
   role: string
@@ -85,6 +91,10 @@ export interface ConsolidatedIntervenant {
   contacts: ConsolidatedContactRow[]
   pointsPiloted: ConsolidatedPointRow[]
   casting: ConsolidatedCastingRow[]
+  decisions: ConsolidatedDecisionRow[]
+  /** Obligations ouvertes (a_produire/en_cours) portées via un contact rattaché — compte
+   *  seul, jamais une liste : aucune fiche/route d'obligation n'existe à ce jour (cf. gap). */
+  openObligationsCount: number
   lastActivityAt: string | null
 }
 
@@ -97,6 +107,9 @@ export interface SiteIntervenantsConsolidated {
 
 const POINTS_OU_CITEE_GAP =
   'Points où citée : non implémenté (computeCitedCompanies est calculé par Point, jamais batché sur un site entier — cf. commentaire de tête de fichier).'
+
+const CHANTIERS_COUNT_GAP =
+  'Nombre de chantiers (multi-sites) : non affiché en V2 — nécessiterait une résolution d\'alias org-wide (aucun helper de recherche inverse dans lib/db/companies.ts) pour un signal jugé secondaire par le mandat.'
 
 export interface ConsolidatedInputs {
   today: string
@@ -115,6 +128,12 @@ export interface ConsolidatedInputs {
   /** Contact → entreprise connue (`company_contacts.company_id`, peut être null : contact sans entreprise). */
   contactById: Map<string, { id: string; name: string; function: string | null; companyId: string | null }>
   pointsResponsible: Array<{ id: string; companyId: string; designatedAt: string; pointId: string; pointLabel: string }>
+  /** Décisions actives (proposee/actee/appliquee — cf. OPEN_DECISION_STATUTS), résolues
+   *  entreprise directe (mig 284) OU via contact, même pattern que les Actions. */
+  decisions: Array<{ id: string; titre: string; statut: string; dateDecision: string | null; companyId: string | null; contactId: string | null }>
+  /** Obligations ouvertes (a_produire/en_cours), résolues uniquement via contact
+   *  (site_obligation.responsible_contact_id — pas de colonne company_id, mig 146). */
+  obligations: Array<{ contactId: string; status: string }>
   siteId: string
 }
 
@@ -135,6 +154,8 @@ export function buildSiteIntervenantsConsolidated(input: ConsolidatedInputs): Si
       contacts: [],
       pointsPiloted: [],
       casting: [],
+      decisions: [],
+      openObligationsCount: 0,
       lastActivityAt: null,
     }
     byCompany.set(id, created)
@@ -208,8 +229,35 @@ export function buildSiteIntervenantsConsolidated(input: ConsolidatedInputs): Si
     bumpActivity(entry, p.designatedAt)
   }
 
+  // ── 5. Décisions portées (entreprise directe OU via contact, mig 284) ─────
+  // Même pattern que les Actions : seules les décisions encore actives comptent
+  // comme un engagement (caduque/contredite = classées, plus une charge portée).
+  const OPEN_DECISION_STATUTS = new Set(['proposee', 'actee', 'appliquee'])
+  for (const d of input.decisions) {
+    if (!OPEN_DECISION_STATUTS.has(d.statut)) continue
+    const directCompanyId = d.companyId ? canon(d.companyId) : null
+    const contact = d.contactId ? input.contactById.get(d.contactId) : null
+    const contactCompanyId = contact?.companyId ? canon(contact.companyId) : null
+    const companyId = directCompanyId ?? contactCompanyId
+    if (!companyId) continue
+    const entry = get(companyId)
+    entry.decisions.push({ id: d.id, titre: d.titre, href: `/sites/${input.siteId}/decision/${d.id}` })
+    bumpActivity(entry, d.dateDecision)
+  }
+
+  // ── 6. Obligations ouvertes (compte seul — via contact, mig 146) ──────────
+  // Pas de colonne company_id sur site_obligation : seule la voie contact existe.
+  // Compte uniquement (aucune fiche/route obligation à ce jour, cf. IntervenantFiche.tsx).
+  for (const o of input.obligations) {
+    if (o.status !== 'a_produire' && o.status !== 'en_cours') continue
+    const contact = input.contactById.get(o.contactId)
+    const companyId = contact?.companyId ? canon(contact.companyId) : null
+    if (!companyId) continue
+    get(companyId).openObligationsCount++
+  }
+
   const intervenants = [...byCompany.values()].sort((a, b) => a.companyName.localeCompare(b.companyName, 'fr'))
-  return { siteId: input.siteId, intervenants, gaps: [POINTS_OU_CITEE_GAP] }
+  return { siteId: input.siteId, intervenants, gaps: [POINTS_OU_CITEE_GAP, CHANTIERS_COUNT_GAP] }
 }
 
 /** Charge et compose — site-scopé, aucune fusion physique. */
@@ -219,10 +267,12 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
   const site = siteRow as { id: string; organization_id: string } | null
   if (!site) return null
 
-  const [castRes, actRes, pointRespRes] = await Promise.all([
+  const [castRes, actRes, pointRespRes, decRes, oblRes] = await Promise.all([
     db.from('site_intervenants').select('id, company_id, role, effective_from, effective_to').eq('site_id', siteId).not('company_id', 'is', null),
     db.from('site_actions').select('id, title, due_date, due_date_status, status, created_at, assigned_company_id, assigned_contact_id').eq('site_id', siteId).in('status', ['open', 'planned']),
     db.from('tracked_point_responsible_companies').select('id, company_id, designated_at, tracked_point_id').eq('site_id', siteId).is('revoked_at', null),
+    db.from('site_decisions').select('id, titre, statut, date_decision, decisionnaire_company_id, decisionnaire_contact_id').eq('site_id', siteId).in('statut', ['proposee', 'actee', 'appliquee']),
+    db.from('site_obligation').select('id, responsible_contact_id, status').eq('site_id', siteId).in('status', ['a_produire', 'en_cours']).not('responsible_contact_id', 'is', null),
   ])
   const casting = (castRes.data ?? []) as Array<{ id: string; company_id: string; role: string; effective_from: string | null; effective_to: string | null }>
   const actions = (actRes.data ?? []) as Array<{
@@ -230,11 +280,20 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
     status: string; created_at: string; assigned_company_id: string | null; assigned_contact_id: string | null
   }>
   const pointsResponsibleRaw = (pointRespRes.data ?? []) as Array<{ id: string; company_id: string; designated_at: string; tracked_point_id: string }>
+  const decisionRows = (decRes.data ?? []) as Array<{
+    id: string; titre: string; statut: string; date_decision: string | null
+    decisionnaire_company_id: string | null; decisionnaire_contact_id: string | null
+  }>
+  const obligationRows = (oblRes.data ?? []) as Array<{ id: string; responsible_contact_id: string; status: string }>
 
   const relevantActions = actions.filter((a) => a.assigned_company_id || a.assigned_contact_id)
-  // Contacts référencés DIRECTEMENT par une Action — sert d'abord à résoudre
-  // l'entreprise du contact (canon), avant même de connaître `companyIds`.
-  const directContactIds = [...new Set(relevantActions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v))]
+  // Contacts référencés DIRECTEMENT par une Action, une Décision ou une Obligation —
+  // sert d'abord à résoudre l'entreprise du contact (canon), avant même de connaître `companyIds`.
+  const directContactIds = [...new Set([
+    ...relevantActions.map((a) => a.assigned_contact_id).filter((v): v is string => !!v),
+    ...decisionRows.map((d) => d.decisionnaire_contact_id).filter((v): v is string => !!v),
+    ...obligationRows.map((o) => o.responsible_contact_id).filter((v): v is string => !!v),
+  ])]
   const { data: directContactRows } = directContactIds.length
     ? await db.from('company_contacts').select('id, company_id').in('id', directContactIds)
     : { data: [] as Array<{ id: string; company_id: string | null }> }
@@ -256,6 +315,7 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
     ...relevantActions.map((a) => a.assigned_company_id).filter((v): v is string => !!v),
     ...directContactCompanyIds,
     ...pointsResponsible.map((p) => p.companyId),
+    ...decisionRows.map((d) => d.decisionnaire_company_id).filter((v): v is string => !!v),
   ])]
 
   // Annuaire COMPLET des contacts (bloc « Contacts », Lot 3) — toutes les personnes
@@ -300,6 +360,11 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
     })),
     contactById,
     pointsResponsible,
+    decisions: decisionRows.map((d) => ({
+      id: d.id, titre: d.titre, statut: d.statut, dateDecision: d.date_decision,
+      companyId: d.decisionnaire_company_id, contactId: d.decisionnaire_contact_id,
+    })),
+    obligations: obligationRows.map((o) => ({ contactId: o.responsible_contact_id, status: o.status })),
   })
 }
 
