@@ -44,6 +44,7 @@ function ev(overrides: Partial<MaterializedEvent> & { entityId: string }): Mater
     description: null,
     date: null,
     status: null,
+    responsible: null,
     ...overrides,
   }
 }

@@ -26,6 +26,7 @@ import {
 } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
+import { LifelineEventBadge } from '@/components/knowledge/LifelineEventBadge'
 import { cn } from '@/lib/utils'
 import { confirmSuggestedLink, rejectSuggestedLink, deleteCanonicalLinkAction } from './link-actions'
 import CreateLinkForm from './CreateLinkForm'
@@ -623,13 +624,17 @@ function LifelineBar({
   const maxMs = dateToMs(displayOccs[displayOccs.length - 1].effectiveDate)
   const isSingle = minMs === maxMs
 
-  // Index des événements par runId pour éviter une itération dans le render
-  const eventsByRun = new Map<string, Map<MaterializedEntityType, number>>()
+  // Index des événements détaillés par runId (pas seulement leur compteur — mandat Vincent
+  // tooltip ligne de vie) pour alimenter l'aperçu contextuel de chaque badge, sans itération
+  // supplémentaire ni requête dans le render.
+  const eventsByRun = new Map<string, Map<MaterializedEntityType, MaterializedEvent[]>>()
   for (const ev of materializedEvents) {
     if (!ev.runId) continue
     let typeMap = eventsByRun.get(ev.runId)
     if (!typeMap) { typeMap = new Map(); eventsByRun.set(ev.runId, typeMap) }
-    typeMap.set(ev.entityType, (typeMap.get(ev.entityType) ?? 0) + 1)
+    const list = typeMap.get(ev.entityType) ?? []
+    list.push(ev)
+    typeMap.set(ev.entityType, list)
   }
 
   // Positions (%) et décalages verticaux anti-collision
@@ -658,8 +663,34 @@ function LifelineBar({
         const { symbol, colorClass } = lifelineDot(occ)
         const typeMap = (!occ.isGap && occ.runId && eventsByRun.get(occ.runId)) || null
         const badges = typeMap
-          ? LIFELINE_EVENT_ORDER.filter((t) => typeMap.has(t)).map((t) => ({ t, count: typeMap.get(t)! }))
+          ? LIFELINE_EVENT_ORDER.filter((t) => typeMap.has(t)).map((t) => ({ t, events: typeMap.get(t)! }))
           : []
+
+        // Lien vers la source — PDF→document, visite→visites, réunion→reunion, null→non cliquable.
+        // Hissé hors du rendu du dot : les badges d'aperçu en dessous réutilisent le même lien/libellé
+        // pour leur ligne « Source », sans nouvelle requête.
+        const href =
+          occ.sourceKind === 'field_visit' && occ.reportId
+            ? `/sites/${siteId}/visites/${occ.reportId}`
+            : occ.sourceKind === 'meeting' && occ.reportId
+              ? `/sites/${siteId}/reunion/${occ.reportId}`
+              : !occ.isGap && occ.documentId
+                ? `/documents/${occ.documentId}`
+                : null
+        const cls   = cn('group flex flex-col items-center gap-0.5', occ.isGap ? 'pointer-events-none opacity-40' : '')
+        const title = occ.isGap ? 'Non mentionné' : (occ.label ?? '')
+        const dotInner = (
+          <>
+            <span className={cn('text-base font-bold leading-none transition-transform group-hover:scale-125', colorClass)}>
+              {symbol}
+            </span>
+            <div className={cn('h-4 w-px', occ.isGap ? 'bg-muted-foreground/20' : 'bg-border')} />
+            <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+              {frDateShort(occ.effectiveDate)}
+            </span>
+          </>
+        )
+        const sourceLabel = occ.isGap ? null : `${SOURCE_KIND_LABEL[occ.sourceKind] ?? 'PV'} du ${frDate(occ.effectiveDate)}`
 
         return (
           <div
@@ -667,52 +698,31 @@ function LifelineBar({
             className="absolute flex flex-col items-center"
             style={{ left: `${pct}%`, top: 0, transform: `translate(-50%, ${yOff}px)` }}
           >
-            {/* Lien vers la source — PDF→document, visite→visites, réunion→reunion, null→non cliquable */}
-            {(() => {
-              const href =
-                occ.sourceKind === 'field_visit' && occ.reportId
-                  ? `/sites/${siteId}/visites/${occ.reportId}`
-                  : occ.sourceKind === 'meeting' && occ.reportId
-                    ? `/sites/${siteId}/reunion/${occ.reportId}`
-                    : !occ.isGap && occ.documentId
-                      ? `/documents/${occ.documentId}`
-                      : null
-              const cls   = cn('group flex flex-col items-center gap-0.5', occ.isGap ? 'pointer-events-none opacity-40' : '')
-              const title = occ.isGap ? 'Non mentionné' : (occ.label ?? '')
-              const inner = (
-                <>
-                  <span className={cn('text-base font-bold leading-none transition-transform group-hover:scale-125', colorClass)}>
-                    {symbol}
-                  </span>
-                  <div className={cn('h-4 w-px', occ.isGap ? 'bg-muted-foreground/20' : 'bg-border')} />
-                  <span className="whitespace-nowrap text-[10px] text-muted-foreground">
-                    {frDateShort(occ.effectiveDate)}
-                  </span>
-                </>
-              )
-              return href
-                ? <Link href={href} className={cls} title={title}>{inner}</Link>
-                : <div className={cls} title={title}>{inner}</div>
-            })()}
+            {href
+              ? <Link href={href} className={cls} title={title}>{dotInner}</Link>
+              : <div className={cls} title={title}>{dotInner}</div>}
 
-            {/* Badges objets métier — groupés par type, compacts */}
+            {/* Badges objets métier — groupés par type, compacts, aperçu au survol/tap */}
             {badges.length > 0 && (
               <div className="mt-1 flex flex-col items-center gap-0.5">
-                {badges.map(({ t, count }) => {
+                {badges.map(({ t, events }) => {
                   const meta = ENTITY_TYPE_META[t]
-                  const label = count > 1 ? `${count} ${meta.plural.toLowerCase()}` : meta.label
+                  const label = events.length > 1 ? `${events.length} ${meta.plural.toLowerCase()}` : meta.label
                   return (
-                    <a
+                    <LifelineEventBadge
                       key={t}
-                      href={`#objets-metier-${t}`}
-                      aria-label={`Voir ${label}`}
-                      className={cn(
-                        'whitespace-nowrap rounded-full px-1.5 py-px text-[9px] font-semibold leading-4 transition-opacity hover:opacity-80',
-                        meta.color,
-                      )}
-                    >
-                      {label}
-                    </a>
+                      typeLabel={meta.label}
+                      badgeLabel={label}
+                      colorClass={meta.color}
+                      sourceLabel={sourceLabel}
+                      sourceHref={href}
+                      events={events.map((ev) => ({
+                        title: ev.title,
+                        date: ev.date,
+                        status: ev.status ? (ENTITY_STATUS_LABELS[ev.status] ?? ev.status) : null,
+                        responsible: ev.responsible?.name ?? null,
+                      }))}
+                    />
                   )
                 })}
               </div>

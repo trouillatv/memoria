@@ -85,6 +85,8 @@ export interface MaterializedEvent {
   description: string | null
   date: string | null
   status: string | null
+  /** Uniquement si structuré (contact/entreprise liée) — jamais un texte libre. */
+  responsible: { kind: 'contact' | 'company'; name: string } | null
 }
 
 export interface TerrainObject {
@@ -688,6 +690,12 @@ export async function getCanonicalSubjectLife(
       byType.set(m.target_entity_type, list)
     }
 
+    // Drafts intermédiaires : portent les ids bruts contact/entreprise pour une résolution
+    // batchée UNIQUE après le Promise.all (jamais de requête par pastille — mandat Vincent
+    // tooltip ligne de vie, réutilise le pattern responsibleFor() de tracked-point-detail.ts).
+    type Draft = Omit<MaterializedEvent, 'responsible'> & { contactId: string | null; companyId: string | null }
+    const drafts: Draft[] = []
+
     const fetches: PromiseLike<void>[] = []
 
     const actionItems = byType.get('site_action') ?? []
@@ -695,15 +703,15 @@ export async function getCanonicalSubjectLife(
       fetches.push(
         supabase
           .from('site_actions')
-          .select('id, title, body, due_date, status')
+          .select('id, title, body, due_date, status, assigned_contact_id, assigned_company_id')
           .in('id', actionItems.map((e) => e.entityId))
           .then(({ data }) => {
-            type AR = { id: string; title: string; body: string | null; due_date: string | null; status: string }
+            type AR = { id: string; title: string; body: string | null; due_date: string | null; status: string; assigned_contact_id: string | null; assigned_company_id: string | null }
             const byId = new Map(((data ?? []) as AR[]).map((r) => [r.id, r]))
             for (const e of actionItems) {
               const r = byId.get(e.entityId)
               if (!r) continue
-              materializedEvents.push({ entityType: 'site_action', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.title, description: r.body, date: r.due_date, status: r.status })
+              drafts.push({ entityType: 'site_action', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.title, description: r.body, date: r.due_date, status: r.status, contactId: r.assigned_contact_id, companyId: r.assigned_company_id })
             }
           }),
       )
@@ -714,15 +722,15 @@ export async function getCanonicalSubjectLife(
       fetches.push(
         supabase
           .from('site_decisions')
-          .select('id, titre, description, date_decision, statut')
+          .select('id, titre, description, date_decision, statut, decisionnaire_contact_id')
           .in('id', decisionItems.map((e) => e.entityId))
           .then(({ data }) => {
-            type DR = { id: string; titre: string; description: string | null; date_decision: string | null; statut: string | null }
+            type DR = { id: string; titre: string; description: string | null; date_decision: string | null; statut: string | null; decisionnaire_contact_id: string | null }
             const byId = new Map(((data ?? []) as DR[]).map((r) => [r.id, r]))
             for (const e of decisionItems) {
               const r = byId.get(e.entityId)
               if (!r) continue
-              materializedEvents.push({ entityType: 'site_decision', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.titre, description: r.description, date: r.date_decision, status: r.statut })
+              drafts.push({ entityType: 'site_decision', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.titre, description: r.description, date: r.date_decision, status: r.statut, contactId: r.decisionnaire_contact_id, companyId: null })
             }
           }),
       )
@@ -733,15 +741,15 @@ export async function getCanonicalSubjectLife(
       fetches.push(
         supabase
           .from('site_reserve')
-          .select('id, label, issued_on, status')
+          .select('id, label, issued_on, status, responsible_company_id')
           .in('id', reserveItems.map((e) => e.entityId))
           .then(({ data }) => {
-            type RR = { id: string; label: string; issued_on: string | null; status: string }
+            type RR = { id: string; label: string; issued_on: string | null; status: string; responsible_company_id: string | null }
             const byId = new Map(((data ?? []) as RR[]).map((r) => [r.id, r]))
             for (const e of reserveItems) {
               const r = byId.get(e.entityId)
               if (!r) continue
-              materializedEvents.push({ entityType: 'site_reserve', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.label, description: null, date: r.issued_on, status: r.status })
+              drafts.push({ entityType: 'site_reserve', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.label, description: null, date: r.issued_on, status: r.status, contactId: null, companyId: r.responsible_company_id })
             }
           }),
       )
@@ -752,21 +760,49 @@ export async function getCanonicalSubjectLife(
       fetches.push(
         supabase
           .from('site_deadlines')
-          .select('id, title, constraint_text, due_date, status, source_document_effective_date')
+          .select('id, title, constraint_text, due_date, status, source_document_effective_date, assigned_contact_id, assigned_company_id')
           .in('id', deadlineItems.map((e) => e.entityId))
           .then(({ data }) => {
-            type DL = { id: string; title: string; constraint_text: string | null; due_date: string | null; status: string; source_document_effective_date: string | null }
+            type DL = { id: string; title: string; constraint_text: string | null; due_date: string | null; status: string; source_document_effective_date: string | null; assigned_contact_id: string | null; assigned_company_id: string | null }
             const byId = new Map(((data ?? []) as DL[]).map((r) => [r.id, r]))
             for (const e of deadlineItems) {
               const r = byId.get(e.entityId)
               if (!r) continue
-              materializedEvents.push({ entityType: 'site_deadline', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.title, description: r.constraint_text, date: r.due_date ?? r.source_document_effective_date, status: r.status })
+              drafts.push({ entityType: 'site_deadline', entityId: e.entityId, proposalId: e.proposalId, runId: proposalToRun.get(e.proposalId) ?? '', title: r.title, description: r.constraint_text, date: r.due_date ?? r.source_document_effective_date, status: r.status, contactId: r.assigned_contact_id, companyId: r.assigned_company_id })
             }
           }),
       )
     }
 
     await Promise.all(fetches)
+
+    // Résolution batchée du responsable — une seule requête contacts + une seule requête
+    // entreprises pour TOUS les événements matérialisés du sujet (jamais par pastille).
+    const contactIds = [...new Set(drafts.map((d) => d.contactId).filter((v): v is string => !!v))]
+    const companyIds = [...new Set(drafts.map((d) => d.companyId).filter((v): v is string => !!v))]
+    const contactNameById = new Map<string, string>()
+    if (contactIds.length > 0) {
+      const { data } = await supabase.from('company_contacts').select('id, full_name').in('id', contactIds)
+      for (const c of data ?? []) contactNameById.set(c.id as string, c.full_name as string)
+    }
+    const companyNameById = new Map<string, string>()
+    if (companyIds.length > 0) {
+      const { data } = await supabase.from('companies').select('id, name').in('id', companyIds)
+      for (const c of data ?? []) companyNameById.set(c.id as string, c.name as string)
+    }
+    for (const d of drafts) {
+      let responsible: MaterializedEvent['responsible'] = null
+      const contactName = d.contactId ? contactNameById.get(d.contactId) : undefined
+      if (contactName) responsible = { kind: 'contact', name: contactName }
+      if (!responsible && d.companyId) {
+        const companyName = companyNameById.get(d.companyId)
+        if (companyName) responsible = { kind: 'company', name: companyName }
+      }
+      materializedEvents.push({
+        entityType: d.entityType, entityId: d.entityId, proposalId: d.proposalId, runId: d.runId,
+        title: d.title, description: d.description, date: d.date, status: d.status, responsible,
+      })
+    }
   }
 
   // 7. Occurrences terrain (canonical_subject_occurrence, source_kind = field_visit)
