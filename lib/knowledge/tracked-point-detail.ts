@@ -91,10 +91,12 @@ export type PointDetailResponsible =
   | { kind: 'company'; name: string; companyId?: string }
   | { kind: 'text'; label: string }
 
-// Provenance documentaire d'une Action (mandat Vincent, mini-lot « provenance des Actions
-// dans la fiche Point ») — construite depuis `document_proposal_materialization`
-// (target_entity_type='site_action'), jamais fabriquée : une Action de saisie humaine ou
-// Copilote (sans matérialisation) a `sources: []`, ce n'est pas un manque à combler.
+// Provenance documentaire d'un objet lié (Action, Réserve, Échéance) — mandat Vincent,
+// mini-lot « provenance des Actions dans la fiche Point » puis extension Réserves/Échéances
+// 2026-09-15 (audit Clim Exp'Air). Construite depuis `document_proposal_materialization`
+// (target_entity_type='site_action'|'site_reserve'|'site_deadline'), jamais fabriquée : un
+// objet de saisie humaine ou Copilote (sans matérialisation) a `sources: []`, ce n'est pas un
+// manque à combler.
 export interface PointDetailActionSource {
   documentId: string
   documentFilename: string | null
@@ -104,6 +106,23 @@ export interface PointDetailActionSource {
   dateLabel: string | null
   sourcePage: number | null
   sourceExcerpt: string | null
+}
+
+// Occurrence d'un PV donné pour CE Point — fusion dédupliquée par document de `evidence`
+// (trajectoire) et des `sources` des objets liés (mandat Vincent 2026-09-15, recette Clim
+// Exp'Air : « Vu dans N/M PV · Voir les N occurrences »). `hasFullCitation` distingue une
+// preuve complète (page + extrait) d'une mention pour laquelle seul le document est connu —
+// jamais de page/extrait inventés quand la donnée source ne les porte pas (ex. 19/02/2026).
+export interface PointDetailOccurrence {
+  documentId: string
+  documentFilename: string | null
+  documentType: string | null
+  href: string | null
+  date: string | null
+  dateLabel: string | null
+  sourcePage: number | null
+  sourceExcerpt: string | null
+  hasFullCitation: boolean
 }
 
 export interface PointDetailLinkedObject {
@@ -122,8 +141,8 @@ export interface PointDetailLinkedObject {
   // (substring, zéro fuzzy) dans ce titre — uniquement quand `responsible` est null et
   // qu'un seul acteur correspond. Toujours une suggestion, jamais une affectation.
   suggestedResponsibleName: string | null
-  // Provenance documentaire (site_action uniquement) — toujours [] pour reserve/deadline
-  // (hors périmètre du mini-lot provenance).
+  // Provenance documentaire (Action/Réserve/Échéance) — [] uniquement quand l'objet n'a
+  // aucune ligne `document_proposal_materialization` (saisie humaine/Copilote, fait honnête).
   sources: PointDetailActionSource[]
   href: string
   // ── Dates de cycle de vie (Film du Point, mandat Vincent 2026-09-14) ──────
@@ -253,6 +272,10 @@ export interface TrackedPointDetail {
   // résolue ne doit jamais masquer une preuve ouverte plus récente : l'ordre seul
   // suffit, le state affiché vient déjà du reducer, jamais recalculé ici).
   evidence: PointDetailEvidence[]
+  // Occurrences PV dédupliquées par document (mandat Vincent 2026-09-15) — union de
+  // `evidence` et des `sources` des objets liés, triée chronologiquement. `occurrences.length`
+  // vaut toujours `mentionsCount` (même dédup par documentId) : une seule source de vérité.
+  occurrences: PointDetailOccurrence[]
   // Provenance causale (lot UX Point 3F) — null seulement si aucune preuve documentaire
   // n'existe pour ce Point (jamais fabriquée).
   provenance: PointDetailProvenance | null
@@ -430,6 +453,118 @@ export function computeMentionsCount(
     if (id) ids.add(id)
   }
   return ids.size
+}
+
+/** Provenance documentaire d'un ensemble d'objets liés (Action, Réserve ou Échéance) via
+ *  `document_proposal_materialization` — factorisation du mini-lot Actions (2026-09-14) pour
+ *  le lot Réserves/Échéances (mandat Vincent 2026-09-15, audit Clim Exp'Air) : même mécanique,
+ *  jamais une heuristique. `materializedIds` = vrai dès qu'une ligne de matérialisation existe,
+ *  AVANT résolution proposal→document (sert au Film du Point pour la fiabilité de `created_at`,
+ *  Actions uniquement). Un objet sans ligne ici a `sources: []`, fait honnête, pas un manque. */
+async function loadDocumentSourcesByEntity(
+  db: ReturnType<typeof createAdminClient>,
+  siteId: string,
+  entityTypes: string[],
+  entityIds: string[],
+): Promise<{ sourcesById: Map<string, PointDetailActionSource[]>; materializedIds: Set<string> }> {
+  const sourcesById = new Map<string, PointDetailActionSource[]>()
+  const materializedIds = new Set<string>()
+  if (entityIds.length === 0) return { sourcesById, materializedIds }
+
+  const { data: materializationRows } = await db.from('document_proposal_materialization')
+    .select('target_entity_id, proposal_id')
+    .in('target_entity_type', entityTypes)
+    .in('target_entity_id', entityIds)
+  const proposalIdByEntityId = new Map<string, string[]>()
+  for (const m of materializationRows ?? []) {
+    const entityId = m.target_entity_id as string
+    materializedIds.add(entityId)
+    const proposalId = m.proposal_id as string | null
+    if (!proposalId) continue
+    const list = proposalIdByEntityId.get(entityId) ?? []
+    list.push(proposalId)
+    proposalIdByEntityId.set(entityId, list)
+  }
+  const sourceProposalIds = [...new Set([...proposalIdByEntityId.values()].flat())]
+  if (sourceProposalIds.length === 0) return { sourcesById, materializedIds }
+
+  const { data: sourceProposalRows } = await db.from('document_extraction_proposal')
+    .select('id, document_id, source_page, source_excerpt').in('id', sourceProposalIds)
+  const sourceProposalById = new Map((sourceProposalRows ?? []).map((r) => [r.id as string, r as {
+    id: string; document_id: string | null; source_page: number | null; source_excerpt: string | null
+  }]))
+  const sourceDocIds = [...new Set([...sourceProposalById.values()].map((p) => p.document_id).filter((id): id is string => !!id))]
+  const sourceDocById = new Map<string, { filename: string | null; document_type: string | null; effective_date: string | null }>()
+  if (sourceDocIds.length > 0) {
+    const { data: sourceDocRows } = await db.from('documents').select('id, filename, document_type, effective_date').in('id', sourceDocIds)
+    for (const d of sourceDocRows ?? []) {
+      sourceDocById.set(d.id as string, {
+        filename: d.filename as string | null,
+        document_type: d.document_type as string | null,
+        effective_date: (d.effective_date as string | null)?.slice(0, 10) ?? null,
+      })
+    }
+  }
+  for (const [entityId, proposalIdList] of proposalIdByEntityId) {
+    const sources: PointDetailActionSource[] = []
+    for (const proposalId of proposalIdList) {
+      const proposal = sourceProposalById.get(proposalId)
+      if (!proposal?.document_id) continue
+      const doc = sourceDocById.get(proposal.document_id)
+      if (!doc) continue
+      sources.push({
+        documentId: proposal.document_id,
+        documentFilename: doc.filename,
+        documentType: doc.document_type,
+        href: documentHref({ id: proposal.document_id, document_type: doc.document_type ?? '' }, siteId),
+        date: doc.effective_date,
+        dateLabel: frDate(doc.effective_date),
+        sourcePage: proposal.source_page,
+        sourceExcerpt: proposal.source_excerpt?.trim() || null,
+      })
+    }
+    sources.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+    if (sources.length > 0) sourcesById.set(entityId, sources)
+  }
+  return { sourcesById, materializedIds }
+}
+
+/** Fusion dédupliquée par document de `evidence` et des `sources` d'objets liés en une liste
+ *  d'occurrences PV triée chronologiquement (mandat Vincent 2026-09-15, « Vu dans N/M PV »).
+ *  Quand un même document apparaît via plusieurs voies (trajectoire + Réserve, ex. 22/07/2026),
+ *  la version la plus complète (page/extrait renseignés) gagne — jamais une citation inventée
+ *  pour l'occurrence qui n'en a pas (ex. 19/02/2026, thread-only, page/extrait null). */
+export function buildPointOccurrences(
+  sources: Array<{
+    documentId: string | null
+    documentFilename: string | null
+    documentType: string | null
+    href: string | null
+    date: string | null
+    dateLabel: string | null
+    sourcePage: number | null
+    sourceExcerpt: string | null
+  }>,
+): PointDetailOccurrence[] {
+  const byDocument = new Map<string, PointDetailOccurrence>()
+  for (const s of sources) {
+    if (!s.documentId) continue
+    const hasFullCitation = s.sourcePage !== null || !!s.sourceExcerpt
+    const existing = byDocument.get(s.documentId)
+    if (existing && (existing.hasFullCitation || !hasFullCitation)) continue
+    byDocument.set(s.documentId, {
+      documentId: s.documentId,
+      documentFilename: s.documentFilename,
+      documentType: s.documentType,
+      href: s.href,
+      date: s.date,
+      dateLabel: s.dateLabel,
+      sourcePage: s.sourcePage,
+      sourceExcerpt: s.sourceExcerpt,
+      hasFullCitation,
+    })
+  }
+  return [...byDocument.values()].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
 }
 
 /** « Ce qu'il faut retenir aujourd'hui » — une phrase déterministe, composée
@@ -894,9 +1029,10 @@ export async function getTrackedPointDetail(
   }
   evidence.sort((a, b) => b.date.localeCompare(a.date))
   const latestEvidenceAt = evidence.length > 0 ? evidence[0].date : null
-  // Réassignée après le bloc CBO ci-dessous si le Point porte des Actions/Réserves/
+  // Réassignées après le bloc CBO ci-dessous si le Point porte des Actions/Réserves/
   // Échéances avec provenance documentaire matérialisée (cf. computeMentionsCount).
   let mentionsCount = computeMentionsCount(evidence.map((e) => e.documentId), [])
+  let occurrences = buildPointOccurrences(evidence)
 
   // ── Provenance causale (lot UX Point 3F) ──────────────────────────────────
   // stateBasis (reduceTrackedPointLifecycle) = refs `${kind}@${effectiveAt}` des événements
@@ -944,97 +1080,25 @@ export async function getTrackedPointDetail(
       for (const a of actionRows) { if (a.assigned_contact_id) contactIds.add(a.assigned_contact_id); if (a.assigned_company_id) companyIds.add(a.assigned_company_id) }
     }
 
-    // ── Provenance documentaire des Actions (mini-lot Vincent, « provenance des
-    //    Actions dans la fiche Point ») — via document_proposal_materialization,
-    //    JAMAIS une heuristique : lien structuré posé à l'import historique
-    //    (materialize_historical_visit). Une Action de saisie humaine/Copilote
-    //    n'a simplement aucune ligne ici → sources: [] (fait honnête, pas un manque). ──
-    const actionSourcesById = new Map<string, PointDetailActionSource[]>()
-    // Vrai dès qu'une ligne `document_proposal_materialization` existe pour l'Action —
-    // AVANT résolution proposal→document, qui peut échouer sans que ça change l'origine
-    // réelle de l'Action (importée d'un PV). Sert à décider si `created_at` est fiable
-    // (Film du Point, mandat Vincent 2026-09-14) : jamais utilisé si materialized=true.
-    const wasMaterializedActionIds = new Set<string>()
-    if (actionIds.size > 0) {
-      const { data: materializationRows } = await db.from('document_proposal_materialization')
-        .select('target_entity_id, proposal_id')
-        .eq('target_entity_type', 'site_action')
-        .in('target_entity_id', [...actionIds])
-      const proposalIdByActionId = new Map<string, string[]>()
-      for (const m of materializationRows ?? []) {
-        const actionId = m.target_entity_id as string
-        wasMaterializedActionIds.add(actionId)
-        const proposalId = m.proposal_id as string | null
-        if (!proposalId) continue
-        const list = proposalIdByActionId.get(actionId) ?? []
-        list.push(proposalId)
-        proposalIdByActionId.set(actionId, list)
-      }
-      const sourceProposalIds = [...new Set([...proposalIdByActionId.values()].flat())]
-      if (sourceProposalIds.length > 0) {
-        const { data: sourceProposalRows } = await db.from('document_extraction_proposal')
-          .select('id, document_id, source_page, source_excerpt').in('id', sourceProposalIds)
-        const sourceProposalById = new Map((sourceProposalRows ?? []).map((r) => [r.id as string, r as {
-          id: string; document_id: string | null; source_page: number | null; source_excerpt: string | null
-        }]))
-        const sourceDocIds = [...new Set([...sourceProposalById.values()].map((p) => p.document_id).filter((id): id is string => !!id))]
-        const sourceDocById = new Map<string, { filename: string | null; document_type: string | null; effective_date: string | null }>()
-        if (sourceDocIds.length > 0) {
-          const { data: sourceDocRows } = await db.from('documents').select('id, filename, document_type, effective_date').in('id', sourceDocIds)
-          for (const d of sourceDocRows ?? []) {
-            sourceDocById.set(d.id as string, {
-              filename: d.filename as string | null,
-              document_type: d.document_type as string | null,
-              effective_date: (d.effective_date as string | null)?.slice(0, 10) ?? null,
-            })
-          }
-        }
-        for (const [actionId, proposalIdList] of proposalIdByActionId) {
-          const sources: PointDetailActionSource[] = []
-          for (const proposalId of proposalIdList) {
-            const proposal = sourceProposalById.get(proposalId)
-            if (!proposal?.document_id) continue
-            const doc = sourceDocById.get(proposal.document_id)
-            if (!doc) continue
-            sources.push({
-              documentId: proposal.document_id,
-              documentFilename: doc.filename,
-              documentType: doc.document_type,
-              href: documentHref({ id: proposal.document_id, document_type: doc.document_type ?? '' }, siteId),
-              date: doc.effective_date,
-              dateLabel: frDate(doc.effective_date),
-              sourcePage: proposal.source_page,
-              sourceExcerpt: proposal.source_excerpt?.trim() || null,
-            })
-          }
-          sources.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
-          if (sources.length > 0) actionSourcesById.set(actionId, sources)
-        }
-      }
-    }
+    // ── Provenance documentaire des Actions/Réserves/Échéances (mini-lot Vincent, « provenance
+    //    des Actions dans la fiche Point » puis extension Réserves/Échéances 2026-09-15, audit
+    //    Clim Exp'Air) — via document_proposal_materialization, JAMAIS une heuristique : lien
+    //    structuré posé à l'import historique (materialize_historical_visit). Un objet de saisie
+    //    humaine/Copilote n'a simplement aucune ligne ici → sources: [] (fait honnête). ──
+    const { sourcesById: actionSourcesById, materializedIds: wasMaterializedActionIds } =
+      await loadDocumentSourcesByEntity(db, siteId, ['site_action'], [...actionIds])
 
-    // ── Fréquence PV du Point (recette Vincent 2026-09-15) — les Réserves/Échéances
-    // liées peuvent, comme les Actions ci-dessus, provenir d'un PV identifié. Complète
-    // le comptage documentaire de mentionsCount sans dupliquer la mécanique de sources
-    // détaillées (filename/page/excerpt) qui n'existe que pour les Actions dans le Film.
     const reserveDeadlineIds = [...reserveIds, ...deadlineIds]
-    const otherObjectDocumentIds: Array<string | null> = []
-    if (reserveDeadlineIds.length > 0) {
-      const { data: otherMatRows } = await db.from('document_proposal_materialization')
-        .select('proposal_id')
-        .in('target_entity_type', ['site_reserve', 'site_deadline'])
-        .in('target_entity_id', reserveDeadlineIds)
-      const otherProposalIds = [...new Set(
-        (otherMatRows ?? []).map((m) => m.proposal_id as string | null).filter((id): id is string => !!id),
-      )]
-      if (otherProposalIds.length > 0) {
-        const { data: otherProposalRows } = await db.from('document_extraction_proposal')
-          .select('document_id').in('id', otherProposalIds)
-        for (const p of otherProposalRows ?? []) otherObjectDocumentIds.push(p.document_id as string | null)
-      }
-    }
+    const { sourcesById: reserveDeadlineSourcesById } =
+      await loadDocumentSourcesByEntity(db, siteId, ['site_reserve', 'site_deadline'], reserveDeadlineIds)
+    const otherObjectDocumentIds = [...reserveDeadlineSourcesById.values()].flatMap((sources) => sources.map((s) => s.documentId))
     const actionDocumentIds = [...actionSourcesById.values()].flatMap((sources) => sources.map((s) => s.documentId))
     mentionsCount = computeMentionsCount(evidence.map((e) => e.documentId), [...actionDocumentIds, ...otherObjectDocumentIds])
+    occurrences = buildPointOccurrences([
+      ...evidence,
+      ...[...actionSourcesById.values()].flat(),
+      ...[...reserveDeadlineSourcesById.values()].flat(),
+    ])
 
     type DeadlineRow = {
       id: string; title: string; status: DeadlineStatus; due_date: string | null
@@ -1109,7 +1173,7 @@ export async function getTrackedPointDetail(
         dueDate: due, dueDateLabel: frDate(due),
         responsible: responsibleFor(d.assigned_contact_id, d.assigned_company_id, null),
         suggestedResponsibleName: null,
-        sources: [],
+        sources: reserveDeadlineSourcesById.get(d.id) ?? [],
         href: `/sites/${siteId}/echeances`,
         createdAt: null,
         wasMaterialized: false,
@@ -1126,7 +1190,7 @@ export async function getTrackedPointDetail(
         dueDate: null, dueDateLabel: null,
         responsible: responsibleFor(null, r.responsible_company_id, null),
         suggestedResponsibleName: null,
-        sources: [],
+        sources: reserveDeadlineSourcesById.get(r.id) ?? [],
         href: `/sites/${siteId}/reserves`,
         createdAt: null,
         wasMaterialized: false,
@@ -1243,6 +1307,7 @@ export async function getTrackedPointDetail(
     trajectory,
     film,
     evidence,
+    occurrences,
     provenance,
     linkedObjects: linkedObjectsWithSuggestions,
     openLinkedObjects,

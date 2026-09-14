@@ -38,12 +38,12 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
 
       <SiteChantierNav siteId={id} siteName={identity.name} clientName={identity.clientName} activeTab="points" />
 
-      <header className="space-y-1">
+      <header className="space-y-2">
         <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
           <ListChecks className="h-5 w-5 text-muted-foreground" />
           Points
         </h1>
-        <p className="text-sm text-muted-foreground inline-flex items-center gap-1">
+        <p className="text-sm text-muted-foreground inline-flex items-center gap-1 mt-1">
           <MapPin className="h-3.5 w-3.5 shrink-0" />
           {identity.name}
           {identity.clientName ? ` · ${identity.clientName}` : ''}

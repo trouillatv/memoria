@@ -778,6 +778,37 @@ export function PointFicheView({
                   </dd>
                 </div>
               )}
+              {p.occurrences.length > 0 && (
+                <details className="group pt-0.5">
+                  <summary className="flex list-none cursor-pointer items-center justify-end gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                    <span>Voir les {p.occurrences.length} occurrence{p.occurrences.length > 1 ? 's' : ''}</span>
+                    <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+                  </summary>
+                  <ul className="mt-1.5 space-y-1.5 text-left text-[12px]">
+                    {p.occurrences.map((o) => (
+                      <li key={o.documentId} className="rounded-lg border px-2 py-1.5">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="font-medium">{o.dateLabel ?? 'Date inconnue'}</span>
+                          {o.href && (
+                            <a href={o.href} target="_blank" rel="noreferrer" className="text-[11px] text-primary hover:underline">
+                              Ouvrir
+                            </a>
+                          )}
+                        </div>
+                        {o.hasFullCitation ? (
+                          <p className="mt-0.5 text-muted-foreground">
+                            {o.documentFilename ?? 'Document'}
+                            {o.sourcePage ? ` · p.${o.sourcePage}` : ''}
+                            {o.sourceExcerpt && <span className="mt-0.5 block italic">« {o.sourceExcerpt} »</span>}
+                          </p>
+                        ) : (
+                          <p className="mt-0.5 text-muted-foreground">Document disponible · page/extrait non renseignés</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
               {p.createdAtLabel && (
                 <div className="flex items-baseline justify-between gap-2">
                   <dt className="text-muted-foreground">Créé le</dt>
