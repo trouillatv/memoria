@@ -456,12 +456,30 @@ export function PointFicheView({
   subjectHref?: string
 }) {
   const p = point
-  // Cibles éligibles pour « Affecter… → À une Action… » (mandat Vincent 2026-09-14) :
+  // Cibles éligibles pour « Affecter… → Affecter à l'Action » (mandat Vincent 2026-09-14) :
   // une par groupe d'Actions ouvertes, jamais Réserve/Échéance (aucune affectation
   // structurelle possible pour ces deux types aujourd'hui).
   const openActions = p.openLinkedObjectGroups
     .filter((g) => g.objectType === 'site_action')
     .map((g) => ({ id: g.representative.id, title: g.title, dueDate: g.representative.dueDate }))
+
+  // §3 « Responsables des actions liées » (doctrine Vincent 2026-09-14, consolidation
+  // vocabulaire) : responsabilité humaine = Point (pilotage transverse) ou Action
+  // (exécution), jamais Réserve/Échéance qui n'ont pas de champ structurel pour ça —
+  // donc union des SEULS responsables `site_action`, avec le(s) titre(s) réel(s) de la ou
+  // des Actions portées, jamais un simple comptage. Ouvertes ET terminées, mêmes objets
+  // que `computePointActors` (union honnête des FK déjà posées, jamais une déduction).
+  const actionResponsibles = (() => {
+    const map = new Map<string, { key: string; name: string; titles: string[] }>()
+    for (const o of p.linkedObjects) {
+      if (o.objectType !== 'site_action' || !o.responsible || o.responsible.kind === 'text') continue
+      const key = `${o.responsible.kind}:${o.responsible.name}`
+      const entry = map.get(key) ?? { key, name: o.responsible.name, titles: [] }
+      if (!entry.titles.includes(o.title)) entry.titles.push(o.title)
+      map.set(key, entry)
+    }
+    return [...map.values()]
+  })()
 
   return (
     <div className="space-y-5">
@@ -648,58 +666,55 @@ export function PointFicheView({
             </section>
           )}
 
-          {/* §3 — Acteurs (mandat Vincent 2026-09-14, lot Point cockpit des objets liés) :
-              trois blocs distincts, jamais fusionnés — provenance depuis les éléments à faire,
-              désignation humaine explicite au niveau du Point, simple citation textuelle. Un
-              responsable structuré (FK explicite sur un objet lié, ou désignation humaine
-              explicite d'une entreprise citée) n'est jamais confondu avec une simple citation. */}
+          {/* §3 — Acteurs (doctrine Vincent 2026-09-14, consolidation vocabulaire) : « Le
+              Point raconte et coordonne. L'Action engage quelqu'un. La Réserve constate
+              quelque chose à lever. L'Échéance dit quand quelque chose doit arriver. »
+              Responsabilité humaine = SEULEMENT deux niveaux, jamais confondus : Pilote du
+              Point (désignation transverse explicite) et Responsable d'une Action (FK
+              structurée). Réserve/Échéance n'ont aucun champ structurel pour porter une
+              responsabilité — leur donner un pseudo-responsable ici recréerait l'ambiguïté
+              qu'on vient d'éliminer ; une Réserve se lève, au besoin via une Action
+              corrective qui, elle, porte un vrai responsable. */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
             <h2 className={H2}>3. Acteurs</h2>
-            {p.actors.length === 0 && p.responsibleCompanyDesignations.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Aucun responsable structuré.</p>
-            ) : (
-              <>
-                {p.actors.length > 0 && (
-                  <div>
-                    <p className="text-[11px] font-medium text-muted-foreground">Intervenants sur les éléments à faire</p>
-                    <ul className="mt-1 flex flex-wrap gap-2">
-                      {p.actors.map((a) => {
-                        const responsibleCount = a.responsibleActionCount + a.responsibleReserveCount + a.responsibleDeadlineCount
-                        const detail: string[] = []
-                        if (a.responsibleActionCount > 0) detail.push(`responsable de ${a.responsibleActionCount} action${a.responsibleActionCount > 1 ? 's' : ''}`)
-                        if (a.responsibleReserveCount > 0) detail.push(`de ${a.responsibleReserveCount} réserve${a.responsibleReserveCount > 1 ? 's' : ''}`)
-                        if (a.responsibleDeadlineCount > 0) detail.push(`de ${a.responsibleDeadlineCount} échéance${a.responsibleDeadlineCount > 1 ? 's' : ''}`)
-                        return (
-                          <li key={a.id} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
-                            {a.name}{a.fonction ? ` · ${a.fonction}` : ''}
-                            <span className="text-muted-foreground">
-                              {' — '}
-                              {responsibleCount > 0 ? detail.join(', ') : 'mentionné, rôle non précisé'}
-                            </span>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </div>
-                )}
-                {p.responsibleCompanyDesignations.length > 0 && (
-                  <div className={p.actors.length > 0 ? 'pt-1.5' : undefined}>
-                    <p className="text-[11px] font-medium text-muted-foreground">Responsables du Point</p>
-                    <p className="text-[11px] text-muted-foreground">
-                      La responsabilité du Point ne modifie pas automatiquement les actions et réserves liées.
-                    </p>
-                    <ul className="mt-1 flex flex-wrap gap-2">
-                      {p.responsibleCompanyDesignations.map((d) => (
-                        <li key={d.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[12.5px] dark:border-sky-800 dark:bg-sky-950/30">
-                          <span>Responsable : {d.companyName}</span>
-                          <PointResponsibleCompanyRevoke siteId={p.siteId} pointId={p.id} designationId={d.id} companyName={d.companyName} />
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            )}
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground">Pilotage du Point</p>
+              {p.responsibleCompanyDesignations.length === 0 ? (
+                <p className="mt-1 text-[12.5px] text-muted-foreground">Aucun pilote du Point.</p>
+              ) : (
+                <>
+                  <p className="text-[11px] text-muted-foreground">
+                    Le pilotage du Point ne modifie pas automatiquement les actions et réserves liées.
+                  </p>
+                  <ul className="mt-1 flex flex-wrap gap-2">
+                    {p.responsibleCompanyDesignations.map((d) => (
+                      <li key={d.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[12.5px] dark:border-sky-800 dark:bg-sky-950/30">
+                        <span>{d.companyName} · Pilote du Point</span>
+                        <PointResponsibleCompanyRevoke siteId={p.siteId} pointId={p.id} designationId={d.id} companyName={d.companyName} />
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+            <div className="pt-1.5">
+              <p className="text-[11px] font-medium text-muted-foreground">Responsables des actions liées</p>
+              {actionResponsibles.length === 0 ? (
+                <p className="mt-1 text-[12.5px] text-muted-foreground">Aucune Action affectée sur ce Point.</p>
+              ) : (
+                <ul className="mt-1 flex flex-wrap gap-2">
+                  {actionResponsibles.map((a) => (
+                    <li key={a.key} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
+                      {a.name}
+                      <span className="text-muted-foreground">
+                        {' · '}
+                        {a.titles.map((t) => `Action « ${t} »`).join(', ')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             {p.citedCompanies.length > 0 && (
               <div className="pt-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Entreprises citées dans les preuves</p>
