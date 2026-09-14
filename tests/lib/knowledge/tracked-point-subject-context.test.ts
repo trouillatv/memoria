@@ -95,9 +95,9 @@ describe('tracked-point-subject-context — buildSubjectPointMiniContext', () =>
 
   it('mix ouvert/résolu/réouvert — chaque état est compté indépendamment, sans collapse', () => {
     const lookups = emptyLookups()
-    const open = basePoint({ id: 'p-open' })
-    const resolved = basePoint({ id: 'p-resolved' })
-    const reopened = basePoint({ id: 'p-reopened' })
+    const open = basePoint({ id: 'p-open', createdAt: '2026-01-15T00:00:00.000Z' })
+    const resolved = basePoint({ id: 'p-resolved', createdAt: '2026-01-01T00:00:00.000Z' })
+    const reopened = basePoint({ id: 'p-reopened', createdAt: '2026-02-01T00:00:00.000Z' })
     wireOpen(open.id, lookups)
     wireResolved(resolved.id, lookups)
     wireReopened(reopened.id, lookups)
@@ -108,8 +108,9 @@ describe('tracked-point-subject-context — buildSubjectPointMiniContext', () =>
     expect(ctx.open).toBe(1)
     expect(ctx.resolved).toBe(1)
     expect(ctx.reopened).toBe(1)
-    // Tri d'affichage réutilisé tel quel (sortPointsForSubjectDisplay) : réouvert avant ouvert avant résolu.
-    expect(ctx.points.map((p) => p.id)).toEqual(['p-reopened', 'p-open', 'p-resolved'])
+    // Frise = ordre chronologique (createdAt croissant), pas le tri par urgence de la page Sujet
+    // (retour Vincent 2026-09-14) : « où se situe ce Point dans l'histoire du sujet ».
+    expect(ctx.points.map((p) => p.id)).toEqual(['p-resolved', 'p-open', 'p-reopened'])
   })
 
   it('le Point courant est identifié par isCurrent, et lui seul', () => {

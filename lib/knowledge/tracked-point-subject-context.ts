@@ -32,6 +32,12 @@
 // Un point status='merged' est TOUJOURS exclu de la tally/liste retournée ici (jamais affiché
 // séparément de son canonique), pour ne jamais compter deux fois la même évidence — même
 // exclusion que readModelPoints/mergedPoints dans loadTrackedPointReadModel.
+//
+// Ordre de la mini-frise (retour Vincent 2026-09-14, recette) : chronologique par createdAt
+// (ancien → récent), PAS sortPointsForSubjectDisplay (tri par urgence de la page Sujet). La frise
+// répond à « où se situe ce Point dans l'HISTOIRE du sujet », une question de position temporelle,
+// pas de priorité d'action — les deux tris répondent à des questions différentes sur les mêmes
+// données déjà calculées, aucun recalcul d'état.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -39,7 +45,6 @@ import {
   deriveSubjectPointReadModel,
   fetchAllChunks,
   projectTrackedPoint,
-  sortPointsForSubjectDisplay,
   type PointEvidenceLookups,
   type PointMembershipRow,
   type PointMembershipScope,
@@ -123,10 +128,10 @@ export function buildSubjectPointMiniContext(
   }
 
   const tally = deriveSubjectPointReadModel(canonicalSubjectId, entries)
-  const orderedPoints: SubjectPointMiniContextEntry[] = sortPointsForSubjectDisplay(tally.points).map((p) => ({
-    ...p,
-    isCurrent: p.id === currentPointId,
-  }))
+  const createdAtByPointId = new Map(points.map((p) => [p.id, p.createdAt]))
+  const orderedPoints: SubjectPointMiniContextEntry[] = [...tally.points]
+    .sort((a, b) => (createdAtByPointId.get(a.id) ?? '').localeCompare(createdAtByPointId.get(b.id) ?? ''))
+    .map((p) => ({ ...p, isCurrent: p.id === currentPointId }))
 
   return {
     canonicalSubjectId,

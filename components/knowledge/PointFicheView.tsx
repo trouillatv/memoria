@@ -535,12 +535,17 @@ export function PointFicheView({
             </p>
           </section>
 
-          {/* Mini-contexte Sujet (mandat Vincent, GO Option B, 2026-09-14) : rappelle où ce Point
-              se situe dans son sujet, sans reconstruire la fiche Sujet. Filtré depuis l'origine à
-              ownerCanonicalSubjectId (jamais un recalcul site entier) — cf. loadSubjectPointMiniContext.
-              Volontairement non numéroté : ceci reste un aside contextuel entre le Film (§2) et les
-              Acteurs (§3), pas une nouvelle rubrique de même rang. Mini-frise en lecture seule
-              (pastilles), pas une navigation point-à-point — un seul lien de sortie : le sujet complet. */}
+          {/* Mini-contexte Sujet (mandat Vincent, GO Option B, 2026-09-14 ; recette validée
+              2026-09-14) : rappelle où ce Point se situe dans son sujet, sans reconstruire la fiche
+              Sujet. Filtré depuis l'origine à ownerCanonicalSubjectId (jamais un recalcul site
+              entier) — cf. loadSubjectPointMiniContext. Volontairement non numéroté : ceci reste un
+              aside contextuel entre le Film (§2) et les Acteurs (§3), pas une nouvelle rubrique de
+              même rang — confirmé par Vincent (renuméroter Acteurs/Informations/Documents pour ce
+              bloc lui donnerait trop de poids). Reste volontairement compact : une ligne de synthèse
+              + mini-frise + CTA, jamais une mini-fiche Sujet. Mini-frise en lecture seule (pastilles,
+              ordre chronologique — cf. doctrine dans tracked-point-subject-context.ts), pas une
+              navigation point-à-point — un seul lien de sortie : le sujet complet. Le Point courant
+              est signalé par une pastille agrandie + légende dédiée, jamais par le seul tooltip. */}
           {subjectMiniContext && subjectMiniContext.totalPoints > 0 && (
             <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
               <h2 className={H2}>Ce sujet</h2>
@@ -567,17 +572,24 @@ export function PointFicheView({
               )}
 
               {subjectMiniContext.points.length > 1 && (
-                <ul className="flex flex-wrap items-center gap-2 pt-0.5">
+                <ul className="flex flex-wrap items-start gap-x-3 gap-y-1 pt-0.5">
+                  {/* Point courant identifiable au premier coup d'œil (retour Vincent en recette :
+                      pas un tooltip) : pastille nettement plus grande + anneau + légende dédiée,
+                      jamais la seule ressource pour repérer le Point courant dans la frise. */}
                   {subjectMiniContext.points.map((sp) => (
-                    <li
-                      key={sp.id}
-                      title={`${sp.label} — ${POINT_STATE_LABEL[sp.derivedState] ?? sp.derivedState}${sp.isCurrent ? ' (ce Point)' : ''}`}
-                      className={cn(
-                        'h-2.5 w-2.5 rounded-full',
-                        STATE_DOT_CLS[sp.derivedState],
-                        sp.isCurrent && 'ring-2 ring-offset-1 ring-foreground',
+                    <li key={sp.id} className="flex flex-col items-center gap-1">
+                      <span
+                        title={`${sp.label} — ${POINT_STATE_LABEL[sp.derivedState] ?? sp.derivedState}`}
+                        className={cn(
+                          'rounded-full',
+                          STATE_DOT_CLS[sp.derivedState],
+                          sp.isCurrent ? 'h-4 w-4 ring-2 ring-offset-2 ring-foreground' : 'h-2 w-2',
+                        )}
+                      />
+                      {sp.isCurrent && (
+                        <span className="text-[9px] font-semibold uppercase tracking-wide text-foreground">Ce Point</span>
                       )}
-                    />
+                    </li>
                   ))}
                 </ul>
               )}
