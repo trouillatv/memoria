@@ -712,6 +712,7 @@ function LifelineBar({
                     <LifelineEventBadge
                       key={t}
                       typeLabel={meta.label}
+                      pluralLabel={meta.plural.toLowerCase()}
                       badgeLabel={label}
                       colorClass={meta.color}
                       sourceLabel={sourceLabel}

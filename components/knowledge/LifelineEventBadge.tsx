@@ -18,6 +18,12 @@ function frDateLong(iso: string): string {
   return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// Au-delà de ce seuil, un aperçu exhaustif devient une fiche dans une bulle flottante
+// (constat Vincent 2026-09-14, audits RUS réels : jusqu'à 27 actions dans un seul badge).
+// Bascule en résumé : quelques événements + un décompte du reste, jamais une liste dépliée.
+const DENSE_THRESHOLD = 5
+const DENSE_VISIBLE_CAP = 3
+
 /**
  * Aperçu contextuel au survol/tap d'une pastille de la ligne de vie (fiche Sujet).
  * Desktop : hover/focus ouvre. Mobile : tap ouvre, tap hors du popover ferme (comportement
@@ -26,6 +32,7 @@ function frDateLong(iso: string): string {
  */
 export function LifelineEventBadge({
   typeLabel,
+  pluralLabel,
   badgeLabel,
   colorClass,
   events,
@@ -33,12 +40,17 @@ export function LifelineEventBadge({
   sourceHref,
 }: {
   typeLabel: string
+  pluralLabel: string
   badgeLabel: string
   colorClass: string
   events: LifelineEventPreview[]
   sourceLabel: string | null
   sourceHref: string | null
 }) {
+  const isDense = events.length >= DENSE_THRESHOLD
+  const visibleEvents = isDense ? events.slice(0, DENSE_VISIBLE_CAP) : events
+  const hiddenCount = events.length - visibleEvents.length
+
   return (
     <Popover>
       <PopoverTrigger
@@ -54,22 +66,36 @@ export function LifelineEventBadge({
       </PopoverTrigger>
       <PopoverContent>
         <div className="space-y-2.5">
-          {events.map((ev, i) => (
+          {isDense && (
+            <p className="font-semibold text-foreground">
+              {badgeLabel}{sourceLabel ? ` · ${sourceLabel}` : ''}
+            </p>
+          )}
+          {visibleEvents.map((ev, i) => (
             <div key={i} className={i > 0 ? 'border-t pt-2.5' : ''}>
-              <p className="font-semibold text-foreground">
-                {ev.date ? `${frDateLong(ev.date)} · ${typeLabel}` : typeLabel}
-              </p>
+              {!isDense && (
+                <p className="font-semibold text-foreground">
+                  {ev.date ? `${frDateLong(ev.date)} · ${typeLabel}` : typeLabel}
+                </p>
+              )}
               <p className="mt-0.5 leading-snug text-foreground">{ev.title}</p>
-              {ev.status && <p className="mt-0.5 text-muted-foreground">{ev.status}</p>}
-              {ev.responsible && <p className="mt-0.5 text-muted-foreground">{ev.responsible}</p>}
+              {(ev.status || ev.responsible) && (
+                <p className="mt-0.5 text-muted-foreground">
+                  {[ev.status, ev.responsible].filter(Boolean).join(' · ')}
+                </p>
+              )}
             </div>
           ))}
+          {isDense && hiddenCount > 0 && (
+            <p className="border-t pt-2.5 text-muted-foreground">
+              + {hiddenCount} autres {pluralLabel} dans ce PV
+            </p>
+          )}
           {sourceLabel && (
             <p className="border-t pt-2 text-muted-foreground">
-              Source :{' '}
               {sourceHref ? (
-                <Link href={sourceHref} className="underline hover:no-underline">{sourceLabel}</Link>
-              ) : sourceLabel}
+                <Link href={sourceHref} className="underline hover:no-underline">Ouvrir le document source →</Link>
+              ) : `Source : ${sourceLabel}`}
             </p>
           )}
         </div>
