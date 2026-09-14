@@ -30,18 +30,22 @@ export default async function MobilePointFichePage({
 
   const subjectMiniContext = await loadSubjectPointMiniContext(siteId, point.ownerCanonicalSubjectId, point.id).catch(() => null)
 
-  // Retour au Delta chantier si on en vient (recette Vincent 2026-09-14) : préserve le
-  // contexte de David dans sa revue plutôt que de le renvoyer systématiquement au sujet.
+  // Retour au Delta chantier ou au Pilotage si on en vient (recette Vincent 2026-09-14) :
+  // préserve le contexte de David dans sa revue plutôt que de le renvoyer systématiquement au sujet.
   const backHref = from === 'delta'
     ? `/m/site/${siteId}/points?tab=delta`
-    : point.ownerCanonicalSubjectId
-      ? `/m/site/${siteId}/sujets/${point.ownerCanonicalSubjectId}`
-      : `/m/site/${siteId}`
+    : from === 'pilotage'
+      ? `/m/site/${siteId}/points?tab=pilotage`
+      : point.ownerCanonicalSubjectId
+        ? `/m/site/${siteId}/sujets/${point.ownerCanonicalSubjectId}`
+        : `/m/site/${siteId}`
   const backLabel = from === 'delta'
     ? 'Retour au Delta chantier'
-    : point.ownerCanonicalSubjectLabel
-      ? `Retour au sujet « ${point.ownerCanonicalSubjectLabel} »`
-      : 'Retour au chantier'
+    : from === 'pilotage'
+      ? 'Retour au Pilotage'
+      : point.ownerCanonicalSubjectLabel
+        ? `Retour au sujet « ${point.ownerCanonicalSubjectLabel} »`
+        : 'Retour au chantier'
 
   const needsYouQuestions = needsYouSummary
     ? filterMemoriaNeedsYouQuestionsForPoint(needsYouSummary.questions, point.id)

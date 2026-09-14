@@ -30,6 +30,7 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ siteId: string; canonicalSubjectId: string }>
+  searchParams: Promise<{ fromPoint?: string; fromLabel?: string }>
 }
 
 // ── Link priority for "Pourquoi ce sujet compte" ─────────────────────────────
@@ -752,9 +753,14 @@ const ACTIVE_STATUSES = new Set([
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default async function SubjectLifeMobilePage({ params }: PageProps) {
+export default async function SubjectLifeMobilePage({ params, searchParams }: PageProps) {
   const { siteId, canonicalSubjectId } = await params
+  const { fromPoint, fromLabel } = await searchParams
   await requireSiteAccess(siteId)
+
+  // Retour au Point d'origine si on en vient (recette Vincent 2026-09-14, navigation contextuelle).
+  const backHref = fromPoint ? `/m/site/${siteId}/point/${fromPoint}` : `/m/site/${siteId}/sujets`
+  const backLabel = fromPoint && fromLabel ? `Retour au Point « ${fromLabel} »` : 'Sujets'
 
   const [life, siteRow, actorIdentity, actorResp] = await Promise.all([
     getCanonicalSubjectLife(canonicalSubjectId).catch(() => null),
@@ -846,11 +852,11 @@ export default async function SubjectLifeMobilePage({ params }: PageProps) {
 
       {/* Back */}
       <Link
-        href={`/m/site/${siteId}/sujets`}
+        href={backHref}
         className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground active:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        Sujets
+        {backLabel}
       </Link>
 
       {isActorSubject ? (

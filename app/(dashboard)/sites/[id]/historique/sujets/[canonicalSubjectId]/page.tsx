@@ -34,6 +34,7 @@ export const dynamic = 'force-dynamic'
 
 interface PageProps {
   params: Promise<{ id: string; canonicalSubjectId: string }>
+  searchParams: Promise<{ fromPoint?: string; fromLabel?: string }>
 }
 
 // ── Constantes d'affichage ────────────────────────────────────────────────────
@@ -1425,11 +1426,16 @@ function MergesAsWinnerSection({ merges }: { merges: MergeRecord[] }) {
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-export default async function CanonicalSubjectLifePage({ params }: PageProps) {
+export default async function CanonicalSubjectLifePage({ params, searchParams }: PageProps) {
   const user = await getCurrentUserWithProfile().catch(() => null)
   if (!user) redirect('/login')
 
   const { id: siteId, canonicalSubjectId } = await params
+  const { fromPoint, fromLabel } = await searchParams
+
+  // Retour au Point d'origine si on en vient (recette Vincent 2026-09-14, navigation contextuelle).
+  const backHref = fromPoint ? `/sites/${siteId}/point/${fromPoint}` : `/sites/${siteId}/historique`
+  const backLabel = fromPoint && fromLabel ? `Retour au Point « ${fromLabel} »` : 'Retour au suivi'
 
   const [site, life, pickerItems] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
@@ -1570,11 +1576,11 @@ export default async function CanonicalSubjectLifePage({ params }: PageProps) {
         {/* Retour */}
         <div>
           <Link
-            href={`/sites/${siteId}/historique`}
+            href={backHref}
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            Retour au suivi
+            {backLabel}
           </Link>
         </div>
 

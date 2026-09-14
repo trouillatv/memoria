@@ -42,8 +42,10 @@ const TIME_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', 
 const frDate = (iso: string | null): string | null => (iso ? DATE_FMT.format(new Date(iso)) : null)
 const frTime = (iso: string): string => TIME_FMT.format(new Date(iso))
 
+// `?from=pilotage` : lu par la fiche Point pour renvoyer « Retour au Pilotage » (navigation
+// contextuelle Vincent 2026-09-14), même convention que `?from=delta` (PointsDeltaView).
 function pointHref(pointHrefPrefix: string, p: PointListEntry): string {
-  return `${pointHrefPrefix}/${p.id}`
+  return `${pointHrefPrefix}/${p.id}?from=pilotage`
 }
 
 // Lien direct vers la question NeedsYou précise (jamais via la fiche Point, qui ignore `?q=`

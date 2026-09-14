@@ -595,7 +595,10 @@ export function PointFicheView({
               )}
 
               {subjectHref && (
-                <Link href={subjectHref} className="inline-flex items-center gap-1 pt-0.5 text-[12.5px] font-medium text-foreground hover:underline">
+                <Link
+                  href={`${subjectHref}${subjectHref.includes('?') ? '&' : '?'}${new URLSearchParams({ fromPoint: p.id, fromLabel: p.label }).toString()}`}
+                  className="inline-flex items-center gap-1 pt-0.5 text-[12.5px] font-medium text-foreground hover:underline"
+                >
                   Voir le sujet complet <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
               )}

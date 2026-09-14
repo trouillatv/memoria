@@ -36,18 +36,22 @@ export default async function PointFichePage({
 
   const subjectMiniContext = await loadSubjectPointMiniContext(id, point.ownerCanonicalSubjectId, point.id).catch(() => null)
 
-  // Retour au Delta chantier si on en vient (recette Vincent 2026-09-14) : préserve le
-  // contexte de David dans sa revue plutôt que de le renvoyer systématiquement au sujet.
+  // Retour au Delta chantier ou au Pilotage si on en vient (recette Vincent 2026-09-14) :
+  // préserve le contexte de David dans sa revue plutôt que de le renvoyer systématiquement au sujet.
   const backHref = from === 'delta'
     ? `/sites/${id}/points?tab=delta`
-    : point.ownerCanonicalSubjectId
-      ? `/sites/${id}/historique/sujets/${point.ownerCanonicalSubjectId}`
-      : `/sites/${id}?tab=memoire`
+    : from === 'pilotage'
+      ? `/sites/${id}/points?tab=pilotage`
+      : point.ownerCanonicalSubjectId
+        ? `/sites/${id}/historique/sujets/${point.ownerCanonicalSubjectId}`
+        : `/sites/${id}?tab=memoire`
   const backLabel = from === 'delta'
     ? 'Retour au Delta chantier'
-    : point.ownerCanonicalSubjectLabel
-      ? `Retour au sujet « ${point.ownerCanonicalSubjectLabel} »`
-      : identity.name
+    : from === 'pilotage'
+      ? 'Retour au Pilotage'
+      : point.ownerCanonicalSubjectLabel
+        ? `Retour au sujet « ${point.ownerCanonicalSubjectLabel} »`
+        : identity.name
 
   // Le canonique affiché (point.id) peut différer du pointId demandé (fusion) — la file
   // NeedsYou doit référencer le Point réellement montré, jamais celui de l'URL.
