@@ -28,6 +28,7 @@ import {
   type LingeringPointEntry,
 } from '@/lib/knowledge/tracked-point-lingering'
 import { deriveCanonicalAttentionItems, type CanonicalSignal } from '@/lib/knowledge/canonical-attention'
+import { proposalIdFromSource } from '@/lib/knowledge/tracked-point-detail'
 import { todayLocalIso, frDayMonthYearLocal } from '@/lib/time/local-date'
 import {
   computeTrackedPointReviewFingerprint,
@@ -116,6 +117,36 @@ async function loadSubjectLabels(db: AdminClient, subjectIds: string[]): Promise
   return labelById
 }
 
+// Résout la trajectoire directe des Points (proposal:<id> → document_id) en une requête
+// batchée — utilisé seul quand le site n'a aucun CBO (repli), et dupliqué en interne par
+// `loadActorNamesByPoint` quand des CBO existent (même logique, ids différents).
+async function hydratePvDocumentIdsFromTrajectoryOnly(
+  db: AdminClient,
+  points: PointReadModelEntry[],
+  pvDocumentIdsByPoint: Map<string, Set<string>>,
+): Promise<void> {
+  const trajectoryProposalIdsByPoint = new Map<string, string[]>()
+  for (const point of points) {
+    const ids = point.trajectory.map((t) => proposalIdFromSource(t.source ?? null)).filter((id): id is string => !!id)
+    if (ids.length > 0) trajectoryProposalIdsByPoint.set(point.id, ids)
+  }
+  const allProposalIds = [...new Set([...trajectoryProposalIdsByPoint.values()].flat())]
+  if (allProposalIds.length === 0) return
+  const { data } = await db.from('document_extraction_proposal').select('id, document_id').in('id', allProposalIds)
+  const documentIdByProposalId = new Map<string, string>()
+  for (const p of data ?? []) {
+    if (p.document_id) documentIdByProposalId.set(p.id as string, p.document_id as string)
+  }
+  for (const [pointId, proposalIds] of trajectoryProposalIdsByPoint) {
+    const docIds = new Set<string>()
+    for (const pid of proposalIds) {
+      const docId = documentIdByProposalId.get(pid)
+      if (docId) docIds.add(docId)
+    }
+    if (docIds.size > 0) pvDocumentIdsByPoint.set(pointId, docIds)
+  }
+}
+
 // Réplique batchée, à l'échelle du site, de la jointure §6 de `getTrackedPointDetail` —
 // aucune règle d'attribution nouvelle, seulement la même union responsable
 // contact > entreprise > texte libre, exécutée une fois pour tous les CBO du site.
@@ -123,10 +154,19 @@ async function loadActorNamesByPoint(
   db: AdminClient,
   siteId: string,
   points: PointReadModelEntry[],
-): Promise<Map<string, string[]>> {
+): Promise<{ actorNamesByPoint: Map<string, string[]>; pvDocumentIdsByPoint: Map<string, Set<string>> }> {
   const result = new Map<string, string[]>()
+  // Fréquence PV (recette Vincent 2026-09-15, cf. tracked-point-detail.computeMentionsCount) :
+  // document ids issus des Actions/Réserves/Échéances portées par le CBO du Point, en plus
+  // de sa trajectoire directe — un Point fondé par CBO peut n'avoir aucun événement propre.
+  const pvDocumentIdsByPoint = new Map<string, Set<string>>()
   const allCboIds = [...new Set(points.flatMap((p) => p.cboIds))]
-  if (allCboIds.length === 0) return result
+  if (allCboIds.length === 0) {
+    // Aucun CBO sur tout le site : pas d'objet métier à interroger, mais la trajectoire
+    // directe des Points (si non vide) reste une provenance PV valable à compter.
+    await hydratePvDocumentIdsFromTrajectoryOnly(db, points, pvDocumentIdsByPoint)
+    return { actorNamesByPoint: result, pvDocumentIdsByPoint }
+  }
 
   const { data: memberRows } = await db
     .from('canonical_business_object_member')
@@ -205,6 +245,51 @@ async function loadActorNamesByPoint(
   const deadlineById = new Map(deadlineRows.map((d) => [d.id, d]))
   const reserveById = new Map(reserveRows.map((r) => [r.id, r]))
 
+  // ── Fréquence PV (suite) — provenance documentaire des objets liés (mêmes ids
+  // que ci-dessus) + de la trajectoire directe de chaque Point, résolues en UNE
+  // requête `document_extraction_proposal` batchée pour tout le site. ──
+  const allEntityIds = [...actionIds, ...reserveIds, ...deadlineIds]
+  const proposalIdsByEntity = new Map<string, string[]>()
+  if (allEntityIds.length > 0) {
+    const { data: materializationRows } = await db.from('document_proposal_materialization')
+      .select('target_entity_id, proposal_id')
+      .in('target_entity_type', ['site_action', 'site_reserve', 'site_deadline'])
+      .in('target_entity_id', allEntityIds)
+    for (const row of materializationRows ?? []) {
+      const proposalId = row.proposal_id as string | null
+      if (!proposalId) continue
+      const entityId = row.target_entity_id as string
+      const list = proposalIdsByEntity.get(entityId) ?? []
+      list.push(proposalId)
+      proposalIdsByEntity.set(entityId, list)
+    }
+  }
+  const trajectoryProposalIdsByPoint = new Map<string, string[]>()
+  for (const point of points) {
+    const ids = point.trajectory.map((t) => proposalIdFromSource(t.source ?? null)).filter((id): id is string => !!id)
+    if (ids.length > 0) trajectoryProposalIdsByPoint.set(point.id, ids)
+  }
+  const allProposalIds = [...new Set([
+    ...[...trajectoryProposalIdsByPoint.values()].flat(),
+    ...[...proposalIdsByEntity.values()].flat(),
+  ])]
+  const documentIdByProposalId = new Map<string, string>()
+  if (allProposalIds.length > 0) {
+    const { data } = await db.from('document_extraction_proposal').select('id, document_id').in('id', allProposalIds)
+    for (const p of data ?? []) {
+      if (p.document_id) documentIdByProposalId.set(p.id as string, p.document_id as string)
+    }
+  }
+  const documentIdsByEntity = new Map<string, Set<string>>()
+  for (const [entityId, proposalIds] of proposalIdsByEntity) {
+    const docIds = new Set<string>()
+    for (const pid of proposalIds) {
+      const docId = documentIdByProposalId.get(pid)
+      if (docId) docIds.add(docId)
+    }
+    if (docIds.size > 0) documentIdsByEntity.set(entityId, docIds)
+  }
+
   function nameForEntity(type: string, id: string): string | null {
     if (type === 'site_action') {
       const a = actionById.get(id)
@@ -231,16 +316,23 @@ async function loadActorNamesByPoint(
 
   for (const point of points) {
     const names = new Set<string>()
+    const docIds = new Set<string>()
     for (const cboId of point.cboIds) {
       for (const ref of entityRefsByCbo.get(cboId) ?? []) {
         const name = nameForEntity(ref.type, ref.id)
         if (name) names.add(name)
+        for (const docId of documentIdsByEntity.get(ref.id) ?? []) docIds.add(docId)
       }
     }
+    for (const proposalId of trajectoryProposalIdsByPoint.get(point.id) ?? []) {
+      const docId = documentIdByProposalId.get(proposalId)
+      if (docId) docIds.add(docId)
+    }
     if (names.size > 0) result.set(point.id, [...names])
+    if (docIds.size > 0) pvDocumentIdsByPoint.set(point.id, docIds)
   }
 
-  return result
+  return { actorNamesByPoint: result, pvDocumentIdsByPoint }
 }
 
 // Dupliqué de `tracked-point-lingering.ts` (countPassagesAfter, non exporté) : même calcul pur
@@ -324,7 +416,7 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
   const db = createAdminClient()
   const subjectIds = [...new Set(sorted.map((p) => p.ownerCanonicalSubjectId).filter((id): id is string => !!id))]
 
-  const [subjectLabelById, actorNamesByPoint, needsYou, pvDates, openActionCountBySubject, attentionItems, storedReviews] =
+  const [subjectLabelById, actorNamesResult, needsYou, pvDates, openActionCountBySubject, attentionItems, storedReviews] =
     await Promise.all([
       loadSubjectLabels(db, subjectIds),
       loadActorNamesByPoint(db, siteId, sorted),
@@ -334,6 +426,7 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
       deriveCanonicalAttentionItems(siteId),
       getTrackedPointReviews(siteId, userId),
     ])
+  const { actorNamesByPoint, pvDocumentIdsByPoint } = actorNamesResult
 
   const today = todayLocalIso()
   const lastPvDate = pvDates.length > 0 ? pvDates.reduce((max, d) => (d > max ? d : max)) : null
@@ -391,7 +484,7 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
       }),
       isLingering: Boolean(lingering),
       isChangedSinceLastPv: Boolean(lastPvDate && p.latestMeaningfulEventAt === lastPvDate),
-      mentionsCount: p.trajectory.length,
+      mentionsCount: pvDocumentIdsByPoint.get(p.id)?.size ?? 0,
       openedAt: p.trajectory[0]?.effectiveAt ?? null,
       passagesSinceEvent: p.latestMeaningfulEventAt ? countPassagesSince(pvDates, p.latestMeaningfulEventAt) : null,
       totalSiteVisits: pvDates.length,

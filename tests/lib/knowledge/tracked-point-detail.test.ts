@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   toTrajectoryEntry,
   proposalIdFromSource,
+  computeMentionsCount,
   buildHeadline,
   resolveOrigin,
   originMatchesProvenance,
@@ -88,6 +89,20 @@ describe('tracked-point-detail — proposalIdFromSource', () => {
   })
 })
 
+describe('tracked-point-detail — computeMentionsCount (recette Vincent 2026-09-15, faux 0/N)', () => {
+  it('dédup les document ids entre trajectoire directe et objets métier fondés', () => {
+    expect(computeMentionsCount(['doc-a', 'doc-b'], ['doc-b', 'doc-c'])).toBe(3)
+  })
+
+  it('Point fondé par CBO sans trajectoire propre mais 2 Actions PV distinctes → 2, pas 0', () => {
+    expect(computeMentionsCount([], ['doc-2025-01-29', 'doc-2025-03-27'])).toBe(2)
+  })
+
+  it('aucune preuve nulle part → 0 (zéro honnête, pas un bug)', () => {
+    expect(computeMentionsCount([null, null], [null])).toBe(0)
+  })
+})
+
 describe('tracked-point-detail — buildHeadline (mise en mots, aucun recalcul d’état)', () => {
   it('reopened avec divergence documentaire connue → cite la divergence en priorité', () => {
     const headline = buildHeadline({
@@ -147,6 +162,13 @@ describe('tracked-point-detail — buildHeadline (mise en mots, aucun recalcul d
       derivedState: 'open', documentaryDivergences: [], conflicts: [],
       openedAt: null, latestMeaningfulEventAt: null, mentionsCount: 0,
     })).toBe('Ouvert — aucune résolution constatée à ce jour, aucune preuve documentaire retrouvée.')
+  })
+
+  it('open sans trajectoire MAIS fondé par des objets métier avec preuve PV (mentionsCount > 0) → jamais affirmer « aucune preuve documentaire retrouvée » (faux zéro, recette Vincent 2026-09-15)', () => {
+    expect(buildHeadline({
+      derivedState: 'open', documentaryDivergences: [], conflicts: [],
+      openedAt: null, latestMeaningfulEventAt: null, mentionsCount: 2,
+    })).toBe('Ouvert — aucune résolution constatée à ce jour, mentionné dans 2 occurrences.')
   })
 
   it('unknown → phrase neutre fixe', () => {

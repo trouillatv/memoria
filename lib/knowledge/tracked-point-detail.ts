@@ -415,6 +415,23 @@ export function proposalIdFromSource(source: string | null): string | null {
   return source.slice('proposal:'.length)
 }
 
+/** Compte les PV distincts où le Point est réellement attesté : sa trajectoire directe
+ *  ET les objets métier (Actions/Réserves/Échéances) qu'il porte via un CBO, quand ces
+ *  objets ont une provenance documentaire matérialisée. Un Point fondé par CBO peut avoir
+ *  0 événement de trajectoire propre alors que ses Actions viennent bien de PV identifiés
+ *  (recette Vincent 2026-09-15) : compter uniquement la trajectoire donnait un faux 0/N,
+ *  pire qu'une information absente. */
+export function computeMentionsCount(
+  documentaryDocumentIds: Array<string | null>,
+  objectFoundedDocumentIds: Array<string | null>,
+): number {
+  const ids = new Set<string>()
+  for (const id of [...documentaryDocumentIds, ...objectFoundedDocumentIds]) {
+    if (id) ids.add(id)
+  }
+  return ids.size
+}
+
 /** « Ce qu'il faut retenir aujourd'hui » — une phrase déterministe, composée
  *  UNIQUEMENT à partir de champs déjà calculés par le reducer (derivedState,
  *  documentaryDivergences, conflicts, openedAt, latestMeaningfulEventAt,
@@ -450,8 +467,12 @@ export function buildHeadline(entry: {
         ? `Résolu depuis le ${latestLabel}${mentionClause(entry.mentionsCount)}.`
         : entry.mentionsCount > 0 ? `Résolu${mentionClause(entry.mentionsCount)}.` : 'Résolu.'
     case 'open':
-      return openedLabel
-        ? `Ouvert depuis le ${openedLabel}${mentionClause(entry.mentionsCount)} — aucune résolution constatée à ce jour.`
+      if (openedLabel) return `Ouvert depuis le ${openedLabel}${mentionClause(entry.mentionsCount)} — aucune résolution constatée à ce jour.`
+      // Pas de trajectoire propre (Point fondé par CBO) mais des objets métier liés
+      // viennent bien de PV identifiés (mentionsCount > 0) : ne jamais affirmer
+      // « aucune preuve documentaire retrouvée » dans ce cas (faux, cf. Vincent 2026-09-15).
+      return entry.mentionsCount > 0
+        ? `Ouvert — aucune résolution constatée à ce jour${mentionClause(entry.mentionsCount)}.`
         : 'Ouvert — aucune résolution constatée à ce jour, aucune preuve documentaire retrouvée.'
     case 'unknown':
     default:
@@ -830,7 +851,6 @@ export async function getTrackedPointDetail(
   // trajectory est chronologiquement ascendante (invariant du reducer, cf.
   // projectTrackedPoint) : le premier élément est la date d'ouverture réelle.
   const openedAt = canonicalEntry.trajectory.length > 0 ? canonicalEntry.trajectory[0].effectiveAt : null
-  const mentionsCount = canonicalEntry.trajectory.length
   const trajectory = canonicalEntry.trajectory.map(toTrajectoryEntry)
   const proposalIds = [...new Set(
     canonicalEntry.trajectory.map((t) => proposalIdFromSource(t.source ?? null)).filter((id): id is string => !!id),
@@ -874,6 +894,9 @@ export async function getTrackedPointDetail(
   }
   evidence.sort((a, b) => b.date.localeCompare(a.date))
   const latestEvidenceAt = evidence.length > 0 ? evidence[0].date : null
+  // Réassignée après le bloc CBO ci-dessous si le Point porte des Actions/Réserves/
+  // Échéances avec provenance documentaire matérialisée (cf. computeMentionsCount).
+  let mentionsCount = computeMentionsCount(evidence.map((e) => e.documentId), [])
 
   // ── Provenance causale (lot UX Point 3F) ──────────────────────────────────
   // stateBasis (reduceTrackedPointLifecycle) = refs `${kind}@${effectiveAt}` des événements
@@ -989,6 +1012,29 @@ export async function getTrackedPointDetail(
         }
       }
     }
+
+    // ── Fréquence PV du Point (recette Vincent 2026-09-15) — les Réserves/Échéances
+    // liées peuvent, comme les Actions ci-dessus, provenir d'un PV identifié. Complète
+    // le comptage documentaire de mentionsCount sans dupliquer la mécanique de sources
+    // détaillées (filename/page/excerpt) qui n'existe que pour les Actions dans le Film.
+    const reserveDeadlineIds = [...reserveIds, ...deadlineIds]
+    const otherObjectDocumentIds: Array<string | null> = []
+    if (reserveDeadlineIds.length > 0) {
+      const { data: otherMatRows } = await db.from('document_proposal_materialization')
+        .select('proposal_id')
+        .in('target_entity_type', ['site_reserve', 'site_deadline'])
+        .in('target_entity_id', reserveDeadlineIds)
+      const otherProposalIds = [...new Set(
+        (otherMatRows ?? []).map((m) => m.proposal_id as string | null).filter((id): id is string => !!id),
+      )]
+      if (otherProposalIds.length > 0) {
+        const { data: otherProposalRows } = await db.from('document_extraction_proposal')
+          .select('document_id').in('id', otherProposalIds)
+        for (const p of otherProposalRows ?? []) otherObjectDocumentIds.push(p.document_id as string | null)
+      }
+    }
+    const actionDocumentIds = [...actionSourcesById.values()].flatMap((sources) => sources.map((s) => s.documentId))
+    mentionsCount = computeMentionsCount(evidence.map((e) => e.documentId), [...actionDocumentIds, ...otherObjectDocumentIds])
 
     type DeadlineRow = {
       id: string; title: string; status: DeadlineStatus; due_date: string | null
