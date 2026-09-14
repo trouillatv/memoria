@@ -88,7 +88,7 @@ export interface PointDetailEvidence {
 
 export type PointDetailResponsible =
   | { kind: 'contact'; name: string; fonction: string | null }
-  | { kind: 'company'; name: string }
+  | { kind: 'company'; name: string; companyId?: string }
   | { kind: 'text'; label: string }
 
 // Provenance documentaire d'une Action (mandat Vincent, mini-lot « provenance des Actions
@@ -236,6 +236,14 @@ export interface TrackedPointDetail {
   // Nombre d'occurrences/mentions connues (longueur de la trajectoire) — compense
   // en mots l'absence de trajectoire riche (6F.1), jamais un second score.
   mentionsCount: number
+  // Fréquence métier (quick win #3, mandat Vincent 2026-09-15) : dénominateur = nombre
+  // total de PV/visites du chantier (même source que le bloc lingering de Pilotage),
+  // réutilisé tel quel, aucune nouvelle requête.
+  totalSiteVisits: number
+  // Passages du conducteur constatés depuis le dernier événement significatif, sans
+  // évolution du Point — même calcul que `passagesSinceLastEvent` du Film (jamais un
+  // second calcul) ; `null` si le Point n'a pas encore de dernier événement.
+  passagesSinceLastEvent: number | null
   // §3 — Évolution : la trajectoire déjà réduite, mise en mots (aucun recalcul).
   trajectory: PointDetailTrajectoryEntry[]
   // §2 — FILM DU POINT (mandat Vincent 2026-09-14) : composition unique de présentation
@@ -1022,7 +1030,7 @@ export async function getTrackedPointDetail(
     const today = todayLocalIso()
     const responsibleFor = (contactId: string | null, companyId: string | null, text: string | null): PointDetailResponsible | null => {
       if (contactId) { const c = contactById.get(contactId); if (c) return { kind: 'contact', name: c.full_name, fonction: c.function } }
-      if (companyId) { const name = companyById.get(companyId); if (name) return { kind: 'company', name } }
+      if (companyId) { const name = companyById.get(companyId); if (name) return { kind: 'company', name, companyId } }
       if (text) return { kind: 'text', label: text }
       return null
     }
@@ -1184,6 +1192,8 @@ export async function getTrackedPointDetail(
     latestMeaningfulEventLabel: frDate(canonicalEntry.latestMeaningfulEventAt),
     latestEvidenceAt,
     mentionsCount,
+    totalSiteVisits: pvDates.length,
+    passagesSinceLastEvent,
     trajectory,
     film,
     evidence,

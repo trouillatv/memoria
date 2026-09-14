@@ -74,6 +74,10 @@ export interface PointListEntry {
   mentionsCount: number
   openedAt: string | null
   passagesSinceEvent: number | null
+  // Fréquence métier (quick win #3, mandat Vincent 2026-09-15) : dénominateur de
+  // `mentionsCount` — nombre total de PV/visites du chantier, même `pvDates` déjà
+  // chargé pour lingering/passagesSinceEvent, aucune nouvelle requête.
+  totalSiteVisits: number
   // Ancienneté du blocage « si disponible » (mandat Vincent, Delta chantier) : dupliquée depuis
   // `LingeringPointEntry.daysSinceLastEvent` (déjà calculée par `selectLingeringPoints` ci-dessus,
   // jamais un second calcul) — null quand le Point n'est pas dans la sélection lingering.
@@ -390,6 +394,7 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
       mentionsCount: p.trajectory.length,
       openedAt: p.trajectory[0]?.effectiveAt ?? null,
       passagesSinceEvent: p.latestMeaningfulEventAt ? countPassagesSince(pvDates, p.latestMeaningfulEventAt) : null,
+      totalSiteVisits: pvDates.length,
       daysSinceLastEvent: lingering?.daysSinceLastEvent ?? null,
       reviewFingerprint,
       isReviewed: isTrackedPointReviewed(reviewFingerprint, storedReview?.fingerprint),

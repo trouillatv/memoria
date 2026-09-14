@@ -205,7 +205,11 @@ export function ActionFicheBody({
             ) : a.responsible?.kind === 'company' ? (
               <p className="mt-1 inline-flex items-center gap-1 text-[13.5px] font-medium text-emerald-700 dark:text-emerald-400">
                 <UserCheck className="h-3.5 w-3.5" />
-                {a.responsible.name}
+                {a.responsible.companyId ? (
+                  <Link href={`/sites/${a.siteId}/entreprise/${a.responsible.companyId}`} className="hover:underline">{a.responsible.name}</Link>
+                ) : (
+                  a.responsible.name
+                )}
               </p>
             ) : a.responsible?.kind === 'text' ? (
               // Trace texte historique — jamais présentée comme une personne.

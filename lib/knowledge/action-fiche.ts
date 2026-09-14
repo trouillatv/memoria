@@ -41,7 +41,7 @@ const frDate = (iso: string | null | undefined): string | null => (iso ? DATE_FM
 
 export type ActionFicheResponsible =
   | { kind: 'contact'; name: string; fonction: string | null }
-  | { kind: 'company'; name: string }
+  | { kind: 'company'; name: string; companyId?: string }
   | { kind: 'text'; label: string }
 
 /** Preuves de RÉALISATION — jamais l'origine. Uniquement les traces déclarées à la
@@ -224,7 +224,7 @@ export async function getSiteActionFiche(
   }
   if (!responsible && a.assigned_company_id) {
     const { data: co } = await db.from('companies').select('name').eq('id', a.assigned_company_id).maybeSingle()
-    if (co) responsible = { kind: 'company', name: (co as { name: string }).name }
+    if (co) responsible = { kind: 'company', name: (co as { name: string }).name, companyId: a.assigned_company_id ?? undefined }
   }
   if (!responsible && a.assigned_to) responsible = { kind: 'text', label: a.assigned_to }
 

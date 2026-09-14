@@ -115,7 +115,7 @@ function ReviewCard({ p, pointHrefPrefix, siteId }: { p: PointListEntry; pointHr
         </ul>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
-        <span>{p.mentionsCount} PV où le Point est mentionné</span>
+        <span>Vu dans {p.mentionsCount}/{p.totalSiteVisits} PV</span>
         {p.openedAt && <span>Première apparition : {frDate(p.openedAt)}</span>}
         {p.latestMeaningfulEventAt && <span>Dernière évolution : {frDate(p.latestMeaningfulEventAt)}</span>}
         {p.passagesSinceEvent !== null && p.passagesSinceEvent > 0 && (

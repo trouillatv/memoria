@@ -470,11 +470,12 @@ export function PointFicheView({
   // des Actions portées, jamais un simple comptage. Ouvertes ET terminées, mêmes objets
   // que `computePointActors` (union honnête des FK déjà posées, jamais une déduction).
   const actionResponsibles = (() => {
-    const map = new Map<string, { key: string; name: string; titles: string[] }>()
+    const map = new Map<string, { key: string; name: string; companyId?: string; titles: string[] }>()
     for (const o of p.linkedObjects) {
       if (o.objectType !== 'site_action' || !o.responsible || o.responsible.kind === 'text') continue
       const key = `${o.responsible.kind}:${o.responsible.name}`
-      const entry = map.get(key) ?? { key, name: o.responsible.name, titles: [] }
+      const companyId = o.responsible.kind === 'company' ? o.responsible.companyId : undefined
+      const entry = map.get(key) ?? { key, name: o.responsible.name, companyId, titles: [] }
       if (!entry.titles.includes(o.title)) entry.titles.push(o.title)
       map.set(key, entry)
     }
@@ -689,7 +690,8 @@ export function PointFicheView({
                   <ul className="mt-1 flex flex-wrap gap-2">
                     {p.responsibleCompanyDesignations.map((d) => (
                       <li key={d.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[12.5px] dark:border-sky-800 dark:bg-sky-950/30">
-                        <span>{d.companyName} · Pilote du Point</span>
+                        <Link href={`/sites/${p.siteId}/entreprise/${d.companyId}`} className="hover:underline">{d.companyName}</Link>
+                        <span>· Pilote du Point</span>
                         <PointResponsibleCompanyRevoke siteId={p.siteId} pointId={p.id} designationId={d.id} companyName={d.companyName} />
                       </li>
                     ))}
@@ -705,7 +707,11 @@ export function PointFicheView({
                 <ul className="mt-1 flex flex-wrap gap-2">
                   {actionResponsibles.map((a) => (
                     <li key={a.key} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
-                      {a.name}
+                      {a.companyId ? (
+                        <Link href={`/sites/${p.siteId}/entreprise/${a.companyId}`} className="font-medium hover:underline">{a.name}</Link>
+                      ) : (
+                        a.name
+                      )}
                       <span className="text-muted-foreground">
                         {' · '}
                         {a.titles.map((t) => `Action « ${t} »`).join(', ')}
@@ -721,7 +727,11 @@ export function PointFicheView({
                 <ul className="mt-1 flex flex-wrap items-center gap-2">
                   {p.citedCompanies.map((c) => (
                     <li key={c.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1 text-[12.5px] text-muted-foreground">
-                      <span>{c.name}</span>
+                      {c.companyId ? (
+                        <Link href={`/sites/${p.siteId}/entreprise/${c.companyId}`} className="hover:underline">{c.name}</Link>
+                      ) : (
+                        <span>{c.name}</span>
+                      )}
                       <span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium">Citée dans les preuves</span>
                       {c.companyId && (
                         <PointCitedCompanyPromote
@@ -755,6 +765,19 @@ export function PointFicheView({
                 <dt className="text-muted-foreground">Statut</dt>
                 <dd className="text-right font-medium">{p.derivedStateLabel}</dd>
               </div>
+              {p.totalSiteVisits > 0 && (
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-muted-foreground">Fréquence</dt>
+                  <dd className="text-right">
+                    Vu dans {p.mentionsCount}/{p.totalSiteVisits} PV
+                    {p.passagesSinceLastEvent !== null && p.passagesSinceLastEvent > 0 && (
+                      <span className="block text-[11px] text-muted-foreground">
+                        {p.passagesSinceLastEvent} passage{p.passagesSinceLastEvent > 1 ? 's' : ''} sans évolution
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
               {p.createdAtLabel && (
                 <div className="flex items-baseline justify-between gap-2">
                   <dt className="text-muted-foreground">Créé le</dt>
