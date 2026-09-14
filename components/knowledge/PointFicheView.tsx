@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import {
   resolveOrigin,
   originMatchesProvenance,
+  POINT_STATE_LABEL,
   type TrackedPointDetail,
   type PointDetailEvidence,
   type PointDetailLinkedObject,
@@ -35,6 +36,7 @@ import { needsYouQuestionHref, type MemoriaNeedsYouQuestion } from '@/lib/knowle
 import { PointActionMenu } from '@/components/knowledge/PointActionMenu'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
 import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
+import type { SubjectPointMiniContext } from '@/lib/knowledge/tracked-point-subject-context'
 
 const STATE_CLS: Record<TrackedPointDetail['derivedState'], string> = {
   unknown: 'bg-muted text-muted-foreground ring-border',
@@ -50,6 +52,16 @@ const STATE_HERO_CLS: Record<TrackedPointDetail['derivedState'], string> = {
   resolved: 'border-emerald-300/70 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/15',
   reopened: 'border-orange-300/70 bg-orange-50/50 dark:border-orange-900 dark:bg-orange-950/15',
   conflict: 'border-rose-300/70 bg-rose-50/50 dark:border-rose-900 dark:bg-rose-950/15',
+}
+
+// Mini-frise Sujet (§2 bis, mandat Vincent 2026-09-14) : pastilles pleines, distinctes des
+// badges STATE_CLS (fond+texte+ring, pensés pour un libellé) — ici un simple point de couleur.
+const STATE_DOT_CLS: Record<TrackedPointDetail['derivedState'], string> = {
+  unknown: 'bg-muted-foreground/40',
+  open: 'bg-sky-500',
+  resolved: 'bg-emerald-500',
+  reopened: 'bg-orange-500',
+  conflict: 'bg-rose-500',
 }
 
 const H2 = 'text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground'
@@ -393,6 +405,8 @@ export function PointFicheView({
   needsYouHref,
   responsibleCandidates = [],
   companies = [],
+  subjectMiniContext = null,
+  subjectHref,
 }: {
   point: TrackedPointDetail
   backHref: string
@@ -401,6 +415,8 @@ export function PointFicheView({
   needsYouHref?: string
   responsibleCandidates?: ResponsibleCandidate[]
   companies?: SiteCandidateCompany[]
+  subjectMiniContext?: SubjectPointMiniContext | null
+  subjectHref?: string
 }) {
   const p = point
 
@@ -518,6 +534,61 @@ export function PointFicheView({
               {p.film.todayLabel}{p.film.sinceSummary ? ` · ${p.film.sinceSummary}` : ''}
             </p>
           </section>
+
+          {/* Mini-contexte Sujet (mandat Vincent, GO Option B, 2026-09-14) : rappelle où ce Point
+              se situe dans son sujet, sans reconstruire la fiche Sujet. Filtré depuis l'origine à
+              ownerCanonicalSubjectId (jamais un recalcul site entier) — cf. loadSubjectPointMiniContext.
+              Volontairement non numéroté : ceci reste un aside contextuel entre le Film (§2) et les
+              Acteurs (§3), pas une nouvelle rubrique de même rang. Mini-frise en lecture seule
+              (pastilles), pas une navigation point-à-point — un seul lien de sortie : le sujet complet. */}
+          {subjectMiniContext && subjectMiniContext.totalPoints > 0 && (
+            <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
+              <h2 className={H2}>Ce sujet</h2>
+              <p className="text-[13px] text-muted-foreground">
+                {p.ownerCanonicalSubjectLabel && <span className="font-medium text-foreground">{p.ownerCanonicalSubjectLabel}</span>}
+                {p.ownerCanonicalSubjectLabel ? ' — ' : ''}
+                {subjectMiniContext.totalPoints} Point{subjectMiniContext.totalPoints > 1 ? 's' : ''}
+                {(() => {
+                  const parts = [
+                    subjectMiniContext.reopened > 0 ? `${subjectMiniContext.reopened} réouvert${subjectMiniContext.reopened > 1 ? 's' : ''}` : null,
+                    subjectMiniContext.open > 0 ? `${subjectMiniContext.open} ouvert${subjectMiniContext.open > 1 ? 's' : ''}` : null,
+                    subjectMiniContext.conflict > 0 ? `${subjectMiniContext.conflict} en conflit` : null,
+                    subjectMiniContext.unknown > 0 ? `${subjectMiniContext.unknown} indéterminé${subjectMiniContext.unknown > 1 ? 's' : ''}` : null,
+                    subjectMiniContext.resolved > 0 ? `${subjectMiniContext.resolved} résolu${subjectMiniContext.resolved > 1 ? 's' : ''}` : null,
+                  ].filter(Boolean)
+                  return parts.length > 0 ? ` (${parts.join(', ')})` : ''
+                })()}
+              </p>
+
+              {subjectMiniContext.crossSubjectMergeDetected && (
+                <p className="rounded-md bg-amber-50/60 px-2.5 py-1.5 text-[11.5px] text-amber-800 dark:bg-amber-950/20 dark:text-amber-300">
+                  Une fusion touche ce sujet au-delà de ce que cette vue peut vérifier — chaque Point est compté isolément par prudence.
+                </p>
+              )}
+
+              {subjectMiniContext.points.length > 1 && (
+                <ul className="flex flex-wrap items-center gap-2 pt-0.5">
+                  {subjectMiniContext.points.map((sp) => (
+                    <li
+                      key={sp.id}
+                      title={`${sp.label} — ${POINT_STATE_LABEL[sp.derivedState] ?? sp.derivedState}${sp.isCurrent ? ' (ce Point)' : ''}`}
+                      className={cn(
+                        'h-2.5 w-2.5 rounded-full',
+                        STATE_DOT_CLS[sp.derivedState],
+                        sp.isCurrent && 'ring-2 ring-offset-1 ring-foreground',
+                      )}
+                    />
+                  ))}
+                </ul>
+              )}
+
+              {subjectHref && (
+                <Link href={subjectHref} className="inline-flex items-center gap-1 pt-0.5 text-[12.5px] font-medium text-foreground hover:underline">
+                  Voir le sujet complet <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
+              )}
+            </section>
+          )}
 
           {/* §3 — Acteurs. Mandat Vincent : distinguer explicitement « acteur mentionné » de
               « responsable d'une Action précise » — jamais un total agrégé qui efface cette

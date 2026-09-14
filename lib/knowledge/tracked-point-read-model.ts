@@ -41,7 +41,11 @@ import {
   type PointTrajectoryEvent,
 } from './tracked-point-lifecycle-reducer'
 import type { MembershipRail } from './tracked-point-membership-candidates'
-import { loadCboReducedStates, loadNonActionCboReducedStates } from './canonical-business-object-evolution'
+import {
+  loadCboReducedStates,
+  loadNonActionCboReducedStates,
+  type CboReducedEntry,
+} from './canonical-business-object-evolution'
 import { PROPOSAL_PROOF_FAMILY, PROPOSAL_PROOF_STATUS } from './document-completion-resolver'
 import { buildPointMergeComponents, resolveCanonicalPointId, type MergeGraphPoint } from './tracked-point-merge'
 
@@ -319,7 +323,68 @@ export function assemblePointDocumentaryEvents(
   return events
 }
 
-async function fetchAllChunks<T>(
+// ─────────────────────────────────────────────────────────────────────────────
+// Point evidence — primitive partagée extraite de loadTrackedPointReadModel (mandat Vincent
+// 2026-09-14, mini-contexte Sujet fiche Point). Pur REFACTOR : aucun changement de comportement,
+// le site-wide loader ci-dessous l'appelle désormais lui-même. Un futur loader sujet-scope peut la
+// réutiliser telle quelle avec ses propres Maps (déjà filtrées côté requête), sans jamais dupliquer
+// cette plomberie ni rappeler reduceTrackedPointLifecycle (seul projectTrackedPoint le fait).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type PointProposalRow = {
+  id: string
+  subject_thread_id: string | null
+  proposal_family: string
+  document_status: string | null
+  document_id: string
+}
+
+export type PointEvidenceLookups = {
+  cboIdsByPoint: Map<string, string[]>
+  cboReduced: Map<string, CboReducedEntry>
+  threadsByPoint: Map<string, string[]>
+  membersByPoint: Map<string, PointMembershipRow[]>
+  proposalsByThread: Map<string, string[]>
+  proposalById: Map<string, PointProposalRow>
+  docDate: Map<string, string | null>
+}
+
+/** Agrège cboMembers/hardMemberThreadIds/docs sur un ENSEMBLE de tracked_point.id (un seul id
+ *  pour un Point non fusionné ; le composant entier — canonique + descendants merged — pour un
+ *  Point canonique, Phase 6E.1A). Déduplication par Set : un même CBO ou thread ne peut jamais
+ *  compter deux fois même s'il apparaît via deux membres du composant. Pure : ne lit que les Maps
+ *  déjà chargées par l'appelant (site entier ou sujet-scope), aucun accès IO ici. */
+export function assemblePointEvidence(
+  memberPointIds: string[],
+  lookups: PointEvidenceLookups,
+): { cboMembers: PointCboMember[]; hardMemberThreadIds: string[]; docs: PointLifecycleEvent[] } {
+  const cboIds = [...new Set(memberPointIds.flatMap((id) => lookups.cboIdsByPoint.get(id) ?? []))]
+  const cboMembers: PointCboMember[] = cboIds
+    .map((cboId) => {
+      const entry = lookups.cboReduced.get(cboId)
+      return entry ? { cboId, reduced: entry.reduced } : null
+    })
+    .filter((m): m is PointCboMember => m !== null)
+
+  const hardMemberThreadIds = [...new Set(memberPointIds.flatMap((id) => lookups.threadsByPoint.get(id) ?? []))]
+
+  const members = memberPointIds.flatMap((id) => lookups.membersByPoint.get(id) ?? [])
+  const eligibleProposalIds = selectEligibleProposalIds(members, lookups.proposalsByThread)
+  const provenance: PointDocProposalProvenance[] = [...eligibleProposalIds]
+    .map((id) => lookups.proposalById.get(id))
+    .filter((p): p is PointProposalRow => p !== undefined)
+    .map((p) => ({
+      proposalId: p.id,
+      proposalFamily: p.proposal_family,
+      documentStatus: p.document_status,
+      date: lookups.docDate.get(p.document_id) ?? null,
+    }))
+  const docs = assemblePointDocumentaryEvents(provenance)
+
+  return { cboMembers, hardMemberThreadIds, docs }
+}
+
+export async function fetchAllChunks<T>(
   ids: string[],
   fetchChunk: (chunk: string[]) => Promise<T[]>,
 ): Promise<T[]> {
@@ -425,9 +490,7 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
     ...new Set(memberRows.filter((r) => r.scope === 'proposal_set').flatMap((r) => r.proposal_ids ?? [])),
   ]
 
-  type ProposalRow = { id: string; subject_thread_id: string | null; proposal_family: string; document_status: string | null; document_id: string }
-
-  const threadProposalRows = await fetchAllChunks<ProposalRow>(allThreadIds, async (chunk) => {
+  const threadProposalRows = await fetchAllChunks<PointProposalRow>(allThreadIds, async (chunk) => {
     const { data, error } = await supabase
       .from('document_extraction_proposal')
       .select('id, subject_thread_id, proposal_family, document_status, document_id')
@@ -436,7 +499,7 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
     return data ?? []
   })
 
-  const explicitProposalRows = await fetchAllChunks<ProposalRow>(allExplicitProposalIds, async (chunk) => {
+  const explicitProposalRows = await fetchAllChunks<PointProposalRow>(allExplicitProposalIds, async (chunk) => {
     const { data, error } = await supabase
       .from('document_extraction_proposal')
       .select('id, subject_thread_id, proposal_family, document_status, document_id')
@@ -453,7 +516,7 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
     proposalsByThread.set(row.subject_thread_id, list)
   }
 
-  const proposalById = new Map<string, ProposalRow>()
+  const proposalById = new Map<string, PointProposalRow>()
   for (const row of [...threadProposalRows, ...explicitProposalRows]) proposalById.set(row.id, row)
 
   const docIds = [...new Set([...proposalById.values()].map((p) => p.document_id))]
@@ -496,40 +559,11 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
   ])
   const cboReduced = new Map([...cboReducedAction, ...cboReducedNonAction])
 
-  // buildEvidenceForPointIds : agrège cboMembers/hardMemberThreadIds/docs sur un ENSEMBLE de
-  // tracked_point.id (un seul id pour un Point non fusionné ; le composant entier — canonique
-  // + descendants merged — pour un Point canonique, Phase 6E.1A). Déduplication par Set : un
-  // même CBO ou thread ne peut jamais compter deux fois même s'il apparaît via deux membres du
-  // composant.
-  function buildEvidenceForPointIds(memberPointIds: string[]): {
-    cboMembers: PointCboMember[]
-    hardMemberThreadIds: string[]
-    docs: PointLifecycleEvent[]
-  } {
-    const cboIds = [...new Set(memberPointIds.flatMap((id) => cboIdsByPoint.get(id) ?? []))]
-    const cboMembers: PointCboMember[] = cboIds
-      .map((cboId) => {
-        const entry = cboReduced.get(cboId)
-        return entry ? { cboId, reduced: entry.reduced } : null
-      })
-      .filter((m): m is PointCboMember => m !== null)
-
-    const hardMemberThreadIds = [...new Set(memberPointIds.flatMap((id) => threadsByPoint.get(id) ?? []))]
-
-    const members = memberPointIds.flatMap((id) => membersByPoint.get(id) ?? [])
-    const eligibleProposalIds = selectEligibleProposalIds(members, proposalsByThread)
-    const provenance: PointDocProposalProvenance[] = [...eligibleProposalIds]
-      .map((id) => proposalById.get(id))
-      .filter((p): p is ProposalRow => p !== undefined)
-      .map((p) => ({
-        proposalId: p.id,
-        proposalFamily: p.proposal_family,
-        documentStatus: p.document_status,
-        date: docDate.get(p.document_id) ?? null,
-      }))
-    const docs = assemblePointDocumentaryEvents(provenance)
-
-    return { cboMembers, hardMemberThreadIds, docs }
+  // Lookups assemblés une seule fois pour tout le site, consommés par assemblePointEvidence
+  // (primitive partagée, ci-dessus) — remplace l'ancienne closure locale buildEvidenceForPointIds
+  // par un pur refactor, aucun changement de comportement.
+  const evidenceLookups: PointEvidenceLookups = {
+    cboIdsByPoint, cboReduced, threadsByPoint, membersByPoint, proposalsByThread, proposalById, docDate,
   }
 
   // Phase 6E.1A — un Point status='merged' est exclu des listes actives (readModelPoints)
@@ -542,7 +576,7 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
 
   for (const point of points) {
     if (point.status === 'merged') {
-      const { cboMembers, hardMemberThreadIds, docs } = buildEvidenceForPointIds([point.id])
+      const { cboMembers, hardMemberThreadIds, docs } = assemblePointEvidence([point.id], evidenceLookups)
       const canonicalPointId = resolveCanonicalPointId(point.id, pointsById)
       mergedPoints.push(projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, canonicalPointId))
       continue
@@ -550,7 +584,7 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
 
     const component = mergeComponents.get(point.id)
     const memberPointIds = component ? component.memberPointIds : [point.id]
-    const { cboMembers, hardMemberThreadIds, docs } = buildEvidenceForPointIds(memberPointIds)
+    const { cboMembers, hardMemberThreadIds, docs } = assemblePointEvidence(memberPointIds, evidenceLookups)
     readModelPoints.push(projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, point.id))
   }
 

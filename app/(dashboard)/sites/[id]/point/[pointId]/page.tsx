@@ -5,6 +5,7 @@ import { getTrackedPointDetail } from '@/lib/knowledge/tracked-point-detail'
 import { loadMemoriaNeedsYouSummary, filterMemoriaNeedsYouQuestionsForPoint } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
+import { loadSubjectPointMiniContext } from '@/lib/knowledge/tracked-point-subject-context'
 import { PointFicheView } from '@/components/knowledge/PointFicheView'
 
 export const dynamic = 'force-dynamic'
@@ -32,6 +33,8 @@ export default async function PointFichePage({
     listSiteCandidateCompanies(id).catch(() => []),
   ])
   if (!identity || !point) notFound()
+
+  const subjectMiniContext = await loadSubjectPointMiniContext(id, point.ownerCanonicalSubjectId, point.id).catch(() => null)
 
   // Retour au Delta chantier si on en vient (recette Vincent 2026-09-14) : préserve le
   // contexte de David dans sa revue plutôt que de le renvoyer systématiquement au sujet.
@@ -62,6 +65,8 @@ export default async function PointFichePage({
         needsYouHref={`/sites/${id}/besoin-de-toi`}
         responsibleCandidates={responsibleCandidates}
         companies={companies}
+        subjectMiniContext={subjectMiniContext}
+        subjectHref={point.ownerCanonicalSubjectId ? `/sites/${id}/historique/sujets/${point.ownerCanonicalSubjectId}` : undefined}
       />
     </div>
   )

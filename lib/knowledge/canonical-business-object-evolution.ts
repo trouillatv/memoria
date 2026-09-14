@@ -482,15 +482,25 @@ type NonActionObjectType = (typeof NON_ACTION_OBJECT_TYPES)[number]
 
 export const loadNonActionCboReducedStates = cache(loadNonActionCboReducedStatesUncached)
 
-async function loadNonActionCboReducedStatesUncached(siteId: string): Promise<Map<string, CboReducedEntry>> {
+/**
+ * `opts.canonicalSubjectId` (mini-contexte Sujet fiche Point, mandat Vincent 2026-09-14) — même
+ * pattern que loadCboReducedStatesUncached ci-dessus : scope la requête initiale, cboIdSet en
+ * hérite pour le filtre `proofs` en aval. Aucun changement de comportement quand omis (site entier).
+ */
+async function loadNonActionCboReducedStatesUncached(
+  siteId: string,
+  opts?: { canonicalSubjectId?: string },
+): Promise<Map<string, CboReducedEntry>> {
   const sb = createAdminClient()
   const out = new Map<string, CboReducedEntry>()
 
-  const { data: cboRows } = await sb
+  let cboQuery = sb
     .from('canonical_business_object')
     .select('id, label, canonical_subject_id')
     .eq('site_id', siteId)
     .in('object_type', [...NON_ACTION_OBJECT_TYPES])
+  if (opts?.canonicalSubjectId) cboQuery = cboQuery.eq('canonical_subject_id', opts.canonicalSubjectId)
+  const { data: cboRows } = await cboQuery
   const cbos = (cboRows ?? []) as Array<{ id: string; label: string; canonical_subject_id: string | null }>
   if (cbos.length === 0) return out
   const cboIds = cbos.map((c) => c.id)
