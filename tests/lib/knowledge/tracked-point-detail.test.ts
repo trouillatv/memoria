@@ -370,6 +370,49 @@ describe('tracked-point-detail — mapActorCompanyCandidates (correctif Vincent 
   })
 })
 
+describe('tracked-point-detail — mapActorCompanyCandidates masque le doublon résolu par alias (GO Vincent 2026-09-15, filtre Clim Exp\'Air)', () => {
+  it('Clim Exp\'Air (company_id + alias Clim\'Expair) masque le doublon orphelin Clim\'Expair → un seul candidat', () => {
+    const result = mapActorCompanyCandidates([
+      { id: 'canonical-clim-1', company_id: 'company-clim', label: "Clim Exp'Air", aliases: ["Clim'Expair"] },
+      { id: 'canonical-clim-2', company_id: null, label: "Clim'Expair", aliases: null },
+    ])
+    expect(result).toEqual([{ id: 'company-clim', label: "Clim Exp'Air", aliases: ["Clim'Expair"] }])
+  })
+
+  it('« Maz de Clim Exp\'Air » reste un candidat distinct (aucun fuzzy, égalité stricte après normalisation seulement)', () => {
+    const result = mapActorCompanyCandidates([
+      { id: 'canonical-clim-1', company_id: 'company-clim', label: "Clim Exp'Air", aliases: ["Clim'Expair"] },
+      { id: 'canonical-maz', company_id: null, label: "Maz de Clim Exp'Air", aliases: null },
+    ])
+    expect(result).toEqual([
+      { id: 'company-clim', label: "Clim Exp'Air", aliases: ["Clim'Expair"] },
+      { id: 'canonical-maz', label: "Maz de Clim Exp'Air", aliases: [] },
+    ])
+  })
+
+  it('deux acteurs portant chacun un company_id ne sont jamais dédupliqués entre eux (ambiguïté réelle, pas une dédup automatique)', () => {
+    const result = mapActorCompanyCandidates([
+      { id: 'canonical-a', company_id: 'company-a', label: 'Entreprise A', aliases: ['Entreprise B'] },
+      { id: 'canonical-b', company_id: 'company-b', label: 'Entreprise B', aliases: null },
+    ])
+    expect(result).toEqual([
+      { id: 'company-a', label: 'Entreprise A', aliases: ['Entreprise B'] },
+      { id: 'company-b', label: 'Entreprise B', aliases: [] },
+    ])
+  })
+
+  it('alias sans doublon correspondant → aucun effet sur le pool', () => {
+    const result = mapActorCompanyCandidates([
+      { id: 'canonical-clim-1', company_id: 'company-clim', label: "Clim Exp'Air", aliases: ["Clim'Expair"] },
+      { id: 'canonical-other', company_id: null, label: 'Pacific Froid Clim', aliases: null },
+    ])
+    expect(result).toEqual([
+      { id: 'company-clim', label: "Clim Exp'Air", aliases: ["Clim'Expair"] },
+      { id: 'canonical-other', label: 'Pacific Froid Clim', aliases: [] },
+    ])
+  })
+})
+
 describe('tracked-point-detail — resolveOrigin / originMatchesProvenance (lot UX Cockpit+Points)', () => {
   it('sans trajectoire → pas de preuve de genèse (jamais fabriquée)', () => {
     const origin = resolveOrigin({ openedAtLabel: null, trajectory: [], evidence: [] })

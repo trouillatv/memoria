@@ -26,7 +26,7 @@ import {
 } from '@/lib/knowledge/tracked-point-read-model'
 import type { PointComputedCurrentState, PointMarker, PointEventKind } from '@/lib/knowledge/tracked-point-lifecycle-reducer'
 import { documentHref } from '@/lib/knowledge/document-href'
-import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
+import { detectActorRelations, normalizeForCitation, type ActorSubject } from '@/lib/db/actor-citation'
 import { loadSitePvDates, daysSince, countPassagesAfter } from '@/lib/knowledge/tracked-point-lingering'
 import { getActiveResponsibleCompanyDesignations } from '@/lib/db/tracked-point-responsible-companies'
 
@@ -407,10 +407,28 @@ export function suggestResponsibleNames(
  *  d'affichage retombe alors sur celui de `canonical_subject` (jamais un lien vers
  *  une fiche entreprise, cf. `PointDetailCitedCompany`). La requête appelante exclut
  *  déjà les acteurs résolus comme personne (`contact_id` non nul) avant d'appeler ceci. */
+/** Masque un doublon documentaire non résolu quand un AUTRE candidat du même appel (donc
+ *  déjà même site) porte un `company_id` et un alias exactement égal (normalisation
+ *  `normalizeForCitation` : casse/accents/espaces/apostrophes) au libellé du doublon
+ *  (GO Vincent 2026-09-15, cas Clim Exp'Air / Clim'Expair). Un candidat qui a lui-même un
+ *  `company_id` n'est JAMAIS masqué : ce serait une ambiguïté réelle à auditer, pas une
+ *  dédup automatique. Aucun fuzzy — égalité stricte après normalisation seulement. */
 export function mapActorCompanyCandidates(
   rows: Array<{ id: string; company_id: string | null; label: string; aliases: string[] | null }>,
 ): ActorSubject[] {
-  return rows.map((r) => ({ id: r.company_id ?? r.id, label: r.label, aliases: r.aliases ?? [] }))
+  const resolvedAliasLabels = new Set<string>()
+  for (const r of rows) {
+    if (r.company_id === null) continue
+    for (const alias of r.aliases ?? []) {
+      const normalized = normalizeForCitation(alias).trim()
+      if (normalized.length > 0) resolvedAliasLabels.add(normalized)
+    }
+  }
+  const visibleRows = rows.filter((r) => {
+    if (r.company_id !== null) return true
+    return !resolvedAliasLabels.has(normalizeForCitation(r.label).trim())
+  })
+  return visibleRows.map((r) => ({ id: r.company_id ?? r.id, label: r.label, aliases: r.aliases ?? [] }))
 }
 
 export function computeCitedCompanies(
