@@ -34,6 +34,8 @@ import {
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { needsYouQuestionHref, type MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { PointActionMenu } from '@/components/knowledge/PointActionMenu'
+import { PointReserveMenu } from '@/components/knowledge/PointReserveMenu'
+import { DeadlineActions } from '@/app/(dashboard)/sites/[id]/views/planning/DeadlineActions'
 import { PointCitedCompanyPromote } from '@/components/knowledge/PointCitedCompanyPromote'
 import { PointResponsibleCompanyRevoke } from '@/components/knowledge/PointResponsibleCompanyRevoke'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
@@ -96,15 +98,39 @@ const OBJECT_TYPE_LABEL: Record<PointDetailLinkedObject['objectType'], string> =
   site_action: 'Action', site_reserve: 'Réserve', site_deadline: 'Échéance',
 }
 
+// Badge de nature (mandat Vincent 2026-09-14, retour recette §1) : affiché AVANT le titre,
+// jamais relégué en méta secondaire — David doit voir la nature de l'objet avant de décider
+// quel geste poser, puisque les gestes disponibles diffèrent réellement par type. Couleurs
+// distinctes de STATE_CLS (qui porte le statut) pour ne jamais se confondre avec lui.
+const OBJECT_TYPE_BADGE_CLS: Record<PointDetailLinkedObject['objectType'], string> = {
+  site_action: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:ring-sky-900',
+  site_reserve: 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900',
+  site_deadline: 'bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-300 dark:ring-violet-900',
+}
+
+// Destination de consultation par type (lot Point cockpit, mandat Vincent 2026-09-14) :
+// Action/Réserve rouvrent leur fiche dédiée déjà existante (route interceptée en panneau
+// depuis /sites/[id]/..., page complète en accès direct/partage) ; Échéance n'a pas de route
+// par objet dans le produit, direction générique et honnête vers l'onglet Planning/Échéances.
+function linkedObjectConsultHref(siteId: string, o: PointDetailLinkedObject): string {
+  switch (o.objectType) {
+    case 'site_action': return `/sites/${siteId}/action/${o.id}`
+    case 'site_reserve': return `/sites/${siteId}/reserve/${o.id}`
+    case 'site_deadline': return `/sites/${siteId}?tab=planning&plantab=echeances`
+  }
+}
+
 // §1 « À faire » compacté (mandat Vincent, lot UX Point 3F) : une ligne par GROUPE (titre
 // exactement identique), jamais une ligne par occurrence — les champs affichés (responsable,
 // échéance, statut) viennent du représentant du groupe, purement visuel, aucune donnée modifiée.
 //
-// Lot Point Actions inline (mandat Vincent) : le titre n'est PLUS un lien — le Point devient
-// le cockpit local des Actions plutôt qu'une destination de navigation concurrente. Le menu
-// « … » (uniquement pour objectType === 'site_action') porte les gestes déjà supportés
-// ailleurs (marquer traitée / rouvrir / modifier Responsable-Entreprise-Échéance) ; « Voir le
-// détail » reste disponible mais en élément secondaire du menu.
+// Lot Point cockpit des objets liés (mandat Vincent 2026-09-14) : le titre est À NOUVEAU un
+// lien de consultation (revient partiellement sur le lot « Point Actions inline » qui l'avait
+// retiré) — « Voir dans Actions » reste, lui, une sortie séparée vers la vue globale. Le menu
+// « … » varie par type : Action garde son menu existant (marquer traitée/rouvrir/modifier) ;
+// Réserve obtient PointReserveMenu (lever / action corrective) ; Échéance réutilise
+// DeadlineActions tel quel (planifier/terminer/annuler). Aucun des trois n'invente de
+// responsable pour Réserve ou Échéance, faute de champ structurel humain-éditable.
 function LinkedObjectGroupsTable({
   groups,
   emptyLabel,
@@ -125,24 +151,27 @@ function LinkedObjectGroupsTable({
     <ul className="divide-y rounded-lg border">
       {groups.map((g) => {
         const o = g.representative
+        const meta: string[] = []
+        if (o.responsible) meta.push(o.responsible.kind === 'text' ? `resp. (ancien suivi) ${o.responsible.label}` : o.responsible.name)
+        if (o.dueDateLabel) meta.push(`échéance ${o.dueDateLabel}`)
         return (
           <li
             key={g.key}
             className={cn('flex flex-wrap items-start justify-between gap-x-3 gap-y-2 px-3 py-2.5', o.isLate && 'bg-rose-50/50 dark:bg-rose-950/10')}
           >
             <div className="min-w-0 flex-1">
-              <p className="text-[13px] font-medium">
-                {g.title}{g.count > 1 && <span className="ml-1.5 text-muted-foreground">— {g.count} occurrences</span>}
+              <p className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-[13px] font-medium">
+                <span className={cn('inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset', OBJECT_TYPE_BADGE_CLS[g.objectType])}>
+                  {OBJECT_TYPE_LABEL[g.objectType]}
+                </span>
+                <Link href={linkedObjectConsultHref(siteId, o)} scroll={false} className="hover:underline">
+                  {g.title}
+                </Link>
+                {g.count > 1 && <span className="text-muted-foreground">— {g.count} occurrences</span>}
               </p>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px] text-muted-foreground">
-                <span>{OBJECT_TYPE_LABEL[g.objectType]}</span>
-                {o.responsible && (
-                  <span>
-                    · {o.responsible.kind === 'text' ? `resp. (ancien suivi) ${o.responsible.label}` : o.responsible.name}
-                  </span>
-                )}
-                {o.dueDateLabel && <span>· échéance {o.dueDateLabel}</span>}
-              </div>
+              {meta.length > 0 && (
+                <div className="mt-0.5 text-[11.5px] text-muted-foreground">{meta.join(' · ')}</div>
+              )}
               {g.objectType === 'site_action' && <ActionSourcesLine group={g} />}
             </div>
             <div className="flex shrink-0 items-center gap-2">
@@ -156,6 +185,12 @@ function LinkedObjectGroupsTable({
               </span>
               {o.objectType === 'site_action' && (
                 <PointActionMenu action={o} siteId={siteId} pointId={pointId} responsibleCandidates={responsibleCandidates} companies={companies} />
+              )}
+              {o.objectType === 'site_reserve' && (
+                <PointReserveMenu reserve={o} siteId={siteId} pointId={pointId} />
+              )}
+              {o.objectType === 'site_deadline' && (
+                <DeadlineActions deadlineId={o.id} hasDate={Boolean(o.dueDate)} currentDueDate={o.dueDate} otherDeadlines={[]} />
               )}
             </div>
           </li>
@@ -421,6 +456,12 @@ export function PointFicheView({
   subjectHref?: string
 }) {
   const p = point
+  // Cibles éligibles pour « Affecter… → À une Action… » (mandat Vincent 2026-09-14) :
+  // une par groupe d'Actions ouvertes, jamais Réserve/Échéance (aucune affectation
+  // structurelle possible pour ces deux types aujourd'hui).
+  const openActions = p.openLinkedObjectGroups
+    .filter((g) => g.objectType === 'site_action')
+    .map((g) => ({ id: g.representative.id, title: g.title, dueDate: g.representative.dueDate }))
 
   return (
     <div className="space-y-5">
@@ -607,35 +648,39 @@ export function PointFicheView({
             </section>
           )}
 
-          {/* §3 — Responsables / Entreprises citées (mandat Vincent 2026-09-14, lot Entreprise
-              citée → Responsable, cas Clim Exp'Air) : deux sections distinctes — un responsable
-              structuré (FK explicite sur un objet lié, ou désignation humaine explicite d'une
-              entreprise citée) n'est jamais confondu avec une simple citation textuelle. */}
+          {/* §3 — Acteurs (mandat Vincent 2026-09-14, lot Point cockpit des objets liés) :
+              trois blocs distincts, jamais fusionnés — provenance depuis les éléments à faire,
+              désignation humaine explicite au niveau du Point, simple citation textuelle. Un
+              responsable structuré (FK explicite sur un objet lié, ou désignation humaine
+              explicite d'une entreprise citée) n'est jamais confondu avec une simple citation. */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
-            <h2 className={H2}>3. Responsables</h2>
+            <h2 className={H2}>3. Acteurs</h2>
             {p.actors.length === 0 && p.responsibleCompanyDesignations.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">Aucun responsable structuré.</p>
             ) : (
               <>
                 {p.actors.length > 0 && (
-                  <ul className="flex flex-wrap gap-2">
-                    {p.actors.map((a) => {
-                      const responsibleCount = a.responsibleActionCount + a.responsibleReserveCount + a.responsibleDeadlineCount
-                      const detail: string[] = []
-                      if (a.responsibleActionCount > 0) detail.push(`responsable de ${a.responsibleActionCount} action${a.responsibleActionCount > 1 ? 's' : ''}`)
-                      if (a.responsibleReserveCount > 0) detail.push(`de ${a.responsibleReserveCount} réserve${a.responsibleReserveCount > 1 ? 's' : ''}`)
-                      if (a.responsibleDeadlineCount > 0) detail.push(`de ${a.responsibleDeadlineCount} échéance${a.responsibleDeadlineCount > 1 ? 's' : ''}`)
-                      return (
-                        <li key={a.id} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
-                          {a.name}{a.fonction ? ` · ${a.fonction}` : ''}
-                          <span className="text-muted-foreground">
-                            {' — '}
-                            {responsibleCount > 0 ? detail.join(', ') : 'mentionné, rôle non précisé'}
-                          </span>
-                        </li>
-                      )
-                    })}
-                  </ul>
+                  <div>
+                    <p className="text-[11px] font-medium text-muted-foreground">Intervenants sur les éléments à faire</p>
+                    <ul className="mt-1 flex flex-wrap gap-2">
+                      {p.actors.map((a) => {
+                        const responsibleCount = a.responsibleActionCount + a.responsibleReserveCount + a.responsibleDeadlineCount
+                        const detail: string[] = []
+                        if (a.responsibleActionCount > 0) detail.push(`responsable de ${a.responsibleActionCount} action${a.responsibleActionCount > 1 ? 's' : ''}`)
+                        if (a.responsibleReserveCount > 0) detail.push(`de ${a.responsibleReserveCount} réserve${a.responsibleReserveCount > 1 ? 's' : ''}`)
+                        if (a.responsibleDeadlineCount > 0) detail.push(`de ${a.responsibleDeadlineCount} échéance${a.responsibleDeadlineCount > 1 ? 's' : ''}`)
+                        return (
+                          <li key={a.id} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
+                            {a.name}{a.fonction ? ` · ${a.fonction}` : ''}
+                            <span className="text-muted-foreground">
+                              {' — '}
+                              {responsibleCount > 0 ? detail.join(', ') : 'mentionné, rôle non précisé'}
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
                 )}
                 {p.responsibleCompanyDesignations.length > 0 && (
                   <div className={p.actors.length > 0 ? 'pt-1.5' : undefined}>
@@ -664,7 +709,13 @@ export function PointFicheView({
                       <span>{c.name}</span>
                       <span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium">Citée dans les preuves</span>
                       {c.companyId && (
-                        <PointCitedCompanyPromote siteId={p.siteId} pointId={p.id} companyId={c.companyId} companyName={c.name} />
+                        <PointCitedCompanyPromote
+                          siteId={p.siteId}
+                          pointId={p.id}
+                          companyId={c.companyId}
+                          companyName={c.name}
+                          openActions={openActions}
+                        />
                       )}
                     </li>
                   ))}

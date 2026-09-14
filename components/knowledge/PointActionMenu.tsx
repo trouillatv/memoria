@@ -1,14 +1,15 @@
 'use client'
 
 // ── Menu « … » d'une Action, depuis la fiche Point (lot Point Actions inline,
-// mandat Vincent) ────────────────────────────────────────────────────────────
+// mandat Vincent ; retour partiel mandat Vincent 2026-09-14 lot Point cockpit
+// des objets liés) ───────────────────────────────────────────────────────────
 // Réutilise EXCLUSIVEMENT les server actions déjà existantes de
 // app/(dashboard)/actions/actions.ts (closeActionAction/reopenActionAction pour
 // le cycle de vie, updateActionAssignmentAction pour Responsable/Entreprise/
-// Échéance) — aucun nouveau moteur d'état. « Voir dans Actions » reste un lien
-// secondaire vers la page Actions du site (?actionId= cible/surligne la ligne),
-// le titre de la ligne n'est plus cliquable : le Point devient le cockpit
-// local des Actions.
+// Échéance) — aucun nouveau moteur d'état. Le titre de la ligne (rendu par
+// PointFicheView, pas ici) est À NOUVEAU un lien de consultation vers la fiche
+// Action dédiée — « Voir dans Actions » reste, lui, une sortie séparée et
+// distincte vers la vue globale du site (?actionId= cible/surligne la ligne).
 //
 // Suggestion GAP 1 : jamais appliquée automatiquement — seul un clic explicite
 // sur « Utiliser <nom> » copie la suggestion dans le champ Responsable/Entreprise
