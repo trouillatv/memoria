@@ -275,7 +275,7 @@ describe('tracked-point-detail — computeCitedCompanies (lot Acteurs/entreprise
       [climExpair],
       [],
     )
-    expect(result).toEqual([{ id: 'company-1', name: "Clim'Expair" }])
+    expect(result).toEqual([{ id: 'company-1', name: "Clim'Expair", companyId: null }])
   })
 
   it('une entreprise DÉJÀ responsable d\'un objet lié (dans actors) n\'est jamais aussi listée comme citée', () => {
@@ -323,10 +323,10 @@ describe('tracked-point-detail — mapActorCompanyCandidates (correctif Vincent 
       { id: 'canonical-clim-2', company_id: null, label: "Clim'Expair", aliases: null },
     ])
     expect(computeCitedCompanies(["Réserves à lever (Clim Exp'Air)"], candidates, [])).toEqual([
-      { id: 'canonical-clim-1', name: "Clim Exp'Air" },
+      { id: 'canonical-clim-1', name: "Clim Exp'Air", companyId: null },
     ])
     expect(computeCitedCompanies(["Lever le doute avec Clim'Expair"], candidates, [])).toEqual([
-      { id: 'canonical-clim-2', name: "Clim'Expair" },
+      { id: 'canonical-clim-2', name: "Clim'Expair", companyId: null },
     ])
   })
 

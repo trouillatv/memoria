@@ -34,6 +34,7 @@ import {
 import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER } from '@/lib/knowledge/tracked-point-needs-you-categories'
 import { needsYouQuestionHref, type MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { PointActionMenu } from '@/components/knowledge/PointActionMenu'
+import { PointCitedCompanyPromote } from '@/components/knowledge/PointCitedCompanyPromote'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
 import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
 import type { SubjectPointMiniContext } from '@/lib/knowledge/tracked-point-subject-context'
@@ -605,13 +606,14 @@ export function PointFicheView({
             </section>
           )}
 
-          {/* §3 — Acteurs. Mandat Vincent : distinguer explicitement « acteur mentionné » de
-              « responsable d'une Action précise » — jamais un total agrégé qui efface cette
-              distinction, jamais une propagation automatique vers un rôle de responsable. */}
+          {/* §3 — Responsables / Entreprises citées (mandat Vincent 2026-09-14, lot Entreprise
+              citée → Responsable, cas Clim Exp'Air) : deux sections distinctes — un responsable
+              structuré (FK explicite sur un objet lié, ou désignation humaine explicite d'une
+              entreprise citée) n'est jamais confondu avec une simple citation textuelle. */}
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
-            <h2 className={H2}>3. Acteurs</h2>
-            {p.actors.length === 0 ? (
-              <p className="text-[13px] text-muted-foreground">Aucun acteur explicitement identifié pour ce Point.</p>
+            <h2 className={H2}>3. Responsables</h2>
+            {p.actors.length === 0 && p.responsibleCompanyDesignations.length === 0 ? (
+              <p className="text-[13px] text-muted-foreground">Aucun responsable structuré.</p>
             ) : (
               <ul className="flex flex-wrap gap-2">
                 {p.actors.map((a) => {
@@ -630,17 +632,26 @@ export function PointFicheView({
                     </li>
                   )
                 })}
+                {p.responsibleCompanyDesignations.map((d) => (
+                  <li key={d.id} className="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[12.5px] dark:border-sky-800 dark:bg-sky-950/30">
+                    Responsable : {d.companyName}
+                  </li>
+                ))}
               </ul>
             )}
             {p.citedCompanies.length > 0 && (
               <div className="pt-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">
-                  Entreprise{p.citedCompanies.length > 1 ? 's' : ''} citée{p.citedCompanies.length > 1 ? 's' : ''} dans le titre ou les preuves — jamais un responsable
+                  Entreprise{p.citedCompanies.length > 1 ? 's' : ''} citée{p.citedCompanies.length > 1 ? 's' : ''} dans le titre ou les preuves
                 </p>
-                <ul className="mt-1 flex flex-wrap gap-2">
+                <ul className="mt-1 flex flex-wrap items-center gap-2">
                   {p.citedCompanies.map((c) => (
-                    <li key={c.id} className="rounded-lg border border-dashed px-2.5 py-1 text-[12.5px] text-muted-foreground">
-                      {c.name}
+                    <li key={c.id} className="flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1 text-[12.5px] text-muted-foreground">
+                      <span>{c.name}</span>
+                      <span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium">Citée dans les preuves</span>
+                      {c.companyId && (
+                        <PointCitedCompanyPromote siteId={p.siteId} pointId={p.id} companyId={c.companyId} companyName={c.name} />
+                      )}
                     </li>
                   ))}
                 </ul>

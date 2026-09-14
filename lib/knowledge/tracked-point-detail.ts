@@ -28,6 +28,7 @@ import type { PointComputedCurrentState, PointMarker, PointEventKind } from '@/l
 import { documentHref } from '@/lib/knowledge/document-href'
 import { detectActorRelations, type ActorSubject } from '@/lib/db/actor-citation'
 import { loadSitePvDates, daysSince, countPassagesAfter } from '@/lib/knowledge/tracked-point-lingering'
+import { getActiveResponsibleCompanyDesignations } from '@/lib/db/tracked-point-responsible-companies'
 
 const ACTION_STATUS_LABEL: Record<SiteActionStatus, string> = {
   open: 'Ouverte', planned: 'Planifiée', done: 'Terminée', cancelled: 'Annulée',
@@ -160,6 +161,24 @@ export interface PointDetailActor {
 export interface PointDetailCitedCompany {
   id: string
   name: string
+  // Id réel `companies.id` UNIQUEMENT quand l'acteur détecté est déjà relié à une fiche
+  // entreprise (sinon null — l'acteur n'existe qu'en `canonical_subject`, jamais de bouton
+  // « Définir comme responsable » sans entreprise réelle à désigner, mandat Vincent
+  // 2026-09-14, lot Entreprise citée → Responsable).
+  companyId: string | null
+}
+
+// Promotion humaine explicite d'une entreprise CITÉE en responsable structuré de CE Point
+// (mandat Vincent 2026-09-14, lot Entreprise citée → Responsable, cas Clim Exp'Air,
+// migration 406) : jamais écrite par la détection textuelle elle-même, uniquement par le
+// clic « Définir comme responsable ». Distincte de `PointDetailActor` (union des FK
+// responsable déjà posées sur les objets liés) : cette désignation est un fait au niveau du
+// Point lui-même, pas d'un objet lié particulier.
+export interface PointDetailResponsibleCompanyDesignation {
+  id: string
+  companyId: string
+  companyName: string
+  designatedAt: string
 }
 
 export interface PointDetailMergeSource {
@@ -242,6 +261,9 @@ export interface TrackedPointDetail {
   // affectées comme responsable sur ce Point — jamais une promotion automatique
   // vers `actors` (mandat Vincent, lot Acteurs/entreprise citée, cas Clim Exp'Air).
   citedCompanies: PointDetailCitedCompany[]
+  // §6ter — entreprises CITÉES promues en responsable par un geste humain explicite
+  // (mandat Vincent 2026-09-14, lot Entreprise citée → Responsable, migration 406).
+  responsibleCompanyDesignations: PointDetailResponsibleCompanyDesignation[]
   // §7 — identité/mémoire (secondaire/admin).
   foundingKind: string
   foundingSource: string | null
@@ -373,7 +395,7 @@ export function computeCitedCompanies(
     const candidate = byId.get(relation.actorId)
     if (!candidate) continue
     if (excluded.has(candidate.label.trim().toLowerCase())) continue
-    out.push({ id: candidate.id, name: candidate.label })
+    out.push({ id: candidate.id, name: candidate.label, companyId: null })
   }
   return out
 }
@@ -1084,11 +1106,25 @@ export async function getTrackedPointDetail(
     .select('id, company_id, label, aliases')
     .eq('site_id', siteId).eq('kind', 'actor').eq('status', 'active').is('contact_id', null)
   const citedCompanyCandidates = mapActorCompanyCandidates((actorCompanyRows ?? []) as ActorCompanyRow[])
-  const citedCompanies = computeCitedCompanies(
+
+  // ── §6ter — désignations manuelles déjà actives (mandat Vincent 2026-09-14, lot Entreprise
+  //    citée → Responsable) : une entreprise promue disparaît du pool « citée » (excludeNames)
+  //    ci-dessous, jamais une double apparition citée+responsable sur la même fiche. ──
+  const responsibleCompanyDesignations = await getActiveResponsibleCompanyDesignations(canonicalEntry.id)
+
+  const citedCompaniesRaw = computeCitedCompanies(
     [canonicalEntry.label, ...linkedObjects.map((o) => o.title), ...evidence.map((e) => e.sourceExcerpt)],
     citedCompanyCandidates,
-    actors.map((a) => a.name),
+    [...actors.map((a) => a.name), ...responsibleCompanyDesignations.map((d) => d.companyName)],
   )
+  // L'id porté par un candidat citité vaut déjà `company_id ?? canonical_subject.id`
+  // (mapActorCompanyCandidates) : un id présent dans ce set est un vrai `companies.id`,
+  // condition nécessaire pour afficher « Définir comme responsable » (jamais de bouton vers
+  // une entreprise non résolue).
+  const realCompanyIds = new Set(
+    (actorCompanyRows ?? []).map((r) => r.company_id).filter((v): v is string => v != null),
+  )
+  const citedCompanies = citedCompaniesRaw.map((c) => ({ ...c, companyId: realCompanyIds.has(c.id) ? c.id : null }))
   const openLinkedObjects = linkedObjectsWithSuggestions.filter((o) => !o.isDone)
   const closedLinkedObjects = linkedObjectsWithSuggestions.filter((o) => o.isDone)
 
@@ -1158,6 +1194,7 @@ export async function getTrackedPointDetail(
     openLinkedObjectGroups: groupLinkedObjectsByTitle(openLinkedObjects),
     actors,
     citedCompanies,
+    responsibleCompanyDesignations,
     foundingKind: canonicalEntry.foundingKind,
     foundingSource: canonicalEntry.foundingSource,
     hasUpstreamDefect: canonicalEntry.hasUpstreamDefect,
