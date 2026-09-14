@@ -70,35 +70,39 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
           )}
         </FicheSection>
 
-        <FicheSection title="Décisions" count={c.decisions.length}>
-          {c.decisions.length === 0 ? (
-            <FicheEmpty>Ne porte aucune décision active sur ce chantier.</FicheEmpty>
-          ) : (
-            c.decisions.map((d) => (
+        {/* Recette Vincent 2026-09-15 : trois blocs vides à la suite donnaient
+            l'impression de « descendre dans du vide ». On ne déploie une
+            section Décisions/Obligations/Points que si elle a du contenu ;
+            sinon un seul bloc compact regroupe les trois constats. */}
+        {c.decisions.length > 0 && (
+          <FicheSection title="Décisions" count={c.decisions.length}>
+            {c.decisions.map((d) => (
               <FicheLinkRow key={d.id} href={withContext(d.href)} icon="⚑" label={d.titre} />
-            ))
-          )}
-        </FicheSection>
+            ))}
+          </FicheSection>
+        )}
 
-        <FicheSection title="Obligations" count={c.openObligationsCount}>
-          {c.openObligationsCount === 0 ? (
-            <FicheEmpty>Aucune obligation ouverte sur ce chantier.</FicheEmpty>
-          ) : (
+        {c.openObligationsCount > 0 && (
+          <FicheSection title="Obligations" count={c.openObligationsCount}>
             <FicheRow icon="▤" label={`${c.openObligationsCount} obligation${c.openObligationsCount > 1 ? 's' : ''} ouverte${c.openObligationsCount > 1 ? 's' : ''}`}
               sub="Pas encore de fiche dédiée — compte uniquement." />
-          )}
-        </FicheSection>
+          </FicheSection>
+        )}
 
-        <FicheSection title="Points" count={c.pointsPiloted.length}>
-          {c.pointsPiloted.length === 0 ? (
-            <FicheEmpty>Ne pilote aucun Point sur ce chantier.</FicheEmpty>
-          ) : (
-            c.pointsPiloted.map((p) => (
+        {c.pointsPiloted.length > 0 && (
+          <FicheSection title="Points" count={c.pointsPiloted.length}>
+            {c.pointsPiloted.map((p) => (
               <FicheLinkRow key={p.id} href={withContext(p.href)} icon="●" label={p.label}
                 sub={`Désigné responsable le ${frDayMonthLocal(p.designatedAt)}`} />
-            ))
-          )}
-        </FicheSection>
+            ))}
+          </FicheSection>
+        )}
+
+        {c.decisions.length === 0 && c.openObligationsCount === 0 && c.pointsPiloted.length === 0 && (
+          <FicheSection title="Autres engagements">
+            <FicheEmpty>Aucune décision · aucune obligation · aucun Point piloté.</FicheEmpty>
+          </FicheSection>
+        )}
 
         <FicheSection title="Présence chantier" count={c.casting.length}>
           {c.casting.length === 0 ? (

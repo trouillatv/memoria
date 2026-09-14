@@ -238,33 +238,40 @@ export function IntervenantsLeaderboard({ siteId, consolidated, toIdentify }: {
         )}
       </div>
 
-      {/* Ce qui alimente la page — la frontière de la connaissance, rendue explicite */}
-      <div className="grid gap-4 rounded-xl border bg-card p-4 text-[11.5px] shadow-sm md:grid-cols-3">
-        <div>
-          <p className="mb-1.5 font-semibold">Ce qui alimente cette page (100 % factuel)</p>
-          <ul className="space-y-1 text-muted-foreground">
-            <li><span className="text-emerald-600">✓</span> Casting intervenants (rôles, entreprises, périodes)</li>
-            <li><span className="text-emerald-600">✓</span> Actions assignées à l’entreprise ou à l’un de ses contacts (ouvertes, en retard)</li>
-            <li><span className="text-emerald-600">✓</span> Décisions actives portées par l’entreprise ou l’un de ses contacts</li>
-            <li><span className="text-emerald-600">✓</span> Obligations ouvertes portées via un contact (compte seul, pas encore de fiche dédiée)</li>
-            <li><span className="text-emerald-600">✓</span> Points pilotés (désignation humaine explicite)</li>
-          </ul>
+      {/* Ce qui alimente la page — provenance/transparence technique. Utile en
+          recette, pas en pilotage quotidien : repliée par défaut (recette
+          Vincent 2026-09-15). */}
+      <details className="rounded-xl border bg-card p-4 text-[11.5px] shadow-sm">
+        <summary className="cursor-pointer select-none font-semibold text-muted-foreground">
+          Comment cette page est calculée
+        </summary>
+        <div className="mt-3 grid gap-4 md:grid-cols-3">
+          <div>
+            <p className="mb-1.5 font-semibold">Ce qui alimente cette page (100 % factuel)</p>
+            <ul className="space-y-1 text-muted-foreground">
+              <li><span className="text-emerald-600">✓</span> Casting intervenants (rôles, entreprises, périodes)</li>
+              <li><span className="text-emerald-600">✓</span> Actions assignées à l’entreprise ou à l’un de ses contacts (ouvertes, en retard)</li>
+              <li><span className="text-emerald-600">✓</span> Décisions actives portées par l’entreprise ou l’un de ses contacts</li>
+              <li><span className="text-emerald-600">✓</span> Obligations ouvertes portées via un contact (compte seul, pas encore de fiche dédiée)</li>
+              <li><span className="text-emerald-600">✓</span> Points pilotés (désignation humaine explicite)</li>
+            </ul>
+          </div>
+          <div>
+            <p className="mb-1.5 font-semibold">Mentions confirmées (IA validée par l’humain)</p>
+            <ul className="space-y-1 text-muted-foreground">
+              <li><span className="text-emerald-600">✓</span> Contacts rattachés à l’entreprise (annuaire complet)</li>
+            </ul>
+          </div>
+          <div>
+            <p className="mb-1.5 font-semibold">Hors scope pour le moment</p>
+            <ul className="space-y-1 text-muted-foreground">
+              <li><span className="text-rose-500">✗</span> Points où citée (détection textuelle non batchée sur un site entier)</li>
+              <li><span className="text-rose-500">✗</span> Présence à des visites/réunions (participants non structurés)</li>
+              <li><span className="text-rose-500">✗</span> Nombre de chantiers (résolution d’alias org-wide non construite, signal secondaire)</li>
+            </ul>
+          </div>
         </div>
-        <div>
-          <p className="mb-1.5 font-semibold">Mentions confirmées (IA validée par l’humain)</p>
-          <ul className="space-y-1 text-muted-foreground">
-            <li><span className="text-emerald-600">✓</span> Contacts rattachés à l’entreprise (annuaire complet)</li>
-          </ul>
-        </div>
-        <div>
-          <p className="mb-1.5 font-semibold">Hors scope pour le moment</p>
-          <ul className="space-y-1 text-muted-foreground">
-            <li><span className="text-rose-500">✗</span> Points où citée (détection textuelle non batchée sur un site entier)</li>
-            <li><span className="text-rose-500">✗</span> Présence à des visites/réunions (participants non structurés)</li>
-            <li><span className="text-rose-500">✗</span> Nombre de chantiers (résolution d’alias org-wide non construite, signal secondaire)</li>
-          </ul>
-        </div>
-      </div>
+      </details>
     </div>
   )
 }

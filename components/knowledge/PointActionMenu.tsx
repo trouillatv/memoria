@@ -18,7 +18,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { MoreHorizontal, Loader2, Check, RotateCcw, Pencil, Eye } from 'lucide-react'
+import { MoreHorizontal, Loader2, Check, RotateCcw, Pencil, Eye, UserPlus } from 'lucide-react'
 import { closeActionAction, reopenActionAction, updateActionAssignmentAction } from '@/app/(dashboard)/actions/actions'
 import { recordPointReviewedAfterGesture } from '@/lib/knowledge/tracked-point-review-actions'
 import type { PointDetailLinkedObject } from '@/lib/knowledge/tracked-point-detail'
@@ -57,6 +57,13 @@ export function PointActionMenu({
   const [companyId, setCompanyId] = useState(currentCompanyId)
   const [dueDate, setDueDate] = useState(action.dueDate ?? '')
   const [confirmMismatch, setConfirmMismatch] = useState(false)
+
+  // Recette Vincent 2026-09-15 : le menu doit exposer un point d'entrée
+  // explicite vers l'affectation (mode='edit'), pas seulement « Modifier… ».
+  // Même mutation/même panneau que « Modifier… » — aucun mécanisme parallèle.
+  const responsibleLabel = responsible?.kind === 'contact' || responsible?.kind === 'company'
+    ? `Changer le responsable · ${responsible.name}`
+    : 'Affecter un responsable…'
 
   function closeMenus() {
     setMode(null); setComment(''); setError(null); setConfirmMismatch(false)
@@ -142,6 +149,10 @@ export function PointActionMenu({
           <button type="button" onClick={() => { setMode('edit'); setError(null) }}
             className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-sky-950/40">
             <Pencil className="h-3.5 w-3.5" /> Modifier…
+          </button>
+          <button type="button" onClick={() => { setMode('edit'); setError(null) }}
+            className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] hover:bg-violet-50 hover:text-violet-700 dark:hover:bg-violet-950/40">
+            <UserPlus className="h-3.5 w-3.5" /> {responsibleLabel}
           </button>
           <Link href={action.href} onClick={() => setMode(null)}
             className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left text-[12.5px] text-muted-foreground hover:bg-muted/60">
