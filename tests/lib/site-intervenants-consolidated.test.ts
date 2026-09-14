@@ -67,6 +67,21 @@ describe('buildSiteIntervenantsConsolidated', () => {
     expect(pacific!.overdueActionsCount).toBe(0)
   })
 
+  it("recette Vincent 2026-09-15 — Dernière activité d'une Action réimportée : la date métier du PV (pvDate) prime sur l'instant du batch d'import (createdAt), jamais l'inverse", () => {
+    const r = buildSiteIntervenantsConsolidated({
+      ...base(),
+      actions: [{
+        id: 'a1', title: 'Vérifier l\'éclairage de sécurité',
+        dueDate: null, dueDateStatus: null, status: 'open',
+        createdAt: '2026-09-03T00:37:23.664004+00:00', // instant du batch de reprojection historique
+        pvDate: '2025-08-27', // vraie date du PV source
+        assignedCompanyId: PACIFIC_FROID, assignedContactId: null,
+      }],
+    })
+    const pacific = r.intervenants.find((i) => i.companyId === PACIFIC_FROID)
+    expect(pacific!.lastActivityAt).toBe('2025-08-27')
+  })
+
   it('témoin 3 — Maz de Clim Exp\'Air (canonical_subject, jamais une ligne companies) : absent de companiesById, ne pollue jamais Clim Exp\'Air', () => {
     // "Maz de Clim Exp'Air" n'a pas d'id `companies` : aucun geste ne peut l'assigner à une
     // Action/casting/Point avec `assigned_company_id`. Ce témoin est donc validé par

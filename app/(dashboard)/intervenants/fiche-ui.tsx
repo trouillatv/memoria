@@ -5,19 +5,21 @@
 import Link from 'next/link'
 import { ArrowRight, AlertTriangle } from 'lucide-react'
 import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
-import { companyFill } from './graph/actor-colors'
+import { companyPastel } from './graph/actor-colors'
 
-/** Avatar entreprise — initiale + couleur stable par companyId (même palette
- *  que le graphe acteurs, cf. actor-colors.ts) : une entreprise garde la même
- *  couleur partout dans l'app. Recette visuelle Vincent 2026-09-15 (maquettes
- *  desktop + mobile) : remplace l'icône bâtiment générique. */
+/** Avatar entreprise — initiale + teinte stable par companyId, déclinée en pastel
+ *  (même hash de couleur que le graphe acteurs, cf. `companyPastel`) : une
+ *  entreprise garde la même identité de couleur partout dans l'app, mais en ton
+ *  sourd ici. Recette visuelle Vincent 2026-09-15 : l'aplat vif + blanc (maquettes
+ *  desktop + mobile) tirait l'œil autant que les signaux métier réels. */
 export function CompanyAvatar({ name, companyId, size = 'md' }: { name: string; companyId: string; size?: 'sm' | 'md' }) {
   const letter = name.trim().charAt(0).toUpperCase() || '?'
   const dim = size === 'sm' ? 'h-8 w-8 text-[12px]' : 'h-9 w-9 text-[13px]'
+  const { bg, fg } = companyPastel(companyId)
   return (
     <span
-      className={`grid shrink-0 place-items-center rounded-full font-semibold text-white ${dim}`}
-      style={{ backgroundColor: companyFill(companyId) }}
+      className={`grid shrink-0 place-items-center rounded-full font-semibold ${dim}`}
+      style={{ backgroundColor: bg, color: fg }}
       aria-hidden
     >
       {letter}
@@ -46,18 +48,26 @@ export function AttentionBadge({ level }: { level: AttentionLevel }) {
   )
 }
 
-export function FicheSection({ title, count, icon, tint, children }: {
+export function FicheSection({ title, count, icon, tint, emphasis, children }: {
   title: string
   count?: number
   /** Icône de section (lucide, déjà dimensionnée par l'appelant) — optionnelle,
    *  n'affecte pas les fiches qui ne la fournissent pas encore. */
   icon?: React.ReactNode
   tint?: string
+  /** Poids visuel légèrement accru (titre, compteur en pastille, fond à peine
+   *  teinté) — réservé à LA section prioritaire d'une fiche (ex. "À faire").
+   *  Reste discret par construction : jamais plus qu'une nuance, cf. réserve
+   *  Vincent 2026-09-15 (« hiérarchiser, pas transformer en carte marketing »). */
+  emphasis?: boolean
   children: React.ReactNode
 }) {
   return (
-    <section className="rounded-2xl border border-border/60 bg-card p-4">
-      <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground/90">
+    <section
+      className={`rounded-2xl border p-4 ${emphasis ? 'border-border' : 'border-border/60 bg-card'}`}
+      style={emphasis && tint ? { backgroundColor: `${tint}0d`, borderColor: `${tint}33` } : undefined}
+    >
+      <h2 className={`mb-2 flex items-center gap-2 text-foreground/90 ${emphasis ? 'text-[15px] font-semibold' : 'text-sm font-semibold'}`}>
         {icon && (
           <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full" style={tint ? { background: `${tint}1a`, color: tint } : undefined}>
             {icon}
@@ -65,7 +75,18 @@ export function FicheSection({ title, count, icon, tint, children }: {
         )}
         <span>
           {title}
-          {typeof count === 'number' && count > 0 && <span className="ml-1.5 text-xs font-normal text-muted-foreground tabular-nums">{count}</span>}
+          {typeof count === 'number' && count > 0 && (
+            emphasis ? (
+              <span
+                className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums"
+                style={tint ? { background: `${tint}22`, color: tint } : undefined}
+              >
+                {count}
+              </span>
+            ) : (
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground tabular-nums">{count}</span>
+            )
+          )}
         </span>
       </h2>
       <div className="space-y-1">{children}</div>

@@ -122,6 +122,11 @@ export interface ConsolidatedInputs {
     dueDateStatus: 'explicit' | 'estimated' | null
     status: string
     createdAt: string
+    /** Date métier du PV source (documents.effective_date via report_id) — jamais
+     *  la date d'import. Sans elle, une Action réimportée en masse (reprojection
+     *  historique) affiche l'instant du batch comme « dernière activité », ce qui
+     *  n'est pas une vraie date métier (retour recette Vincent 2026-09-15). */
+    pvDate?: string | null
     assignedCompanyId: string | null
     assignedContactId: string | null
   }>
@@ -198,7 +203,7 @@ export function buildSiteIntervenantsConsolidated(input: ConsolidatedInputs): Si
     const overdue = isActionOverdue(a.status, a.dueDate, a.dueDateStatus, input.today)
     entry.actions.push({ id: a.id, title: a.title, dueDate: a.dueDate, overdue, href: `/sites/${input.siteId}/action/${a.id}` })
     if (overdue) entry.overdueActionsCount++
-    bumpActivity(entry, a.dueDate ?? a.createdAt)
+    bumpActivity(entry, a.dueDate ?? a.pvDate ?? a.createdAt)
     if (contact && !directCompanyId && contactCompanyId) {
       contactActionCounts.set(contact.id, (contactActionCounts.get(contact.id) ?? 0) + 1)
     }
@@ -269,7 +274,7 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
 
   const [castRes, actRes, pointRespRes, decRes, oblRes] = await Promise.all([
     db.from('site_intervenants').select('id, company_id, role, effective_from, effective_to').eq('site_id', siteId).not('company_id', 'is', null),
-    db.from('site_actions').select('id, title, due_date, due_date_status, status, created_at, assigned_company_id, assigned_contact_id').eq('site_id', siteId).in('status', ['open', 'planned']),
+    db.from('site_actions').select('id, title, due_date, due_date_status, status, created_at, report_id, assigned_company_id, assigned_contact_id').eq('site_id', siteId).in('status', ['open', 'planned']),
     db.from('tracked_point_responsible_companies').select('id, company_id, designated_at, tracked_point_id').eq('site_id', siteId).is('revoked_at', null),
     db.from('site_decisions').select('id, titre, statut, date_decision, decisionnaire_company_id, decisionnaire_contact_id').eq('site_id', siteId).in('statut', ['proposee', 'actee', 'appliquee']),
     db.from('site_obligation').select('id, responsible_contact_id, status').eq('site_id', siteId).in('status', ['a_produire', 'en_cours']).not('responsible_contact_id', 'is', null),
@@ -277,7 +282,7 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
   const casting = (castRes.data ?? []) as Array<{ id: string; company_id: string; role: string; effective_from: string | null; effective_to: string | null }>
   const actions = (actRes.data ?? []) as Array<{
     id: string; title: string; due_date: string | null; due_date_status: 'explicit' | 'estimated' | null
-    status: string; created_at: string; assigned_company_id: string | null; assigned_contact_id: string | null
+    status: string; created_at: string; report_id: string | null; assigned_company_id: string | null; assigned_contact_id: string | null
   }>
   const pointsResponsibleRaw = (pointRespRes.data ?? []) as Array<{ id: string; company_id: string; designated_at: string; tracked_point_id: string }>
   const decisionRows = (decRes.data ?? []) as Array<{
@@ -287,6 +292,23 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
   const obligationRows = (oblRes.data ?? []) as Array<{ id: string; responsible_contact_id: string; status: string }>
 
   const relevantActions = actions.filter((a) => a.assigned_company_id || a.assigned_contact_id)
+  // Date métier du PV source (report_id → site_reports.source_document_id →
+  // documents.effective_date) — même pattern que actions-pilotage.ts. Sans elle,
+  // une Action réimportée (reprojection historique, sans due_date) retombe sur
+  // created_at = l'instant du batch d'import, pas une vraie date d'activité.
+  const reportIds = [...new Set(relevantActions.map((a) => a.report_id).filter((v): v is string => !!v))]
+  const { data: reportRows } = reportIds.length
+    ? await db.from('site_reports').select('id, source_document_id').in('id', reportIds)
+    : { data: [] as Array<{ id: string; source_document_id: string | null }> }
+  const docIdByReportId = new Map(
+    ((reportRows ?? []) as Array<{ id: string; source_document_id: string | null }>).map((r) => [r.id, r.source_document_id]),
+  )
+  const docIds = [...new Set([...docIdByReportId.values()].filter((v): v is string => !!v))]
+  const { data: docRows } = docIds.length
+    ? await db.from('documents').select('id, effective_date').in('id', docIds)
+    : { data: [] as Array<{ id: string; effective_date: string | null }> }
+  const dateByDocId = new Map(((docRows ?? []) as Array<{ id: string; effective_date: string | null }>).map((d) => [d.id, d.effective_date]))
+  const pvDateByReportId = new Map([...docIdByReportId.entries()].map(([reportId, docId]) => [reportId, docId ? dateByDocId.get(docId) ?? null : null]))
   // Contacts référencés DIRECTEMENT par une Action, une Décision ou une Obligation —
   // sert d'abord à résoudre l'entreprise du contact (canon), avant même de connaître `companyIds`.
   const directContactIds = [...new Set([
@@ -356,7 +378,8 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
     casting: casting.map((c) => ({ id: c.id, companyId: c.company_id, role: c.role, effectiveFrom: c.effective_from, effectiveTo: c.effective_to })),
     actions: relevantActions.map((a) => ({
       id: a.id, title: a.title, dueDate: a.due_date, dueDateStatus: a.due_date_status, status: a.status,
-      createdAt: a.created_at, assignedCompanyId: a.assigned_company_id, assignedContactId: a.assigned_contact_id,
+      createdAt: a.created_at, pvDate: a.report_id ? pvDateByReportId.get(a.report_id) ?? null : null,
+      assignedCompanyId: a.assigned_company_id, assignedContactId: a.assigned_contact_id,
     })),
     contactById,
     pointsResponsible,

@@ -63,7 +63,7 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
       </SheetHeader>
 
       <div className="space-y-4 px-4 pb-6">
-        <FicheSection title="À faire" count={c.actions.length} icon={<ListChecks className="h-3.5 w-3.5" />} tint={TINT_ACTIONS}>
+        <FicheSection title="À faire" count={c.actions.length} icon={<ListChecks className="h-3.5 w-3.5" />} tint={TINT_ACTIONS} emphasis>
           {c.actions.length === 0 ? (
             <FicheEmpty>Aucune action ouverte sur ce chantier.</FicheEmpty>
           ) : (
