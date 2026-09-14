@@ -11,12 +11,20 @@
 // hors scope tant que ce read-model n'existe pas (cf. site-intervenants-consolidated.ts).
 
 import Link from 'next/link'
+import { ListChecks, Layers, Users, MapPin } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { FicheSection, FicheRow, FicheLinkRow, FicheEmpty } from '@/app/(dashboard)/intervenants/fiche-ui'
+import { FicheSection, FicheRow, FicheLinkRow, FicheEmpty, CompanyAvatar } from '@/app/(dashboard)/intervenants/fiche-ui'
 import { garderContexte } from '../fiche-segment-href'
 import { frDayMonthLocal } from '@/lib/time/local-date'
 import type { ConsolidatedIntervenant } from '@/lib/knowledge/site-intervenants-consolidated'
+
+// Tints de section — mêmes couleurs que les KPI d'IntervenantsLeaderboard,
+// pour un langage visuel cohérent entre la liste et le drawer.
+const TINT_ACTIONS = '#6366f1'
+const TINT_ENGAGEMENTS = '#f59e0b'
+const TINT_PRESENCE = '#10b981'
+const TINT_CONTACTS = '#64748b'
 
 function formatRole(role: string): string {
   return role.charAt(0).toUpperCase() + role.slice(1)
@@ -36,12 +44,17 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
   return (
     <>
       <SheetHeader className="pb-0">
-        {variant === 'page'
-          ? <h1 className="text-base font-semibold">{c.companyName}</h1>
-          : <SheetTitle className="text-base font-semibold">{c.companyName}</SheetTitle>}
-        <p className="text-[13px] text-muted-foreground">
-          {roles.length > 0 ? roles.join(' · ') : 'Rôle non précisé'}
-        </p>
+        <div className="flex items-center gap-2.5">
+          <CompanyAvatar name={c.companyName} companyId={c.companyId} />
+          <div className="min-w-0">
+            {variant === 'page'
+              ? <h1 className="truncate text-base font-semibold">{c.companyName}</h1>
+              : <SheetTitle className="truncate text-base font-semibold">{c.companyName}</SheetTitle>}
+            <p className="text-[13px] text-muted-foreground">
+              {roles.length > 0 ? roles.join(' · ') : 'Rôle non précisé'}
+            </p>
+          </div>
+        </div>
         {c.mergedCompanyIds.length > 0 && (
           <p className="mt-1 text-[11.5px] text-muted-foreground/80">
             Réunit {c.mergedCompanyIds.length} doublon{c.mergedCompanyIds.length > 1 ? 's' : ''} de nom déjà identifié{c.mergedCompanyIds.length > 1 ? 's' : ''}.
@@ -50,7 +63,7 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
       </SheetHeader>
 
       <div className="space-y-4 px-4 pb-6">
-        <FicheSection title="À faire" count={c.actions.length}>
+        <FicheSection title="À faire" count={c.actions.length} icon={<ListChecks className="h-3.5 w-3.5" />} tint={TINT_ACTIONS}>
           {c.actions.length === 0 ? (
             <FicheEmpty>Aucune action ouverte sur ce chantier.</FicheEmpty>
           ) : (
@@ -75,7 +88,7 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
             section Décisions/Obligations/Points que si elle a du contenu ;
             sinon un seul bloc compact regroupe les trois constats. */}
         {c.decisions.length > 0 && (
-          <FicheSection title="Décisions" count={c.decisions.length}>
+          <FicheSection title="Décisions" count={c.decisions.length} icon={<Layers className="h-3.5 w-3.5" />} tint={TINT_ENGAGEMENTS}>
             {c.decisions.map((d) => (
               <FicheLinkRow key={d.id} href={withContext(d.href)} icon="⚑" label={d.titre} />
             ))}
@@ -83,14 +96,14 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
         )}
 
         {c.openObligationsCount > 0 && (
-          <FicheSection title="Obligations" count={c.openObligationsCount}>
+          <FicheSection title="Obligations" count={c.openObligationsCount} icon={<Layers className="h-3.5 w-3.5" />} tint={TINT_ENGAGEMENTS}>
             <FicheRow icon="▤" label={`${c.openObligationsCount} obligation${c.openObligationsCount > 1 ? 's' : ''} ouverte${c.openObligationsCount > 1 ? 's' : ''}`}
               sub="Pas encore de fiche dédiée — compte uniquement." />
           </FicheSection>
         )}
 
         {c.pointsPiloted.length > 0 && (
-          <FicheSection title="Points" count={c.pointsPiloted.length}>
+          <FicheSection title="Points" count={c.pointsPiloted.length} icon={<MapPin className="h-3.5 w-3.5" />} tint={TINT_PRESENCE}>
             {c.pointsPiloted.map((p) => (
               <FicheLinkRow key={p.id} href={withContext(p.href)} icon="●" label={p.label}
                 sub={`Désigné responsable le ${frDayMonthLocal(p.designatedAt)}`} />
@@ -99,12 +112,12 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
         )}
 
         {c.decisions.length === 0 && c.openObligationsCount === 0 && c.pointsPiloted.length === 0 && (
-          <FicheSection title="Autres engagements">
+          <FicheSection title="Autres engagements" icon={<Layers className="h-3.5 w-3.5" />} tint={TINT_ENGAGEMENTS}>
             <FicheEmpty>Aucune décision · aucune obligation · aucun Point piloté.</FicheEmpty>
           </FicheSection>
         )}
 
-        <FicheSection title="Présence chantier" count={c.casting.length}>
+        <FicheSection title="Présence chantier" count={c.casting.length} icon={<MapPin className="h-3.5 w-3.5" />} tint={TINT_PRESENCE}>
           {c.casting.length === 0 ? (
             <FicheEmpty>Aucun casting connu sur ce chantier.</FicheEmpty>
           ) : (
@@ -117,7 +130,7 @@ export function SiteCompanyFicheBody({ company, variant = 'panel', search = '' }
           )}
         </FicheSection>
 
-        <FicheSection title="Contacts" count={c.contacts.length}>
+        <FicheSection title="Contacts" count={c.contacts.length} icon={<Users className="h-3.5 w-3.5" />} tint={TINT_CONTACTS}>
           {c.contacts.length === 0 ? (
             <FicheEmpty>Aucun contact structuré rattaché à cette entreprise.</FicheEmpty>
           ) : (

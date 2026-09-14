@@ -21,6 +21,7 @@ import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import type { ConsolidatedIntervenant, SiteIntervenantsConsolidated } from '@/lib/knowledge/site-intervenants-consolidated'
 import type { ToIdentifyItem } from '@/lib/knowledge/site-intervenants-view'
 import { IdentifyCard } from './IdentifyCard'
+import { CompanyAvatar } from '@/app/(dashboard)/intervenants/fiche-ui'
 
 const STALE_AFTER_DAYS = 30 // même seuil que site_visit_stale/longNoVisitBoost (cohérence transverse)
 
@@ -82,21 +83,27 @@ function IntervenantRow({ r, siteId, ficheHref }: {
 
   return (
     <Link href={href} scroll={false}
-      className="group flex flex-col gap-2 rounded-xl border bg-card px-4 py-3 shadow-sm transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-4">
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"><Building2 className="h-4 w-4" /></span>
+      className="group flex flex-col gap-2 rounded-xl border bg-card px-4 py-2.5 shadow-sm transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:gap-3.5">
+      <CompanyAvatar name={r.companyName} companyId={r.companyId} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <b className="min-w-0 truncate text-[13.5px] font-semibold">{r.companyName}</b>
           <span className="text-[12px] text-muted-foreground">{roles.length > 0 ? roles.join(' · ') : 'Rôle non précisé'}</span>
         </div>
-        <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-          {engagementParts.length > 0 ? engagementParts.join(' · ') : 'Aucun engagement actif'}
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          {engagementParts.length > 0 ? (
+            engagementParts.map((part) => (
+              <span key={part} className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{part}</span>
+            ))
+          ) : (
+            <span className="text-[12px] text-muted-foreground">Aucun engagement actif</span>
+          )}
           {r.overdueActionsCount > 0 && (
-            <span className="ml-2 font-medium text-rose-600 dark:text-rose-400">
+            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:bg-rose-950/30 dark:text-rose-400">
               {r.overdueActionsCount} en retard
             </span>
           )}
-        </p>
+        </div>
       </div>
       <div className="flex shrink-0 items-center gap-2.5 text-[11.5px] text-muted-foreground">
         <span>Dernière activité {frDate(r.lastActivityAt)}</span>

@@ -5,6 +5,25 @@
 import Link from 'next/link'
 import { ArrowRight, AlertTriangle } from 'lucide-react'
 import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
+import { companyFill } from './graph/actor-colors'
+
+/** Avatar entreprise — initiale + couleur stable par companyId (même palette
+ *  que le graphe acteurs, cf. actor-colors.ts) : une entreprise garde la même
+ *  couleur partout dans l'app. Recette visuelle Vincent 2026-09-15 (maquettes
+ *  desktop + mobile) : remplace l'icône bâtiment générique. */
+export function CompanyAvatar({ name, companyId, size = 'md' }: { name: string; companyId: string; size?: 'sm' | 'md' }) {
+  const letter = name.trim().charAt(0).toUpperCase() || '?'
+  const dim = size === 'sm' ? 'h-8 w-8 text-[12px]' : 'h-9 w-9 text-[13px]'
+  return (
+    <span
+      className={`grid shrink-0 place-items-center rounded-full font-semibold text-white ${dim}`}
+      style={{ backgroundColor: companyFill(companyId) }}
+      aria-hidden
+    >
+      {letter}
+    </span>
+  )
+}
 
 /** Pastille d'état — décrit la situation opérationnelle, ne juge jamais l'acteur.
  *  « À jour » reste DISCRET (contour gris) : la couleur forte est réservée aux
@@ -27,12 +46,27 @@ export function AttentionBadge({ level }: { level: AttentionLevel }) {
   )
 }
 
-export function FicheSection({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) {
+export function FicheSection({ title, count, icon, tint, children }: {
+  title: string
+  count?: number
+  /** Icône de section (lucide, déjà dimensionnée par l'appelant) — optionnelle,
+   *  n'affecte pas les fiches qui ne la fournissent pas encore. */
+  icon?: React.ReactNode
+  tint?: string
+  children: React.ReactNode
+}) {
   return (
     <section className="rounded-2xl border border-border/60 bg-card p-4">
-      <h2 className="mb-2 text-sm font-semibold text-foreground/90">
-        {title}
-        {typeof count === 'number' && count > 0 && <span className="ml-1.5 text-xs font-normal text-muted-foreground tabular-nums">{count}</span>}
+      <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground/90">
+        {icon && (
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full" style={tint ? { background: `${tint}1a`, color: tint } : undefined}>
+            {icon}
+          </span>
+        )}
+        <span>
+          {title}
+          {typeof count === 'number' && count > 0 && <span className="ml-1.5 text-xs font-normal text-muted-foreground tabular-nums">{count}</span>}
+        </span>
       </h2>
       <div className="space-y-1">{children}</div>
     </section>
