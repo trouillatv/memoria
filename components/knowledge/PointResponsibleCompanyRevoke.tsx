@@ -1,25 +1,24 @@
 'use client'
 
-// Lot Entreprise citée → Responsable (mandat Vincent 2026-09-14, cas Clim Exp'Air) — geste
-// humain explicite qui transforme une entreprise simplement citée (détection textuelle,
-// jamais une promotion automatique) en responsable structuré du Point. Même squelette
-// d'interaction que PointActionMenu (useTransition, popover inline, confirmation obligatoire,
-// Loader2, annulation) : ici un seul geste, donc pas de menu intermédiaire.
+// Lot Entreprise citée → Responsable, finition (mandat Vincent 2026-09-14, retour recette) —
+// geste symétrique de PointCitedCompanyPromote : retirer une désignation manuelle active.
+// Confirmation enseigne la doctrine : le retrait est un geste purement structurel au niveau
+// du Point, il ne touche jamais les responsables déjà fixés sur les actions/réserves liées.
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
-import { designateResponsibleCompanyAction } from '@/app/(dashboard)/sites/[id]/tracked-point-responsible-company-actions'
+import { revokeResponsibleCompanyAction } from '@/app/(dashboard)/sites/[id]/tracked-point-responsible-company-actions'
 
-export function PointCitedCompanyPromote({
+export function PointResponsibleCompanyRevoke({
   siteId,
   pointId,
-  companyId,
+  designationId,
   companyName,
 }: {
   siteId: string
   pointId: string
-  companyId: string
+  designationId: string
   companyName: string
 }) {
   const router = useRouter()
@@ -30,7 +29,7 @@ export function PointCitedCompanyPromote({
   function submit() {
     setError(null)
     startTransition(async () => {
-      const r = await designateResponsibleCompanyAction({ siteId, pointId, companyId })
+      const r = await revokeResponsibleCompanyAction({ siteId, pointId, designationId })
       if (!r.ok) { setError(r.error); return }
       setConfirming(false)
       router.refresh()
@@ -42,22 +41,22 @@ export function PointCitedCompanyPromote({
       <button
         type="button"
         onClick={() => setConfirming((v) => !v)}
-        className="rounded-md border border-dashed px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/60"
+        className="text-[11px] font-medium text-muted-foreground underline decoration-dotted hover:text-foreground"
       >
-        Définir comme responsable
+        Retirer
       </button>
       {confirming && (
         <div className="absolute right-0 top-full z-10 mt-1 w-72 max-w-[85vw] space-y-1.5 rounded-lg border bg-card p-2.5 shadow-md">
           <p className="text-[11px] font-medium text-foreground">
-            Définir {companyName} comme responsable de ce Point ?
+            Retirer {companyName} des responsables de ce Point ?
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Cette action transformera une entreprise simplement citée dans les preuves en responsabilité structurée.
+            Cela ne modifie pas les responsables des actions ou réserves liées.
           </p>
           {error && <p className="text-[11px] text-red-600">{error}</p>}
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={submit} disabled={pending}
-              className="inline-flex items-center gap-1 rounded-md bg-sky-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-sky-700 disabled:opacity-50">
+              className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-red-700 disabled:opacity-50">
               {pending && <Loader2 className="h-3 w-3 animate-spin" />} Confirmer
             </button>
             <button type="button" onClick={() => { setConfirming(false); setError(null) }} disabled={pending}

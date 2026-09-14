@@ -35,6 +35,7 @@ import { MEMORIA_NEEDS_YOU_CATEGORY_LABELS, MEMORIA_NEEDS_YOU_CATEGORY_ORDER } f
 import { needsYouQuestionHref, type MemoriaNeedsYouQuestion } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { PointActionMenu } from '@/components/knowledge/PointActionMenu'
 import { PointCitedCompanyPromote } from '@/components/knowledge/PointCitedCompanyPromote'
+import { PointResponsibleCompanyRevoke } from '@/components/knowledge/PointResponsibleCompanyRevoke'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
 import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
 import type { SubjectPointMiniContext } from '@/lib/knowledge/tracked-point-subject-context'
@@ -615,38 +616,51 @@ export function PointFicheView({
             {p.actors.length === 0 && p.responsibleCompanyDesignations.length === 0 ? (
               <p className="text-[13px] text-muted-foreground">Aucun responsable structuré.</p>
             ) : (
-              <ul className="flex flex-wrap gap-2">
-                {p.actors.map((a) => {
-                  const responsibleCount = a.responsibleActionCount + a.responsibleReserveCount + a.responsibleDeadlineCount
-                  const detail: string[] = []
-                  if (a.responsibleActionCount > 0) detail.push(`responsable de ${a.responsibleActionCount} action${a.responsibleActionCount > 1 ? 's' : ''}`)
-                  if (a.responsibleReserveCount > 0) detail.push(`de ${a.responsibleReserveCount} réserve${a.responsibleReserveCount > 1 ? 's' : ''}`)
-                  if (a.responsibleDeadlineCount > 0) detail.push(`de ${a.responsibleDeadlineCount} échéance${a.responsibleDeadlineCount > 1 ? 's' : ''}`)
-                  return (
-                    <li key={a.id} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
-                      {a.name}{a.fonction ? ` · ${a.fonction}` : ''}
-                      <span className="text-muted-foreground">
-                        {' — '}
-                        {responsibleCount > 0 ? detail.join(', ') : 'mentionné, rôle non précisé'}
-                      </span>
-                    </li>
-                  )
-                })}
-                {p.responsibleCompanyDesignations.map((d) => (
-                  <li key={d.id} className="rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[12.5px] dark:border-sky-800 dark:bg-sky-950/30">
-                    Responsable : {d.companyName}
-                  </li>
-                ))}
-              </ul>
+              <>
+                {p.actors.length > 0 && (
+                  <ul className="flex flex-wrap gap-2">
+                    {p.actors.map((a) => {
+                      const responsibleCount = a.responsibleActionCount + a.responsibleReserveCount + a.responsibleDeadlineCount
+                      const detail: string[] = []
+                      if (a.responsibleActionCount > 0) detail.push(`responsable de ${a.responsibleActionCount} action${a.responsibleActionCount > 1 ? 's' : ''}`)
+                      if (a.responsibleReserveCount > 0) detail.push(`de ${a.responsibleReserveCount} réserve${a.responsibleReserveCount > 1 ? 's' : ''}`)
+                      if (a.responsibleDeadlineCount > 0) detail.push(`de ${a.responsibleDeadlineCount} échéance${a.responsibleDeadlineCount > 1 ? 's' : ''}`)
+                      return (
+                        <li key={a.id} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
+                          {a.name}{a.fonction ? ` · ${a.fonction}` : ''}
+                          <span className="text-muted-foreground">
+                            {' — '}
+                            {responsibleCount > 0 ? detail.join(', ') : 'mentionné, rôle non précisé'}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+                {p.responsibleCompanyDesignations.length > 0 && (
+                  <div className={p.actors.length > 0 ? 'pt-1.5' : undefined}>
+                    <p className="text-[11px] font-medium text-muted-foreground">Responsables du Point</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      La responsabilité du Point ne modifie pas automatiquement les actions et réserves liées.
+                    </p>
+                    <ul className="mt-1 flex flex-wrap gap-2">
+                      {p.responsibleCompanyDesignations.map((d) => (
+                        <li key={d.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[12.5px] dark:border-sky-800 dark:bg-sky-950/30">
+                          <span>Responsable : {d.companyName}</span>
+                          <PointResponsibleCompanyRevoke siteId={p.siteId} pointId={p.id} designationId={d.id} companyName={d.companyName} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
             )}
             {p.citedCompanies.length > 0 && (
               <div className="pt-1.5">
-                <p className="text-[11px] font-medium text-muted-foreground">
-                  Entreprise{p.citedCompanies.length > 1 ? 's' : ''} citée{p.citedCompanies.length > 1 ? 's' : ''} dans le titre ou les preuves
-                </p>
+                <p className="text-[11px] font-medium text-muted-foreground">Entreprises citées dans les preuves</p>
                 <ul className="mt-1 flex flex-wrap items-center gap-2">
                   {p.citedCompanies.map((c) => (
-                    <li key={c.id} className="flex items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1 text-[12.5px] text-muted-foreground">
+                    <li key={c.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1 text-[12.5px] text-muted-foreground">
                       <span>{c.name}</span>
                       <span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium">Citée dans les preuves</span>
                       {c.companyId && (
