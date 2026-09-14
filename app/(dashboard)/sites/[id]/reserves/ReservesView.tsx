@@ -106,7 +106,7 @@ function LiftForm({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: str
         toast.error(r.error)
         return
       }
-      toast.success('Point levé')
+      toast.success('Réserve levée')
       formRef.current?.reset()
       setOpen(false)
       router.refresh()
@@ -121,7 +121,7 @@ function LiftForm({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: str
         className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium hover:bg-muted/40 transition-colors"
       >
         <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-        Lever le point
+        Lever la réserve
       </button>
     )
   }
@@ -183,7 +183,7 @@ function LiftForm({ reserve, siteId }: { reserve: ReserveWithPhotos; siteId: str
 // Mini-dossier : action corrective + lien document (formulaires inline)
 // ---------------------------------------------------------------------------
 
-function CorrectiveActionForm({ reserveId, siteId }: { reserveId: string; siteId: string }) {
+function CorrectiveActionForm({ reserveId, siteId, emptyState = false }: { reserveId: string; siteId: string; emptyState?: boolean }) {
   const router = useRouter()
   const [pending, start] = useTransition()
   const [open, setOpen] = useState(false)
@@ -207,8 +207,10 @@ function CorrectiveActionForm({ reserveId, siteId }: { reserveId: string; siteId
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
-        <Plus className="h-3 w-3" /> Action corrective
+        className={emptyState
+          ? 'inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted/40 transition-colors'
+          : 'inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground'}>
+        <Plus className="h-3 w-3" /> {emptyState ? 'Créer une Action corrective' : 'Action corrective'}
       </button>
     )
   }
@@ -354,26 +356,37 @@ function ReserveCard({ reserve, siteId, siteDocuments }: { reserve: ReserveWithP
             </div>
           )}
 
-          {/* Actions correctives liées */}
+          {/* Actions correctives liées — sur une réserve ouverte sans action,
+              le bloc enseigne explicitement la prochaine étape (Vincent 2026-09-15). */}
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <ListTodo className="h-3 w-3" /> Actions correctives
-            </div>
-            {reserve.actions.length > 0 ? (
-              <ul className="space-y-0.5">
-                {reserve.actions.map((a) => (
-                  <li key={a.id} className="text-xs">
-                    • {a.title}
-                    {a.assignedTo && <span className="text-muted-foreground"> — {a.assignedTo}</span>}
-                    {a.dueDate && <span className="text-muted-foreground"> (éch. {a.dueDate})</span>}
-                    <span className="text-muted-foreground"> · {ACTION_STATUS_FR[a.status] ?? a.status}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-muted-foreground/70 italic">Aucune action corrective.</p>
-            )}
-            <CorrectiveActionForm reserveId={reserve.id} siteId={siteId} />
+            {(() => {
+              const hasActions = reserve.actions.length > 0
+              const needsGuidance = !hasActions && !isLifted
+              return (
+                <>
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <ListTodo className="h-3 w-3" /> {needsGuidance ? 'À faire pour lever cette réserve' : 'Actions correctives'}
+                  </div>
+                  {hasActions ? (
+                    <ul className="space-y-0.5">
+                      {reserve.actions.map((a) => (
+                        <li key={a.id} className="text-xs">
+                          • {a.title}
+                          {a.assignedTo && <span className="text-muted-foreground"> — {a.assignedTo}</span>}
+                          {a.dueDate && <span className="text-muted-foreground"> (éch. {a.dueDate})</span>}
+                          <span className="text-muted-foreground"> · {ACTION_STATUS_FR[a.status] ?? a.status}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-muted-foreground/70 italic">
+                      {needsGuidance ? "Aucune Action corrective n'est encore associée." : 'Aucune action corrective.'}
+                    </p>
+                  )}
+                  <CorrectiveActionForm reserveId={reserve.id} siteId={siteId} emptyState={needsGuidance} />
+                </>
+              )
+            })()}
           </div>
 
           {/* Documents associés */}
