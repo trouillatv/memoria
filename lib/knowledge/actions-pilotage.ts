@@ -21,6 +21,14 @@ import { isActiveCboState, isTerminalCboState, type CboComputedCurrentState } fr
 import type { CanonicalDisplayState } from '@/lib/documents/subject-state'
 import { canonicalRunsForSite } from '@/lib/documents/pv-history'
 
+/** Responsable actuel de l'Action portant le CBO — même forme à 3 variantes que
+ *  `PointDetailResponsible` (tracked-point-detail.ts) : preuve structurelle
+ *  (contact/entreprise) d'abord, trace texte en dernier recours. */
+export type PilotageCboResponsible =
+  | { kind: 'contact'; name: string }
+  | { kind: 'company'; name: string }
+  | { kind: 'text'; label: string }
+
 /** Niveau 2 — un objet métier durable (CBO action) et son état C2A autoritatif. */
 export interface PilotageCbo {
   cboId: string
@@ -41,6 +49,13 @@ export interface PilotageCbo {
   lastHumanVerifiedAt?: string | null
   lastHumanVerifiedBy?: string | null
   lastHumanVerifiedComment?: string | null
+  /** Responsable actuel de l'Action cible (`targetActionId`), ou `null` si aucun
+   *  n'est affecté. `undefined` seulement avant enrichissement (jamais exposé). */
+  responsible?: PilotageCboResponsible | null
+  /** Échéance actuelle de l'Action cible — nécessaire pour pré-remplir le panneau
+   *  d'affectation partagé (`ActionAssignmentPanel`) : la mutation efface la date si
+   *  le champ est vide, il ne faut donc jamais soumettre le panneau sans elle. */
+  dueDate?: string | null
 }
 
 /** Niveau 3 — une formulation documentaire BRUTE (site_actions) rattachée au sujet. ARCHIVE, jamais
@@ -273,6 +288,45 @@ export async function getSiteActionsPilotage(siteId: string): Promise<SiteAction
       const v = c.targetActionId ? lastConfirmByAction.get(c.targetActionId) : undefined
       if (v) { c.lastHumanVerifiedAt = v.at; c.lastHumanVerifiedBy = v.by; c.lastHumanVerifiedComment = v.comment }
     }
+  }
+
+  // Responsable actuel — même geste, même mutation partout (lot normalisation 3 points
+  // d'entrée, 2026-09-15) : 1 requête batchée sur les actions cibles, puis résolution
+  // contact/entreprise batchée (jamais une requête par CBO).
+  const targetActionIds = [...new Set(pilotage.subjects.flatMap((s) => s.cbos.map((c) => c.targetActionId)).filter((x): x is string => !!x))]
+  if (targetActionIds.length > 0) {
+    const { data: targetActions } = await sb.from('site_actions')
+      .select('id, assigned_contact_id, assigned_company_id, assigned_to, due_date').in('id', targetActionIds)
+    type TargetActionRow = { id: string; assigned_contact_id: string | null; assigned_company_id: string | null; assigned_to: string | null; due_date: string | null }
+    const rows = (targetActions ?? []) as TargetActionRow[]
+    const contactIds = [...new Set(rows.map((r) => r.assigned_contact_id).filter((x): x is string => !!x))]
+    const companyIds = [...new Set(rows.map((r) => r.assigned_company_id).filter((x): x is string => !!x))]
+    const [contactsRes, companiesRes] = await Promise.all([
+      contactIds.length > 0 ? sb.from('company_contacts').select('id, full_name').in('id', contactIds) : Promise.resolve({ data: [] }),
+      companyIds.length > 0 ? sb.from('companies').select('id, name').in('id', companyIds) : Promise.resolve({ data: [] }),
+    ])
+    const contactName = new Map<string, string>((contactsRes.data ?? []).map((c: { id: string; full_name: string | null }) => [c.id, c.full_name ?? '']))
+    const companyName = new Map<string, string>((companiesRes.data ?? []).map((c: { id: string; name: string | null }) => [c.id, c.name ?? '']))
+    const responsibleByAction = new Map<string, PilotageCboResponsible>()
+    const dueDateByAction = new Map<string, string | null>()
+    for (const r of rows) {
+      dueDateByAction.set(r.id, r.due_date)
+      if (r.assigned_contact_id && contactName.has(r.assigned_contact_id)) {
+        responsibleByAction.set(r.id, { kind: 'contact', name: contactName.get(r.assigned_contact_id)! })
+      } else if (r.assigned_company_id && companyName.has(r.assigned_company_id)) {
+        responsibleByAction.set(r.id, { kind: 'company', name: companyName.get(r.assigned_company_id)! })
+      } else if (r.assigned_to) {
+        responsibleByAction.set(r.id, { kind: 'text', label: r.assigned_to })
+      }
+    }
+    for (const s of pilotage.subjects) {
+      for (const c of s.cbos) {
+        c.responsible = c.targetActionId ? responsibleByAction.get(c.targetActionId) ?? null : null
+        c.dueDate = c.targetActionId ? dueDateByAction.get(c.targetActionId) ?? null : null
+      }
+    }
+  } else {
+    for (const s of pilotage.subjects) for (const c of s.cbos) { c.responsible = null; c.dueDate = null }
   }
   return pilotage
 }

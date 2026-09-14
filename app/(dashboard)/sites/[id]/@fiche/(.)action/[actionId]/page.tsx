@@ -1,6 +1,8 @@
 import { requireDeskUser } from '@/lib/auth/page-guard'
 import { notFound } from 'next/navigation'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
+import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
+import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { ActionFichePanel } from '../../../views/action/ActionFichePanel'
 
 export const dynamic = 'force-dynamic'
@@ -18,7 +20,13 @@ export default async function ActionFicheInterceptee({
   await requireDeskUser()
 
   const { id, actionId } = await params
-  const action = await getSiteActionFiche(id, actionId, { withSubjectContext: true }).catch(() => null)
+  const [action, responsibleCandidates, companies] = await Promise.all([
+    getSiteActionFiche(id, actionId, { withSubjectContext: true }).catch(() => null),
+    // Lot normalisation 3 points d'entrée (Vincent 2026-09-15) — même panneau
+    // d'affectation partagé que Point/Vue Actions.
+    listSiteActionResponsibleCandidates(id).catch(() => []),
+    listSiteCandidateCompanies(id).catch(() => []),
+  ])
   if (!action) notFound()
-  return <ActionFichePanel action={action} />
+  return <ActionFichePanel action={action} responsibleCandidates={responsibleCandidates} companies={companies} />
 }

@@ -1,6 +1,8 @@
 import { ListTodo } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { getSiteActionsPilotage } from '@/lib/knowledge/actions-pilotage'
+import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
+import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { ActionsPilotageClient } from '@/components/actions/ActionsPilotageClient'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +13,13 @@ export const dynamic = 'force-dynamic'
 export default async function SiteActionsPillPage({ params }: { params: Promise<{ siteId: string }> }) {
   const { siteId } = await params
   await requireSiteAccess(siteId)
-  const pilotage = await getSiteActionsPilotage(siteId)
+  const [pilotage, responsibleCandidates, companies] = await Promise.all([
+    getSiteActionsPilotage(siteId),
+    // Lot normalisation 3 points d'entrée (Vincent 2026-09-15) — même panneau d'affectation
+    // partagé que desktop/Point.
+    listSiteActionResponsibleCandidates(siteId).catch(() => []),
+    listSiteCandidateCompanies(siteId).catch(() => []),
+  ])
   const k = pilotage.kpi
 
   return (
@@ -32,7 +40,8 @@ export default async function SiteActionsPillPage({ params }: { params: Promise<
           </p>
         )}
       </header>
-      <ActionsPilotageClient subjects={pilotage.subjects} siteId={siteId} />
+      <ActionsPilotageClient subjects={pilotage.subjects} siteId={siteId}
+        responsibleCandidates={responsibleCandidates} companies={companies} />
     </div>
   )
 }

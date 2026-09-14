@@ -6,6 +6,8 @@ import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbPr
 import { readSiteActionSummaries, groupActionsByThread } from '@/lib/knowledge/repository'
 import { getSitePendingActionProposals } from '@/lib/knowledge/site-pending-proposals'
 import { getSiteActionsPilotage } from '@/lib/knowledge/actions-pilotage'
+import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
+import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { isActionOverdue } from '@/lib/knowledge/overdue-action'
 import { SiteChantierNav } from '../SiteChantierNav'
@@ -30,12 +32,16 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const [identity, actionRows, pendingProposals] = await Promise.all([
+  const [identity, actionRows, pendingProposals, responsibleCandidates, companies] = await Promise.all([
     getSiteIdentity(id),
     readSiteActionSummaries(id),
     // #231 — population AGRÉGÉE des propositions d'action en attente (toutes visites).
     // C'est la destination du compteur « N proposées » de l'Aperçu.
     getSitePendingActionProposals(id).catch(() => []),
+    // Lot normalisation 3 points d'entrée (Vincent 2026-09-15) — mêmes candidats que
+    // Point/ActionFiche pour le panneau d'affectation partagé.
+    listSiteActionResponsibleCandidates(id).catch(() => []),
+    listSiteCandidateCompanies(id).catch(() => []),
   ])
   if (!identity) notFound()
 
@@ -132,7 +138,8 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
       <PendingProposalsSection proposals={pendingProposals} siteId={id} />
 
       {/* Liste principale — hiérarchie durable SUJET → CBO → historique. */}
-      <ActionsPilotageClient subjects={pilotage.subjects} siteId={id} />
+      <ActionsPilotageClient subjects={pilotage.subjects} siteId={id}
+        responsibleCandidates={responsibleCandidates} companies={companies} />
     </div>
   )
 }

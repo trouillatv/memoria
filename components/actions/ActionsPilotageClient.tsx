@@ -14,9 +14,12 @@
 import Link from 'next/link'
 import { useState, useTransition, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle, Search, X, MoreHorizontal, XCircle, Eye } from 'lucide-react'
+import { ChevronRight, FileText, Check, RotateCcw, Loader2, AlertTriangle, Search, X, MoreHorizontal, XCircle, Eye, UserPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { closeActionAction, reopenActionAction, discardActionAction, confirmActionOpenAction } from '@/app/(dashboard)/actions/actions'
+import { ActionAssignmentPanel } from '@/components/actions/ActionAssignmentPanel'
+import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
+import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
 
 /** Motifs fermés du geste « Écarter » (miroir de DiscardMotif côté serveur). */
 type DiscardMotifUi = 'doublon' | 'non_applicable' | 'hors_perimetre' | 'autre'
@@ -81,11 +84,16 @@ function provenanceOf(c: PilotageCbo): string | null {
   }
 }
 
-function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
+function CboRow({ cbo, siteId, responsibleCandidates, companies }: {
+  cbo: PilotageCbo
+  siteId: string
+  responsibleCandidates: ResponsibleCandidate[]
+  companies: SiteCandidateCompany[]
+}) {
   const cs = CBO_STATE[cbo.computedCurrentState]
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [mode, setMode] = useState<null | 'menu' | 'treat' | 'reopen' | 'discard' | 'confirm'>(null)
+  const [mode, setMode] = useState<null | 'menu' | 'treat' | 'reopen' | 'discard' | 'confirm' | 'assign'>(null)
   const [comment, setComment] = useState('')
   const [motif, setMotif] = useState<DiscardMotifUi | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -96,6 +104,21 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
   const canReactivate = cbo.computedCurrentState === 'native_cancelled' && !!cbo.targetActionId
   const hasDivergence = cbo.documentaryDivergences.length > 0
   const provenance = provenanceOf(cbo)
+
+  // Lot normalisation 3 points d'entrée (Vincent 2026-09-15) : même geste, même
+  // panneau, même mutation que Point/ActionFiche — réutilise updateActionAssignmentAction
+  // via ActionAssignmentPanel. Le sélecteur d'entrée initiale est résolu par nom (même
+  // limite que PointActionMenu : aucune colonne id-only exposée par le read-model).
+  const responsible = cbo.responsible
+  const currentContactId = responsible?.kind === 'contact'
+    ? responsibleCandidates.find((c) => c.fullName === responsible.name)?.contactId ?? ''
+    : ''
+  const currentCompanyId = responsible?.kind === 'company'
+    ? companies.find((c) => c.name === responsible.name)?.id ?? ''
+    : ''
+  const responsibleLabel = responsible?.kind === 'contact' || responsible?.kind === 'company'
+    ? `Changer le responsable · ${responsible.name}`
+    : 'Affecter un responsable…'
 
   function submitTreat() {
     if (!cbo.targetActionId || comment.trim().length === 0) return
@@ -185,6 +208,29 @@ function CboRow({ cbo, siteId }: { cbo: PilotageCbo; siteId: string }) {
             className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-red-50 hover:text-red-700 hover:border-red-200 dark:hover:bg-red-950/40">
             <XCircle className="h-3 w-3" /> Écarter…
           </button>
+          {cbo.targetActionId && (
+            <button type="button" onClick={() => { setMode('assign'); setError(null) }}
+              className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-violet-50 hover:text-violet-700 hover:border-violet-200 dark:hover:bg-violet-950/40">
+              <UserPlus className="h-3 w-3" /> {responsibleLabel}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Affectation du responsable — même panneau que Point/ActionFiche (§ lot normalisation). */}
+      {mode === 'assign' && cbo.targetActionId && (
+        <div className="mt-2">
+          <ActionAssignmentPanel
+            actionId={cbo.targetActionId}
+            responsibleCandidates={responsibleCandidates}
+            companies={companies}
+            initialContactId={currentContactId}
+            initialCompanyId={currentCompanyId}
+            initialDueDate={cbo.dueDate ?? ''}
+            onDone={() => { setMode(null); router.refresh() }}
+            onCancel={() => setMode(null)}
+            title="Affecter un responsable"
+          />
         </div>
       )}
 
@@ -328,7 +374,12 @@ function useHighlightFormulationFromUrl() {
   }, [])
 }
 
-export function ActionsPilotageClient({ subjects, siteId }: { subjects: PilotageSubject[]; siteId: string }) {
+export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates, companies }: {
+  subjects: PilotageSubject[]
+  siteId: string
+  responsibleCandidates: ResponsibleCandidate[]
+  companies: SiteCandidateCompany[]
+}) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ActionsFilter>('all')
   const counts = useMemo(() => countByFilter(subjects, query), [subjects, query])
@@ -419,7 +470,10 @@ export function ActionsPilotageClient({ subjects, siteId }: { subjects: Pilotage
                 <div>
                   <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Objets métier à piloter</p>
                   <ul className="space-y-1.5">
-                    {s.cbos.map((c) => <CboRow key={c.cboId} cbo={c} siteId={siteId} />)}
+                    {s.cbos.map((c) => (
+                      <CboRow key={c.cboId} cbo={c} siteId={siteId}
+                        responsibleCandidates={responsibleCandidates} companies={companies} />
+                    ))}
                   </ul>
                   <Link href={`/sites/${siteId}/historique/sujets/${s.canonicalSubjectId}`} className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
                     Voir la fiche du sujet <ChevronRight className="h-3 w-3" />

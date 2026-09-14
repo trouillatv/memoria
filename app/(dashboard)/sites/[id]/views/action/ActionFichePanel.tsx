@@ -12,8 +12,18 @@ import { ActionFicheBody } from './ActionFiche'
 import { quitterEspaceHref, garderContexte } from '../fiche-segment-href'
 import { noterFiche, terminerParcours } from '../fiche-espace-historique'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
+import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
+import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
 
-export function ActionFichePanel({ action }: { action: ActionFicheData }) {
+export function ActionFichePanel({
+  action,
+  responsibleCandidates = [],
+  companies = [],
+}: {
+  action: ActionFicheData
+  responsibleCandidates?: ResponsibleCandidate[]
+  companies?: SiteCandidateCompany[]
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const search = useSearchParams()?.toString() ?? ''
@@ -42,7 +52,7 @@ export function ActionFichePanel({ action }: { action: ActionFicheData }) {
   return (
     <Sheet open onOpenChange={(o) => { if (!o) quitter() }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-        <ActionFicheBody action={a} />
+        <ActionFicheBody action={a} responsibleCandidates={responsibleCandidates} companies={companies} />
       </SheetContent>
     </Sheet>
   )

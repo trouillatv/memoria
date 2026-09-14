@@ -15,8 +15,10 @@ import { FICHE_TITLE_MOTION, FICHE_BODY_MOTION } from '@/components/knowledge/fi
 import { cn } from '@/lib/utils'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
-import { ActionFicheCta, ActionFicheDetailsCta, ActionFicheDueDateCta } from './ActionFicheCta'
+import { ActionFicheCta, ActionFicheDetailsCta, ActionFicheDueDateCta, ActionFicheResponsibleCta } from './ActionFicheCta'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
+import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
+import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
 import type { SiteActionStatus } from '@/types/db'
 
 // Trois niveaux de poids visuel — le dossier hiérarchise, il ne s'aplatit pas.
@@ -36,7 +38,21 @@ const STATUS_CLS: Record<SiteActionStatus, string> = {
 // `variant` — même corps monté en panneau ou en page complète. Seul le titre
 // diffère : dans le panneau il est le titre accessible de la boîte de dialogue,
 // en page ce contexte n'existe pas (cf. DecisionFicheBody, même limite nommée).
-export function ActionFicheBody({ action, back, animateContent = false, variant = 'panel' }: { action: ActionFicheData | null; back?: TrailBack | null; animateContent?: boolean; variant?: 'panel' | 'page' }) {
+export function ActionFicheBody({
+  action,
+  back,
+  animateContent = false,
+  variant = 'panel',
+  responsibleCandidates = [],
+  companies = [],
+}: {
+  action: ActionFicheData | null
+  back?: TrailBack | null
+  animateContent?: boolean
+  variant?: 'panel' | 'page'
+  responsibleCandidates?: ResponsibleCandidate[]
+  companies?: SiteCandidateCompany[]
+}) {
   if (!action) return null
   const a = action
   const date = describeAssignedActionDate(
@@ -186,12 +202,24 @@ export function ActionFicheBody({ action, back, animateContent = false, variant 
                 <UserCheck className="h-3.5 w-3.5" />
                 {a.responsible.name}{a.responsible.fonction ? ` · ${a.responsible.fonction}` : ''}
               </p>
+            ) : a.responsible?.kind === 'company' ? (
+              <p className="mt-1 inline-flex items-center gap-1 text-[13.5px] font-medium text-emerald-700 dark:text-emerald-400">
+                <UserCheck className="h-3.5 w-3.5" />
+                {a.responsible.name}
+              </p>
             ) : a.responsible?.kind === 'text' ? (
               // Trace texte historique — jamais présentée comme une personne.
               <p className="mt-1 text-[13px] text-muted-foreground">Responsable (ancien suivi) : {a.responsible.label}</p>
             ) : (
               <p className="mt-1 text-[13px] text-muted-foreground">À affecter — aucun responsable identifié.</p>
             )}
+            <ActionFicheResponsibleCta
+              actionId={a.id}
+              responsible={a.responsible}
+              dueDate={a.dueDate}
+              responsibleCandidates={responsibleCandidates}
+              companies={companies}
+            />
           </section>
 
           <section>

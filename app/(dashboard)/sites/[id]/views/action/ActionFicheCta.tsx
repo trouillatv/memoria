@@ -12,7 +12,7 @@
 
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, RotateCcw, Camera, X, Loader2, Pencil } from 'lucide-react'
+import { Check, RotateCcw, Camera, X, Loader2, Pencil, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import {
@@ -22,6 +22,10 @@ import {
   confirmActionDueDateAction,
   setActionDueDateAction,
 } from '@/app/(dashboard)/actions/actions'
+import { ActionAssignmentPanel } from '@/components/actions/ActionAssignmentPanel'
+import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
+import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
+import type { ActionFicheResponsible } from '@/lib/knowledge/action-fiche'
 import type { SiteActionStatus } from '@/types/db'
 
 export function ActionFicheCta({
@@ -402,5 +406,58 @@ function DueDateForm({
         <X className="h-3.5 w-3.5" />Annuler
       </button>
     </div>
+  )
+}
+
+// ── Lot normalisation 3 points d'entrée (Vincent 2026-09-15) — « Même geste, même
+// composant, même mutation partout. » Réutilise EXCLUSIVEMENT ActionAssignmentPanel /
+// updateActionAssignmentAction, déjà en prod depuis le Point et la Vue Actions.
+export function ActionFicheResponsibleCta({
+  actionId,
+  responsible,
+  dueDate,
+  responsibleCandidates,
+  companies,
+}: {
+  actionId: string
+  responsible: ActionFicheResponsible | null
+  dueDate: string | null
+  responsibleCandidates: ResponsibleCandidate[]
+  companies: SiteCandidateCompany[]
+}) {
+  const router = useRouter()
+  const [editing, setEditing] = useState(false)
+
+  const currentContactId = responsible?.kind === 'contact'
+    ? responsibleCandidates.find((c) => c.fullName === responsible.name)?.contactId ?? ''
+    : ''
+  const currentCompanyId = responsible?.kind === 'company'
+    ? companies.find((c) => c.name === responsible.name)?.id ?? ''
+    : ''
+
+  if (editing) {
+    return (
+      <ActionAssignmentPanel
+        actionId={actionId}
+        responsibleCandidates={responsibleCandidates}
+        companies={companies}
+        initialContactId={currentContactId}
+        initialCompanyId={currentCompanyId}
+        initialDueDate={dueDate ?? ''}
+        onDone={() => { setEditing(false); router.refresh() }}
+        onCancel={() => setEditing(false)}
+        title="Affecter un responsable"
+      />
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="mt-1 inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-foreground"
+    >
+      <UserPlus className="h-3 w-3" />{responsible ? 'Modifier' : 'Affecter'}
+    </button>
   )
 }

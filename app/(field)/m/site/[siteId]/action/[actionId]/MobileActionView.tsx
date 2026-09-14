@@ -51,7 +51,7 @@ export function MobileActionView({ action, siteId, backHref }: { action: ActionF
             <div className="flex items-center gap-2 text-[13px]">
               <UserCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
               <span>
-                {a.responsible.kind === 'contact' ? a.responsible.name : a.responsible.label}
+                {a.responsible.kind === 'text' ? a.responsible.label : a.responsible.name}
                 {a.responsible.kind === 'contact' && a.responsible.fonction && (
                   <span className="ml-1 text-muted-foreground">· {a.responsible.fonction}</span>
                 )}

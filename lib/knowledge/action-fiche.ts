@@ -41,6 +41,7 @@ const frDate = (iso: string | null | undefined): string | null => (iso ? DATE_FM
 
 export type ActionFicheResponsible =
   | { kind: 'contact'; name: string; fonction: string | null }
+  | { kind: 'company'; name: string }
   | { kind: 'text'; label: string }
 
 /** Preuves de RÉALISATION — jamais l'origine. Uniquement les traces déclarées à la
@@ -214,12 +215,16 @@ export async function getSiteActionFiche(
   if (!data) return null
   const a = data as DbSiteAction
 
-  // Responsable : la personne (preuve) d'abord, sinon la trace texte.
+  // Responsable : la personne (preuve) d'abord, sinon l'entreprise, sinon la trace texte.
   let responsible: ActionFicheResponsible | null = null
   if (a.assigned_contact_id) {
     const { data: c } = await db.from('company_contacts')
       .select('full_name, function').eq('id', a.assigned_contact_id).maybeSingle()
     if (c) responsible = { kind: 'contact', name: (c.full_name as string) ?? '', fonction: (c.function as string | null) ?? null }
+  }
+  if (!responsible && a.assigned_company_id) {
+    const { data: co } = await db.from('companies').select('name').eq('id', a.assigned_company_id).maybeSingle()
+    if (co) responsible = { kind: 'company', name: (co as { name: string }).name }
   }
   if (!responsible && a.assigned_to) responsible = { kind: 'text', label: a.assigned_to }
 
@@ -425,6 +430,7 @@ export async function getSiteActionFiche(
       { icon: '🏗', label: `Chantier : ${siteName}`, href: `/sites/${siteId}` },
       ...(source?.available && source.href ? [{ icon: '📄', label: source.title, href: source.href }] : []),
       ...(responsible?.kind === 'contact' ? [{ icon: '👤', label: responsible.name, href: null }] : []),
+      ...(responsible?.kind === 'company' ? [{ icon: '🏢', label: responsible.name, href: null }] : []),
       ...(context ? [{ icon: '📄', label: context.label, href: context.href }] : []),
     ],
     observed,
