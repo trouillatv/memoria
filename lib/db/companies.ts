@@ -21,10 +21,15 @@ export interface Company {
    *  À exclure des sélecteurs, des statistiques et de tout rapprochement
    *  d'identité — ses contacts ne sont pas des collègues. */
   isPlaceholder: boolean
+  /** 'alias' = doublon de nom d'une autre entreprise, cf. aliasOfCompanyId (mig 407,
+   *  mandat Vincent 2026-09-14). Décision humaine explicite, jamais un rapprochement
+   *  automatique. Les FK existantes vers cette ligne restent valides (historique). */
+  status: 'active' | 'alias'
+  aliasOfCompanyId: string | null
 }
 
 const SELECT =
-  'id, organization_id, name, short_name, logo_url, siret, address, postal_code, city, country, phone, email, website, notes, is_placeholder'
+  'id, organization_id, name, short_name, logo_url, siret, address, postal_code, city, country, phone, email, website, notes, is_placeholder, status, alias_of_company_id'
 
 function rowToCompany(r: Record<string, unknown>): Company {
   return {
@@ -43,7 +48,56 @@ function rowToCompany(r: Record<string, unknown>): Company {
     website: (r.website as string | null) ?? null,
     notes: (r.notes as string | null) ?? null,
     isPlaceholder: (r.is_placeholder as boolean | null) ?? false,
+    status: ((r.status as string | null) === 'alias' ? 'alias' : 'active'),
+    aliasOfCompanyId: (r.alias_of_company_id as string | null) ?? null,
   }
+}
+
+/**
+ * Résout l'entreprise CANONIQUE d'un id donné (mig 407, Lot 2A Intervenants).
+ * Une entreprise 'active' est déjà canonique (résolution en elle-même) ; une
+ * entreprise 'alias' résout vers `aliasOfCompanyId` — un seul saut, jamais de
+ * chaîne (garanti par le trigger `check_company_alias_target`). `id` inconnu de
+ * `companiesById` résout vers lui-même (fail-open sur l'identité, jamais une
+ * exception dans un chemin d'agrégation en lecture).
+ */
+export function resolveCanonicalCompanyId(
+  companiesById: Map<string, Pick<Company, 'id' | 'status' | 'aliasOfCompanyId'>>,
+  id: string,
+): string {
+  const c = companiesById.get(id)
+  if (!c || c.status !== 'alias' || !c.aliasOfCompanyId) return id
+  return c.aliasOfCompanyId
+}
+
+/**
+ * Désigne `companyId` comme alias de `canonicalCompanyId` (geste humain explicite,
+ * jamais un rapprochement automatique/fuzzy). Réversible via `clearCompanyAlias`.
+ * Refuse de transformer en alias une entreprise qui est déjà elle-même visée par
+ * un autre alias (éviterait une chaîne au moment même où on la crée).
+ */
+export async function setCompanyAlias(orgId: string, companyId: string, canonicalCompanyId: string): Promise<void> {
+  if (companyId === canonicalCompanyId) throw new Error('Une entreprise ne peut pas être son propre alias.')
+  const db = createAdminClient()
+  const { data: pointing } = await db
+    .from('companies').select('id').eq('alias_of_company_id', companyId).limit(1).maybeSingle()
+  if (pointing?.id) throw new Error('Cette entreprise est déjà visée par un alias : la transformer créerait une chaîne.')
+  const { error } = await db
+    .from('companies')
+    .update({ status: 'alias', alias_of_company_id: canonicalCompanyId })
+    .eq('id', companyId)
+    .eq('organization_id', orgId)
+  if (error) throw new Error(error.message)
+}
+
+/** Annule un alias : l'entreprise redevient 'active' et autonome. */
+export async function clearCompanyAlias(orgId: string, companyId: string): Promise<void> {
+  const { error } = await createAdminClient()
+    .from('companies')
+    .update({ status: 'active', alias_of_company_id: null })
+    .eq('id', companyId)
+    .eq('organization_id', orgId)
+  if (error) throw new Error(error.message)
 }
 
 export async function listCompanies(orgId: string): Promise<Company[]> {
