@@ -348,6 +348,18 @@ export function suggestResponsibleNames(
  *  entreprise déjà DANS `actors` (déjà responsable d'un objet lié à ce Point) n'est jamais
  *  redondamment listée ici : citée et responsable sont mutuellement exclusives dans une
  *  même fiche, jamais une promotion automatique de l'une vers l'autre. */
+/** Ligne brute `canonical_subject kind='actor'` → candidat pour `computeCitedCompanies`
+ *  (correctif Vincent 2026-09-14, cas Clim Exp'Air). `company_id` est absent quand
+ *  l'acteur a été détecté à l'extraction mais jamais relié à `companies` — l'id
+ *  d'affichage retombe alors sur celui de `canonical_subject` (jamais un lien vers
+ *  une fiche entreprise, cf. `PointDetailCitedCompany`). La requête appelante exclut
+ *  déjà les acteurs résolus comme personne (`contact_id` non nul) avant d'appeler ceci. */
+export function mapActorCompanyCandidates(
+  rows: Array<{ id: string; company_id: string | null; label: string; aliases: string[] | null }>,
+): ActorSubject[] {
+  return rows.map((r) => ({ id: r.company_id ?? r.id, label: r.label, aliases: r.aliases ?? [] }))
+}
+
 export function computeCitedCompanies(
   texts: Array<string | null | undefined>,
   candidates: ActorSubject[],
@@ -1058,14 +1070,20 @@ export async function getTrackedPointDetail(
 
   // ── §6bis — entreprises citées (mandat Vincent, lot Acteurs/entreprise citée) ──
   // Pool = toutes les entreprises identifiées comme acteur sur CE site (canonical_subject
-  // kind=actor), indépendamment du casting site_intervenants — c'est précisément ce qui
-  // manque à `listSiteCandidateCompanies` pour couvrir le cas Clim Exp'Air.
-  type ActorCompanyRow = { company_id: string; label: string; aliases: string[] | null }
+  // kind=actor), indépendamment du casting site_intervenants ET indépendamment d'un
+  // company_id résolu (correctif Vincent 2026-09-14, cas Clim Exp'Air : un acteur détecté
+  // à l'extraction mais jamais relié à `companies` ne doit pas disparaître du pool — le
+  // resolver acteur→entreprise est une dette séparée, cf. audit, jamais un prérequis à
+  // l'affichage). `contact_id` reste exclusif : company_id/contact_id mutuellement
+  // exclusifs sur canonical_subject (migration 299) donc un acteur déjà résolu comme
+  // personne ne doit jamais être proposé comme « entreprise citée ». L'id d'affichage
+  // retombe sur celui de `canonical_subject` quand `company_id` est absent : jamais
+  // utilisé comme lien vers une fiche entreprise, cf. `PointDetailCitedCompany`.
+  type ActorCompanyRow = { id: string; company_id: string | null; label: string; aliases: string[] | null }
   const { data: actorCompanyRows } = await db.from('canonical_subject')
-    .select('company_id, label, aliases')
-    .eq('site_id', siteId).eq('kind', 'actor').eq('status', 'active').not('company_id', 'is', null)
-  const citedCompanyCandidates: ActorSubject[] = ((actorCompanyRows ?? []) as ActorCompanyRow[])
-    .map((r) => ({ id: r.company_id, label: r.label, aliases: r.aliases ?? [] }))
+    .select('id, company_id, label, aliases')
+    .eq('site_id', siteId).eq('kind', 'actor').eq('status', 'active').is('contact_id', null)
+  const citedCompanyCandidates = mapActorCompanyCandidates((actorCompanyRows ?? []) as ActorCompanyRow[])
   const citedCompanies = computeCitedCompanies(
     [canonicalEntry.label, ...linkedObjects.map((o) => o.title), ...evidence.map((e) => e.sourceExcerpt)],
     citedCompanyCandidates,

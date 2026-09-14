@@ -10,6 +10,7 @@ import {
   computePointActors,
   suggestResponsibleNames,
   computeCitedCompanies,
+  mapActorCompanyCandidates,
   buildPointFilm,
   type PointDetailLinkedObject,
   type PointDetailEvidence,
@@ -298,6 +299,52 @@ describe('tracked-point-detail — computeCitedCompanies (lot Acteurs/entreprise
   it('ne fusionne jamais deux noms seulement proches (aucun fuzzy, hérité de detectActorRelations)', () => {
     const result = computeCitedCompanies(['Contacter Clim pour le devis'], [climExpair], [])
     expect(result).toEqual([])
+  })
+})
+
+describe('tracked-point-detail — mapActorCompanyCandidates (correctif Vincent 2026-09-14, cas Clim Exp\'Air)', () => {
+  it('acteur avec company_id résolu → id d\'affichage = company_id', () => {
+    const result = mapActorCompanyCandidates([
+      { id: 'canonical-1', company_id: 'company-9', label: 'SACD', aliases: null },
+    ])
+    expect(result).toEqual([{ id: 'company-9', label: 'SACD', aliases: [] }])
+  })
+
+  it('acteur SANS company_id résolu → id d\'affichage retombe sur canonical_subject.id (jamais disparu du pool)', () => {
+    const result = mapActorCompanyCandidates([
+      { id: 'canonical-clim-1', company_id: null, label: "Clim Exp'Air", aliases: null },
+    ])
+    expect(result).toEqual([{ id: 'canonical-clim-1', label: "Clim Exp'Air", aliases: [] }])
+  })
+
+  it('graphies distinctes Clim Exp\'Air / Clim\'Expair coexistent comme candidats séparés, chacune matchable', () => {
+    const candidates = mapActorCompanyCandidates([
+      { id: 'canonical-clim-1', company_id: null, label: "Clim Exp'Air", aliases: null },
+      { id: 'canonical-clim-2', company_id: null, label: "Clim'Expair", aliases: null },
+    ])
+    expect(computeCitedCompanies(["Réserves à lever (Clim Exp'Air)"], candidates, [])).toEqual([
+      { id: 'canonical-clim-1', name: "Clim Exp'Air" },
+    ])
+    expect(computeCitedCompanies(["Lever le doute avec Clim'Expair"], candidates, [])).toEqual([
+      { id: 'canonical-clim-2', name: "Clim'Expair" },
+    ])
+  })
+
+  it('un acteur sans company_id déjà responsable d\'un objet lié reste exclu (doctrine cité ≠ responsable inchangée)', () => {
+    const candidates = mapActorCompanyCandidates([
+      { id: 'canonical-clim-1', company_id: null, label: "Clim Exp'Air", aliases: null },
+    ])
+    const result = computeCitedCompanies(
+      ["Intervention de Clim Exp'Air sur le local batterie"],
+      candidates,
+      ["Clim Exp'Air"],
+    )
+    expect(result).toEqual([])
+  })
+
+  it('absence de faux positif : liste de lignes vide → aucun candidat, aucune citation', () => {
+    expect(mapActorCompanyCandidates([])).toEqual([])
+    expect(computeCitedCompanies(["Clim Exp'Air"], mapActorCompanyCandidates([]), [])).toEqual([])
   })
 })
 
