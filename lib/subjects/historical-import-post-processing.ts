@@ -204,8 +204,7 @@ export async function runHistoricalImportPostProcessing(
   })
   await attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId })
 
-  // P6 Live Writer (mandat Vincent, rollout global). Kill-switch fail-closed
-  // (TRACKED_POINT_LIVE_WRITER_SITE_IDS, lib/db/tracked-point-live-writer-flag.ts).
+  // P6 Live Writer (mandat Vincent, rollout global, P0-2B : comportement standard sans gate).
   // Best-effort, même doctrine que le pont documentaire ci-dessous : un échec ici ne fait
   // jamais échouer l'import historique. Log une ligne par run exécuté (site/verdicts/refusals)
   // pour le suivi du rollout (taux AUTO_LINKED/AUTO_CREATED, volume NEEDS_HUMAN, spikes par site).

@@ -13,8 +13,9 @@
 // (source_document_id), résolu via document_extraction_run.document_id — jamais
 // extraction_run_id ni site_report_id.
 //
-// Rollout : n'exécute strictement rien si isTrackedPointLiveWriterEnabledForSite(siteId) est
-// false (allowlist vide par défaut dans ce lot — aucun site réel activé).
+// Rollout : comportement standard, plus de gate par site (P0-2B, mandat Vincent 2026-09-15,
+// suppression de l'allowlist TRACKED_POINT_LIVE_WRITER_SITE_IDS — le Live Writer s'exécute
+// systématiquement pour tout run éligible, existant ou futur).
 //
 // Exécution séquentielle délibérée (pas de Promise.all) : la RPC sous-jacente verrouille par
 // Point (FOR UPDATE), un run peut produire plusieurs unités touchant potentiellement le même
@@ -34,7 +35,6 @@ import {
 import { reconcileTrackedPointUnit, type ReconcileVerdict } from '@/lib/db/tracked-point-live-writer'
 import type { PlanUnitContext } from '@/lib/knowledge/tracked-point-write-plan'
 import type { TrackedPointCandidate } from '@/lib/knowledge/tracked-point-membership-candidates'
-import { isTrackedPointLiveWriterEnabledForSite } from '@/lib/db/tracked-point-live-writer-flag'
 
 type Db = ReturnType<typeof createAdminClient>
 
@@ -403,21 +403,18 @@ export type HistoricalLiveWriterRunResult = {
 
 /**
  * Point d'entrée unique câblé par le hook de post-traitement de l'import historique
- * (lib/subjects/historical-import-post-processing.ts). Retourne `null` si le writer n'a pas
- * tourné du tout (site hors allowlist, ou run sans document_id résolu) — distinct d'un run
- * ayant tourné mais sans unité (0 thread touché).
+ * (lib/subjects/historical-import-post-processing.ts). Retourne `null` si le run n'a pas de
+ * document_id résolu — distinct d'un run ayant tourné mais sans unité (0 thread touché).
  *
  * Best-effort côté appelant : cette fonction laisse remonter ses exceptions (l'appelant est
  * responsable du try/catch, même doctrine que resolveSiteDocumentCompletionsByProposal juste
- * après dans le même hook) — jamais un swallow silencieux ici qui masquerait une régression au
- * niveau du site déjà activé.
+ * après dans le même hook) — jamais un swallow silencieux ici qui masquerait une régression.
  */
 export async function runTrackedPointLiveWriterForHistoricalRun(params: {
   runId: string
   siteId: string
 }): Promise<HistoricalLiveWriterRunResult | null> {
   const { runId, siteId } = params
-  if (!isTrackedPointLiveWriterEnabledForSite(siteId)) return null
 
   const db = createAdminClient()
 

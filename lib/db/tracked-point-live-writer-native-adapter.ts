@@ -44,7 +44,9 @@
 // dans aucun calcul de la branche CONFIRMED (cf. decideFoundingOld, memberOf, foundingReferenceOf,
 // buildFingerprint : tous ignorent `props` quand scope='thread').
 //
-// Rollout : même kill-switch que le producteur historique (isTrackedPointLiveWriterEnabledForSite).
+// Rollout : comportement standard, plus de gate par site (P0-2B, mandat Vincent 2026-09-15,
+// suppression de l'allowlist TRACKED_POINT_LIVE_WRITER_SITE_IDS — le Live Writer s'exécute
+// systématiquement pour tout rapport éligible, existant ou futur).
 //
 // Frozen — voir docs/tracked-points/p6-live-writer-design.md (doctrine générale du writer).
 
@@ -53,7 +55,6 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { FoundingUnit } from '@/lib/knowledge/tracked-point-founding'
 import { reconcileTrackedPointUnit, type ReconcileVerdict } from '@/lib/db/tracked-point-live-writer'
-import { isTrackedPointLiveWriterEnabledForSite } from '@/lib/db/tracked-point-live-writer-flag'
 
 type Db = ReturnType<typeof createAdminClient>
 
@@ -114,8 +115,8 @@ export type NativeLiveWriterRunResult = {
 
 /**
  * Point d'entrée unique câblé par runCanonicalReconciliation, juste après un outcome
- * 'reconciled'. Retourne `null` si le writer n'a pas tourné du tout (site hors allowlist, ou
- * aucune occurrence pour ce rapport) — distinct d'un run ayant tourné mais sans unité CONFIRMED.
+ * 'reconciled'. Retourne `null` si aucune occurrence n'existe pour ce rapport — distinct d'un
+ * run ayant tourné mais sans unité CONFIRMED.
  *
  * Best-effort côté appelant : cette fonction laisse remonter ses exceptions (même doctrine que
  * l'adaptateur historique) — l'appelant est responsable du try/catch.
@@ -125,7 +126,6 @@ export async function runTrackedPointLiveWriterForNativeReport(params: {
   siteId: string
 }): Promise<NativeLiveWriterRunResult | null> {
   const { reportId, siteId } = params
-  if (!isTrackedPointLiveWriterEnabledForSite(siteId)) return null
 
   const db = createAdminClient()
 

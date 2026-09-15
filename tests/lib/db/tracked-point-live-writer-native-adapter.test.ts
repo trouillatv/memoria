@@ -8,13 +8,12 @@
 // tracked-point-live-writer-historical-adapter.test.ts (TAG, beforeAll/afterAll org→client→site,
 // children-before-parents en cleanup).
 
-import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runTrackedPointLiveWriterForNativeReport } from '@/lib/db/tracked-point-live-writer-native-adapter'
 
 const TAG = `__test_p6_native_adapter_${Math.floor(Date.now() / 1000)}__`
-const ENV_KEY = 'TRACKED_POINT_LIVE_WRITER_SITE_IDS'
 
 let orgId: string
 let clientId: string
@@ -151,39 +150,14 @@ afterAll(async () => {
   await db.from('clients').delete().eq('id', clientId)
 })
 
-describe('runTrackedPointLiveWriterForNativeReport — kill-switch', () => {
-  const originalEnv = process.env[ENV_KEY]
-
-  afterEach(() => {
-    if (originalEnv === undefined) delete process.env[ENV_KEY]
-    else process.env[ENV_KEY] = originalEnv
-  })
-
-  it('var absente → writer jamais appelé (null, aucune donnée chargée)', async () => {
-    delete process.env[ENV_KEY]
-    const result = await runTrackedPointLiveWriterForNativeReport({ reportId: randomUUID(), siteId })
-    expect(result).toBeNull()
-  })
-
-  it("rollout global ('*') → aucune occurrence pour ce rapport → 0 unité, pas null", async () => {
-    process.env[ENV_KEY] = '*'
+describe('runTrackedPointLiveWriterForNativeReport — aucune occurrence', () => {
+  it('aucune occurrence pour ce rapport → 0 unité, pas null', async () => {
     const result = await runTrackedPointLiveWriterForNativeReport({ reportId: randomUUID(), siteId })
     expect(result).toEqual({ unitsProcessed: 0, verdictCounts: {}, refusals: 0, skippedNotConfirmed: 0 })
   })
 })
 
 describe('runTrackedPointLiveWriterForNativeReport — chemin CONFIRMED uniquement', () => {
-  const originalEnv = process.env[ENV_KEY]
-
-  beforeAll(() => {
-    process.env[ENV_KEY] = siteId
-  })
-
-  afterAll(() => {
-    if (originalEnv === undefined) delete process.env[ENV_KEY]
-    else process.env[ENV_KEY] = originalEnv
-  })
-
   it('sujet sans aucun CBO → ignoré (skippedNotConfirmed), aucun appel RPC', async () => {
     const reportId = randomUUID()
     const subjectId = await makeSubject(`${TAG} sujet sans cbo`)
@@ -254,17 +228,6 @@ describe('runTrackedPointLiveWriterForNativeReport — chemin CONFIRMED uniqueme
 })
 
 describe('runTrackedPointLiveWriterForNativeReport — chemin PENDING_TRACKABILITY (P0-1A-2b)', () => {
-  const originalEnv = process.env[ENV_KEY]
-
-  beforeAll(() => {
-    process.env[ENV_KEY] = siteId
-  })
-
-  afterAll(() => {
-    if (originalEnv === undefined) delete process.env[ENV_KEY]
-    else process.env[ENV_KEY] = originalEnv
-  })
-
   it('sujet sans CBO + preuve native non-stakeholder → NEEDS_HUMAN, pending trace TRACKABILITY_UNDETERMINED créée', async () => {
     const reportId = randomUUID()
     const subjectId = await makeSubject(`${TAG} sujet 0 cbo avec preuve`)

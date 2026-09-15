@@ -1,20 +1,18 @@
-// P6 Live Writer — adaptateur historical_pdf (mandat Vincent, câblage inerte).
+// P6 Live Writer — adaptateur historical_pdf (mandat Vincent, rollout global, P0-2B :
+// comportement standard sans gate).
 //
-// Couvre le point 7 du mandat pour la partie "exécution" (le point 7 côté flag pur est déjà
-// couvert par tracked-point-live-writer-flag.test.ts) : site autorisé → l'adaptateur tourne
-// réellement, plusieurs UUID dans l'allowlist sont correctement acceptés, replay sans
-// contournement, et sitePoints effectivement fourni aux unités trackable_condition (D1).
+// L'adaptateur tourne systématiquement (plus d'allowlist à couvrir) : réplay sans duplication,
+// et sitePoints effectivement fourni aux unités trackable_condition (D1).
 // Conventions reprises de tests/lib/db/tracked-point-live-writer.test.ts (TAG, beforeAll/afterAll
 // org→client→site(s), children-before-parents en cleanup) — un document+run FRAIS par test ici
 // (au lieu d'un run partagé) car le loader de l'adaptateur charge TOUT le run, pas une unité isolée.
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runTrackedPointLiveWriterForHistoricalRun } from '@/lib/db/tracked-point-live-writer-historical-adapter'
 
 const TAG = `__test_p6_hist_adapter_${Math.floor(Date.now() / 1000)}__`
-const ENV_KEY = 'TRACKED_POINT_LIVE_WRITER_SITE_IDS'
 
 let orgId: string
 let clientId: string
@@ -173,55 +171,8 @@ afterAll(async () => {
   await db.from('clients').delete().eq('id', clientId)
 })
 
-describe('runTrackedPointLiveWriterForHistoricalRun — rollout (allowlist)', () => {
-  const originalEnv = process.env[ENV_KEY]
-
-  beforeEach(() => {
-    delete process.env[ENV_KEY]
-  })
-
-  afterEach(() => {
-    if (originalEnv === undefined) delete process.env[ENV_KEY]
-    else process.env[ENV_KEY] = originalEnv
-  })
-
-  it('var absente → writer jamais appelé (null, aucune donnée chargée)', async () => {
-    const { runId } = await makeDocAndRun()
-    const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
-    expect(result).toBeNull()
-  })
-
-  it('var vide → writer jamais appelé', async () => {
-    process.env[ENV_KEY] = ''
-    const { runId } = await makeDocAndRun()
-    const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
-    expect(result).toBeNull()
-  })
-
-  it('site absent de la liste → writer jamais appelé', async () => {
-    process.env[ENV_KEY] = otherSiteId
-    const { runId } = await makeDocAndRun()
-    const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
-    expect(result).toBeNull()
-  })
-
-  it('configuration invalide (un token non-UUID) → fail-closed, même pour un site par ailleurs valide', async () => {
-    process.env[ENV_KEY] = `${siteId},not-a-uuid`
-    const { runId } = await makeDocAndRun()
-    const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
-    expect(result).toBeNull()
-  })
-
-  it('plusieurs UUID dans la liste → le site présent passe le portail (run sans proposition → 0 unité, pas null)', async () => {
-    process.env[ENV_KEY] = `${randomUUID()},${siteId}`
-    const { runId } = await makeDocAndRun()
-    const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })
-    expect(result).not.toBeNull()
-    expect(result).toEqual({ unitsProcessed: 0, verdictCounts: {}, refusals: 0 })
-  })
-
-  it("rollout global ('*') → un site absent de toute allowlist passe quand même le portail", async () => {
-    process.env[ENV_KEY] = '*'
+describe('runTrackedPointLiveWriterForHistoricalRun — run sans proposition', () => {
+  it('run sans proposition, site quelconque → 0 unité, pas null', async () => {
     const { runId } = await makeDocAndRun()
     const result = await runTrackedPointLiveWriterForHistoricalRun({ runId, siteId: otherSiteId })
     expect(result).not.toBeNull()
@@ -229,16 +180,8 @@ describe('runTrackedPointLiveWriterForHistoricalRun — rollout (allowlist)', ()
   })
 })
 
-describe('runTrackedPointLiveWriterForHistoricalRun — site autorisé, exécution réelle', () => {
-  const originalEnv = process.env[ENV_KEY]
-
-  afterEach(() => {
-    if (originalEnv === undefined) delete process.env[ENV_KEY]
-    else process.env[ENV_KEY] = originalEnv
-  })
-
+describe('runTrackedPointLiveWriterForHistoricalRun — exécution réelle', () => {
   it('unité PROVISIONAL (famille decision) → AUTO_CREATED, Point réellement matérialisé (sitePoints vide chargé sans erreur)', async () => {
-    process.env[ENV_KEY] = siteId
     const { docId, runId } = await makeDocAndRun()
     const threadId = randomUUID()
     await makeProposal(runId, docId, threadId, { proposal_family: 'decision', label: `${TAG} decision unique` })
@@ -253,7 +196,6 @@ describe('runTrackedPointLiveWriterForHistoricalRun — site autorisé, exécuti
   })
 
   it('replay du même run → idempotent, ne fait apparaître aucun Point supplémentaire', async () => {
-    process.env[ENV_KEY] = siteId
     const { docId, runId } = await makeDocAndRun()
     const threadId = randomUUID()
     await makeProposal(runId, docId, threadId, { proposal_family: 'decision', label: `${TAG} decision replay` })
@@ -273,7 +215,6 @@ describe('runTrackedPointLiveWriterForHistoricalRun — site autorisé, exécuti
   })
 
   it('D1 cross-thread : un Point actif déjà fondé sur le même sujet et même label → sitePoints le fait remonter, verdict dégradé (pas AUTO_CREATED)', async () => {
-    process.env[ENV_KEY] = siteId
     const label = `${TAG} d1 sujet partagé`
 
     const subjectId = await makeCanonicalSubject(siteId, label)
@@ -291,7 +232,6 @@ describe('runTrackedPointLiveWriterForHistoricalRun — site autorisé, exécuti
   })
 
   it('D1 memberLabels : Point.label et sujet propriétaire génériques (non matchants), mais un membre actif porte le libellé exact du nouveau thread → concurrence détectée via memberLabels, pas AUTO_CREATED', async () => {
-    process.env[ENV_KEY] = siteId
     const sharedLabel = `${TAG} d1 memberLabels partagé`
 
     // Sujet et libellé du Point volontairement génériques : NE matchent PAS sharedLabel — le rail
@@ -323,7 +263,6 @@ describe('runTrackedPointLiveWriterForHistoricalRun — site autorisé, exécuti
   })
 
   it('erreur applicative (run inexistant) → l’adaptateur remonte null (document_id non résolu), ne masque rien silencieusement en amont du hook', async () => {
-    process.env[ENV_KEY] = siteId
     const result = await runTrackedPointLiveWriterForHistoricalRun({ runId: randomUUID(), siteId })
     expect(result).toBeNull()
   })
