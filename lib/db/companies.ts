@@ -240,19 +240,27 @@ export async function createCompany(orgId: string, input: CompanyInput): Promise
   return data.id as string
 }
 
-/** Trouve (insensible à la casse, dans l'org) ou crée une entreprise par son nom. */
+/** Trouve (insensible à la casse, dans l'org) ou crée une entreprise par son nom.
+ *  Un match exact sur une ligne 'alias' résout IMMÉDIATEMENT vers son canonique
+ *  (P0-INT-2, mandat Vincent 2026-09-16) : sans ça, une citation ultérieure du
+ *  nom-alias sur un autre chantier rattacherait ses relations au mauvais id —
+ *  une unicité logique en lecture, mais pas en écriture. */
 export async function findOrCreateCompanyByName(orgId: string, name: string): Promise<string> {
   const clean = name.trim()
   if (!clean) throw new Error('Nom d’entreprise vide.')
   const { data } = await createAdminClient()
     .from('companies')
-    .select('id')
+    .select('id, status, alias_of_company_id')
     .eq('organization_id', orgId)
     .is('deleted_at', null)
     .ilike('name', clean)
     .limit(1)
     .maybeSingle()
-  if (data?.id) return data.id as string
+  const row = data as { id: string; status: string | null; alias_of_company_id: string | null } | null
+  if (row?.id) {
+    if (row.status === 'alias' && row.alias_of_company_id) return row.alias_of_company_id
+    return row.id
+  }
   return createCompany(orgId, { name: clean })
 }
 
