@@ -71,6 +71,42 @@ export function resolveCanonicalCompanyId(
 }
 
 /**
+ * Charge la table d'alias (id → statut/canonique) pour tout resolveCanonicalCompanyId
+ * de ces orgs (P0-3A). Un seul aller-retour, réutilisable par tout read-model qui a
+ * besoin de canonicaliser des FK `company_id` brutes avant composition.
+ */
+export async function loadCompanyAliasMap(
+  orgIds: string[],
+): Promise<Map<string, Pick<Company, 'id' | 'status' | 'aliasOfCompanyId'>>> {
+  if (orgIds.length === 0) return new Map()
+  const { data } = await createAdminClient()
+    .from('companies')
+    .select('id, status, alias_of_company_id')
+    .in('organization_id', orgIds)
+  const out = new Map<string, Pick<Company, 'id' | 'status' | 'aliasOfCompanyId'>>()
+  for (const r of (data ?? []) as Array<{ id: string; status: string | null; alias_of_company_id: string | null }>) {
+    out.set(r.id, { id: r.id, status: r.status === 'alias' ? 'alias' : 'active', aliasOfCompanyId: r.alias_of_company_id })
+  }
+  return out
+}
+
+/**
+ * Résout l'entreprise CANONIQUE d'un SEUL id, par lecture directe (pas de map
+ * préchargée) — pour les points d'entrée qui ne connaissent qu'un id isolé
+ * (ex. redirection de fiche entreprise sur une ancienne URL alias, P0-3A).
+ */
+export async function resolveCanonicalCompanyIdById(id: string): Promise<string> {
+  const { data } = await createAdminClient()
+    .from('companies')
+    .select('id, status, alias_of_company_id')
+    .eq('id', id)
+    .maybeSingle()
+  const row = data as { status: string | null; alias_of_company_id: string | null } | null
+  if (!row || row.status !== 'alias' || !row.alias_of_company_id) return id
+  return row.alias_of_company_id
+}
+
+/**
  * Désigne `companyId` comme alias de `canonicalCompanyId` (geste humain explicite,
  * jamais un rapprochement automatique/fuzzy). Réversible via `clearCompanyAlias`.
  * Refuse de transformer en alias une entreprise qui est déjà elle-même visée par

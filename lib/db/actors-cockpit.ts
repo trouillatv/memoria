@@ -16,6 +16,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { deriveActorAttentionState, type AttentionState } from '@/lib/knowledge/actor-attention'
+import { loadCompanyAliasMap, resolveCanonicalCompanyId } from '@/lib/db/companies'
 
 export type ActorKind = 'person' | 'company' | 'team'
 export type ActorStatus = 'active' | 'incomplete' | 'historical'
@@ -250,19 +251,25 @@ export async function getActorsCockpit(orgIds: string[]): Promise<ActorsCockpit>
   const today = todayLocalIso()
 
   // ── Entités de base (org-scopées) ──────────────────────────────────────────
-  const [companyRes, contactRes, teamRes, userRes, siteRes] = await Promise.all([
-    db.from('companies').select('id, name, short_name, is_placeholder, deleted_at').in('organization_id', orgIds),
+  const [companyRes, contactRes, teamRes, userRes, siteRes, aliasMap] = await Promise.all([
+    db.from('companies').select('id, name, short_name, is_placeholder, deleted_at, status').in('organization_id', orgIds),
     db.from('company_contacts').select('id, full_name, function, company_id, is_internal_agent, email, deleted_at').in('organization_id', orgIds),
     db.from('teams').select('id, name, deleted_at').in('organization_id', orgIds).is('deleted_at', null),
     db.from('users').select('id, full_name, email, role').in('organization_id', orgIds),
     db.from('sites').select('id').in('organization_id', orgIds).is('deleted_at', null),
+    loadCompanyAliasMap(orgIds),
   ])
-  const companies = ((companyRes.data ?? []) as Array<{ id: string; name: string; short_name: string | null; is_placeholder: boolean; deleted_at: string | null }>)
-    .filter((c) => !c.is_placeholder && !c.deleted_at)
+  // P0-3A : une entreprise ALIAS (mig 407) ne doit jamais apparaître comme une
+  // entité autonome — seule son entreprise canonique est exposée. Toute FK brute
+  // pointant vers l'alias est résolue au canonique avant composition (le calcul
+  // pur buildActorsCockpit ne connaît toujours pas la notion d'alias).
+  const canon = (id: string) => resolveCanonicalCompanyId(aliasMap, id)
+  const companies = ((companyRes.data ?? []) as Array<{ id: string; name: string; short_name: string | null; is_placeholder: boolean; deleted_at: string | null; status: string | null }>)
+    .filter((c) => !c.is_placeholder && !c.deleted_at && c.status !== 'alias')
     .map((c) => ({ id: c.id, name: c.name, short_name: c.short_name }))
   const contacts = ((contactRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null; company_id: string | null; is_internal_agent: boolean; email: string | null; deleted_at: string | null }>)
     .filter((c) => !c.deleted_at)
-    .map((c) => ({ id: c.id, full_name: c.full_name, function: c.function, company_id: c.company_id, is_internal_agent: c.is_internal_agent, email: c.email }))
+    .map((c) => ({ id: c.id, full_name: c.full_name, function: c.function, company_id: c.company_id ? canon(c.company_id) : null, is_internal_agent: c.is_internal_agent, email: c.email }))
   const teams = (teamRes.data ?? []) as Array<{ id: string; name: string }>
   const users = (userRes.data ?? []) as Array<{ id: string; full_name: string | null; email: string; role: string }>
   const siteIds = ((siteRes.data ?? []) as Array<{ id: string }>).map((s) => s.id)
@@ -286,8 +293,10 @@ export async function getActorsCockpit(orgIds: string[]): Promise<ActorsCockpit>
     teamMembers: (tmRes.data ?? []) as Array<{ team_id: string; user_id: string }>,
     fieldMembers: (tfmRes.data ?? []) as Array<{ team_id: string; contact_id: string }>,
     missions: (missionRes.data ?? []) as Array<{ site_id: string; assigned_team_id: string }>,
-    casting: (castingRes.data ?? []) as Array<{ company_id: string; main_contact_id: string | null; role: string }>,
-    actions: (actionRes.data ?? []) as Array<{ assigned_contact_id: string | null; assigned_company_id: string | null; due_date: string | null }>,
+    casting: ((castingRes.data ?? []) as Array<{ company_id: string; main_contact_id: string | null; role: string }>)
+      .map((c) => ({ ...c, company_id: canon(c.company_id) })),
+    actions: ((actionRes.data ?? []) as Array<{ assigned_contact_id: string | null; assigned_company_id: string | null; due_date: string | null }>)
+      .map((a) => ({ ...a, assigned_company_id: a.assigned_company_id ? canon(a.assigned_company_id) : null })),
     proposalCount: ((proposalRes.data ?? []) as Array<{ id: string }>).length,
   })
 }

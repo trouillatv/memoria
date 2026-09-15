@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { checkIntervenantsPageAccess } from '@/lib/intervenants/access'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getCompanyFiche } from '@/lib/db/company-fiche'
+import { resolveCanonicalCompanyIdById } from '@/lib/db/companies'
 import { getActorNetwork } from '@/lib/knowledge/actors-graph'
 import { CompanyFicheBody } from '../../CompanyFicheBody'
 
@@ -23,8 +24,13 @@ export default async function CompanyFichePage({ params }: { params: Promise<{ c
   }
   if (!access.access.isPrivileged) notFound()
 
+  // P0-3A : une URL peut encore pointer vers un id alias (ancien lien, favori) —
+  // la fiche reste robuste même si un consumer en amont a oublié de canonicaliser.
+  const canonicalId = await resolveCanonicalCompanyIdById(companyId)
+  if (canonicalId !== companyId) redirect(`/intervenants/entreprise/${canonicalId}`)
+
   const orgIds = await getOrgIdsOfUser()
-  const [fiche, network] = await Promise.all([getCompanyFiche(companyId, orgIds), getActorNetwork(`co_${companyId}`, orgIds)])
+  const [fiche, network] = await Promise.all([getCompanyFiche(canonicalId, orgIds), getActorNetwork(`co_${canonicalId}`, orgIds)])
   if (!fiche) notFound()
 
   return (

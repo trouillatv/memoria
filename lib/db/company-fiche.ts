@@ -224,23 +224,35 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   const db = createAdminClient()
   const today = todayLocalIso()
 
-  const { data: companyRow } = await db
-    .from('companies')
-    .select('id, name, short_name, is_placeholder, deleted_at, organization_id, siret, address, postal_code, city, phone, email, website')
-    .eq('id', companyId)
-    .maybeSingle()
-  const company = companyRow as
-    | { id: string; name: string; short_name: string | null; is_placeholder: boolean; deleted_at: string | null; organization_id: string; siret: string | null; address: string | null; postal_code: string | null; city: string | null; phone: string | null; email: string | null; website: string | null }
-    | null
+  const COMPANY_SELECT = 'id, name, short_name, is_placeholder, deleted_at, organization_id, siret, address, postal_code, city, phone, email, website, status, alias_of_company_id'
+  type CompanyRow = { id: string; name: string; short_name: string | null; is_placeholder: boolean; deleted_at: string | null; organization_id: string; siret: string | null; address: string | null; postal_code: string | null; city: string | null; phone: string | null; email: string | null; website: string | null; status: string | null; alias_of_company_id: string | null }
+
+  const { data: requestedRow } = await db.from('companies').select(COMPANY_SELECT).eq('id', companyId).maybeSingle()
+  let company = requestedRow as CompanyRow | null
+  // P0-3A : un id alias (mig 407) résout vers son entreprise canonique — toute la
+  // fiche (casting/actions/contacts) doit être celle du canonique, jamais celle
+  // de la ligne alias isolée.
+  if (company && company.status === 'alias' && company.alias_of_company_id) {
+    const { data: canonicalRow } = await db.from('companies').select(COMPANY_SELECT).eq('id', company.alias_of_company_id).maybeSingle()
+    company = (canonicalRow as CompanyRow | null) ?? company
+  }
   // Fail-closed : hors org, ou placeholder « À identifier » (jamais de fiche).
   if (!company || company.is_placeholder || !orgIds.includes(company.organization_id)) return null
+  const canonicalId = company.id
+
+  // Un alias peut lui-même être visé par d'autres alias (plusieurs doublons du
+  // même nom) — le trigger interdit seulement les CHAÎNES, pas le fan-in. On les
+  // inclut tous pour que le casting/les actions saisis sous un ancien id ne
+  // disparaissent pas de la fiche canonique.
+  const { data: aliasRows } = await db.from('companies').select('id').eq('alias_of_company_id', canonicalId).eq('status', 'alias')
+  const companyIds = [canonicalId, ...((aliasRows ?? []) as Array<{ id: string }>).map((r) => r.id)]
 
   const [castRes, actRes, contactRes, subjectActRes] = await Promise.all([
-    db.from('site_intervenants').select('id, site_id, role, effective_to, effective_from, main_contact_id, source_report_id').eq('company_id', companyId),
-    db.from('site_actions').select('id, title, site_id, due_date, assigned_contact_id').eq('assigned_company_id', companyId).eq('status', 'open'),
-    db.from('company_contacts').select('id, full_name, function').eq('company_id', companyId).is('deleted_at', null),
+    db.from('site_intervenants').select('id, site_id, role, effective_to, effective_from, main_contact_id, source_report_id').in('company_id', companyIds),
+    db.from('site_actions').select('id, title, site_id, due_date, assigned_contact_id').in('assigned_company_id', companyIds).eq('status', 'open'),
+    db.from('company_contacts').select('id, full_name, function').in('company_id', companyIds).is('deleted_at', null),
     // Toutes les actions (tous statuts) avec canonical_subject_id pour agréger les sujets portés.
-    db.from('site_actions').select('canonical_subject_id, status, site_id').eq('assigned_company_id', companyId).not('canonical_subject_id', 'is', null),
+    db.from('site_actions').select('canonical_subject_id, status, site_id').in('assigned_company_id', companyIds).not('canonical_subject_id', 'is', null),
   ])
   const cast = (castRes.data ?? []) as Array<{ id: string; site_id: string; role: string; effective_to: string | null; effective_from: string | null; main_contact_id: string | null; source_report_id: string | null }>
   const act = (actRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null; assigned_contact_id: string | null }>
