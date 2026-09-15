@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Check, Circle, UserCheck, RotateCcw, Camera, X, Loader2, MoreHorizontal, Pencil, CalendarClock } from 'lucide-react'
+import { ArrowLeft, Check, Circle, UserCheck, UserPlus, RotateCcw, Camera, X, Loader2, MoreHorizontal, Pencil, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   closeActionAction,
@@ -12,7 +12,10 @@ import {
   setActionDueDateAction,
 } from '@/app/(dashboard)/actions/actions'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { ActionAssignmentPanel } from '@/components/actions/ActionAssignmentPanel'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
+import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
+import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
 import { cn } from '@/lib/utils'
 
 const STATUS_CLS: Record<string, string> = {
@@ -22,7 +25,19 @@ const STATUS_CLS: Record<string, string> = {
   cancelled: 'bg-muted text-muted-foreground ring-1 ring-border',
 }
 
-export function MobileActionView({ action, siteId, backHref }: { action: ActionFicheData; siteId: string; backHref?: string }) {
+export function MobileActionView({
+  action,
+  siteId,
+  backHref,
+  responsibleCandidates = [],
+  companies = [],
+}: {
+  action: ActionFicheData
+  siteId: string
+  backHref?: string
+  responsibleCandidates?: ResponsibleCandidate[]
+  companies?: SiteCandidateCompany[]
+}) {
   const a = action
   return (
     <div className="mx-auto min-h-dvh max-w-md space-y-3.5 px-4 pb-16 pt-5">
@@ -44,27 +59,10 @@ export function MobileActionView({ action, siteId, backHref }: { action: ActionF
         )}
       </div>
 
-      {/* Responsable + échéance */}
-      {(a.responsible || a.dueDate) && (
-        <div className="rounded-xl border bg-card px-3 py-2.5 space-y-1.5">
-          {a.responsible && (
-            <div className="flex items-center gap-2 text-[13px]">
-              <UserCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span>
-                {a.responsible.kind === 'text' ? a.responsible.label : a.responsible.name}
-                {a.responsible.kind === 'contact' && a.responsible.fonction && (
-                  <span className="ml-1 text-muted-foreground">· {a.responsible.fonction}</span>
-                )}
-              </span>
-            </div>
-          )}
-          {a.dueDate && (
-            <p className={cn('text-[12px]', a.isLate ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>
-              {a.isLate ? 'En retard · ' : ''}Échéance : {a.dueDate}
-            </p>
-          )}
-        </div>
-      )}
+      {/* Responsable + échéance — mêmes primitives que la fiche desktop
+          (ActionFicheResponsibleCta / ActionAssignmentPanel), portées ici pour
+          que l'affectation ne soit plus lecture seule côté terrain (P0-4M). */}
+      <MobileResponsibleSection action={a} responsibleCandidates={responsibleCandidates} companies={companies} />
 
       {/* Gestes — mêmes primitives que la fiche desktop (ActionFicheCta). */}
       <ActionMobileCta action={a} />
@@ -185,6 +183,79 @@ export function MobileActionView({ action, siteId, backHref }: { action: ActionF
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Responsable — même panneau partagé que Point/Vue Actions/Fiche desktop
+// (ActionAssignmentPanel + updateActionAssignmentAction). P0-4M : la fiche
+// mobile n'a plus de responsable en lecture seule, même état vide explicite
+// qu'en desktop ("À affecter — aucun responsable identifié."). ──
+function MobileResponsibleSection({
+  action,
+  responsibleCandidates,
+  companies,
+}: {
+  action: ActionFicheData
+  responsibleCandidates: ResponsibleCandidate[]
+  companies: SiteCandidateCompany[]
+}) {
+  const router = useRouter()
+  const [editing, setEditing] = useState(false)
+  const responsible = action.responsible
+
+  const currentContactId = responsible?.kind === 'contact'
+    ? responsibleCandidates.find((c) => c.fullName === responsible.name)?.contactId ?? ''
+    : ''
+  const currentCompanyId = responsible?.kind === 'company'
+    ? companies.find((c) => c.name === responsible.name)?.id ?? ''
+    : ''
+
+  if (editing) {
+    return (
+      <ActionAssignmentPanel
+        actionId={action.id}
+        responsibleCandidates={responsibleCandidates}
+        companies={companies}
+        initialContactId={currentContactId}
+        initialCompanyId={currentCompanyId}
+        initialDueDate={action.dueDate ?? ''}
+        onDone={() => { setEditing(false); router.refresh() }}
+        onCancel={() => setEditing(false)}
+        title="Affecter un responsable"
+      />
+    )
+  }
+
+  return (
+    <div className="rounded-xl border bg-card px-3 py-2.5 space-y-1.5">
+      {responsible?.kind === 'text' ? (
+        <p className="text-[13px] text-muted-foreground">Responsable (ancien suivi) : {responsible.label}</p>
+      ) : responsible ? (
+        <div className="flex items-center gap-2 text-[13px]">
+          <UserCheck className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <span>
+            {responsible.name}
+            {responsible.kind === 'contact' && responsible.fonction && (
+              <span className="ml-1 text-muted-foreground">· {responsible.fonction}</span>
+            )}
+          </span>
+        </div>
+      ) : (
+        <p className="text-[13px] text-muted-foreground">À affecter — aucun responsable identifié.</p>
+      )}
+      {action.dueDate && (
+        <p className={cn('text-[12px]', action.isLate ? 'font-semibold text-rose-600 dark:text-rose-400' : 'text-muted-foreground')}>
+          {action.isLate ? 'En retard · ' : ''}Échéance : {action.dueDate}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        <UserPlus className="h-3 w-3" />{responsible ? 'Modifier' : 'Affecter'}
+      </button>
     </div>
   )
 }

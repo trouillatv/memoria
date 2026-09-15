@@ -20,12 +20,14 @@ const mockClose = vi.fn<Ok>(() => Promise.resolve({ ok: true }))
 const mockReopen = vi.fn<Ok>(() => Promise.resolve({ ok: true }))
 const mockUpdateDetails = vi.fn<Ok>(() => Promise.resolve({ ok: true }))
 const mockSetDueDate = vi.fn<Ok>(() => Promise.resolve({ ok: true }))
+const mockUpdateAssignment = vi.fn<Ok>(() => Promise.resolve({ ok: true }))
 
 vi.mock('@/app/(dashboard)/actions/actions', () => ({
   closeActionAction: (...a: unknown[]) => mockClose(...a),
   reopenActionAction: (...a: unknown[]) => mockReopen(...a),
   updateActionDetailsAction: (...a: unknown[]) => mockUpdateDetails(...a),
   setActionDueDateAction: (...a: unknown[]) => mockSetDueDate(...a),
+  updateActionAssignmentAction: (...a: unknown[]) => mockUpdateAssignment(...a),
 }))
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
@@ -140,6 +142,39 @@ describe('MobileActionView — gestes (fiche non lecture seule)', () => {
     render(<MobileActionView action={makeAction()} siteId="site-1" />)
     const back = screen.getByRole('link', { name: /Chantier A/ })
     expect(back).toHaveAttribute('href', '/m/site/site-1')
+  })
+})
+
+describe('MobileActionView — Responsable (P0-4M, même panneau partagé qu’en desktop)', () => {
+  const candidates = [{ contactId: 'c1', fullName: 'Julie Martin', fonction: 'Conductrice de travaux' }]
+  const companies = [{ id: 'co1', name: 'ARES' }]
+
+  it('sans responsable : état vide explicite + bouton "Affecter"', () => {
+    render(<MobileActionView action={makeAction()} siteId="site-1" responsibleCandidates={candidates} companies={companies} />)
+    expect(screen.getByText('À affecter — aucun responsable identifié.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Affecter/ })).toBeInTheDocument()
+  })
+
+  it('avec responsable contact : bouton "Modifier", ouvre le panneau partagé et appelle updateActionAssignmentAction', async () => {
+    render(
+      <MobileActionView
+        action={makeAction({ responsible: { kind: 'contact', name: 'Julie Martin', fonction: 'Conductrice de travaux' } })}
+        siteId="site-1"
+        responsibleCandidates={candidates}
+        companies={companies}
+      />
+    )
+    expect(screen.getByText(/Julie Martin/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Modifier/ }))
+    fireEvent.change(screen.getByRole('combobox', { name: /Entreprise/ }), { target: { value: 'co1' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    })
+    expect(mockUpdateAssignment).toHaveBeenCalledTimes(1)
+    const fd = mockUpdateAssignment.mock.calls[0][0] as FormData
+    expect(fd.get('id')).toBe('a1')
+    expect(fd.get('assigned_company_id')).toBe('co1')
+    expect(fd.get('assigned_contact_id')).toBe('c1')
   })
 })
 
