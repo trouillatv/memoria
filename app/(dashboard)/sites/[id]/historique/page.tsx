@@ -23,8 +23,8 @@ import {
   getSiteDependencyGraph,
 } from '@/lib/documents/site-synthesis'
 import {
-  computeNativeWatchlist,
-  computeNativeImportantSubjects,
+  computeUnifiedWatchlist,
+  computeUnifiedImportantSubjects,
   computeNativeRecentActivity,
 } from '@/lib/documents/native-synthesis'
 import { buildEvolutionReadModel, buildDeterministicNarrative, computeEvolutionNarrativeFingerprint } from '@/lib/documents/pv-evolution'
@@ -256,16 +256,23 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   let nativeActivity: ReturnType<typeof computeNativeRecentActivity> = []
   let nativeSummary: { visitCount: number; meetingCount: number; lastDate: string | null } | undefined
 
-  // P0-2 — chantier suivi uniquement par visites/réunions natives (0 PV historique importé,
-  // ex. PETRO) : projette la MÊME vérité d'état (getNavigableSubjectsForSite, déjà unifiée
-  // historique+natif) dans la Synthèse au lieu du blocage total sur l'absence de PV. Ne
-  // remplace jamais la vérité issue de la matrice quand des PV existent (totalRuns > 0).
-  if (view === 'synthese' && totalRuns === 0) {
+  // P0-2 — Suivi unifié (mandat Vincent 2026-09-16) : getNavigableSubjectsForSite est la
+  // population canonique unique de la Synthèse, appelée inconditionnellement (jamais un
+  // "si historique présent alors historique seulement"). La matrice PV et l'activité native
+  // restent deux couches d'enrichissement fusionnées par computeUnifiedWatchlist /
+  // computeUnifiedImportantSubjects, qui repassent verbatim la vérité historique quand un
+  // sujet n'a aucune occurrence native (chantier purement historique inchangé) et verbatim
+  // la dérivation native quand un sujet n'a aucun signal historique (chantier purement natif
+  // inchangé) — seule la fusion réelle (sujet mixte) recalcule quoi que ce soit.
+  if (view === 'synthese') {
     const navSubjects = await getNavigableSubjectsForSite(siteId).catch(() => [])
     if (navSubjects.length > 0) {
-      watchlist = computeNativeWatchlist(navSubjects)
-      totalSubjects = navSubjects.length
-      nativeImportantSubjects = computeNativeImportantSubjects(navSubjects)
+      const matrixRunDates = matrix?.runs.map((r) => r.effectiveDate) ?? []
+      watchlist = computeUnifiedWatchlist(navSubjects, watchlist, matrixRunDates, nativeOccurrences)
+      nativeImportantSubjects = computeUnifiedImportantSubjects(navSubjects, importantSubjects)
+      totalSubjects = Math.max(totalSubjects, navSubjects.length)
+    }
+    if (nativeVisitCount > 0 || nativeMeetingCount > 0) {
       nativeActivity = computeNativeRecentActivity(nativeOccurrences)
       nativeSummary = { visitCount: nativeVisitCount, meetingCount: nativeMeetingCount, lastDate: nativeLastDate }
     }
