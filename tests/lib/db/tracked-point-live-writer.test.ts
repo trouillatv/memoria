@@ -1489,19 +1489,26 @@ describe('Témoin 26 — P6 correctif évolution proposal_set : [A]→[A,B]→[A
 })
 
 // P0-2A.1 (audit READ-ONLY, mandat Vincent) — preuve exécutable, ciblée, du scénario résiduel
-// que seule la migration 403 couvre (jamais appliquée en base : le fast-path NOOP de la 401
-// live compare l'ATTACH_MEMBER à "une membership active existe pour ce thread", sans jamais
-// relire scope/proposal_ids ; 403 remplace cette comparaison par une composition triée exacte).
-// Le Témoin 26 ci-dessus ne peut PAS exercer ce chemin : le correctif TS (proposalIds dans le
-// fingerprint, buildInputSnapshot) empêche déjà [A] et [A,B] de produire le même fingerprint
-// en usage normal — condition sine qua non du court-circuit (401 ligne 221). Ce témoin
-// contourne donc délibérément reconcileTrackedPointUnit (qui ne recalcule le fingerprint
-// qu'à partir de l'unité réelle, jamais d'une valeur imposée par l'appelant) et appelle la RPC
-// brute avec un p_input_fingerprint réutilisé tel quel de l'appel [A] sur un p_input_snapshot
-// représentant [A,B] — même geste que Témoin 23/14, désormais utilisé pour forcer la collision
-// que 403 corrige plutôt que pour tester une erreur applicative.
-describe('Témoin 27 — P0-2A.1 : collision de fingerprint forcée sur ATTACH_MEMBER, résiduel migration 403 (NON appliquée)', () => {
-  it('sur la 401 live inchangée, [A]→[A,B] avec fingerprint identique imposé rejoue un NOOP et perd B de tracked_point_member', async () => {
+// que seule la migration 403 couvre. Historique de ce témoin : écrit une première fois contre
+// la 401 live (403 marquée appliquée dans _migrations_applied sans jamais avoir atteint
+// pg_proc.prosrc — dérive documentée dans la migration 411), il prouvait alors qu'une collision
+// de fingerprint forcée sur ATTACH_MEMBER faisait rejouer un NOOP et perdait B. La migration 411
+// (redéploiement explicite du corps corrigé de 403) a depuis été appliquée et vérifiée en base
+// (pg_proc.prosrc contient désormais v_snapshot_scope/v_snapshot_proposal_ids — cf. rapport
+// HARD STOP P0-2A.1, vérification post-apply). Ce témoin est mis à jour avec l'attendu inversé,
+// conformément à la décision Vincent : il valide maintenant que la même collision forcée ne
+// rejoue PLUS un NOOP, mais tombe en revalidation complète et fait entrer B comme nouvelle
+// preuve (append-only — même sémantique que Témoin 26, la membership [A] reste active).
+// Le Témoin 26 ci-dessus ne peut pas exercer ce chemin en usage normal : le correctif TS
+// (proposalIds dans le fingerprint, buildInputSnapshot) empêche déjà [A] et [A,B] de produire
+// le même fingerprint en usage normal — condition sine qua non du court-circuit (§4). Ce témoin
+// contourne donc délibérément reconcileTrackedPointUnit (qui ne recalcule le fingerprint qu'à
+// partir de l'unité réelle, jamais d'une valeur imposée par l'appelant) et appelle la RPC brute
+// avec un p_input_fingerprint réutilisé tel quel de l'appel [A] sur un p_input_snapshot
+// représentant [A,B] — même geste que Témoin 23/14, pour exercer directement la défense en
+// profondeur SQL de 403/411 sur une collision qui ne devrait normalement jamais se produire.
+describe('Témoin 27 — P0-2A.1 : collision de fingerprint forcée sur ATTACH_MEMBER, défense en profondeur migration 411 (appliquée)', () => {
+  it('sur la 411 live (corps 403 redéployé), [A]→[A,B] avec fingerprint identique imposé revalide et fait entrer B dans tracked_point_member', async () => {
     const db = createAdminClient()
     const target = await makePoint()
     const cboId = await makeCbo({ tracked_point_id: target })
@@ -1545,20 +1552,19 @@ describe('Témoin 27 — P0-2A.1 : collision de fingerprint forcée sur ATTACH_M
     })
     expect(error).toBeNull()
 
-    // Preuve du défaut résiduel (401 live) : le fast-path NOOP se déclenche — write_pattern
-    // ATTACH_MEMBER + "une membership active existe pour ce thread" suffit, sans comparer la
-    // composition proposal_ids du snapshot à celle réellement stockée. Une fois la migration
-    // 411 (redéploiement explicite du correctif 403) appliquée, cet appel devrait au contraire
-    // tomber en revalidation complète (scope+proposal_ids ne correspondent pas à la membership
-    // existante) et faire entrer B comme nouvelle preuve — ce même test devra alors être mis à
-    // jour pour refléter le comportement corrigé.
-    expect((data as { writePattern: string }).writePattern).toBe('NOOP')
-    expect((data as { replayed: boolean }).replayed).toBe(true)
+    // Preuve du correctif (411 live, corps 403 redéployé) : le fast-path NOOP ne se déclenche
+    // PLUS — la membership active existante a le scope proposal_set mais une composition triée
+    // [A] ≠ [A,B] attendue par le snapshot, donc v_noop_compatible reste faux et la fonction
+    // tombe en revalidation complète (§4, "sinon : incompatible avec l'état live"). La
+    // revalidation retrouve le CBO déjà lié au Point cible → ATTACH_MEMBER, replayed=false.
+    expect((data as { writePattern: string }).writePattern).toBe('ATTACH_MEMBER')
+    expect((data as { replayed: boolean }).replayed).toBe(false)
     expect((data as { targetPointId: string }).targetPointId).toBe(target)
 
-    // B n'est jamais entré dans tracked_point_member : une seule membership active sur le
-    // thread, exactement celle créée par l'appel [A] initial, sans propB.id.
-    expect(await countMembersOnThread(threadId)).toBe(1)
+    // Append-only (même sémantique que Témoin 26) : [A] reste active telle quelle, [A,B]
+    // devient une SECONDE membership active distincte — jamais une mise à jour en place de la
+    // première. Deux memberships actives coexistent désormais sur ce thread.
+    expect(await countMembersOnThread(threadId)).toBe(2)
     const { data: activeMembers } = await db
       .from('tracked_point_member')
       .select('proposal_ids')
@@ -1567,7 +1573,6 @@ describe('Témoin 27 — P0-2A.1 : collision de fingerprint forcée sur ATTACH_M
       .eq('scope', 'proposal_set')
       .eq('status', 'active')
     const restitutedIds = [...new Set((activeMembers ?? []).flatMap((r) => (r as { proposal_ids: string[] }).proposal_ids ?? []))]
-    expect(restitutedIds).toEqual([propA.id])
-    expect(restitutedIds).not.toContain(propB.id)
+    expect(restitutedIds.sort()).toEqual([propA.id, propB.id].sort())
   })
 })
