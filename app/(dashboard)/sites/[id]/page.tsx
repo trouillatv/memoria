@@ -153,14 +153,14 @@ export default async function SitePage({ params, searchParams }: PageProps) {
                   <span>Chantiers</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  {identity.clientName && (
+                  {(identity.siteLogoUrl || identity.clientName) && (
                     <EntityLogo
-                      src={identity.clientLogoUrl}
-                      label={identity.clientName}
+                      src={identity.siteLogoUrl ?? identity.clientLogoUrl}
+                      label={identity.siteLogoUrl ? identity.name : (identity.clientName ?? identity.name)}
                       size="xl"
                       variant="rounded"
-                      fallbackColor="#dbeafe"
-                      alt={identity.clientName}
+                      fallbackColor={identity.siteLogoUrl ? '#dcfce7' : '#dbeafe'}
+                      alt={identity.siteLogoUrl ? identity.name : (identity.clientName ?? identity.name)}
                     />
                   )}
                   <h1 className="text-3xl font-semibold tracking-tight text-foreground">{identity.name}</h1>

@@ -45,6 +45,7 @@ export interface SiteIdentity {
   clientId: string | null
   clientName: string | null
   clientLogoUrl: string | null
+  siteLogoUrl: string | null
   contractStartedAt: string | null
   teamsSucceeded: number
   /** Chantier de recette : tout y est jetable, et lui seul peut être réinitialisé. */
@@ -335,7 +336,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
 
   const { data: site } = await supabase
     .from('sites')
-    .select('id, name, address, contract_id, client_id, created_at, is_sandbox')
+    .select('id, name, address, contract_id, client_id, created_at, is_sandbox, logo_path')
     .eq('id', siteId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -346,6 +347,9 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
   let clientLogoUrl: string | null = null
   const clientId: string | null = (site as { client_id?: string | null }).client_id ?? null
   let contractStartedAt: string | null = null
+
+  const siteLogoPath = (site as { logo_path?: string | null }).logo_path ?? null
+  const siteLogoUrl = siteLogoPath ? (await getSignedLogoUrls([siteLogoPath]))[siteLogoPath] ?? null : null
 
   // Résoudre le nom du client directement depuis la table clients
   if (clientId) {
@@ -408,6 +412,7 @@ export async function getSiteIdentity(siteId: string): Promise<SiteIdentity | nu
     clientId,
     clientName,
     clientLogoUrl,
+    siteLogoUrl,
     contractStartedAt,
     teamsSucceeded,
     isSandbox: (site.is_sandbox as boolean | null) === true,

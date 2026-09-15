@@ -2,14 +2,16 @@ import { Bot } from 'lucide-react'
 
 // P3-mobile Phase 1 — hero chantier COMPACT (identité MemorIA à l'entrée d'un chantier).
 // Présentation seule, aucune vérité métier :
-//   - logo client PRIORITAIRE (clients.logo_path → URL signée, via getSiteIdentity) ;
+//   - logo chantier PRIORITAIRE, sinon logo client (sites.logo_path ?? clients.logo_path →
+//     URL signée, via getSiteIdentity — doctrine Vincent 2026-09-15, même règle que la
+//     liste Chantiers/SiteGlobalRow.tsx et la fiche desktop) ;
 //   - fallback = présence MemorIA (placeholder — asset de marque à fournir, ne PAS figer
 //     un SVG définitif ici) ;
 //   - badge de passage = 1ʳᵉ venue TERRAIN de l'utilisateur (countDistinctVisitDays+1,
 //     doctrine 9+10) — jamais import/report/documentaire ;
 //   - AUCUN statut « tout est à jour » (aucune règle déterministe ne le prouve).
-// Règle §22 : avec logo → le client est le héros, MemorIA accompagne ; sans logo → la
-// présence MemorIA porte l'identité (signature affichée uniquement dans ce cas).
+// Règle §22 : avec logo (chantier ou client) → le logo est le héros, MemorIA accompagne ;
+// sans logo → la présence MemorIA porte l'identité (signature affichée uniquement dans ce cas).
 
 /** Normalisation d'AFFICHAGE seule (casse, accents, espaces, ponctuation légère) :
  *  sert uniquement à ne pas répéter « MAISON TERRA » sous « MAISON TERRA ». Aucun
@@ -24,29 +26,33 @@ export function SiteHeroMobile({
   siteName,
   clientName,
   clientLogoUrl,
+  siteLogoUrl,
   nthPassage,
   greetingName,
 }: {
   siteName: string
   clientName: string | null
   clientLogoUrl: string | null
+  siteLogoUrl: string | null
   nthPassage: number
   greetingName?: string | null
 }) {
   const passageLabel = nthPassage <= 1 ? '1er passage' : `${nthPassage}ᵉ passage`
-  const hasLogo = !!clientLogoUrl
+  const logoUrl = siteLogoUrl ?? clientLogoUrl
+  const hasLogo = !!logoUrl
+  const logoAlt = siteLogoUrl ? `Logo ${siteName}` : clientName ? `Logo ${clientName}` : 'Logo chantier'
   // Le nom du client n'apporte rien s'il redit le nom du chantier.
   const showClientName = !!clientName && !sameLabel(clientName, siteName)
 
   return (
     <section className="rounded-2xl border bg-card p-4 shadow-sm">
       <div className="flex items-start gap-3">
-        {/* Visuel du hero : logo client si présent, sinon présence MemorIA (placeholder). */}
+        {/* Visuel du hero : logo chantier si présent, sinon logo client, sinon présence MemorIA (placeholder). */}
         <div className="shrink-0">
           {hasLogo ? (
             <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-xl border bg-background">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={clientLogoUrl!} alt={clientName ? `Logo ${clientName}` : 'Logo client'} className="h-full w-full object-contain p-1" />
+              <img src={logoUrl!} alt={logoAlt} className="h-full w-full object-contain p-1" />
             </div>
           ) : (
             // PLACEHOLDER mascotte — à remplacer par l'asset de marque fourni (PNG/WebP/SVG propre).
@@ -69,7 +75,7 @@ export function SiteHeroMobile({
         </div>
       </div>
 
-      {/* Signature MemorIA — présence de marque LÉGÈRE, uniquement en l'absence de logo client. */}
+      {/* Signature MemorIA — présence de marque LÉGÈRE, uniquement en l'absence de tout logo. */}
       {!hasLogo && (
         <p className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-violet-700 dark:text-violet-300">
           <Bot className="h-3.5 w-3.5 shrink-0" aria-hidden />

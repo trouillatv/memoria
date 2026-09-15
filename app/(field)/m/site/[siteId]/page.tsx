@@ -279,13 +279,14 @@ export default async function FieldSitePage({
       {justVisited && <JustVisitedBanner />}
 
       {/* Hero chantier compact — identité MemorIA à l'entrée d'un chantier :
-          logo client prioritaire (sinon présence MemorIA), nom du chantier,
-          badge de passage terrain. Remplace l'ancien en-tête + la photo de
-          couverture (abandonnée en Phase 1 : le logo client porte l'identité). */}
+          logo chantier prioritaire, sinon logo client, sinon présence MemorIA,
+          nom du chantier, badge de passage terrain. Remplace l'ancien en-tête
+          + la photo de couverture (abandonnée en Phase 1). */}
       <SiteHeroMobile
         siteName={site.name}
         clientName={identity?.clientName ?? null}
         clientLogoUrl={identity?.clientLogoUrl ?? null}
+        siteLogoUrl={identity?.siteLogoUrl ?? null}
         nthPassage={nthPassage}
         greetingName={firstNameOf(user.full_name, user.email)}
       />
