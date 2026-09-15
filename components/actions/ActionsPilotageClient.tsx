@@ -70,6 +70,20 @@ function basisDate(stateBasis: string[]): string | null {
   return at ? frDate(at) : null
 }
 
+// Composition unifiée Actions/Réserves/Échéances par sujet (lot 3, Vincent 2026-09-15).
+// Aucune nuance corrective à ce niveau : `site_actions.reserve_id` n'a pas de valeur
+// discriminante en prod (quasi jamais alimenté) — cette nuance reste au niveau Point/
+// Réserve (déjà en place) et au filtre de la page Réserves, jamais ici (faux signal
+// permanent sinon). `activeCboCount` = les Actions actives du sujet (ce read-model est
+// Actions-only : les CBO sont des actions).
+function formatSubjectComposition(s: PilotageSubject, reserveCount: number, deadlineCount: number): string | null {
+  const parts: string[] = []
+  if (s.activeCboCount > 0) parts.push(`${s.activeCboCount} Action${s.activeCboCount > 1 ? 's' : ''}`)
+  if (reserveCount > 0) parts.push(`${reserveCount} Réserve${reserveCount > 1 ? 's' : ''}`)
+  if (deadlineCount > 0) parts.push(`${deadlineCount} Échéance${deadlineCount > 1 ? 's' : ''}`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
 /** Provenance LUE de computedCurrentState (jamais du status brut). Distingue humain vs PV. */
 function provenanceOf(c: PilotageCbo): string | null {
   const at = basisDate(c.stateBasis)
@@ -374,11 +388,13 @@ function useHighlightFormulationFromUrl() {
   }, [])
 }
 
-export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates, companies }: {
+export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates, companies, reserveCountBySubject, deadlineCountBySubject }: {
   subjects: PilotageSubject[]
   siteId: string
   responsibleCandidates: ResponsibleCandidate[]
   companies: SiteCandidateCompany[]
+  reserveCountBySubject: Record<string, number>
+  deadlineCountBySubject: Record<string, number>
 }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ActionsFilter>('all')
@@ -446,6 +462,7 @@ export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates,
     <ul className="space-y-2">
       {visible.map((s) => {
         const st = SUBJECT_STATE[s.displayState]
+        const composition = formatSubjectComposition(s, reserveCountBySubject[s.canonicalSubjectId] ?? 0, deadlineCountBySubject[s.canonicalSubjectId] ?? 0)
         return (
           <li key={s.canonicalSubjectId} className="rounded-xl border text-sm">
             <details className="group/subj">
@@ -461,6 +478,7 @@ export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates,
                     {s.pvCount > 0 && <span>· {s.pvCount} PV</span>}
                     {s.lastMeaningfulChangeAt && <span>· dernière évolution {frDate(s.lastMeaningfulChangeAt)}</span>}
                   </div>
+                  {composition && <p className="mt-0.5 text-xs text-muted-foreground">{composition}</p>}
                 </div>
                 <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/subj:rotate-90" />
               </summary>

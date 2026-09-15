@@ -1,6 +1,8 @@
 import { ListTodo } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { getSiteActionsPilotage } from '@/lib/knowledge/actions-pilotage'
+import { getSiteReservesPilotage } from '@/lib/knowledge/reserves-pilotage'
+import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { ActionsPilotageClient } from '@/components/actions/ActionsPilotageClient'
@@ -13,14 +15,24 @@ export const dynamic = 'force-dynamic'
 export default async function SiteActionsPillPage({ params }: { params: Promise<{ siteId: string }> }) {
   const { siteId } = await params
   await requireSiteAccess(siteId)
-  const [pilotage, responsibleCandidates, companies] = await Promise.all([
+  const [pilotage, reservesPilotage, deadlines, responsibleCandidates, companies] = await Promise.all([
     getSiteActionsPilotage(siteId),
+    // Lot 3 composition unifiée (Vincent 2026-09-15) — mêmes read-models que desktop.
+    getSiteReservesPilotage(siteId),
+    listSiteDeadlines(siteId),
     // Lot normalisation 3 points d'entrée (Vincent 2026-09-15) — même panneau d'affectation
     // partagé que desktop/Point.
     listSiteActionResponsibleCandidates(siteId).catch(() => []),
     listSiteCandidateCompanies(siteId).catch(() => []),
   ])
   const k = pilotage.kpi
+  const reserveCountBySubject: Record<string, number> = {}
+  for (const rs of reservesPilotage.subjects) reserveCountBySubject[rs.canonicalSubjectId] = rs.reserves.length
+  const deadlineCountBySubject: Record<string, number> = {}
+  for (const d of deadlines) {
+    if (!d.canonical_subject_id) continue
+    deadlineCountBySubject[d.canonical_subject_id] = (deadlineCountBySubject[d.canonical_subject_id] ?? 0) + 1
+  }
 
   return (
     <div className="mx-auto max-w-md space-y-4 px-4 pb-24 pt-2">
@@ -41,7 +53,8 @@ export default async function SiteActionsPillPage({ params }: { params: Promise<
         )}
       </header>
       <ActionsPilotageClient subjects={pilotage.subjects} siteId={siteId}
-        responsibleCandidates={responsibleCandidates} companies={companies} />
+        responsibleCandidates={responsibleCandidates} companies={companies}
+        reserveCountBySubject={reserveCountBySubject} deadlineCountBySubject={deadlineCountBySubject} />
     </div>
   )
 }

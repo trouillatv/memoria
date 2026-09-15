@@ -6,6 +6,8 @@ import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbPr
 import { readSiteActionSummaries, groupActionsByThread } from '@/lib/knowledge/repository'
 import { getSitePendingActionProposals } from '@/lib/knowledge/site-pending-proposals'
 import { getSiteActionsPilotage } from '@/lib/knowledge/actions-pilotage'
+import { getSiteReservesPilotage } from '@/lib/knowledge/reserves-pilotage'
+import { listSiteDeadlines } from '@/lib/db/site-deadlines'
 import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -59,8 +61,23 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
   const hasUrgency   = lateCount > 0 || todayCount > 0 || weekCount > 0
 
   // V1-2 — LISTE PRINCIPALE = vérité durable SUJET → CBO → historique (getSiteActionsPilotage).
-  const pilotage = await getSiteActionsPilotage(id)
+  // Lot 3 (composition unifiée, Vincent 2026-09-15) — Réserves et Échéances jointes par
+  // canonical_subject_id, en plus des CBO Actions déjà chargés. Aucune nuance corrective
+  // à ce niveau (site_actions.reserve_id sans valeur discriminante en prod) : cf. formatSubjectComposition.
+  const [pilotage, reservesPilotage, deadlines] = await Promise.all([
+    getSiteActionsPilotage(id),
+    getSiteReservesPilotage(id),
+    listSiteDeadlines(id),
+  ])
   const k = pilotage.kpi
+
+  const reserveCountBySubject: Record<string, number> = {}
+  for (const rs of reservesPilotage.subjects) reserveCountBySubject[rs.canonicalSubjectId] = rs.reserves.length
+  const deadlineCountBySubject: Record<string, number> = {}
+  for (const d of deadlines) {
+    if (!d.canonical_subject_id) continue
+    deadlineCountBySubject[d.canonical_subject_id] = (deadlineCountBySubject[d.canonical_subject_id] ?? 0) + 1
+  }
 
   return (
     <div className="max-w-3xl space-y-6 py-6">
@@ -139,7 +156,8 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
 
       {/* Liste principale — hiérarchie durable SUJET → CBO → historique. */}
       <ActionsPilotageClient subjects={pilotage.subjects} siteId={id}
-        responsibleCandidates={responsibleCandidates} companies={companies} />
+        responsibleCandidates={responsibleCandidates} companies={companies}
+        reserveCountBySubject={reserveCountBySubject} deadlineCountBySubject={deadlineCountBySubject} />
     </div>
   )
 }
