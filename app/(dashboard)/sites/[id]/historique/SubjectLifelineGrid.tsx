@@ -113,17 +113,22 @@ function rowDuration(row: SubjectMatrixRow): number {
 
 // ── Composants DnD ───────────────────────────────────────────────────────────
 
-type NativeDate = { date: string; hasVisit: boolean; hasMeeting: boolean }
 type NativeOcc = { date: string; sourceKind: 'field_visit' | 'meeting' }
 type TopicFlatItem = Extract<FlatItem, { kind: 'topic' }>
 
+// Colonne unique de la chronologie : PV et occurrences natives triés ensemble par date
+// (P0-2C — l'historique et le natif sont deux preuves sur un même axe, pas deux blocs juxtaposés).
+type Column =
+  | { kind: 'pv'; index: number; runId: string; effectiveDate: string }
+  | { kind: 'native'; date: string; hasVisit: boolean; hasMeeting: boolean }
+
 function DroppableTopicRow({
-  item, labelWidth, CELL_W, nativeDates, isExpanded, onToggle,
+  item, labelWidth, CELL_W, columns, isExpanded, onToggle,
 }: {
   item: TopicFlatItem
   labelWidth: number
   CELL_W: number
-  nativeDates: NativeDate[]
+  columns: Column[]
   isExpanded: boolean
   onToggle: () => void
 }) {
@@ -159,24 +164,25 @@ function DroppableTopicRow({
         </button>
       </div>
       <div className="flex">
-        {item.aggregatePvCells.map((cell, i) => {
-          if (cell === null) return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
-          if (cell.isGap) return (
-            <div key={i} className="shrink-0 border-r last:border-r-0 bg-muted/20 flex items-center justify-center" style={{ width: CELL_W }}>
-              <span className="text-base font-bold text-muted-foreground/30">╌</span>
-            </div>
-          )
+        {columns.map((col) => {
+          if (col.kind === 'pv') {
+            const cell = item.aggregatePvCells[col.index]
+            if (cell === null) return <div key={`pv-${col.runId}`} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+            if (cell.isGap) return (
+              <div key={`pv-${col.runId}`} className="shrink-0 border-r last:border-r-0 bg-muted/20 flex items-center justify-center" style={{ width: CELL_W }}>
+                <span className="text-base font-bold text-muted-foreground/30">╌</span>
+              </div>
+            )
+            return (
+              <div key={`pv-${col.runId}`} className="shrink-0 border-r last:border-r-0 bg-primary/5 flex items-center justify-center" style={{ width: CELL_W }}>
+                <span className="text-base font-bold text-primary/40">●</span>
+              </div>
+            )
+          }
+          const hasOcc = item.topicNativeDates.has(col.date)
+          if (!hasOcc) return <div key={`nat-${col.date}`} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
           return (
-            <div key={i} className="shrink-0 border-r last:border-r-0 bg-primary/5 flex items-center justify-center" style={{ width: CELL_W }}>
-              <span className="text-base font-bold text-primary/40">●</span>
-            </div>
-          )
-        })}
-        {nativeDates.map((nd) => {
-          const hasOcc = item.topicNativeDates.has(nd.date)
-          if (!hasOcc) return <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
-          return (
-            <div key={nd.date} className="shrink-0 border-l-2 border-r last:border-r-0 border-teal-300/60 dark:border-teal-600/40 bg-teal-50/30 dark:bg-teal-950/20 flex items-center justify-center" style={{ width: CELL_W }}>
+            <div key={`nat-${col.date}`} className="shrink-0 border-l-2 border-r last:border-r-0 border-teal-300/60 dark:border-teal-600/40 bg-teal-50/30 dark:bg-teal-950/20 flex items-center justify-center" style={{ width: CELL_W }}>
               <span className="text-sm font-bold text-teal-600/50 dark:text-teal-400/50">▪</span>
             </div>
           )
@@ -187,7 +193,7 @@ function DroppableTopicRow({
 }
 
 function DraggableSubjectRow({
-  row, siteId, isSelected, labelWidth, CELL_W, nativeDates,
+  row, siteId, isSelected, labelWidth, CELL_W, columns,
   nativeOccurrences, suggestedCounts, nativeOnlyIds, onSelect, onMergeDialog,
   suggestionScore, onSuggestionClick,
 }: {
@@ -196,7 +202,7 @@ function DraggableSubjectRow({
   isSelected: boolean
   labelWidth: number
   CELL_W: number
-  nativeDates: NativeDate[]
+  columns: Column[]
   nativeOccurrences?: Record<string, NativeOcc[]>
   suggestedCounts?: Record<string, number>
   nativeOnlyIds?: Set<string>
@@ -309,21 +315,22 @@ function DraggableSubjectRow({
       </div>
       {/* Cellules */}
       <div className="flex">
-        {row.cells.map((cell, i) => {
-          const style = cellStyle(cell)
-          if (cell === null) return <div key={i} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
-          return (
-            <div key={i} className={`shrink-0 border-r last:border-r-0 ${style.bg} flex items-center justify-center`} style={{ width: CELL_W }} title={[style.title, cell.label].filter(Boolean).join(' · ')}>
-              <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
-            </div>
-          )
-        })}
-        {nativeDates.map((nd) => {
+        {columns.map((col) => {
+          if (col.kind === 'pv') {
+            const cell = row.cells[col.index]
+            const style = cellStyle(cell)
+            if (cell === null) return <div key={`pv-${col.runId}`} className="shrink-0 border-r last:border-r-0" style={{ width: CELL_W }} />
+            return (
+              <div key={`pv-${col.runId}`} className={`shrink-0 border-r last:border-r-0 ${style.bg} flex items-center justify-center`} style={{ width: CELL_W }} title={[style.title, cell.label].filter(Boolean).join(' · ')}>
+                <span className={`text-base font-bold leading-none ${style.text}`}>{style.icon}</span>
+              </div>
+            )
+          }
           const rowOccs = row.canonicalSubjectId ? (nativeOccurrences?.[row.canonicalSubjectId] ?? []) : []
-          const occ = rowOccs.find((o) => o.date === nd.date)
-          if (!occ) return <div key={nd.date} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
+          const occ = rowOccs.find((o) => o.date === col.date)
+          if (!occ) return <div key={`nat-${col.date}`} className="shrink-0 border-l-2 border-r border-teal-200/40 dark:border-teal-700/30 bg-teal-50/10 dark:bg-teal-950/10 last:border-r-0" style={{ width: CELL_W }} />
           return (
-            <div key={nd.date} className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${occ.sourceKind === 'field_visit' ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40' : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'}`} style={{ width: CELL_W }} title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}>
+            <div key={`nat-${col.date}`} className={`shrink-0 border-l-2 border-r last:border-r-0 flex items-center justify-center ${occ.sourceKind === 'field_visit' ? 'border-teal-300/60 dark:border-teal-600/40 bg-teal-50 dark:bg-teal-950/40' : 'border-violet-300/60 dark:border-violet-600/40 bg-violet-50 dark:bg-violet-950/40'}`} style={{ width: CELL_W }} title={occ.sourceKind === 'field_visit' ? 'Visite terrain' : 'Réunion'}>
               <span className={`text-sm font-bold leading-none ${occ.sourceKind === 'field_visit' ? 'text-teal-600 dark:text-teal-400' : 'text-violet-600 dark:text-violet-400'}`}>
                 {occ.sourceKind === 'field_visit' ? '✓' : '◇'}
               </span>
@@ -727,6 +734,17 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
     return [...dateMap.values()].sort((a, b) => a.date.localeCompare(b.date))
   }, [nativeOccurrences])
 
+  // Axe unique de colonnes : PV et occurrences natives triés ensemble par date (P0-2C)
+  const columns = useMemo((): Column[] => {
+    const pvCols: Column[] = runs.map((run, index) => ({ kind: 'pv' as const, index, runId: run.id, effectiveDate: run.effectiveDate }))
+    const nativeCols: Column[] = nativeDates.map((nd) => ({ kind: 'native' as const, ...nd }))
+    return [...pvCols, ...nativeCols].sort((a, b) => {
+      const da = a.kind === 'pv' ? a.effectiveDate : a.date
+      const db = b.kind === 'pv' ? b.effectiveDate : b.date
+      return da.localeCompare(db)
+    })
+  }, [runs, nativeDates])
+
   function onResizeMouseDown(e: React.MouseEvent) {
     e.preventDefault()
     resizeDragRef.current = { startX: e.clientX, startWidth: labelWidth }
@@ -864,7 +882,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         style={{ maxHeight: '70vh' }}
       >
         {/* Feuille unifiée — la largeur minimale force le scroll horizontal */}
-        <div style={{ minWidth: labelWidth + (runs.length + nativeDates.length) * CELL_W }}>
+        <div style={{ minWidth: labelWidth + columns.length * CELL_W }}>
 
           {/* En-tête sticky top */}
           <div className="sticky top-0 z-10 flex border-b bg-muted">
@@ -882,31 +900,30 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                 <GripVertical className="h-3.5 w-3.5" />
               </div>
             </div>
-            {/* Dates PV + événements natifs */}
+            {/* Chronologie unique : PV et événements natifs entrelacés par date */}
             <div className="flex">
-              {runs.map((run, i) => (
+              {columns.map((col) => col.kind === 'pv' ? (
                 <div
-                  key={run.id}
+                  key={`pv-${col.runId}`}
                   className="shrink-0 border-r px-1 py-2 text-center last:border-r-0"
                   style={{ width: CELL_W }}
                 >
-                  <p className="text-[10px] font-semibold text-muted-foreground">PV{i + 1}</p>
+                  <p className="text-[10px] font-semibold text-muted-foreground">PV{col.index + 1}</p>
                   <p className="text-[9px] text-muted-foreground">
-                    {new Date(run.effectiveDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                    {new Date(col.effectiveDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
                   </p>
                 </div>
-              ))}
-              {nativeDates.map((nd) => (
+              ) : (
                 <div
-                  key={nd.date}
+                  key={`nat-${col.date}`}
                   className="shrink-0 border-l-2 border-r border-teal-200/60 dark:border-teal-700/40 bg-teal-50/40 dark:bg-teal-950/20 px-1 py-2 text-center last:border-r-0"
                   style={{ width: CELL_W }}
                 >
-                  <p className={`text-[10px] font-semibold ${nd.hasVisit ? 'text-teal-600 dark:text-teal-400' : 'text-violet-600 dark:text-violet-400'}`}>
-                    {nd.hasVisit ? '✓' : '◇'}
+                  <p className={`text-[10px] font-semibold ${col.hasVisit ? 'text-teal-600 dark:text-teal-400' : 'text-violet-600 dark:text-violet-400'}`}>
+                    {col.hasVisit ? '✓' : '◇'}
                   </p>
                   <p className="text-[9px] text-muted-foreground">
-                    {new Date(nd.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                    {new Date(col.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
                   </p>
                 </div>
               ))}
@@ -922,7 +939,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   item={item}
                   labelWidth={labelWidth}
                   CELL_W={CELL_W}
-                  nativeDates={nativeDates}
+                  columns={columns}
                   isExpanded={expandedTopics.has(item.topicId)}
                   onToggle={() => toggleTopic(item.topicId)}
                 />
@@ -961,7 +978,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
                   isSelected={isSelected}
                   labelWidth={labelWidth}
                   CELL_W={CELL_W}
-                  nativeDates={nativeDates}
+                  columns={columns}
                   nativeOccurrences={nativeOccurrences}
                   suggestedCounts={suggestedCounts}
                   nativeOnlyIds={nativeOnlyIds}
