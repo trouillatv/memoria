@@ -1487,3 +1487,87 @@ describe('Témoin 26 — P6 correctif évolution proposal_set : [A]→[A,B]→[A
     expect((allActiveMembers ?? []).length).toBe(3)
   })
 })
+
+// P0-2A.1 (audit READ-ONLY, mandat Vincent) — preuve exécutable, ciblée, du scénario résiduel
+// que seule la migration 403 couvre (jamais appliquée en base : le fast-path NOOP de la 401
+// live compare l'ATTACH_MEMBER à "une membership active existe pour ce thread", sans jamais
+// relire scope/proposal_ids ; 403 remplace cette comparaison par une composition triée exacte).
+// Le Témoin 26 ci-dessus ne peut PAS exercer ce chemin : le correctif TS (proposalIds dans le
+// fingerprint, buildInputSnapshot) empêche déjà [A] et [A,B] de produire le même fingerprint
+// en usage normal — condition sine qua non du court-circuit (401 ligne 221). Ce témoin
+// contourne donc délibérément reconcileTrackedPointUnit (qui ne recalcule le fingerprint
+// qu'à partir de l'unité réelle, jamais d'une valeur imposée par l'appelant) et appelle la RPC
+// brute avec un p_input_fingerprint réutilisé tel quel de l'appel [A] sur un p_input_snapshot
+// représentant [A,B] — même geste que Témoin 23/14, désormais utilisé pour forcer la collision
+// que 403 corrige plutôt que pour tester une erreur applicative.
+describe('Témoin 27 — P0-2A.1 : collision de fingerprint forcée sur ATTACH_MEMBER, résiduel migration 403 (NON appliquée)', () => {
+  it('sur la 401 live inchangée, [A]→[A,B] avec fingerprint identique imposé rejoue un NOOP et perd B de tracked_point_member', async () => {
+    const db = createAdminClient()
+    const target = await makePoint()
+    const cboId = await makeCbo({ tracked_point_id: target })
+    const threadId = randomUUID()
+
+    const propA = { id: randomUUID(), proposal_family: 'observation', document_status: null, label: 'A', subject_thread_id: threadId, document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+    const propB = { id: randomUUID(), proposal_family: 'observation', document_status: null, label: 'B', subject_thread_id: threadId, document_id: null, extraction_run_id: null, created_at: '2026-01-01', review_status: null, source_payload: null }
+
+    const unitA = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA], outcomeV2: { kind: 'CONFIRMED', cboId } })
+    const callA = await reconcileTrackedPointUnit({ siteId, unit: unitA, sourceKind: 'historical_pdf', sourceRefId: docId })
+    expect(callA.ok).toBe(true)
+    if (!callA.ok) throw new Error('attendu un succès (A)')
+    expect(callA.writePattern).toBe('ATTACH_MEMBER')
+    expect(callA.targetPointId).toBe(target)
+
+    // Fingerprint réellement produit pour [A] (identique à celui déjà persisté par l'appel
+    // ci-dessus dans tracked_point_reconcile_state — buildFingerprint est pur/déterministe).
+    const { fingerprint: fingerprintA } = buildFingerprint(unitA)
+
+    const unitAB = unit({ threadId, scope: 'proposal_set', proposalSetOf: 'cbo:x', props: [propA, propB], outcomeV2: { kind: 'CONFIRMED', cboId } })
+    const unitKeyAB = foundingReferenceOf(unitAB)
+    const plannedPointAB = planPointForUnit(unitAB, { cboLabel: 'CBO témoin 27' })
+    if (!plannedPointAB) throw new Error('attendu un plan de Point pour ce plan (setup du témoin)')
+    const { snapshot: snapshotAB } = buildFingerprint(unitAB)
+
+    // Appel RPC direct : snapshot honnête de [A,B], mais fingerprint imposé = celui de [A]
+    // (collision qu'un correctif TS partiellement déployé, ou tout autre calcul de fingerprint
+    // désynchronisé, pourrait produire malgré une composition réellement différente).
+    const { data, error } = await db.rpc('fn_reconcile_tracked_point_unit', {
+      p_site_id: siteId,
+      p_unit_key: unitKeyAB,
+      p_thread_id: threadId,
+      p_scope: 'proposal_set',
+      p_input_snapshot: snapshotAB,
+      p_input_fingerprint: fingerprintA,
+      p_source_kind: 'historical_pdf',
+      p_source_ref_id: docId,
+      p_planned_point: plannedPointPayload(plannedPointAB),
+      p_planned_pending_trace: null,
+      p_cross_thread_candidate_point_ids: [],
+    })
+    expect(error).toBeNull()
+
+    // Preuve du défaut résiduel (401 live) : le fast-path NOOP se déclenche — write_pattern
+    // ATTACH_MEMBER + "une membership active existe pour ce thread" suffit, sans comparer la
+    // composition proposal_ids du snapshot à celle réellement stockée. Une fois la migration
+    // 411 (redéploiement explicite du correctif 403) appliquée, cet appel devrait au contraire
+    // tomber en revalidation complète (scope+proposal_ids ne correspondent pas à la membership
+    // existante) et faire entrer B comme nouvelle preuve — ce même test devra alors être mis à
+    // jour pour refléter le comportement corrigé.
+    expect((data as { writePattern: string }).writePattern).toBe('NOOP')
+    expect((data as { replayed: boolean }).replayed).toBe(true)
+    expect((data as { targetPointId: string }).targetPointId).toBe(target)
+
+    // B n'est jamais entré dans tracked_point_member : une seule membership active sur le
+    // thread, exactement celle créée par l'appel [A] initial, sans propB.id.
+    expect(await countMembersOnThread(threadId)).toBe(1)
+    const { data: activeMembers } = await db
+      .from('tracked_point_member')
+      .select('proposal_ids')
+      .eq('tracked_point_id', target)
+      .eq('subject_thread_id', threadId)
+      .eq('scope', 'proposal_set')
+      .eq('status', 'active')
+    const restitutedIds = [...new Set((activeMembers ?? []).flatMap((r) => (r as { proposal_ids: string[] }).proposal_ids ?? []))]
+    expect(restitutedIds).toEqual([propA.id])
+    expect(restitutedIds).not.toContain(propB.id)
+  })
+})
