@@ -29,6 +29,7 @@ import { documentHref } from '@/lib/knowledge/document-href'
 import { detectActorRelations, normalizeForCitation, type ActorSubject } from '@/lib/db/actor-citation'
 import { loadSitePvDates, daysSince, countPassagesAfter } from '@/lib/knowledge/tracked-point-lingering'
 import { getActiveResponsibleCompanyDesignations } from '@/lib/db/tracked-point-responsible-companies'
+import { loadCompanyAliasMap, resolveCanonicalCompanyId } from '@/lib/db/companies'
 
 const ACTION_STATUS_LABEL: Record<SiteActionStatus, string> = {
   open: 'Ouverte', planned: 'Planifiée', done: 'Terminée', cancelled: 'Annulée',
@@ -1149,16 +1150,22 @@ export async function getTrackedPointDetail(
       const { data } = await db.from('company_contacts').select('id, full_name, function').in('id', [...contactIds])
       for (const c of data ?? []) contactById.set(c.id as string, { full_name: c.full_name as string, function: c.function as string | null })
     }
+    // P0-3B : un `assigned_company_id`/`responsible_company_id` brut peut référencer un
+    // alias (companies.status='alias') — résolu au canonique avant affichage, même
+    // vérité de lecture que P0-3A. La FK stockée reste inchangée.
+    const companyAliasMap = companyIds.size > 0 ? await loadCompanyAliasMap([siteOrgId]) : new Map()
+    const canonCompany = (id: string) => resolveCanonicalCompanyId(companyAliasMap, id)
     const companyById = new Map<string, string>()
     if (companyIds.size > 0) {
-      const { data } = await db.from('companies').select('id, name').in('id', [...companyIds])
+      const canonicalCompanyIds = new Set([...companyIds].map(canonCompany))
+      const { data } = await db.from('companies').select('id, name').in('id', [...canonicalCompanyIds])
       for (const c of data ?? []) companyById.set(c.id as string, c.name as string)
     }
 
     const today = todayLocalIso()
     const responsibleFor = (contactId: string | null, companyId: string | null, text: string | null): PointDetailResponsible | null => {
       if (contactId) { const c = contactById.get(contactId); if (c) return { kind: 'contact', name: c.full_name, fonction: c.function } }
-      if (companyId) { const name = companyById.get(companyId); if (name) return { kind: 'company', name, companyId } }
+      if (companyId) { const canonicalId = canonCompany(companyId); const name = companyById.get(canonicalId); if (name) return { kind: 'company', name, companyId: canonicalId } }
       if (text) return { kind: 'text', label: text }
       return null
     }

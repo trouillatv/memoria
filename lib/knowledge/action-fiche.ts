@@ -23,6 +23,7 @@ import {
   type RawActionEvent, type ActionHistoryDay,
 } from '@/lib/knowledge/action-history'
 import { deriveCanonicalAttentionItems } from '@/lib/knowledge/canonical-attention'
+import { resolveCanonicalCompanyIdById } from '@/lib/db/companies'
 
 type Db = SupabaseClient
 
@@ -223,8 +224,11 @@ export async function getSiteActionFiche(
     if (c) responsible = { kind: 'contact', name: (c.full_name as string) ?? '', fonction: (c.function as string | null) ?? null }
   }
   if (!responsible && a.assigned_company_id) {
-    const { data: co } = await db.from('companies').select('name').eq('id', a.assigned_company_id).maybeSingle()
-    if (co) responsible = { kind: 'company', name: (co as { name: string }).name, companyId: a.assigned_company_id ?? undefined }
+    // P0-3B : l'id brut peut référencer un alias (companies.status='alias') —
+    // résolu au canonique avant affichage, même vérité de lecture que P0-3A.
+    const canonicalCompanyId = await resolveCanonicalCompanyIdById(a.assigned_company_id)
+    const { data: co } = await db.from('companies').select('name').eq('id', canonicalCompanyId).maybeSingle()
+    if (co) responsible = { kind: 'company', name: (co as { name: string }).name, companyId: canonicalCompanyId }
   }
   if (!responsible && a.assigned_to) responsible = { kind: 'text', label: a.assigned_to }
 

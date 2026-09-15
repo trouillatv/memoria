@@ -20,6 +20,7 @@ import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-
 import { isActiveCboState, isTerminalCboState, type CboComputedCurrentState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import type { CanonicalDisplayState } from '@/lib/documents/subject-state'
 import { canonicalRunsForSite } from '@/lib/documents/pv-history'
+import { resolveCanonicalCompanyIdById } from '@/lib/db/companies'
 
 /** Responsable actuel de l'Action portant le CBO — même forme à 3 variantes que
  *  `PointDetailResponsible` (tracked-point-detail.ts) : preuve structurelle
@@ -300,7 +301,13 @@ export async function getSiteActionsPilotage(siteId: string): Promise<SiteAction
     type TargetActionRow = { id: string; assigned_contact_id: string | null; assigned_company_id: string | null; assigned_to: string | null; due_date: string | null }
     const rows = (targetActions ?? []) as TargetActionRow[]
     const contactIds = [...new Set(rows.map((r) => r.assigned_contact_id).filter((x): x is string => !!x))]
-    const companyIds = [...new Set(rows.map((r) => r.assigned_company_id).filter((x): x is string => !!x))]
+    const companyIdsRaw = [...new Set(rows.map((r) => r.assigned_company_id).filter((x): x is string => !!x))]
+    // P0-3B : un assigned_company_id brut peut référencer un alias (companies.status=
+    // 'alias') — résolu au canonique avant affichage, même vérité de lecture que P0-3A.
+    const canonicalByRawCompanyId = new Map(
+      await Promise.all(companyIdsRaw.map(async (id) => [id, await resolveCanonicalCompanyIdById(id)] as const)),
+    )
+    const companyIds = [...new Set(canonicalByRawCompanyId.values())]
     const [contactsRes, companiesRes] = await Promise.all([
       contactIds.length > 0 ? sb.from('company_contacts').select('id, full_name').in('id', contactIds) : Promise.resolve({ data: [] }),
       companyIds.length > 0 ? sb.from('companies').select('id, name').in('id', companyIds) : Promise.resolve({ data: [] }),
@@ -311,10 +318,11 @@ export async function getSiteActionsPilotage(siteId: string): Promise<SiteAction
     const dueDateByAction = new Map<string, string | null>()
     for (const r of rows) {
       dueDateByAction.set(r.id, r.due_date)
+      const canonicalCompanyId = r.assigned_company_id ? canonicalByRawCompanyId.get(r.assigned_company_id) : null
       if (r.assigned_contact_id && contactName.has(r.assigned_contact_id)) {
         responsibleByAction.set(r.id, { kind: 'contact', name: contactName.get(r.assigned_contact_id)! })
-      } else if (r.assigned_company_id && companyName.has(r.assigned_company_id)) {
-        responsibleByAction.set(r.id, { kind: 'company', name: companyName.get(r.assigned_company_id)! })
+      } else if (canonicalCompanyId && companyName.has(canonicalCompanyId)) {
+        responsibleByAction.set(r.id, { kind: 'company', name: companyName.get(canonicalCompanyId)! })
       } else if (r.assigned_to) {
         responsibleByAction.set(r.id, { kind: 'text', label: r.assigned_to })
       }
