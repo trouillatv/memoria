@@ -10,6 +10,7 @@ import {
 import type { SiteHealthTimeline } from '@/lib/documents/site-synthesis'
 import type { NativeSubjectEvolution } from '@/lib/db/canonical-subject-life'
 import type { V2SubjectResult, EvolutionV2Verdict } from '@/lib/knowledge/evolution-v2'
+import { filterNativeOnlyEvolutionSubjects } from '@/lib/documents/native-synthesis'
 
 // ── Phase detection algorithm (déterministe, générique) ───────────────────────
 
@@ -530,9 +531,16 @@ export interface EvolutionViewProps {
 }
 
 export function EvolutionView({ siteId, readModel, narrative, narrativePending, healthTimeline, nativeEvents, nativeSubjectEvolutions, v2Results, subjectLabelMap }: EvolutionViewProps) {
+  // P0-2B — sujets purement natifs (aucune trace dans les périodes historiques) : jamais
+  // masqués par la présence de PV sur d'autres sujets du même chantier (mandat Vincent
+  // 2026-09-16, même principe que P0-2A Synthèse).
+  const nativeOnlySubjects = nativeSubjectEvolutions
+    ? filterNativeOnlyEvolutionSubjects(readModel, nativeSubjectEvolutions)
+    : []
+
   if (readModel.periods.length === 0) {
-    if (nativeSubjectEvolutions && nativeSubjectEvolutions.length > 0) {
-      return <NativeEvolutionSection subjects={nativeSubjectEvolutions} siteId={siteId} v2Results={v2Results} />
+    if (nativeOnlySubjects.length > 0) {
+      return <NativeEvolutionSection subjects={nativeOnlySubjects} siteId={siteId} v2Results={v2Results} />
     }
     return (
       <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
@@ -654,6 +662,11 @@ export function EvolutionView({ siteId, readModel, narrative, narrativePending, 
           </div>
         </div>
       </section>
+
+      {/* ── 3bis. SUJETS PUREMENT NATIFS (P0-2B, sans aucune couverture PV) ─ */}
+      {nativeOnlySubjects.length > 0 && (
+        <NativeEvolutionSection subjects={nativeOnlySubjects} siteId={siteId} v2Results={v2Results} />
+      )}
 
       {/* ── 4. ACTIVITÉ NATIVE POST-DERNIER PV ──────────────────────────── */}
       {nativeEvents && nativeEvents.length > 0 && (

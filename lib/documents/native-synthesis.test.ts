@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import type { NavigableSubjectSummary } from '@/lib/db/canonical-subject-life'
+import type { NavigableSubjectSummary, NativeSubjectEvolution } from '@/lib/db/canonical-subject-life'
 import type { WatchlistEntry } from './pv-watchlist'
 import type { ImportantSubject } from './site-synthesis'
+import type { EvolutionReadModel, EvolutionPeriod, EvolutionSubjectFact } from './pv-evolution'
 import {
   computeNativeWatchlist,
   computeNativeImportantSubjects,
   computeUnifiedWatchlist,
   computeUnifiedImportantSubjects,
+  filterNativeOnlyEvolutionSubjects,
 } from './native-synthesis'
 
 function makeSubject(overrides: Partial<NavigableSubjectSummary> & { canonicalSubjectId: string }): NavigableSubjectSummary {
@@ -48,6 +50,57 @@ function makeWatchlistEntry(overrides: Partial<WatchlistEntry> & { canonicalSubj
     totalRuns: 1,
     lastRunIndex: 0,
     ...overrides,
+  }
+}
+
+function makeFact(canonicalSubjectId: string): EvolutionSubjectFact {
+  return {
+    canonicalSubjectId,
+    label: canonicalSubjectId,
+    hasActions: false,
+    hasReserves: false,
+    hasDecisions: false,
+    hasDeadlines: false,
+    openActions: 0,
+    openReserves: 0,
+  }
+}
+
+function makePeriod(overrides: Partial<EvolutionPeriod> = {}): EvolutionPeriod {
+  return {
+    label: 'p1',
+    startDate: '2026-01-01',
+    endDate: '2026-01-01',
+    pvNumbers: [1],
+    runIds: ['r1'],
+    isSilence: false,
+    appeared: [],
+    reopened: [],
+    aggravated: [],
+    resolved: [],
+    stillOpen: [],
+    importanceScore: 0,
+    ...overrides,
+  }
+}
+
+function makeReadModel(periods: EvolutionPeriod[]): EvolutionReadModel {
+  return {
+    siteId: 'site1',
+    totalRuns: periods.length,
+    dateRange: periods.length > 0 ? { start: periods[0].startDate, end: periods[periods.length - 1].endDate } : null,
+    periods,
+  }
+}
+
+function makeNativeEvolution(canonicalSubjectId: string): NativeSubjectEvolution {
+  return {
+    canonicalSubjectId,
+    label: canonicalSubjectId,
+    events: [
+      { date: '2026-01-01', sourceKind: 'field_visit', labels: [] },
+      { date: '2026-01-05', sourceKind: 'field_visit', labels: [] },
+    ],
   }
 }
 
@@ -196,5 +249,47 @@ describe('computeUnifiedImportantSubjects — P0-2 Suivi unifié (4 cas Vincent)
     expect(entry?.pvCount).toBe(6)
     expect(entry?.openActions).toBe(3)
     expect(entry?.reappearance).toBe(true)
+  })
+})
+
+describe('filterNativeOnlyEvolutionSubjects — P0-2B Évolution unifiée', () => {
+  it('cas 1 — natif seul (aucune période historique) : tous les sujets natifs passent', () => {
+    const readModel = makeReadModel([])
+    const natives = [makeNativeEvolution('n1'), makeNativeEvolution('n2')]
+    const result = filterNativeOnlyEvolutionSubjects(readModel, natives)
+    expect(result).toEqual(natives)
+  })
+
+  it('cas 2 — sujet natif entièrement couvert par l\'historique : filtré', () => {
+    const readModel = makeReadModel([
+      makePeriod({ stillOpen: [makeFact('a')] }),
+    ])
+    const natives = [makeNativeEvolution('a')]
+    const result = filterNativeOnlyEvolutionSubjects(readModel, natives)
+    expect(result).toEqual([])
+  })
+
+  it('cas 3 — mixte avec sujet natif inédit : seul le sujet non couvert par le PV reste', () => {
+    const readModel = makeReadModel([
+      makePeriod({ resolved: [makeFact('a')], reopened: [makeFact('c')] }),
+    ])
+    const natives = [makeNativeEvolution('a'), makeNativeEvolution('b'), makeNativeEvolution('c')]
+    const result = filterNativeOnlyEvolutionSubjects(readModel, natives)
+    expect(result).toEqual([makeNativeEvolution('b')])
+  })
+
+  it('couvre les 5 listes de faits (appeared/reopened/aggravated/resolved/stillOpen)', () => {
+    const readModel = makeReadModel([
+      makePeriod({
+        appeared: [makeFact('a')],
+        reopened: [makeFact('b')],
+        aggravated: [makeFact('c')],
+        resolved: [makeFact('d')],
+        stillOpen: [makeFact('e')],
+      }),
+    ])
+    const natives = ['a', 'b', 'c', 'd', 'e', 'f'].map(makeNativeEvolution)
+    const result = filterNativeOnlyEvolutionSubjects(readModel, natives)
+    expect(result).toEqual([makeNativeEvolution('f')])
   })
 })

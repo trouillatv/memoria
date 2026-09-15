@@ -1150,7 +1150,9 @@ export type NativeSubjectEvolution = {
 /**
  * Retourne les sujets canoniques actifs ayant ≥ 2 événements métier distincts
  * (sourceKind+effectiveDate) provenant de visites terrain ou réunions.
- * Utilisé par la vue Évolution comme source primaire lorsqu'aucun PV historique n'est présent.
+ * Utilisé par la vue Évolution : source unique quand aucun PV historique n'existe, et
+ * (P0-2B, filtrée par filterNativeOnlyEvolutionSubjects) en complément des périodes
+ * historiques pour les sujets sans aucune couverture PV sur un chantier mixte.
  */
 export async function buildNativeEvolutionData(siteId: string): Promise<NativeSubjectEvolution[]> {
   const supabase = createAdminClient()

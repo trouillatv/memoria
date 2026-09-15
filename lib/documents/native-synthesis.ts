@@ -1,8 +1,9 @@
 import 'server-only'
 
-import type { NavigableSubjectSummary } from '@/lib/db/canonical-subject-life'
+import type { NavigableSubjectSummary, NativeSubjectEvolution } from '@/lib/db/canonical-subject-life'
 import type { WatchlistEntry, WatchReason } from './pv-watchlist'
 import type { ImportantSubject } from './site-synthesis'
+import type { EvolutionReadModel } from './pv-evolution'
 
 // P0-2 — Suivi natif-only (0 PV historique importé, ex. PETRO) : projette la MÊME vérité
 // d'état (deriveCanonicalCurrentState → displayState, déjà unifiée historique+natif dans
@@ -176,6 +177,27 @@ export function computeUnifiedImportantSubjects(
     }))
 
   return [...fromHistorical, ...additions].slice(0, IMPORTANT_MAX)
+}
+
+// P0-2B — Évolution unifiée (mandat Vincent 2026-09-16) : même principe que ci-dessus, appliqué
+// à l'onglet Évolution. EvolutionView masquait ENTIÈREMENT la section native dès qu'un seul PV
+// historique existait sur le chantier (« si historique alors historique seulement »), même pour
+// des sujets purement natifs sans aucune couverture PV. Ce filtre retire du natif les sujets déjà
+// couverts par les périodes historiques (déjà racontés par appeared/reopened/aggravated/resolved/
+// stillOpen) : seuls les sujets sans AUCUNE trace PV restent, affichés en complément — jamais en
+// remplacement — des périodes historiques. Ne touche ni au regroupement en périodes, ni à
+// l'activité native post-dernier-PV (déjà rendue sans condition sur periods.length).
+export function filterNativeOnlyEvolutionSubjects(
+  readModel: EvolutionReadModel,
+  nativeSubjectEvolutions: NativeSubjectEvolution[],
+): NativeSubjectEvolution[] {
+  const pvCoveredIds = new Set<string>()
+  for (const period of readModel.periods) {
+    for (const fact of [...period.appeared, ...period.reopened, ...period.aggravated, ...period.resolved, ...period.stillOpen]) {
+      pvCoveredIds.add(fact.canonicalSubjectId)
+    }
+  }
+  return nativeSubjectEvolutions.filter((s) => !pvCoveredIds.has(s.canonicalSubjectId))
 }
 
 export interface NativeActivityEntry {
