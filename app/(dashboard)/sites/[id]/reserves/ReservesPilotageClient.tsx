@@ -6,9 +6,18 @@
 // INTÉGRALEMENT, jamais refactoré. AUCUN état durable réserve n'est affiché (pas de lifecycle) : les
 // occurrences (N occurrences / N PV) et leurs statuts BRUTS restent au niveau occurrence.
 
+import { useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { ReservesView, type ReserveWithPhotos } from './ReservesView'
 import type { ReservePilotageSubject } from '@/lib/knowledge/reserves-pilotage'
+
+/** Une réserve ouverte sans aucune Action corrective liée (`site_actions.reserve_id`) :
+ *  « quels problèmes constatés n'ont encore aucune résolution organisée ? » (GO Vincent 2026-09-15).
+ *  Donnée déjà chargée par `listSiteActionsByReserve` — filtre pur, aucune requête ajoutée. */
+function isMissingCorrectiveAction(r: ReserveWithPhotos): boolean {
+  return r.status !== 'lifted' && r.actions.length === 0
+}
 
 export function ReservesPilotageClient({
   siteId,
@@ -21,7 +30,9 @@ export function ReservesPilotageClient({
   reserves: ReserveWithPhotos[]
   siteDocuments: { id: string; filename: string }[]
 }) {
+  const [onlyMissingAction, setOnlyMissingAction] = useState(false)
   const byId = new Map(reserves.map((r) => [r.id, r]))
+  const missingActionTotal = useMemo(() => reserves.filter(isMissingCorrectiveAction).length, [reserves])
 
   if (subjects.length === 0) {
     return (
@@ -31,39 +42,70 @@ export function ReservesPilotageClient({
     )
   }
 
+  const groupsBySubject = subjects.map((s) => {
+    const groups = s.reserves
+      .map((r) => ({
+        r,
+        occ: r.occurrenceIds.map((id) => byId.get(id)).filter((x): x is ReserveWithPhotos => !!x),
+      }))
+      .map(({ r, occ }) => ({ r, occ: onlyMissingAction ? occ.filter(isMissingCorrectiveAction) : occ }))
+      .filter(({ occ }) => occ.length > 0)
+    return { s, groups }
+  }).filter(({ groups }) => groups.length > 0)
+
   return (
-    <ul className="space-y-2">
-      {subjects.map((s) => (
-        <li key={s.canonicalSubjectId} className="rounded-xl border">
-          <details className="group/subj" open={subjects.length === 1}>
-            <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-2.5 select-none hover:bg-muted/40">
-              <div className="min-w-0 flex-1">
-                <p className="font-medium leading-snug">{s.label}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {s.occurrenceCount} occurrence{s.occurrenceCount > 1 ? 's' : ''} documentaire{s.occurrenceCount > 1 ? 's' : ''}
-                  {s.pvCount > 0 && ` · ${s.pvCount} PV`}
-                </p>
-              </div>
-              <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/subj:rotate-90" />
-            </summary>
-            <div className="border-t px-3 py-2.5 space-y-4">
-              {s.reserves.map((r) => {
-                const occ = r.occurrenceIds.map((id) => byId.get(id)).filter((x): x is ReserveWithPhotos => !!x)
-                return (
-                  <div key={r.cboId}>
-                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Réserve · {r.occurrenceCount} occurrence{r.occurrenceCount > 1 ? 's' : ''}
-                      {r.pvCount > 0 && ` dans ${r.pvCount} PV`}
+    <div className="space-y-3">
+      {missingActionTotal > 0 && (
+        <button
+          type="button"
+          onClick={() => setOnlyMissingAction((v) => !v)}
+          className={cn(
+            'inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[13px] font-medium',
+            onlyMissingAction
+              ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+              : 'bg-background text-muted-foreground',
+          )}
+        >
+          Réserves sans Action corrective ({missingActionTotal})
+        </button>
+      )}
+
+      {onlyMissingAction && groupsBySubject.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic py-6 text-center">
+          Aucune réserve ouverte sans Action corrective sur ce chantier.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {groupsBySubject.map(({ s, groups }) => (
+            <li key={s.canonicalSubjectId} className="rounded-xl border">
+              <details className="group/subj" open={subjects.length === 1}>
+                <summary className="flex cursor-pointer list-none items-start gap-2.5 px-3 py-2.5 select-none hover:bg-muted/40">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium leading-snug">{s.label}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {s.occurrenceCount} occurrence{s.occurrenceCount > 1 ? 's' : ''} documentaire{s.occurrenceCount > 1 ? 's' : ''}
+                      {s.pvCount > 0 && ` · ${s.pvCount} PV`}
                     </p>
-                    {/* N3 — dossier documentaire complet (mini-dossier préservé). */}
-                    <ReservesView siteId={siteId} reserves={occ} siteDocuments={siteDocuments} />
                   </div>
-                )
-              })}
-            </div>
-          </details>
-        </li>
-      ))}
-    </ul>
+                  <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open/subj:rotate-90" />
+                </summary>
+                <div className="border-t px-3 py-2.5 space-y-4">
+                  {groups.map(({ r, occ }) => (
+                    <div key={r.cboId}>
+                      <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Réserve · {r.occurrenceCount} occurrence{r.occurrenceCount > 1 ? 's' : ''}
+                        {r.pvCount > 0 && ` dans ${r.pvCount} PV`}
+                      </p>
+                      {/* N3 — dossier documentaire complet (mini-dossier préservé). */}
+                      <ReservesView siteId={siteId} reserves={occ} siteDocuments={siteDocuments} />
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
