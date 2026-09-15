@@ -28,12 +28,14 @@
 // identifiable sans ambiguïté (`needsYouQuestionId`).
 
 import { useMemo, useState, useTransition } from 'react'
+import type { ReactNode } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Check, HelpCircle, Loader2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { PointListEntry } from '@/lib/knowledge/tracked-point-list'
 import { recordPointReviewedAction } from '@/lib/knowledge/tracked-point-review-actions'
+import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 
 // Même convention que PointsListView.tsx (DATE_FMT, Pacific/Noumea) — dupliquée ici car ce
 // fichier est un composant client isolé, pas de dépendance croisée entre vues sœurs.
@@ -66,14 +68,82 @@ function needsYouClarifyHref(siteId: string, p: PointListEntry): string {
 // corrective » est affiché explicitement dès qu'il existe des Réserves sans réponse organisée
 // (correctiveActionCount === 0) — un vrai signal métier, pas du bruit visuel à masquer — et la
 // prochaine échéance rejoint la même ligne, en minuscule, plutôt qu'une ligne séparée.
-function formatPilotageComposition(p: PointListEntry): string | null {
-  const parts: string[] = []
-  if (p.reserveCount > 0) parts.push(`${p.reserveCount} Réserve${p.reserveCount > 1 ? 's' : ''}`)
-  if (p.actionCount > 0) parts.push(`${p.actionCount} Action${p.actionCount > 1 ? 's' : ''}`)
-  if (p.deadlineCount > 0 && parts.length === 0) parts.push(`${p.deadlineCount} Échéance${p.deadlineCount > 1 ? 's' : ''}`)
-  if (p.reserveCount > 0 && p.correctiveActionCount === 0) parts.push('aucune Action corrective')
-  if (p.nextDeadlineDate) parts.push(`prochaine échéance ${frDate(p.nextDeadlineDate)}`)
-  return parts.length > 0 ? parts.join(' · ') : null
+//
+// Signature visuelle (mandat Vincent, mini-lot filtres+couleurs 2026-09-15) : reprend
+// EXACTEMENT les teintes déjà utilisées pour OBJECT_TYPE_BADGE_CLS dans PointFicheView.tsx
+// (Action=sky, Réserve=amber, Échéance=violet) — jamais de nouvelles couleurs inventées. Deux
+// axes de couleur volontairement séparés pour ne jamais se confondre (garde-fou explicite de
+// Vincent) : la teinte de TYPE reste pastel/discrète sur le compteur lui-même, la couleur
+// d'URGENCE (rouge=en retard, orange=proche ≤7j, neutre=pas urgente) ne s'applique QUE sur la
+// date « prochaine échéance », jamais sur le compteur Échéance.
+type PilotageCompositionSegment = { key: string; node: ReactNode }
+
+function buildPilotageCompositionSegments(p: PointListEntry, today: string): PilotageCompositionSegment[] {
+  const segments: PilotageCompositionSegment[] = []
+  if (p.reserveCount > 0) {
+    segments.push({
+      key: 'reserve',
+      node: (
+        <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-300">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
+          {p.reserveCount} Réserve{p.reserveCount > 1 ? 's' : ''}
+        </span>
+      ),
+    })
+  }
+  if (p.actionCount > 0) {
+    segments.push({
+      key: 'action',
+      node: (
+        <span className="inline-flex items-center gap-1 text-sky-700 dark:text-sky-300">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" aria-hidden />
+          {p.actionCount} Action{p.actionCount > 1 ? 's' : ''}
+        </span>
+      ),
+    })
+  }
+  if (p.deadlineCount > 0 && segments.length === 0) {
+    segments.push({
+      key: 'deadline',
+      node: (
+        <span className="inline-flex items-center gap-1 text-violet-700 dark:text-violet-300">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" aria-hidden />
+          {p.deadlineCount} Échéance{p.deadlineCount > 1 ? 's' : ''}
+        </span>
+      ),
+    })
+  }
+  if (p.reserveCount > 0 && p.correctiveActionCount === 0) {
+    segments.push({ key: 'corrective', node: <span>aucune Action corrective</span> })
+  }
+  if (p.nextDeadlineDate) {
+    const urgencyCls =
+      p.nextDeadlineDate < today
+        ? 'font-medium text-rose-700 dark:text-rose-300'
+        : p.nextDeadlineDate <= addDaysLocal(today, 7)
+          ? 'font-medium text-orange-700 dark:text-orange-300'
+          : ''
+    segments.push({
+      key: 'next-deadline',
+      node: <span className={urgencyCls}>prochaine échéance {frDate(p.nextDeadlineDate)}</span>,
+    })
+  }
+  return segments
+}
+
+function PilotageCompositionLine({ p, today }: { p: PointListEntry; today: string }) {
+  const segments = buildPilotageCompositionSegments(p, today)
+  if (segments.length === 0) return null
+  return (
+    <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-muted-foreground">
+      {segments.map((seg, i) => (
+        <span key={seg.key} className="inline-flex items-center gap-1.5">
+          {i > 0 && <span aria-hidden className="text-muted-foreground/40">·</span>}
+          {seg.node}
+        </span>
+      ))}
+    </p>
+  )
 }
 
 function MarkReviewedButton({ siteId, pointId }: { siteId: string; pointId: string }) {
@@ -104,9 +174,8 @@ function MarkReviewedButton({ siteId, pointId }: { siteId: string; pointId: stri
   )
 }
 
-function ReviewCard({ p, pointHrefPrefix, siteId }: { p: PointListEntry; pointHrefPrefix: string; siteId: string }) {
+function ReviewCard({ p, pointHrefPrefix, siteId, today }: { p: PointListEntry; pointHrefPrefix: string; siteId: string; today: string }) {
   const isNeedsYou = p.needsYouCount > 0
-  const composition = formatPilotageComposition(p)
   return (
     <div className="rounded-xl border p-4">
       <div className="flex items-start justify-between gap-3">
@@ -131,7 +200,7 @@ function ReviewCard({ p, pointHrefPrefix, siteId }: { p: PointListEntry; pointHr
           ))}
         </ul>
       )}
-      {composition && <p className="mt-1.5 text-[12px] text-muted-foreground">{composition}</p>}
+      <PilotageCompositionLine p={p} today={today} />
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
         <span>Vu dans {p.mentionsCount}/{p.totalSiteVisits} PV</span>
         {p.openedAt && <span>Première apparition : {frDate(p.openedAt)}</span>}
@@ -178,15 +247,66 @@ function ReviewedCard({ p, pointHrefPrefix }: { p: PointListEntry; pointHrefPref
   )
 }
 
+type PilotageTypeFilter = 'all' | 'action' | 'reserve' | 'deadline'
+type PilotageDeadlineFilter = 'all' | 'late' | 'upcoming' | 'none'
+
+function parseTypeFilter(v: string | undefined): PilotageTypeFilter {
+  return v === 'action' || v === 'reserve' || v === 'deadline' ? v : 'all'
+}
+function parseDeadlineFilter(v: string | undefined): PilotageDeadlineFilter {
+  return v === 'late' || v === 'upcoming' || v === 'none' ? v : 'all'
+}
+
+const TYPE_FILTERS: Array<{ key: PilotageTypeFilter; label: string }> = [
+  { key: 'all', label: 'Tous' },
+  { key: 'action', label: 'Avec Action' },
+  { key: 'reserve', label: 'Avec Réserve' },
+  { key: 'deadline', label: 'Avec Échéance' },
+]
+const DEADLINE_FILTERS: Array<{ key: PilotageDeadlineFilter; label: string }> = [
+  { key: 'all', label: 'Toutes' },
+  { key: 'late', label: 'En retard' },
+  { key: 'upcoming', label: 'À venir' },
+  { key: 'none', label: 'Sans échéance' },
+]
+
 export function PointsPilotageView({
   points,
   pointHrefPrefix,
   siteId,
+  defaultTypeFilter,
+  defaultDeadlineFilter,
 }: {
   points: PointListEntry[]
   pointHrefPrefix: string
   siteId: string
+  /** Filtres Pilotage lus depuis l'URL par le serveur (`?ptype=`/`?pdeadline=`) — mandat Vincent
+   *  2026-09-15 : « je ferais ces filtres directement en pensant qu'ils devront finir dans
+   *  l'URL » (préparation du chantier navigation sans perte de contexte). Valeur brute non
+   *  validée, la validation se fait ici via parseTypeFilter/parseDeadlineFilter. */
+  defaultTypeFilter?: string
+  defaultDeadlineFilter?: string
 }) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const [typeFilter, setTypeFilterState] = useState<PilotageTypeFilter>(() => parseTypeFilter(defaultTypeFilter))
+  const [deadlineFilter, setDeadlineFilterState] = useState<PilotageDeadlineFilter>(() => parseDeadlineFilter(defaultDeadlineFilter))
+
+  function setUrlParam(key: string, value: string) {
+    const params = new URLSearchParams(window.location.search)
+    if (value === 'all') params.delete(key)
+    else params.set(key, value)
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }
+  function setTypeFilter(next: PilotageTypeFilter) {
+    setTypeFilterState(next)
+    setUrlParam('ptype', next)
+  }
+  function setDeadlineFilter(next: PilotageDeadlineFilter) {
+    setDeadlineFilterState(next)
+    setUrlParam('pdeadline', next)
+  }
   // « À revoir » = fingerprint courant actif ET pas encore revu par cet utilisateur DANS CET
   // ÉTAT (mandat Couche 1.1). Un Point déjà revu redevient à revoir dès qu'un signal réel change
   // (nouveau fingerprint), jamais par simple écoulement du temps.
@@ -199,33 +319,84 @@ export function PointsPilotageView({
         .sort((a, b) => (b.reviewedAt ?? '').localeCompare(a.reviewedAt ?? '')),
     [points],
   )
-  const reopenedCount = useMemo(() => toReview.filter((p) => p.derivedState === 'reopened').length, [toReview])
-  const needsYouCount = useMemo(() => toReview.filter((p) => p.needsYouCount > 0).length, [toReview])
+
+  const today = todayLocalIso()
+
+  // Filtres Type/Échéance (mandat Vincent 2026-09-15) : isoler rapidement les Points sans ouvrir
+  // chaque fiche. N'affectent QUE la population « À revoir » — le nombre affiché sur l'onglet
+  // reste le total non filtré, seul le contenu affiché dessous change. Raccourci « Avec
+  // échéance » : sélectionner ce filtre trie aussi par échéance la plus proche, plutôt qu'un
+  // bouton de tri séparé (garde le mini-lot simple, pas un tableau de filtres).
+  const visibleToReview = useMemo(() => {
+    let list = toReview
+    if (typeFilter === 'action') list = list.filter((p) => p.actionCount > 0)
+    else if (typeFilter === 'reserve') list = list.filter((p) => p.reserveCount > 0)
+    else if (typeFilter === 'deadline') list = list.filter((p) => p.deadlineCount > 0)
+    if (deadlineFilter === 'late') list = list.filter((p) => p.nextDeadlineDate !== null && p.nextDeadlineDate < today)
+    else if (deadlineFilter === 'upcoming') list = list.filter((p) => p.nextDeadlineDate !== null && p.nextDeadlineDate >= today)
+    else if (deadlineFilter === 'none') list = list.filter((p) => p.nextDeadlineDate === null)
+    if (typeFilter === 'deadline') {
+      list = list.slice().sort((a, b) => (a.nextDeadlineDate ?? '9999-99-99').localeCompare(b.nextDeadlineDate ?? '9999-99-99'))
+    }
+    return list
+  }, [toReview, typeFilter, deadlineFilter, today])
+
+  const reopenedCount = useMemo(() => visibleToReview.filter((p) => p.derivedState === 'reopened').length, [visibleToReview])
+  const needsYouCount = useMemo(() => visibleToReview.filter((p) => p.needsYouCount > 0).length, [visibleToReview])
   // Habillage résumé Pilotage (mandat Vincent, item 3 lot 3 — « ça ne demande aucun nouveau
   // moteur, les catégories existent déjà ») : décomposition du bucket résiduel en ses 2 vraies
   // catégories nommées via isLingering/isChangedSinceLastPv (mêmes flags que reviewReasons).
   const lingeringCount = useMemo(
-    () => toReview.filter((p) => p.derivedState !== 'reopened' && p.needsYouCount === 0 && p.isLingering).length,
-    [toReview],
+    () => visibleToReview.filter((p) => p.derivedState !== 'reopened' && p.needsYouCount === 0 && p.isLingering).length,
+    [visibleToReview],
   )
   const changedCount = useMemo(
-    () => toReview.filter((p) => p.derivedState !== 'reopened' && p.needsYouCount === 0 && p.isChangedSinceLastPv).length,
-    [toReview],
+    () => visibleToReview.filter((p) => p.derivedState !== 'reopened' && p.needsYouCount === 0 && p.isChangedSinceLastPv).length,
+    [visibleToReview],
   )
   // Filet de sécurité : tout Point ni réouvert, ni NeedsYou, ni lingering, ni changé au dernier
   // PV (aujourd'hui uniquement une attention canonique pertinente sans les autres raisons —
   // act_now=0 sur le corpus observé, cf. audit Lot 3). Jamais masqué si non nul.
   const otherSignalCount = useMemo(
     () =>
-      toReview.filter(
+      visibleToReview.filter(
         (p) => p.derivedState !== 'reopened' && p.needsYouCount === 0 && !p.isLingering && !p.isChangedSinceLastPv,
       ).length,
-    [toReview],
+    [visibleToReview],
   )
 
   const [subTab, setSubTab] = useState<'to_review' | 'reviewed'>('to_review')
   const [sessionActive, setSessionActive] = useState(false)
   const [index, setIndex] = useState(0)
+
+  const filterBar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border p-0.5 text-[12.5px]">
+        {TYPE_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setTypeFilter(f.key)}
+            className={cn('rounded-md px-2.5 py-1 font-medium', typeFilter === f.key ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border p-0.5 text-[12.5px]">
+        {DEADLINE_FILTERS.map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setDeadlineFilter(f.key)}
+            className={cn('rounded-md px-2.5 py-1 font-medium', deadlineFilter === f.key ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 
   const tabs = (
     <div className="inline-flex items-center rounded-lg border p-0.5 text-[13px]">
@@ -276,12 +447,31 @@ export function PointsPilotageView({
     )
   }
 
+  if (visibleToReview.length === 0) {
+    return (
+      <div className="space-y-4">
+        {tabs}
+        {filterBar}
+        <div className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-muted-foreground">
+          <p>Aucun Point ne correspond à ces filtres.</p>
+          <button
+            type="button"
+            onClick={() => { setTypeFilter('all'); setDeadlineFilter('all') }}
+            className="mt-2 font-medium text-foreground hover:underline"
+          >
+            Réinitialiser les filtres
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   if (sessionActive) {
-    const current = toReview[Math.min(index, toReview.length - 1)]
+    const current = visibleToReview[Math.min(index, visibleToReview.length - 1)]
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between text-[12.5px] text-muted-foreground">
-          <span>Revue en cours : {index + 1}/{toReview.length}</span>
+          <span>Revue en cours : {index + 1}/{visibleToReview.length}</span>
           <button
             type="button"
             onClick={() => setSessionActive(false)}
@@ -290,7 +480,7 @@ export function PointsPilotageView({
             <X className="h-3.5 w-3.5" /> Quitter la revue
           </button>
         </div>
-        <ReviewCard p={current} pointHrefPrefix={pointHrefPrefix} siteId={siteId} />
+        <ReviewCard p={current} pointHrefPrefix={pointHrefPrefix} siteId={siteId} today={today} />
         <div className="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -305,18 +495,18 @@ export function PointsPilotageView({
           </button>
           <button
             type="button"
-            onClick={() => setIndex((i) => Math.min(toReview.length - 1, i + 1))}
+            onClick={() => setIndex((i) => Math.min(visibleToReview.length - 1, i + 1))}
             className="text-[13px] font-medium text-muted-foreground hover:text-foreground"
           >
             Passer
           </button>
           <button
             type="button"
-            disabled={index === toReview.length - 1}
-            onClick={() => setIndex((i) => Math.min(toReview.length - 1, i + 1))}
+            disabled={index === visibleToReview.length - 1}
+            onClick={() => setIndex((i) => Math.min(visibleToReview.length - 1, i + 1))}
             className={cn(
               'inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[13px] font-medium',
-              index === toReview.length - 1 ? 'cursor-not-allowed text-muted-foreground/50' : 'text-foreground hover:bg-muted',
+              index === visibleToReview.length - 1 ? 'cursor-not-allowed text-muted-foreground/50' : 'text-foreground hover:bg-muted',
             )}
           >
             Suivant <ArrowRight className="h-3.5 w-3.5" />
@@ -329,10 +519,11 @@ export function PointsPilotageView({
   return (
     <div className="space-y-4">
       {tabs}
+      {filterBar}
 
       <div className="rounded-xl border p-4">
         <p className="text-[14.5px] font-medium text-foreground">
-          {toReview.length} Point{toReview.length !== 1 ? 's' : ''} à revoir
+          {visibleToReview.length} Point{visibleToReview.length !== 1 ? 's' : ''} à revoir
         </p>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
           dont {reopenedCount} réouvert{reopenedCount !== 1 ? 's' : ''} ·{' '}
@@ -352,15 +543,15 @@ export function PointsPilotageView({
           onClick={() => { setIndex(0); setSessionActive(true) }}
           className="mt-3 inline-flex items-center rounded-lg border px-3 py-1.5 text-[13px] font-medium text-foreground hover:bg-muted"
         >
-          Commencer ma revue — {toReview.length}
+          Commencer ma revue — {visibleToReview.length}
         </button>
       </div>
 
       <div className="space-y-2">
         <p className="text-[12.5px] font-medium text-muted-foreground">À revoir maintenant</p>
         <div className="space-y-2">
-          {toReview.map((p) => (
-            <ReviewCard key={p.id} p={p} pointHrefPrefix={pointHrefPrefix} siteId={siteId} />
+          {visibleToReview.map((p) => (
+            <ReviewCard key={p.id} p={p} pointHrefPrefix={pointHrefPrefix} siteId={siteId} today={today} />
           ))}
         </div>
       </div>

@@ -11,10 +11,11 @@ export default async function MobilePointsPage({
   searchParams,
 }: {
   params: Promise<{ siteId: string }>
-  searchParams: Promise<{ tab?: string }>
+  // ptype/pdeadline : filtres Pilotage (mandat Vincent 2026-09-15, URL-ready dès ce lot).
+  searchParams: Promise<{ tab?: string; ptype?: string; pdeadline?: string }>
 }) {
   const { siteId } = await params
-  const { tab } = await searchParams
+  const { tab, ptype, pdeadline } = await searchParams
   const { user } = await requireSiteAccess(siteId)
 
   const supabase = createAdminClient()
@@ -45,6 +46,8 @@ export default async function MobilePointsPage({
         siteId={siteId}
         lastPvDate={list.lastPvDate}
         defaultTab={tab === 'delta' ? 'delta' : undefined}
+        defaultPilotageTypeFilter={ptype}
+        defaultPilotageDeadlineFilter={pdeadline}
       />
     </div>
   )

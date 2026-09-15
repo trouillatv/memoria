@@ -9,7 +9,8 @@ import { SiteChantierNav } from '../SiteChantierNav'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string }>
+  // ptype/pdeadline : filtres Pilotage (mandat Vincent 2026-09-15, URL-ready dès ce lot).
+  searchParams: Promise<{ tab?: string; ptype?: string; pdeadline?: string }>
 }
 
 export default async function SitePointsPage({ params, searchParams }: PageProps) {
@@ -18,7 +19,7 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { tab } = await searchParams
+  const { tab, ptype, pdeadline } = await searchParams
   const [identity, list] = await Promise.all([
     getSiteIdentity(id),
     loadSiteTrackedPointList(id, user.id),
@@ -61,6 +62,8 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
         siteId={id}
         lastPvDate={list.lastPvDate}
         defaultTab={tab === 'delta' ? 'delta' : undefined}
+        defaultPilotageTypeFilter={ptype}
+        defaultPilotageDeadlineFilter={pdeadline}
       />
     </div>
   )

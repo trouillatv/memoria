@@ -37,6 +37,8 @@ export function PointsPageTabs({
   siteId,
   lastPvDate,
   defaultTab,
+  defaultPilotageTypeFilter,
+  defaultPilotageDeadlineFilter,
 }: {
   points: PointListEntry[]
   filterOptions: PointListFilterOptions
@@ -47,6 +49,10 @@ export function PointsPageTabs({
   /** Onglet initial. Permet à `?tab=delta` de rouvrir directement Delta chantier après
    *  un retour depuis la fiche Point, sans perdre le contexte de David. */
   defaultTab?: Tab
+  /** Filtres Pilotage lus depuis l'URL par le serveur (`?ptype=`/`?pdeadline=`), mandat Vincent
+   *  2026-09-15 — transmis tels quels, validés dans PointsPilotageView. */
+  defaultPilotageTypeFilter?: string
+  defaultPilotageDeadlineFilter?: string
 }) {
   const [tab, setTab] = useState<Tab>(defaultTab ?? 'pilotage')
   const subjectGroups = useMemo(() => groupPointsBySubject(points), [points])
@@ -74,7 +80,15 @@ export function PointsPageTabs({
         <p className="mt-1.5 text-[12.5px] text-muted-foreground">{activeCaption}</p>
       </div>
 
-      {tab === 'pilotage' && <PointsPilotageView points={points} pointHrefPrefix={pointHrefPrefix} siteId={siteId} />}
+      {tab === 'pilotage' && (
+        <PointsPilotageView
+          points={points}
+          pointHrefPrefix={pointHrefPrefix}
+          siteId={siteId}
+          defaultTypeFilter={defaultPilotageTypeFilter}
+          defaultDeadlineFilter={defaultPilotageDeadlineFilter}
+        />
+      )}
 
       {tab === 'subject' && (
         <div className="space-y-3">
