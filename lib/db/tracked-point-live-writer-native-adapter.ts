@@ -9,13 +9,23 @@
 // contenu des proposals dès qu'un singleCboId existe — aucune traduction proposal_family/
 // document_status n'est donc nécessaire pour ce lot.
 //
-// Explicitement HORS PÉRIMÈTRE : la fondation d'un Point tout neuf depuis une observation
-// purement native (chemin PROVISIONAL) — P0-1A-2, qui exige un contrat produit séparé pour
-// traduire kind→proposal_family et une source de vérité open/resolved qui ne soit JAMAIS dérivée
-// du statut de revue de la proposition (proposed/confirmed/fulfilled décrit le cycle de la
-// proposition, pas l'état réel du problème sur le chantier — Vincent). Un sujet dont le
-// canonical_subject_id ne porte encore aucun CBO, ou en porte plusieurs (ambigu, jamais choisi
-// au hasard ici), est simplement ignoré par ce module.
+// Explicitement HORS PÉRIMÈTRE : la fondation directe d'un Point tout neuf depuis une
+// observation purement native (chemin PROVISIONAL auto-créé) — aucune branche de ce module
+// n'appelle jamais planPointForUnit avec un kind autre que CONFIRMED/PENDING_TRACKABILITY, et
+// PENDING_TRACKABILITY ne produit structurellement jamais de PlannedPoint (cf.
+// tracked-point-write-plan.ts:planPointForUnit). Un sujet dont le canonical_subject_id porte
+// plusieurs CBO (ambigu, jamais choisi au hasard ici) reste hors périmètre : problème
+// d'identité distinct, pas de trackability — cf. P0-1A-2b, mandat Vincent 2026-09-15.
+//
+// P0-1A-2b (ce lot) — cas 0 CBO : un sujet sans CBO ne fonde jamais un Point ici, mais lorsqu'au
+// moins une proposition native site_knowledge_proposals (kind≠'stakeholder', stakeholder hors
+// périmètre par construction) résout à ce même thread, ce module produit un
+// outcomeV2.kind='PENDING_TRACKABILITY' synthétique — jamais dérivé de proposal_family/
+// document_status (schéma structurellement incompatible avec classifyTrackabilityContent,
+// lib/knowledge/tracked-point-founding.ts, réservé à l'historique) — routé par
+// reconcileTrackedPointUnit vers NEEDS_HUMAN/CREATE_PENDING_TRACE, exactement le même mécanisme
+// que le chemin historique. Sans preuve utilisable (aucune occurrence de ce rapport reliée à une
+// proposition non-stakeholder), le sujet est simplement ignoré : jamais d'invention d'état.
 //
 // Hook : appelé UNE FOIS par runCanonicalReconciliation (lib/visits/debrief-analysis.ts),
 // immédiatement après que celle-ci ait retourné 'reconciled' — jamais sur 'already_done' /
@@ -95,8 +105,10 @@ export type NativeLiveWriterRunResult = {
   unitsProcessed: number
   verdictCounts: Partial<Record<ReconcileVerdict, number>>
   refusals: number
-  /** Sujets mentionnés par ce rapport dont le CBO n'est pas déterminable (0 ou >1) — hors
-   *  périmètre CONFIRMED, jamais traités ici (matière à P0-1A-2 pour le cas 0). */
+  /** Sujets mentionnés par ce rapport dont le CBO n'est pas déterminable (0 ou >1) ET, pour le
+   *  cas 0, sans preuve native utilisable (aucune site_knowledge_proposals non-stakeholder liée) —
+   *  jamais traités au-delà, ni CONFIRMED ni PENDING_TRACKABILITY. Le cas >1 reste toujours ici
+   *  (ambiguïté d'identité, hors périmètre par construction). */
   skippedNotConfirmed: number
 }
 
@@ -119,10 +131,14 @@ export async function runTrackedPointLiveWriterForNativeReport(params: {
 
   const { data: occRows } = await db
     .from('canonical_subject_occurrence')
-    .select('canonical_subject_id, source_kind')
+    .select('canonical_subject_id, source_kind, source_proposal_id')
     .eq('site_id', siteId)
     .eq('source_ref_id', reportId)
-  const occurrences = (occRows ?? []) as Array<{ canonical_subject_id: string; source_kind: string }>
+  const occurrences = (occRows ?? []) as Array<{
+    canonical_subject_id: string
+    source_kind: string
+    source_proposal_id: string | null
+  }>
   if (occurrences.length === 0) {
     return { unitsProcessed: 0, verdictCounts: {}, refusals: 0, skippedNotConfirmed: 0 }
   }
@@ -131,12 +147,22 @@ export async function runTrackedPointLiveWriterForNativeReport(params: {
 
   // Un sujet racine par occurrence — sourceKind conservé par racine (un rapport est en pratique
   // soit field_visit soit meeting ; on garde le premier rencontré si jamais deux occurrences du
-  // même rapport divergeaient).
+  // même rapport divergeaient). proposalIdsByRoot : toutes les site_knowledge_proposals
+  // (source_proposal_id, mig 291) reliées à ce rapport pour ce sujet — matière première du
+  // contrôle de preuve native du cas 0 CBO (P0-1A-2b), jamais utilisée pour le cas CONFIRMED.
   const sourceKindByRoot = new Map<string, 'field_visit' | 'meeting'>()
+  const proposalIdsByRoot = new Map<string, Set<string>>()
   for (const occ of occurrences) {
     const root = await resolver.resolveRoot(occ.canonical_subject_id)
-    if (!root || sourceKindByRoot.has(root)) continue
-    sourceKindByRoot.set(root, occ.source_kind === 'meeting' ? 'meeting' : 'field_visit')
+    if (!root) continue
+    if (!sourceKindByRoot.has(root)) {
+      sourceKindByRoot.set(root, occ.source_kind === 'meeting' ? 'meeting' : 'field_visit')
+    }
+    if (occ.source_proposal_id) {
+      const set = proposalIdsByRoot.get(root) ?? new Set<string>()
+      set.add(occ.source_proposal_id)
+      proposalIdsByRoot.set(root, set)
+    }
   }
   const roots = [...sourceKindByRoot.keys()]
   if (roots.length === 0) {
@@ -156,6 +182,29 @@ export async function runTrackedPointLiveWriterForNativeReport(params: {
     cbosByRoot.set(c.canonical_subject_id, list)
   }
 
+  // Preuve native du cas 0 CBO (P0-1A-2b) : jamais dérivée de site_knowledge_proposals.status
+  // (proposed/confirmed/dismissed/superseded décrit le cycle de la proposition, pas l'état réel
+  // du problème — doctrine posée en 2a) — seule l'EXISTENCE d'une proposition non-stakeholder
+  // reliée au thread compte. stakeholder reste hors périmètre par construction (mandat 2b).
+  const zeroCboRoots = roots.filter((root) => (cbosByRoot.get(root) ?? []).length === 0)
+  const candidateProposalIds = [...new Set(zeroCboRoots.flatMap((root) => [...(proposalIdsByRoot.get(root) ?? [])]))]
+  const trackableProposalIdsByRoot = new Map<string, string[]>()
+  if (candidateProposalIds.length > 0) {
+    const { data: skpRows } = await db
+      .from('site_knowledge_proposals')
+      .select('id, kind')
+      .in('id', candidateProposalIds)
+    const trackableIds = new Set(
+      ((skpRows ?? []) as Array<{ id: string; kind: string }>)
+        .filter((p) => p.kind !== 'stakeholder')
+        .map((p) => p.id),
+    )
+    for (const root of zeroCboRoots) {
+      const ids = [...(proposalIdsByRoot.get(root) ?? [])].filter((id) => trackableIds.has(id))
+      if (ids.length > 0) trackableProposalIdsByRoot.set(root, ids)
+    }
+  }
+
   const verdictCounts: Partial<Record<ReconcileVerdict, number>> = {}
   let refusals = 0
   let skippedNotConfirmed = 0
@@ -165,27 +214,50 @@ export async function runTrackedPointLiveWriterForNativeReport(params: {
   // Point (FOR UPDATE), plusieurs sujets de ce rapport peuvent viser le même Point candidat.
   for (const root of roots) {
     const cbos = cbosByRoot.get(root) ?? []
-    if (cbos.length !== 1) {
+
+    let unit: FoundingUnit
+    let ctx: { cboLabel?: string | null; canonicalSubjectId: string; canonicalSubjectLabel: string | null }
+
+    if (cbos.length === 1) {
+      const cbo = cbos[0]
+      const subjectLabel = await resolver.labelOf(root)
+      unit = {
+        threadId: root,
+        scope: 'thread',
+        props: [],
+        families: [],
+        threadLabel: subjectLabel ?? cbo.label,
+        outcomeOld: 'CONFIRMED',
+        outcomeV2: { kind: 'CONFIRMED', cboId: cbo.id },
+      }
+      ctx = { cboLabel: cbo.label, canonicalSubjectId: root, canonicalSubjectLabel: subjectLabel }
+    } else if (cbos.length === 0) {
+      const evidenceIds = trackableProposalIdsByRoot.get(root)
+      if (!evidenceIds || evidenceIds.length === 0) {
+        skippedNotConfirmed += 1
+        continue
+      }
+      const subjectLabel = await resolver.labelOf(root)
+      unit = {
+        threadId: root,
+        scope: 'thread',
+        props: [],
+        families: [],
+        threadLabel: subjectLabel ?? '(sujet sans libellé)',
+        outcomeOld: 'UNCOVERED_FAMILY_COMBINATION',
+        outcomeV2: { kind: 'PENDING_TRACKABILITY' },
+      }
+      ctx = { canonicalSubjectId: root, canonicalSubjectLabel: subjectLabel }
+    } else {
+      // Ambigu (>1 CBO) : problème d'identité, jamais de choix au hasard — hors périmètre 2b.
       skippedNotConfirmed += 1
       continue
-    }
-    const cbo = cbos[0]
-    const subjectLabel = await resolver.labelOf(root)
-
-    const unit: FoundingUnit = {
-      threadId: root,
-      scope: 'thread',
-      props: [],
-      families: [],
-      threadLabel: subjectLabel ?? cbo.label,
-      outcomeOld: 'CONFIRMED',
-      outcomeV2: { kind: 'CONFIRMED', cboId: cbo.id },
     }
 
     const result = await reconcileTrackedPointUnit({
       siteId,
       unit,
-      ctx: { cboLabel: cbo.label, canonicalSubjectId: root, canonicalSubjectLabel: subjectLabel },
+      ctx,
       sourceKind: sourceKindByRoot.get(root)!,
       sourceRefId: reportId,
     })

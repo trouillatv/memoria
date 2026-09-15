@@ -6,6 +6,15 @@
 // tracked-point-evidence-scope-queue.ts : une fonction pure (buildPendingTrackabilityQueue) +
 // un chargeur async séparé (loadPendingTrackabilityQueue). AUCUNE écriture, AUCUN LLM.
 //
+// P0-1A-2b — tracked_point_pending_trace_evidence (mig 408) porte désormais deux familles XOR :
+// proposal_id (historique, document_extraction_proposal) et native_proposal_id (natif,
+// site_knowledge_proposals). evidenceProposalIdsByTrace doit lire les deux colonnes (une seule
+// est non-nulle par ligne) — lire uniquement proposal_id sous-compterait silencieusement toute
+// preuve native déjà résolue. sourceProposalsByThread est enrichi symétriquement d'une seconde
+// requête site_knowledge_proposals (title→label, body→sourceExcerpt, aucun champ document*),
+// fusionnée dans la même map que la famille historique — jamais une liste séparée, l'UI ne
+// distingue pas l'origine de la preuve affichée ici.
+//
 // La question posée par ce read-model est binaire ("faut-il suivre cette situation ?"), pas un
 // choix de cible — contrairement à la file de résolution orpheline, il n'y a donc ni
 // knownIdentityTargets ni sameSubjectSuggestions ici : confirm_pending_trackability (395) fonde
@@ -162,15 +171,33 @@ export async function loadPendingTrackabilityQueue(siteId: string): Promise<Pend
 
   const { data: rawEvidence, error: evErr } = await db
     .from('tracked_point_pending_trace_evidence')
-    .select('pending_trace_id, proposal_id')
+    .select('pending_trace_id, proposal_id, native_proposal_id')
     .in('pending_trace_id', traceIds.length > 0 ? traceIds : [NIL_UUID])
   if (evErr) throw evErr
 
+  const threadIdByTraceId = new Map(traces.map((t) => [t.id, t.sourceThreadId]))
+
+  // XOR de famille (mig 408) : chaque ligne ne porte qu'une des deux colonnes. evidenceProposalIdsByTrace
+  // reste la liste combinée (utilisée pour `actionable`, indifférente à l'origine) ; nativeIdsByThread
+  // matérialise séparément la famille native pour construire ses PendingTrackabilitySourceProposal
+  // (title/body, jamais de champ document*).
   const evidenceProposalIdsByTrace = new Map<string, string[]>()
+  const nativeProposalIdsByThread = new Map<string, Set<string>>()
   for (const e of rawEvidence ?? []) {
+    const id = e.proposal_id ?? e.native_proposal_id
+    if (!id) continue
     const list = evidenceProposalIdsByTrace.get(e.pending_trace_id) ?? []
-    list.push(e.proposal_id)
+    list.push(id)
     evidenceProposalIdsByTrace.set(e.pending_trace_id, list)
+
+    if (e.native_proposal_id) {
+      const threadId = threadIdByTraceId.get(e.pending_trace_id)
+      if (threadId) {
+        const set = nativeProposalIdsByThread.get(threadId) ?? new Set<string>()
+        set.add(e.native_proposal_id)
+        nativeProposalIdsByThread.set(threadId, set)
+      }
+    }
   }
 
   const { data: rawProposals, error: propErr } = await db
@@ -203,6 +230,36 @@ export async function loadPendingTrackabilityQueue(siteId: string): Promise<Pend
       createdAt: p.created_at,
     })
     sourceProposalsByThread.set(p.subject_thread_id, list)
+  }
+
+  const nativeCandidateIds = [...new Set([...nativeProposalIdsByThread.values()].flatMap((s) => [...s]))]
+  if (nativeCandidateIds.length > 0) {
+    const { data: rawNativeProposals, error: nativeErr } = await db
+      .from('site_knowledge_proposals')
+      .select('id, title, body, created_at')
+      .in('id', nativeCandidateIds)
+    if (nativeErr) throw nativeErr
+    const nativeProposalsById = new Map((rawNativeProposals ?? []).map((p) => [p.id, p]))
+
+    for (const [threadId, ids] of nativeProposalIdsByThread) {
+      const list = sourceProposalsByThread.get(threadId) ?? []
+      for (const id of ids) {
+        const p = nativeProposalsById.get(id)
+        if (!p) continue
+        list.push({
+          id: p.id,
+          label: p.title,
+          documentId: null,
+          documentFilename: null,
+          documentType: null,
+          documentEffectiveDate: null,
+          sourcePage: null,
+          sourceExcerpt: p.body?.trim() || null,
+          createdAt: p.created_at,
+        })
+      }
+      sourceProposalsByThread.set(threadId, list)
+    }
   }
 
   const { data: rawIdentities, error: identErr } = await db

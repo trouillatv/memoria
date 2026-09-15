@@ -27,6 +27,15 @@
 // TRACKABILITY_UNDETERMINED, migration 395) lève déjà EVIDENCE_SCOPE_UNRESOLVED tant que
 // evidence_status≠'resolved' et réussit dès que cette écriture est passée — ce module ne
 // touche ni l'un ni l'autre, il ne fait que lever le verrou evidence_status en amont.
+//
+// P0-1A-2b — l'écran envoie une liste `proposalIds` unique et mélangée (la file
+// tracked-point-evidence-scope-queue.ts affiche les deux familles côte à côte, l'humain choisit
+// sans se soucier de la provenance). Ce wrapper détermine la famille de chaque id soumis en
+// l'interrogeant dans les deux tables (document_extraction_proposal / site_knowledge_proposals)
+// puis répartit p_proposal_ids / p_native_proposal_ids (mig 408) en conséquence, sans changer le
+// contrat public (toujours un seul tableau `proposalIds` en entrée). Un id introuvable dans les
+// deux tables reste classé historique par défaut : le trigger de garde (PROPOSAL_NOT_FOUND) le
+// rejette exactement comme avant 408, même code d'erreur.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -94,10 +103,21 @@ export async function resolvePendingEvidenceScope(params: {
   // via associate_pending_resolution_to_point / confirm_pending_trackability).
   if (pendingRow.status !== 'pending') return { ok: false, error: 'INVALID_STATUS' }
 
+  const { data: nativeRows, error: nativeErr } = await db
+    .from('site_knowledge_proposals')
+    .select('id')
+    .in('id', proposalIds)
+  if (nativeErr) throw nativeErr
+  const nativeIdSet = new Set((nativeRows ?? []).map((r) => (r as { id: string }).id))
+
+  const nativeProposalIds = proposalIds.filter((id) => nativeIdSet.has(id))
+  const historicalProposalIds = proposalIds.filter((id) => !nativeIdSet.has(id))
+
   const { data, error } = await db.rpc('resolve_pending_trace_evidence', {
     p_pending_trace_id: pendingTraceId,
-    p_proposal_ids: proposalIds,
+    p_proposal_ids: historicalProposalIds,
     p_evidence_basis: 'human_selected',
+    p_native_proposal_ids: nativeProposalIds,
   })
   if (error) return { ok: false, error: parseRpcError(error.message) }
 
