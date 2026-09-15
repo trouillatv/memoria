@@ -62,6 +62,24 @@ async function confirmTrackability(pendingId: string) {
   return db.rpc('confirm_pending_trackability', { p_pending_trace_id: pendingId })
 }
 
+async function makeNativeProposal(canonicalSubjectId: string, title = `${TAG} native proposal`, kind = 'knowledge') {
+  const db = createAdminClient()
+  const { data, error } = await db.from('site_knowledge_proposals').insert({
+    organization_id: orgId, site_id: siteId, kind, title,
+    dedupe_key: `${TAG}-${randomUUID()}`, canonical_subject_id: canonicalSubjectId,
+  }).select('id').single()
+  if (error) throw error
+  return (data as { id: string }).id
+}
+
+async function resolveNativeEvidence(pendingId: string, nativeProposalIds: string[], basis: 'exact_single_proposal' | 'whole_thread_proven_safe' = 'exact_single_proposal') {
+  const db = createAdminClient()
+  const { error } = await db.rpc('resolve_pending_trace_evidence', {
+    p_pending_trace_id: pendingId, p_proposal_ids: [], p_evidence_basis: basis, p_native_proposal_ids: nativeProposalIds,
+  })
+  if (error) throw error
+}
+
 beforeAll(async () => {
   const db = createAdminClient()
 
@@ -228,6 +246,48 @@ describe('confirm_pending_trackability — chemin nominal + idempotence', () => 
     const after = await loadTrackedPointReadModel(siteId)
     const afterUntouched = after.points.find((p) => p.id === untouchedPoint)
     expect(afterUntouched).toEqual(beforeUntouched)
+  })
+})
+
+describe('confirm_pending_trackability — famille NATIVE (migration 408, P0-1A-2a)', () => {
+  it('succès (evidence NATIVE uniquement) : +1 Point PROVISIONAL/manual, label sourcé depuis site_knowledge_proposals.title', async () => {
+    const db = createAdminClient()
+    // Convention du natif (cf. tête de migration 408) : le "thread" est directement le
+    // canonical_subject résolu à sa racine — aucun subject_thread_identity, réservé à
+    // l'historique. canonical_subject_id sur le Point reste donc NULL ici (guard 10
+    // inchangé, cf. commentaire migration 408) : ce n'est pas une régression, seule la
+    // famille historique alimente ce champ.
+    const rootId = (await db.from('canonical_subject').insert({ site_id: siteId, label: `${TAG} sujet natif` }).select('id').single()).data!.id as string
+
+    const pendingId = await makePendingTrace(rootId)
+    const n1 = await makeNativeProposal(rootId, `${TAG} label natif attendu`)
+    await resolveNativeEvidence(pendingId, [n1])
+
+    const { data, error } = await confirmTrackability(pendingId)
+    expect(error).toBeNull()
+    const result = data as { result: string; targetPointId: string; memberId: string; label: string; canonicalSubjectId: string | null; pointCreated: boolean; membershipInserted: boolean }
+    expect(result.result).toBe('confirmed')
+    expect(result.pointCreated).toBe(true)
+    expect(result.membershipInserted).toBe(true)
+    expect(result.label).toBe(`${TAG} label natif attendu`)
+    expect(result.canonicalSubjectId).toBeNull()
+
+    const { data: pointRow } = await db.from('tracked_point').select('*').eq('id', result.targetPointId).single()
+    const point = pointRow as { identity_status: string; founding_kind: string; founding_source: string; founding_reference: string; status: string; canonical_subject_id: string | null }
+    expect(point.identity_status).toBe('PROVISIONAL')
+    expect(point.founding_kind).toBe('manual')
+    expect(point.founding_source).toBe('human_confirmed_pending_trackability')
+    expect(point.founding_reference).toBe(pendingId)
+    expect(point.status).toBe('active')
+    expect(point.canonical_subject_id).toBeNull()
+
+    const { data: memberRow } = await db.from('tracked_point_member').select('*').eq('id', result.memberId).single()
+    const member = memberRow as { scope: string; proposal_ids: string[]; status: string; evidence_grade: string; subject_thread_id: string }
+    expect(member.scope).toBe('proposal_set')
+    expect(member.proposal_ids).toEqual([n1])
+    expect(member.status).toBe('active')
+    expect(member.evidence_grade).toBe('HARD')
+    expect(member.subject_thread_id).toBe(rootId)
   })
 })
 

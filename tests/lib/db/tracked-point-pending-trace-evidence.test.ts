@@ -18,6 +18,12 @@
 //      writer RPC, ne change JAMAIS loadTrackedPointReadModel — seul un vrai
 //      tracked_point_member HARD fait évoluer la projection (cf. migration
 //      388/389, doctrine héritée de tracked-point-pending-trace-constraints).
+//   7. famille NATIVE (migration 408, P0-1A-2a) : native_proposal_id (vers
+//      site_knowledge_proposals) résout la pending trace au même titre que
+//      proposal_id ; XOR strict entre les deux FK ; garde de thread par
+//      canonical_subject_resolve_root (jamais subject_thread_identity) ;
+//      étanchéité totale entre familles (FK typées, aucune substitution
+//      possible d'un id d'une famille dans la colonne de l'autre).
 //
 // Déclaré dans tests/integration-tests.ts. Nettoyage complet en afterAll.
 
@@ -36,6 +42,8 @@ let docId: string
 let runId: string
 const proposalIds: string[] = []
 const pendingTraceIds: string[] = []
+const nativeSubjectIds: string[] = []
+const nativeProposalIds: string[] = []
 
 async function makePendingTrace(threadId: string, kind = 'TRACKABILITY_UNDETERMINED', reason = 'x') {
   const db = createAdminClient()
@@ -60,6 +68,27 @@ async function makeProposal(threadId: string, label = `${TAG} proposal`) {
   return id
 }
 
+async function makeNativeSubject(label: string, mergedInto: string | null = null) {
+  const db = createAdminClient()
+  const { data, error } = await db.from('canonical_subject').insert({ site_id: siteId, label, merged_into: mergedInto }).select('id').single()
+  if (error) throw error
+  const id = (data as { id: string }).id
+  nativeSubjectIds.push(id)
+  return id
+}
+
+async function makeNativeProposal(canonicalSubjectId: string, title = `${TAG} native proposal`, kind = 'knowledge') {
+  const db = createAdminClient()
+  const { data, error } = await db.from('site_knowledge_proposals').insert({
+    organization_id: orgId, site_id: siteId, kind, title,
+    dedupe_key: `${TAG}-${randomUUID()}`, canonical_subject_id: canonicalSubjectId,
+  }).select('id').single()
+  if (error) throw error
+  const id = (data as { id: string }).id
+  nativeProposalIds.push(id)
+  return id
+}
+
 beforeAll(async () => {
   const db = createAdminClient()
 
@@ -77,6 +106,8 @@ beforeAll(async () => {
 afterAll(async () => {
   const db = createAdminClient()
   await db.from('tracked_point_pending_trace').delete().eq('site_id', siteId)
+  if (nativeProposalIds.length > 0) await db.from('site_knowledge_proposals').delete().in('id', nativeProposalIds)
+  if (nativeSubjectIds.length > 0) await db.from('canonical_subject').delete().in('id', nativeSubjectIds)
   await db.from('document_extraction_proposal').delete().eq('document_id', docId)
   await db.from('document_extraction_run').delete().eq('id', runId)
   await db.from('documents').delete().eq('id', docId)
@@ -267,5 +298,118 @@ describe('tracked_point_pending_trace_evidence — isolation vis-à-vis du read-
     expect(point?.hardMemberThreadIds).toContain(threadId)
 
     await db.from('tracked_point_member').delete().eq('tracked_point_id', pointId).eq('subject_thread_id', threadId)
+  })
+})
+
+describe('tracked_point_pending_trace_evidence — famille NATIVE (migration 408, P0-1A-2a)', () => {
+  it('writer resolve_pending_trace_evidence : une preuve NATIVE résout la pending trace', async () => {
+    const db = createAdminClient()
+    const rootId = await makeNativeSubject(`${TAG} root native resolve`)
+    const pendingId = await makePendingTrace(rootId)
+    const n1 = await makeNativeProposal(rootId)
+
+    const { data, error } = await db.rpc('resolve_pending_trace_evidence', {
+      p_pending_trace_id: pendingId, p_proposal_ids: [], p_evidence_basis: 'exact_single_proposal', p_native_proposal_ids: [n1],
+    })
+    expect(error).toBeNull()
+    expect((data as { result: string; evidenceCount: number }).result).toBe('resolved')
+    expect((data as { evidenceCount: number }).evidenceCount).toBe(1)
+
+    const { data: parent } = await db.from('tracked_point_pending_trace').select('evidence_status').eq('id', pendingId).single()
+    expect((parent as { evidence_status: string }).evidence_status).toBe('resolved')
+
+    const { data: evidence } = await db.from('tracked_point_pending_trace_evidence').select('proposal_id,native_proposal_id').eq('pending_trace_id', pendingId)
+    const rows = evidence as { proposal_id: string | null; native_proposal_id: string | null }[]
+    expect(rows).toEqual([{ proposal_id: null, native_proposal_id: n1 }])
+  })
+
+  it('rejette une proposition NATIVE dont le sujet racine ne correspond pas au thread de la pending trace (garde immédiate)', async () => {
+    const db = createAdminClient()
+    const rootA = await makeNativeSubject(`${TAG} root A`)
+    const rootB = await makeNativeSubject(`${TAG} root B`)
+    const pendingId = await makePendingTrace(rootA)
+    const wrongNative = await makeNativeProposal(rootB, `${TAG} native mauvais sujet`)
+
+    const { error } = await db.rpc('resolve_pending_trace_evidence', {
+      p_pending_trace_id: pendingId, p_proposal_ids: [], p_evidence_basis: 'exact_single_proposal', p_native_proposal_ids: [wrongNative],
+    })
+    expect(error).not.toBeNull()
+    expect(String(error?.message)).toMatch(/n'appartient pas au thread/)
+
+    const { data: after } = await db.from('tracked_point_pending_trace').select('evidence_status').eq('id', pendingId).single()
+    expect((after as { evidence_status: string }).evidence_status).toBe('unresolved')
+  })
+
+  it('writer resolve_pending_trace_evidence : famille native idempotente au rejeu, comme la famille historique', async () => {
+    const db = createAdminClient()
+    const rootId = await makeNativeSubject(`${TAG} root native replay`)
+    const pendingId = await makePendingTrace(rootId)
+    const n1 = await makeNativeProposal(rootId, `${TAG} native replay`)
+
+    const first = await db.rpc('resolve_pending_trace_evidence', {
+      p_pending_trace_id: pendingId, p_proposal_ids: [], p_evidence_basis: 'exact_single_proposal', p_native_proposal_ids: [n1],
+    })
+    expect(first.error).toBeNull()
+    expect((first.data as { result: string }).result).toBe('resolved')
+
+    const replay = await db.rpc('resolve_pending_trace_evidence', {
+      p_pending_trace_id: pendingId, p_proposal_ids: [], p_evidence_basis: 'exact_single_proposal', p_native_proposal_ids: [n1],
+    })
+    expect(replay.error).toBeNull()
+    expect((replay.data as { result: string }).result).toBe('already_resolved')
+
+    const { count } = await db.from('tracked_point_pending_trace_evidence')
+      .select('*', { count: 'exact', head: true }).eq('pending_trace_id', pendingId)
+    expect(count).toBe(1)
+  })
+
+  it('CHECK family_xor : impossible d\'avoir les deux FK renseignées sur une même ligne d\'evidence', async () => {
+    const db = createAdminClient()
+    const rootId = await makeNativeSubject(`${TAG} root xor both`)
+    const pendingId = await makePendingTrace(rootId)
+    const hist = await makeProposal(rootId)
+    const nat = await makeNativeProposal(rootId, `${TAG} native xor both`)
+
+    const { error } = await db.from('tracked_point_pending_trace_evidence')
+      .insert({ pending_trace_id: pendingId, proposal_id: hist, native_proposal_id: nat })
+    expect(error).not.toBeNull()
+
+    const { count } = await db.from('tracked_point_pending_trace_evidence')
+      .select('*', { count: 'exact', head: true }).eq('pending_trace_id', pendingId)
+    expect(count).toBe(0)
+  })
+
+  it('CHECK family_xor : impossible d\'avoir les deux FK nulles sur une même ligne d\'evidence', async () => {
+    const db = createAdminClient()
+    const rootId = await makeNativeSubject(`${TAG} root xor none`)
+    const pendingId = await makePendingTrace(rootId)
+
+    const { error } = await db.from('tracked_point_pending_trace_evidence')
+      .insert({ pending_trace_id: pendingId })
+    expect(error).not.toBeNull()
+
+    const { count } = await db.from('tracked_point_pending_trace_evidence')
+      .select('*', { count: 'exact', head: true }).eq('pending_trace_id', pendingId)
+    expect(count).toBe(0)
+  })
+
+  it('aucun cross-link : un id d\'une famille ne peut jamais être inséré dans la colonne FK de l\'autre famille', async () => {
+    const db = createAdminClient()
+    const rootId = await makeNativeSubject(`${TAG} root cross-link`)
+    const pendingId = await makePendingTrace(rootId)
+    const hist = await makeProposal(rootId)
+    const nat = await makeNativeProposal(rootId, `${TAG} native cross-link`)
+
+    const { error: err1 } = await db.from('tracked_point_pending_trace_evidence')
+      .insert({ pending_trace_id: pendingId, native_proposal_id: hist })
+    expect(err1).not.toBeNull()
+
+    const { error: err2 } = await db.from('tracked_point_pending_trace_evidence')
+      .insert({ pending_trace_id: pendingId, proposal_id: nat })
+    expect(err2).not.toBeNull()
+
+    const { count } = await db.from('tracked_point_pending_trace_evidence')
+      .select('*', { count: 'exact', head: true }).eq('pending_trace_id', pendingId)
+    expect(count).toBe(0)
   })
 })
