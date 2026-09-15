@@ -25,6 +25,11 @@ function entry(overrides: Partial<PointListEntry>): PointListEntry {
     reviewFingerprint: null,
     isReviewed: false,
     reviewedAt: null,
+    actionCount: 0,
+    correctiveActionCount: 0,
+    reserveCount: 0,
+    deadlineCount: 0,
+    nextDeadlineDate: null,
     ...overrides,
   }
 }

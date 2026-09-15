@@ -13,6 +13,7 @@ import 'server-only'
 // par Point — un simple batching, pas un nouveau moteur de calcul.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import type { SiteActionStatus } from '@/types/db'
 import {
   loadTrackedPointReadModel,
   sortPointsForSubjectDisplay,
@@ -38,6 +39,24 @@ import {
 import { getTrackedPointReviews } from '@/lib/db/tracked-point-reviews'
 
 type AdminClient = ReturnType<typeof createAdminClient>
+type DeadlineStatus = 'to_plan' | 'planned' | 'done' | 'cancelled' | 'superseded'
+
+// Composition d'un Point (quick win Vincent 2026-09-15) : ventilation Action/Réserve/Échéance
+// ENCORE ACTIVES (jamais terminale/annulée/levée), dérivée à coût nul de `entityRefsByCbo`
+// (déjà batché par loadActorNamesByPoint). `correctiveActionCount` = sous-ensemble d'actionCount
+// dont `reserve_id != null` : AUCUN nouveau type « Action de réserve », juste un signal
+// d'affichage sur le modèle Action existant.
+interface PointComposition {
+  actionCount: number
+  correctiveActionCount: number
+  reserveCount: number
+  deadlineCount: number
+  nextDeadlineDate: string | null
+}
+
+const EMPTY_COMPOSITION: PointComposition = {
+  actionCount: 0, correctiveActionCount: 0, reserveCount: 0, deadlineCount: 0, nextDeadlineDate: null,
+}
 
 export interface PointListEntry {
   id: string
@@ -93,6 +112,15 @@ export interface PointListEntry {
   reviewFingerprint: string | null
   isReviewed: boolean
   reviewedAt: string | null
+  // Composition réelle du Point (quick win Vincent 2026-09-15, GO « Réserves sans Action
+  // corrective + composition des cartes Points ») : compteurs Action/Réserve/Échéance ENCORE
+  // ACTIFS + prochaine échéance si connue. Voir PointComposition ci-dessus pour la définition
+  // exacte (jamais un score, jamais un nouveau type de données).
+  actionCount: number
+  correctiveActionCount: number
+  reserveCount: number
+  deadlineCount: number
+  nextDeadlineDate: string | null
 }
 
 export interface PointListFilterOptions {
@@ -154,18 +182,23 @@ async function loadActorNamesByPoint(
   db: AdminClient,
   siteId: string,
   points: PointReadModelEntry[],
-): Promise<{ actorNamesByPoint: Map<string, string[]>; pvDocumentIdsByPoint: Map<string, Set<string>> }> {
+): Promise<{
+  actorNamesByPoint: Map<string, string[]>
+  pvDocumentIdsByPoint: Map<string, Set<string>>
+  compositionByPoint: Map<string, PointComposition>
+}> {
   const result = new Map<string, string[]>()
   // Fréquence PV (recette Vincent 2026-09-15, cf. tracked-point-detail.computeMentionsCount) :
   // document ids issus des Actions/Réserves/Échéances portées par le CBO du Point, en plus
   // de sa trajectoire directe — un Point fondé par CBO peut n'avoir aucun événement propre.
   const pvDocumentIdsByPoint = new Map<string, Set<string>>()
+  const compositionByPoint = new Map<string, PointComposition>()
   const allCboIds = [...new Set(points.flatMap((p) => p.cboIds))]
   if (allCboIds.length === 0) {
     // Aucun CBO sur tout le site : pas d'objet métier à interroger, mais la trajectoire
     // directe des Points (si non vide) reste une provenance PV valable à compter.
     await hydratePvDocumentIdsFromTrajectoryOnly(db, points, pvDocumentIdsByPoint)
-    return { actorNamesByPoint: result, pvDocumentIdsByPoint }
+    return { actorNamesByPoint: result, pvDocumentIdsByPoint, compositionByPoint }
   }
 
   const { data: memberRows } = await db
@@ -192,11 +225,14 @@ async function loadActorNamesByPoint(
   const contactIds = new Set<string>()
   const companyIds = new Set<string>()
 
-  type ActionRow = { id: string; assigned_to: string | null; assigned_contact_id: string | null; assigned_company_id: string | null }
+  type ActionRow = {
+    id: string; assigned_to: string | null; assigned_contact_id: string | null; assigned_company_id: string | null
+    reserve_id: string | null; status: SiteActionStatus; due_date: string | null
+  }
   let actionRows: ActionRow[] = []
   if (actionIds.size > 0) {
     const { data } = await db.from('site_actions')
-      .select('id, assigned_to, assigned_contact_id, assigned_company_id')
+      .select('id, assigned_to, assigned_contact_id, assigned_company_id, reserve_id, status, due_date')
       .in('id', [...actionIds]).eq('site_id', siteId)
     actionRows = (data ?? []) as ActionRow[]
     for (const a of actionRows) {
@@ -205,11 +241,14 @@ async function loadActorNamesByPoint(
     }
   }
 
-  type DeadlineRow = { id: string; assigned_contact_id: string | null; assigned_company_id: string | null }
+  type DeadlineRow = {
+    id: string; assigned_contact_id: string | null; assigned_company_id: string | null
+    status: DeadlineStatus; due_date: string | null
+  }
   let deadlineRows: DeadlineRow[] = []
   if (deadlineIds.size > 0) {
     const { data } = await db.from('site_deadlines')
-      .select('id, assigned_contact_id, assigned_company_id')
+      .select('id, assigned_contact_id, assigned_company_id, status, due_date')
       .in('id', [...deadlineIds]).eq('site_id', siteId)
     deadlineRows = (data ?? []) as DeadlineRow[]
     for (const d of deadlineRows) {
@@ -218,11 +257,11 @@ async function loadActorNamesByPoint(
     }
   }
 
-  type ReserveRow = { id: string; responsible_company_id: string | null }
+  type ReserveRow = { id: string; responsible_company_id: string | null; status: 'open' | 'lifted' }
   let reserveRows: ReserveRow[] = []
   if (reserveIds.size > 0) {
     const { data } = await db.from('site_reserve')
-      .select('id, responsible_company_id')
+      .select('id, responsible_company_id, status')
       .in('id', [...reserveIds]).eq('site_id', siteId)
     reserveRows = (data ?? []) as ReserveRow[]
     for (const r of reserveRows) {
@@ -317,11 +356,33 @@ async function loadActorNamesByPoint(
   for (const point of points) {
     const names = new Set<string>()
     const docIds = new Set<string>()
+    let actionCount = 0
+    let correctiveActionCount = 0
+    let reserveCount = 0
+    let deadlineCount = 0
+    let nextDeadlineDate: string | null = null
     for (const cboId of point.cboIds) {
       for (const ref of entityRefsByCbo.get(cboId) ?? []) {
         const name = nameForEntity(ref.type, ref.id)
         if (name) names.add(name)
         for (const docId of documentIdsByEntity.get(ref.id) ?? []) docIds.add(docId)
+        if (ref.type === 'site_action') {
+          const a = actionById.get(ref.id)
+          if (a && a.status !== 'done' && a.status !== 'cancelled') {
+            actionCount += 1
+            if (a.reserve_id) correctiveActionCount += 1
+          }
+        } else if (ref.type === 'site_reserve') {
+          const r = reserveById.get(ref.id)
+          if (r && r.status !== 'lifted') reserveCount += 1
+        } else if (ref.type === 'site_deadline') {
+          const d = deadlineById.get(ref.id)
+          if (d && d.status !== 'done' && d.status !== 'cancelled' && d.status !== 'superseded') {
+            deadlineCount += 1
+            const due = d.due_date ? d.due_date.slice(0, 10) : null
+            if (due && (nextDeadlineDate === null || due < nextDeadlineDate)) nextDeadlineDate = due
+          }
+        }
       }
     }
     for (const proposalId of trajectoryProposalIdsByPoint.get(point.id) ?? []) {
@@ -330,9 +391,12 @@ async function loadActorNamesByPoint(
     }
     if (names.size > 0) result.set(point.id, [...names])
     if (docIds.size > 0) pvDocumentIdsByPoint.set(point.id, docIds)
+    if (actionCount > 0 || reserveCount > 0 || deadlineCount > 0) {
+      compositionByPoint.set(point.id, { actionCount, correctiveActionCount, reserveCount, deadlineCount, nextDeadlineDate })
+    }
   }
 
-  return { actorNamesByPoint: result, pvDocumentIdsByPoint }
+  return { actorNamesByPoint: result, pvDocumentIdsByPoint, compositionByPoint }
 }
 
 // Dupliqué de `tracked-point-lingering.ts` (countPassagesAfter, non exporté) : même calcul pur
@@ -426,7 +490,7 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
       deriveCanonicalAttentionItems(siteId),
       getTrackedPointReviews(siteId, userId),
     ])
-  const { actorNamesByPoint, pvDocumentIdsByPoint } = actorNamesResult
+  const { actorNamesByPoint, pvDocumentIdsByPoint, compositionByPoint } = actorNamesResult
 
   const today = todayLocalIso()
   const lastPvDate = pvDates.length > 0 ? pvDates.reduce((max, d) => (d > max ? d : max)) : null
@@ -492,6 +556,7 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
       reviewFingerprint,
       isReviewed: isTrackedPointReviewed(reviewFingerprint, storedReview?.fingerprint),
       reviewedAt: storedReview?.reviewedAt ?? null,
+      ...(compositionByPoint.get(p.id) ?? EMPTY_COMPOSITION),
     }
   })
 

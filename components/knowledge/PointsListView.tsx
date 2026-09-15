@@ -52,6 +52,22 @@ const STATE_ORDER: PointComputedCurrentState[] = ['reopened', 'conflict', 'open'
 const DATE_FMT = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Pacific/Noumea', day: 'numeric', month: 'short', year: 'numeric' })
 const frDate = (iso: string | null): string | null => (iso ? DATE_FMT.format(new Date(iso)) : null)
 
+// Composition réelle du Point (quick win Vincent 2026-09-15) : « 2 Actions · 3 Réserves ·
+// 1 Échéance », compteurs déjà actifs uniquement (cf. PointListEntry). N'affiche jamais un
+// compteur à 0 — un Point sans objet lié n'a simplement pas cette ligne.
+function formatComposition(p: PointListEntry): string | null {
+  const parts: string[] = []
+  if (p.actionCount > 0) {
+    const corrective = p.correctiveActionCount > 0
+      ? ` (dont ${p.correctiveActionCount} corrective${p.correctiveActionCount > 1 ? 's' : ''})`
+      : ''
+    parts.push(`${p.actionCount} Action${p.actionCount > 1 ? 's' : ''}${corrective}`)
+  }
+  if (p.reserveCount > 0) parts.push(`${p.reserveCount} Réserve${p.reserveCount > 1 ? 's' : ''}`)
+  if (p.deadlineCount > 0) parts.push(`${p.deadlineCount} Échéance${p.deadlineCount > 1 ? 's' : ''}`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
 const SELECT_CLS = 'rounded-lg border bg-background px-2.5 py-1.5 text-[13px]'
 
 // Nombre de Points prioritaires affichés par sujet avant « Voir les autres » (mandat : 3-5).
@@ -69,6 +85,7 @@ interface PointRowProps {
 }
 
 function PointRow({ p, pointHrefPrefix, subjectHrefPrefix, showSubject, dense = false }: PointRowProps) {
+  const composition = formatComposition(p)
   return (
     <li className={cn('rounded-xl border', dense ? 'px-3 py-2' : 'px-4 py-3')}>
       <div className="flex items-start justify-between gap-3">
@@ -98,6 +115,12 @@ function PointRow({ p, pointHrefPrefix, subjectHrefPrefix, showSubject, dense = 
         {p.actorNames.length > 0 && <span>{p.actorNames.join(', ')}</span>}
         {p.latestMeaningfulEventAt && <span>Dernière évolution : {frDate(p.latestMeaningfulEventAt)}</span>}
       </div>
+      {(composition || p.nextDeadlineDate) && (
+        <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground', dense ? 'mt-1 text-[11.5px]' : 'mt-1.5 text-[12px]')}>
+          {composition && <span>{composition}</span>}
+          {p.nextDeadlineDate && <span>Prochaine échéance : {frDate(p.nextDeadlineDate)}</span>}
+        </div>
+      )}
     </li>
   )
 }
