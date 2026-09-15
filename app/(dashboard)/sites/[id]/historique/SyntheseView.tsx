@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import type { WatchlistEntry, WatchReason, CategoryProgress, RunMeta, ImportantSubject } from '@/lib/documents/site-synthesis'
 import type { OccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import type { SiteHistoricalTimeline } from '@/lib/documents/pv-history'
+import type { NativeActivityEntry } from '@/lib/documents/native-synthesis'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -472,6 +473,30 @@ function HistoireBloc({
   )
 }
 
+// ── Bloc natif — Activité récente (chantiers sans PV historique) ────────────
+
+function NativeActivityBloc({ activity }: { activity: NativeActivityEntry[] }) {
+  if (activity.length === 0) return null
+  return (
+    <section className="rounded-[18px] border bg-card p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Activité récente</p>
+      <ul className="mt-3 space-y-2">
+        {activity.map((entry) => (
+          <li key={entry.date} className="flex items-center justify-between gap-3 text-sm">
+            <span className="font-medium">{fmtDate(entry.date)}</span>
+            <span className="text-xs text-muted-foreground">
+              {entry.visits > 0 && plural(entry.visits, 'visite')}
+              {entry.visits > 0 && entry.meetings > 0 && ' · '}
+              {entry.meetings > 0 && plural(entry.meetings, 'réunion')}
+              {' · '}{plural(entry.subjectsCount, 'sujet mentionné', 'sujets mentionnés')}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 // ── Composant principal ──────────────────────────────────────────────────────
 
 export interface SyntheseViewProps {
@@ -483,6 +508,10 @@ export interface SyntheseViewProps {
   delta: { summary: OccurrencePvSummary; fromIdx: number; toIdx: number } | null
   totalSubjects: number
   importantSubjects: ImportantSubject[]
+  /** P0-2 — activité native (visites/réunions), affichée seulement quand `runs` est vide. */
+  nativeActivity?: NativeActivityEntry[]
+  /** P0-2 — résumé natif pour l'en-tête du mode sans PV historique. */
+  nativeSummary?: { visitCount: number; meetingCount: number; lastDate: string | null }
 }
 
 export function SyntheseView({
@@ -494,8 +523,36 @@ export function SyntheseView({
   delta,
   totalSubjects,
   importantSubjects,
+  nativeActivity = [],
+  nativeSummary,
 }: SyntheseViewProps) {
   if (runs.length === 0) {
+    // P0-2 — chantier suivi uniquement par visites/réunions natives (ex. PETRO) : la même
+    // vérité d'état (getNavigableSubjectsForSite) alimente ici Sujets importants/à surveiller,
+    // au lieu du blocage total sur l'absence de PV. Catégories et delta PV restent absents
+    // (non produits par l'extraction native) plutôt que fabriqués.
+    if (totalSubjects > 0) {
+      return (
+        <div className="space-y-4">
+          <section className="rounded-[18px] border bg-card p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Suivi natif (sans PV historique importé)
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {plural(totalSubjects, 'sujet')} suivi{totalSubjects > 1 ? 's' : ''}
+              {nativeSummary && nativeSummary.visitCount > 0 && ` · ${plural(nativeSummary.visitCount, 'visite')}`}
+              {nativeSummary && nativeSummary.meetingCount > 0 && ` · ${plural(nativeSummary.meetingCount, 'réunion')}`}
+              {nativeSummary?.lastDate && ` · dernière le ${fmtDate(nativeSummary.lastDate)}`}
+            </p>
+          </section>
+
+          <SujetsImportantsBloc items={importantSubjects} siteId={siteId} />
+          <WatchlistBloc items={watchlist} siteId={siteId} runs={runs} />
+          <NativeActivityBloc activity={nativeActivity} />
+        </div>
+      )
+    }
+
     return (
       <section className="rounded-[22px] border border-dashed bg-card p-8 text-center shadow-sm">
         <p className="font-medium">Aucun PV historique importé pour ce chantier.</p>

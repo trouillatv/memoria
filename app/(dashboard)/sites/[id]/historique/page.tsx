@@ -8,7 +8,12 @@ import { getSiteHistoricalTimeline, getSiteSubjectMatrix, canonicalRunsForSite, 
 import { suiviLoadPlan } from '@/lib/documents/suivi-view-plan'
 import { buildOccurrencePvSummary, type OccurrencePvSummary } from '@/lib/documents/occurrence-pv-summary'
 import { getSuggestedLinkCountsBySite } from '@/lib/db/subject-thread-links'
-import { getSiteNativeOccurrencesBySubject, getCanonicalSubjectLabelsByIds, buildNativeEvolutionData } from '@/lib/db/canonical-subject-life'
+import {
+  getSiteNativeOccurrencesBySubject,
+  getCanonicalSubjectLabelsByIds,
+  buildNativeEvolutionData,
+  getNavigableSubjectsForSite,
+} from '@/lib/db/canonical-subject-life'
 import {
   getRunsMeta,
   computeWatchlist,
@@ -17,6 +22,11 @@ import {
   getSiteHealthTimeline,
   getSiteDependencyGraph,
 } from '@/lib/documents/site-synthesis'
+import {
+  computeNativeWatchlist,
+  computeNativeImportantSubjects,
+  computeNativeRecentActivity,
+} from '@/lib/documents/native-synthesis'
 import { buildEvolutionReadModel, buildDeterministicNarrative, computeEvolutionNarrativeFingerprint } from '@/lib/documents/pv-evolution'
 import { getCachedEvolutionNarrative, ensureEvolutionNarrative } from '@/lib/documents/evolution-narrative-cache'
 import { isEvolutionV2Enabled, classifySubjectEvolutionV2 } from '@/lib/knowledge/evolution-v2'
@@ -239,9 +249,27 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   )
 
   // Computations pures depuis la matrice
-  const watchlist = matrix ? computeWatchlist(matrix) : []
+  let watchlist = matrix ? computeWatchlist(matrix) : []
   const categories = matrix ? computeProgressByCategory(matrix) : []
-  const totalSubjects = matrix?.rows.length ?? 0
+  let totalSubjects = matrix?.rows.length ?? 0
+  let nativeImportantSubjects = importantSubjects
+  let nativeActivity: ReturnType<typeof computeNativeRecentActivity> = []
+  let nativeSummary: { visitCount: number; meetingCount: number; lastDate: string | null } | undefined
+
+  // P0-2 — chantier suivi uniquement par visites/réunions natives (0 PV historique importé,
+  // ex. PETRO) : projette la MÊME vérité d'état (getNavigableSubjectsForSite, déjà unifiée
+  // historique+natif) dans la Synthèse au lieu du blocage total sur l'absence de PV. Ne
+  // remplace jamais la vérité issue de la matrice quand des PV existent (totalRuns > 0).
+  if (view === 'synthese' && totalRuns === 0) {
+    const navSubjects = await getNavigableSubjectsForSite(siteId).catch(() => [])
+    if (navSubjects.length > 0) {
+      watchlist = computeNativeWatchlist(navSubjects)
+      totalSubjects = navSubjects.length
+      nativeImportantSubjects = computeNativeImportantSubjects(navSubjects)
+      nativeActivity = computeNativeRecentActivity(nativeOccurrences)
+      nativeSummary = { visitCount: nativeVisitCount, meetingCount: nativeMeetingCount, lastDate: nativeLastDate }
+    }
+  }
 
   // « Avant / Après » n'existe qu'avec au moins deux comptes rendus comparables : sur un chantier
   // nourri uniquement par des visites natives (aucun PV importé), l'onglet est masqué plutôt que
@@ -330,7 +358,9 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
             categories={categories}
             delta={deltaData}
             totalSubjects={totalSubjects}
-            importantSubjects={importantSubjects}
+            importantSubjects={nativeImportantSubjects}
+            nativeActivity={nativeActivity}
+            nativeSummary={nativeSummary}
           />
         )}
 
