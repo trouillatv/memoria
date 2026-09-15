@@ -516,6 +516,20 @@ export async function runCanonicalReconciliation(params: {
         canonical_reconcile_started_at: null,
       })
       .eq('id', reportId)
+
+    // ── P6 Live Writer — second producteur natif, chemin CONFIRMED uniquement ──
+    // (P0-1A-1). Best-effort : une panne ici ne doit jamais faire régresser une
+    // réconciliation par ailleurs réussie. Voir lib/db/tracked-point-live-writer-native-adapter.ts.
+    try {
+      const { runTrackedPointLiveWriterForNativeReport } = await import('@/lib/db/tracked-point-live-writer-native-adapter')
+      const liveWriter = await runTrackedPointLiveWriterForNativeReport({ reportId, siteId })
+      if (liveWriter && liveWriter.unitsProcessed > 0) {
+        console.log(`[live-writer-native] report=${reportId.slice(0, 8)} traités=${liveWriter.unitsProcessed} verdicts=${JSON.stringify(liveWriter.verdictCounts)} refus=${liveWriter.refusals} nonConfirmé=${liveWriter.skippedNotConfirmed}`)
+      }
+    } catch (err) {
+      console.error('[live-writer-native] échec (non-bloquant):', err instanceof Error ? err.message : String(err))
+    }
+
     return 'reconciled'
   } catch (err) {
     const reason = serializeError(err)
