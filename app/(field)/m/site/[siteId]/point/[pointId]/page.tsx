@@ -63,6 +63,7 @@ export default async function MobilePointFichePage({
         companies={companies}
         subjectMiniContext={subjectMiniContext}
         subjectHref={point.ownerCanonicalSubjectId ? `/m/site/${siteId}/sujets/${point.ownerCanonicalSubjectId}` : undefined}
+        entrepriseLinksEnabled={false}
       />
     </div>
   )

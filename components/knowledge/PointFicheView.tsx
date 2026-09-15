@@ -444,6 +444,7 @@ export function PointFicheView({
   companies = [],
   subjectMiniContext = null,
   subjectHref,
+  entrepriseLinksEnabled = true,
 }: {
   point: TrackedPointDetail
   backHref: string
@@ -454,6 +455,11 @@ export function PointFicheView({
   companies?: SiteCandidateCompany[]
   subjectMiniContext?: SubjectPointMiniContext | null
   subjectHref?: string
+  /** La fiche entreprise (`/sites/[id]/entreprise/[companyId]`) n'existe qu'en
+   *  desktop (groupe `(dashboard)`, redirige tout chef_equipe vers `/m`). Sur
+   *  mobile, tant qu'aucune fiche équivalente n'existe, on affiche le nom en
+   *  texte simple plutôt qu'un lien qui renverrait silencieusement à l'accueil. */
+  entrepriseLinksEnabled?: boolean
 }) {
   const p = point
   // Cibles éligibles pour « Affecter… → Affecter à l'Action » (mandat Vincent 2026-09-14) :
@@ -690,7 +696,11 @@ export function PointFicheView({
                   <ul className="mt-1 flex flex-wrap gap-2">
                     {p.responsibleCompanyDesignations.map((d) => (
                       <li key={d.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[12.5px] dark:border-sky-800 dark:bg-sky-950/30">
-                        <Link href={`/sites/${p.siteId}/entreprise/${d.companyId}`} className="hover:underline">{d.companyName}</Link>
+                        {entrepriseLinksEnabled ? (
+                          <Link href={`/sites/${p.siteId}/entreprise/${d.companyId}`} className="hover:underline">{d.companyName}</Link>
+                        ) : (
+                          <span className="font-medium">{d.companyName}</span>
+                        )}
                         <span>· Pilote du Point</span>
                         <PointResponsibleCompanyRevoke siteId={p.siteId} pointId={p.id} designationId={d.id} companyName={d.companyName} />
                       </li>
@@ -707,7 +717,7 @@ export function PointFicheView({
                 <ul className="mt-1 flex flex-wrap gap-2">
                   {actionResponsibles.map((a) => (
                     <li key={a.key} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
-                      {a.companyId ? (
+                      {a.companyId && entrepriseLinksEnabled ? (
                         <Link href={`/sites/${p.siteId}/entreprise/${a.companyId}`} className="font-medium hover:underline">{a.name}</Link>
                       ) : (
                         a.name
@@ -727,7 +737,7 @@ export function PointFicheView({
                 <ul className="mt-1 flex flex-wrap items-center gap-2">
                   {p.citedCompanies.map((c) => (
                     <li key={c.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1 text-[12.5px] text-muted-foreground">
-                      {c.companyId ? (
+                      {c.companyId && entrepriseLinksEnabled ? (
                         <Link href={`/sites/${p.siteId}/entreprise/${c.companyId}`} className="hover:underline">{c.name}</Link>
                       ) : (
                         <span>{c.name}</span>
