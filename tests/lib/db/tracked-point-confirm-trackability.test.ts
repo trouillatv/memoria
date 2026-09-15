@@ -249,14 +249,15 @@ describe('confirm_pending_trackability — chemin nominal + idempotence', () => 
   })
 })
 
-describe('confirm_pending_trackability — famille NATIVE (migration 408, P0-1A-2a)', () => {
-  it('succès (evidence NATIVE uniquement) : +1 Point PROVISIONAL/manual, label sourcé depuis site_knowledge_proposals.title', async () => {
+describe('confirm_pending_trackability — famille NATIVE (migration 408+409, P0-1A-2a + P0-1A-2a.1)', () => {
+  it('succès (evidence NATIVE uniquement) : +1 Point PROVISIONAL/manual, canonical_subject_id = racine native, label sourcé depuis site_knowledge_proposals.title', async () => {
     const db = createAdminClient()
     // Convention du natif (cf. tête de migration 408) : le "thread" est directement le
     // canonical_subject résolu à sa racine — aucun subject_thread_identity, réservé à
-    // l'historique. canonical_subject_id sur le Point reste donc NULL ici (guard 10
-    // inchangé, cf. commentaire migration 408) : ce n'est pas une régression, seule la
-    // famille historique alimente ce champ.
+    // l'historique. Depuis la migration 409 (P0-1A-2a.1), canonical_subject_id sur le
+    // Point est dérivé de cette même racine native (jamais NULL par construction dès
+    // lors qu'une evidence native a résolu la pending trace) : la mémoire native rejoint
+    // la mémoire longitudinale sans orphelinage.
     const rootId = (await db.from('canonical_subject').insert({ site_id: siteId, label: `${TAG} sujet natif` }).select('id').single()).data!.id as string
 
     const pendingId = await makePendingTrace(rootId)
@@ -270,7 +271,7 @@ describe('confirm_pending_trackability — famille NATIVE (migration 408, P0-1A-
     expect(result.pointCreated).toBe(true)
     expect(result.membershipInserted).toBe(true)
     expect(result.label).toBe(`${TAG} label natif attendu`)
-    expect(result.canonicalSubjectId).toBeNull()
+    expect(result.canonicalSubjectId).toBe(rootId)
 
     const { data: pointRow } = await db.from('tracked_point').select('*').eq('id', result.targetPointId).single()
     const point = pointRow as { identity_status: string; founding_kind: string; founding_source: string; founding_reference: string; status: string; canonical_subject_id: string | null }
@@ -279,7 +280,7 @@ describe('confirm_pending_trackability — famille NATIVE (migration 408, P0-1A-
     expect(point.founding_source).toBe('human_confirmed_pending_trackability')
     expect(point.founding_reference).toBe(pendingId)
     expect(point.status).toBe('active')
-    expect(point.canonical_subject_id).toBeNull()
+    expect(point.canonical_subject_id).toBe(rootId)
 
     const { data: memberRow } = await db.from('tracked_point_member').select('*').eq('id', result.memberId).single()
     const member = memberRow as { scope: string; proposal_ids: string[]; status: string; evidence_grade: string; subject_thread_id: string }
@@ -288,6 +289,64 @@ describe('confirm_pending_trackability — famille NATIVE (migration 408, P0-1A-
     expect(member.status).toBe('active')
     expect(member.evidence_grade).toBe('HARD')
     expect(member.subject_thread_id).toBe(rootId)
+  })
+
+  it('suit la racine merged_into : la proposition référence le sujet pré-fusion, canonical_subject_id du Point = la racine, jamais le sujet brut', async () => {
+    const db = createAdminClient()
+    const rootId = (await db.from('canonical_subject').insert({ site_id: siteId, label: `${TAG} sujet racine (post-fusion)` }).select('id').single()).data!.id as string
+    const mergedLeafId = (await db.from('canonical_subject').insert({ site_id: siteId, label: `${TAG} sujet fusionné (pré-fusion)`, merged_into: rootId }).select('id').single()).data!.id as string
+
+    const pendingId = await makePendingTrace(rootId)
+    const n1 = await makeNativeProposal(mergedLeafId, `${TAG} label sujet fusionné`)
+    await resolveNativeEvidence(pendingId, [n1])
+
+    const { data, error } = await confirmTrackability(pendingId)
+    expect(error).toBeNull()
+    const result = data as { canonicalSubjectId: string | null; targetPointId: string }
+    expect(result.canonicalSubjectId).toBe(rootId)
+    expect(result.canonicalSubjectId).not.toBe(mergedLeafId)
+
+    const { data: pointRow } = await db.from('tracked_point').select('canonical_subject_id').eq('id', result.targetPointId).single()
+    expect((pointRow as { canonical_subject_id: string | null }).canonical_subject_id).toBe(rootId)
+  })
+
+  it('replay idempotent : rejeu d\'une confirmation native ne recalcule jamais canonical_subject_id', async () => {
+    const db = createAdminClient()
+    const rootId = (await db.from('canonical_subject').insert({ site_id: siteId, label: `${TAG} sujet natif replay` }).select('id').single()).data!.id as string
+
+    const pendingId = await makePendingTrace(rootId)
+    const n1 = await makeNativeProposal(rootId)
+    await resolveNativeEvidence(pendingId, [n1])
+
+    const first = await confirmTrackability(pendingId)
+    expect(first.error).toBeNull()
+    const firstResult = first.data as { targetPointId: string; canonicalSubjectId: string | null }
+
+    const replay = await confirmTrackability(pendingId)
+    expect(replay.error).toBeNull()
+    const replayResult = replay.data as { result: string; targetPointId: string; pointCreated: boolean }
+    expect(replayResult.result).toBe('already_resolved')
+    expect(replayResult.targetPointId).toBe(firstResult.targetPointId)
+    expect(replayResult.pointCreated).toBe(false)
+
+    const { data: pointRow } = await db.from('tracked_point').select('canonical_subject_id').eq('id', firstResult.targetPointId).single()
+    expect((pointRow as { canonical_subject_id: string | null }).canonical_subject_id).toBe(rootId)
+  })
+
+  it('n\'affecte jamais une confirmation historique : canonical_subject_id reste dérivé de subject_thread_identity quand aucune evidence native n\'est présente', async () => {
+    const db = createAdminClient()
+    const threadId = randomUUID()
+    const subjectId = (await db.from('canonical_subject').insert({ site_id: siteId, label: `${TAG} sujet historique non-affecte` }).select('id').single()).data!.id as string
+    await db.from('subject_thread_identity').insert({ subject_thread_id: threadId, site_id: siteId, canonical_subject_id: subjectId, source: 'manual' })
+
+    const pendingId = await makePendingTrace(threadId)
+    const p1 = await makeProposal(threadId)
+    await resolveEvidence(pendingId, [p1])
+
+    const { data, error } = await confirmTrackability(pendingId)
+    expect(error).toBeNull()
+    const result = data as { canonicalSubjectId: string | null }
+    expect(result.canonicalSubjectId).toBe(subjectId)
   })
 })
 
