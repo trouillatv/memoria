@@ -8,6 +8,7 @@ import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheLinkRow, FicheRow, FicheEmpty } from './fiche-ui'
 import { ActorNetworkExplorer } from './graph/ActorNetworkExplorer'
 import type { SelectableKind } from './graph/ActorsGraphCanvas'
+import { CompanyIdentityActions } from './CompanyIdentityActions'
 
 // Date de mention (site_intervenants.effective_from — un DATE brut, jamais un
 // horodatage) : reformatage direct, sans passer par Date()/fuseau — inutile et
@@ -82,6 +83,7 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
             )}
           </div>
         </div>
+        <CompanyIdentityActions companyId={fiche.id} companyName={fiche.name} />
       </section>
 
       {/* ── RÉSEAU — l'explorateur DANS la fiche (aucune fenêtre intermédiaire). */}

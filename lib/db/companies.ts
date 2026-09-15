@@ -151,6 +151,36 @@ export async function getCompany(id: string): Promise<Company | null> {
   return data ? rowToCompany(data) : null
 }
 
+export interface CompanySearchHit {
+  id: string
+  name: string
+}
+
+/**
+ * Recherche d'entreprises ACTIVES de l'org, pour choisir une cible de fusion/alias
+ * (P0-INT-1, UX « Fusionner avec… »). Exclut placeholder, archivées et `excludeId`
+ * (l'entreprise en cours) — on ne propose jamais de fusionner avec un alias : le
+ * trigger `check_company_alias_target` l'interdirait de toute façon (pas de chaîne).
+ */
+export async function searchOrgCompanies(orgId: string, query: string, excludeId?: string, limit = 8): Promise<CompanySearchHit[]> {
+  const q = query.trim()
+  if (!orgId || q.length < 2) return []
+  const { data } = await createAdminClient()
+    .from('companies')
+    .select('id, name, short_name')
+    .eq('organization_id', orgId)
+    .eq('status', 'active')
+    .eq('is_placeholder', false)
+    .is('deleted_at', null)
+    .ilike('name', `%${q}%`)
+    .order('name', { ascending: true })
+    .limit(limit + 1)
+  return ((data ?? []) as Array<{ id: string; name: string; short_name: string | null }>)
+    .filter((c) => c.id !== excludeId)
+    .slice(0, limit)
+    .map((c) => ({ id: c.id, name: c.short_name || c.name }))
+}
+
 /**
  * Résout l'IDENTITÉ (nom court/raison sociale) de plusieurs entreprises par id,
  * y compris ARCHIVÉES ou sorties d'un casting (Lot 2B.1). L'identité vient de
