@@ -95,4 +95,5 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/db/tracked-point-pending-resolution.test.ts',
   'tests/lib/db/tracked-point-pending-evidence-scope.test.ts',
   'tests/lib/db/tracked-point-pending-trackability.test.ts',
+  'tests/lib/db/p0-1b-reconcile-corpus-hash.test.ts',
 ]

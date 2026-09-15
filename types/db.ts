@@ -499,6 +499,8 @@ export interface DbSiteReport {
   canonical_reconciled_at?: string | null
   /** Erreur de la dernière réconciliation canonique échouée (mig 318). NULL si succès. */
   canonical_reconcile_error?: string | null
+  /** corpus_hash (debrief_analysis) au moment de la dernière réconciliation réussie (mig 410, P0-1B). NULL = jamais réconcilié ou réconcilié avant ce lot. */
+  canonical_reconciled_corpus_hash?: string | null
   /** Début du pipeline de construction de mémoire (occurrences + similarité) (mig 342). */
   similarity_analysis_started_at?: string | null
   /** Fin réussie du pipeline de construction de mémoire (mig 342). NULL = en cours, jamais lancé, ou en échec. */

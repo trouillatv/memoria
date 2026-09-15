@@ -204,20 +204,39 @@ export const RECONCILE_LOCK_TTL_MS = 15 * 60 * 1000
  * rapport. Pure et exportée : c'est la règle qui empêche deux runs concurrents
  * de matérialiser deux fois les mêmes sujets (cause de l'incident du 14/08).
  *
- * - déjà réconcilié            → 'done'      (idempotence)
- * - verrou récent (< TTL)      → 'concurrent'(un autre run travaille)
- * - verrou expiré ou absent    → 'acquire'   (on tente le CAS SQL)
+ * - déjà réconcilié, contenu inchangé → 'done'      (idempotence)
+ * - déjà réconcilié, contenu changé   → tombe dans les règles ci-dessous
+ *   (traité comme un run jamais terminé, soumis au même verrou de concurrence)
+ * - verrou récent (< TTL)             → 'concurrent'(un autre run travaille)
+ * - verrou expiré ou absent           → 'acquire'   (on tente le CAS SQL)
  *
  * 'acquire' n'est qu'une autorisation de TENTER : le CAS SQL reste l'arbitre
  * final (voir acquireReconcileLock — le CAS compare la valeur observée, qui
  * peut être NULL ou un verrou expiré par TTL, jamais NULL en dur).
+ *
+ * `currentCorpusHash` (P0-1B, mig 410) : empreinte de contenu de l'analyse
+ * courante (`debrief_analysis.corpus_hash`), comparée à celle qui a produit la
+ * dernière réconciliation réussie (`canonical_reconciled_corpus_hash`). Absent
+ * (`undefined`) → comportement mig 318 strict, inchangé pour tout appelant qui
+ * ne le fournit pas (voie historique `historical-import-post-processing.ts`,
+ * qui n'a pas de notion de réédition de CR). Fourni → une réédition dont le
+ * contenu métier n'a pas changé reste idempotente ; un contenu différent
+ * autorise le rejeu.
  */
 export function decideReconcileLock(
-  state: { canonical_reconciled_at?: string | null; canonical_reconcile_started_at?: string | null } | null,
+  state: {
+    canonical_reconciled_at?: string | null
+    canonical_reconcile_started_at?: string | null
+    canonical_reconciled_corpus_hash?: string | null
+  } | null,
   nowMs: number,
   ttlMs: number = RECONCILE_LOCK_TTL_MS,
+  currentCorpusHash?: string | null,
 ): 'done' | 'concurrent' | 'acquire' {
-  if (state?.canonical_reconciled_at) return 'done'
+  const alreadyReconciled = !!state?.canonical_reconciled_at
+  const contentUnchanged =
+    currentCorpusHash === undefined || currentCorpusHash === (state?.canonical_reconciled_corpus_hash ?? null)
+  if (alreadyReconciled && contentUnchanged) return 'done'
   const startedAt = state?.canonical_reconcile_started_at
   if (startedAt && nowMs - Date.parse(startedAt) < ttlMs) return 'concurrent'
   return 'acquire'

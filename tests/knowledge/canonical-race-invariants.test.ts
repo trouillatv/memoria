@@ -302,6 +302,57 @@ describe('P0-2 — un seul run acquiert le verrou', () => {
   })
 })
 
+// ─── Cas 8 : P0-1B — réédition CR sensible au contenu ────────────────────────
+
+describe('P0-1B — decideReconcileLock rejoue seulement si le contenu a changé', () => {
+  const T0 = Date.parse('2026-09-15T10:00:00.000Z')
+
+  it('voie historique (currentCorpusHash omis) — comportement mig 318 strict inchangé', () => {
+    expect(decideReconcileLock({ canonical_reconciled_at: '2026-09-15T09:00:00Z' }, T0)).toBe('done')
+  })
+
+  it('hash identique au hash mémorisé → idempotence conservée', () => {
+    expect(decideReconcileLock(
+      { canonical_reconciled_at: '2026-09-15T09:00:00Z', canonical_reconciled_corpus_hash: 'hash-v1' },
+      T0,
+      undefined,
+      'hash-v1',
+    )).toBe('done')
+  })
+
+  it('hash différent (CR réédité) → le rejeu est autorisé (acquire, sans verrou concurrent)', () => {
+    expect(decideReconcileLock(
+      { canonical_reconciled_at: '2026-09-15T09:00:00Z', canonical_reconciled_corpus_hash: 'hash-v1' },
+      T0,
+      undefined,
+      'hash-v2',
+    )).toBe('acquire')
+  })
+
+  it('hash différent MAIS un run vient de démarrer → concurrent (le rejeu respecte le verrou soft)', () => {
+    const started = new Date(T0 - 30_000).toISOString()
+    expect(decideReconcileLock(
+      {
+        canonical_reconciled_at: '2026-09-15T09:00:00Z',
+        canonical_reconciled_corpus_hash: 'hash-v1',
+        canonical_reconcile_started_at: started,
+      },
+      T0,
+      undefined,
+      'hash-v2',
+    )).toBe('concurrent')
+  })
+
+  it('jamais réconcilié, hash mémorisé absent (NULL) et hash courant NULL → done (pas de rejeu spurieux sur vieilles lignes)', () => {
+    expect(decideReconcileLock(
+      { canonical_reconciled_at: '2026-09-15T09:00:00Z', canonical_reconciled_corpus_hash: null },
+      T0,
+      undefined,
+      null,
+    )).toBe('done')
+  })
+})
+
 // ─── P0-J.4 : récupération d'un verrou stale (TTL expiré) ────────────────────
 // Bug réel découvert lors du backfill P0-J.3 : le CAS de review-actions.ts
 // exigeait `.is('canonical_reconcile_started_at', null)` en dur, alors même

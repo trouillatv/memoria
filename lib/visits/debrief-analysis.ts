@@ -436,12 +436,20 @@ export async function runCanonicalReconciliation(params: {
 
     const { data: reportStatus } = await sb
       .from('site_reports')
-      .select('canonical_reconciled_at, canonical_reconcile_started_at')
+      .select('canonical_reconciled_at, canonical_reconcile_started_at, canonical_reconciled_corpus_hash, debrief_analysis')
       .eq('id', reportId)
       .maybeSingle()
 
+    // P0-1B — empreinte de contenu de l'analyse courante (mig 410). Une réédition
+    // du CR (force-regénération, ou abandon d'une capture qui régénère l'analyse)
+    // ne doit rejouer la canonicalisation que si le contenu métier a réellement
+    // changé depuis la dernière réconciliation réussie.
+    const currentCorpusHash =
+      (reportStatus as { debrief_analysis?: { corpus_hash?: string } | null } | null)?.debrief_analysis
+        ?.corpus_hash ?? null
+
     // Règle unique et testée : decideReconcileLock (canonical-subject-source-reconcile).
-    const decision = decideReconcileLock(reportStatus, Date.now())
+    const decision = decideReconcileLock(reportStatus, Date.now(), undefined, currentCorpusHash)
     if (decision === 'done') return 'already_done'
     if (decision === 'concurrent') {
       console.log('[reconcile] run concurrent détecté pour', reportId, '— abandon')
@@ -514,6 +522,7 @@ export async function runCanonicalReconciliation(params: {
         canonical_reconciled_at: new Date().toISOString(),
         canonical_reconcile_error: null,
         canonical_reconcile_started_at: null,
+        canonical_reconciled_corpus_hash: currentCorpusHash,
       })
       .eq('id', reportId)
 
