@@ -60,6 +60,22 @@ function needsYouClarifyHref(siteId: string, p: PointListEntry): string {
   return `${base}?${params.toString()}`
 }
 
+// Composition réelle du Point, rendu compact Pilotage (mandat Vincent 2026-09-15 : « le quick
+// win est pratiquement invisible là où il est le plus utile », David arrivant d'abord sur cet
+// onglet). Distincte de `formatComposition` (PointsListView.tsx) : ici « aucune Action
+// corrective » est affiché explicitement dès qu'il existe des Réserves sans réponse organisée
+// (correctiveActionCount === 0) — un vrai signal métier, pas du bruit visuel à masquer — et la
+// prochaine échéance rejoint la même ligne, en minuscule, plutôt qu'une ligne séparée.
+function formatPilotageComposition(p: PointListEntry): string | null {
+  const parts: string[] = []
+  if (p.reserveCount > 0) parts.push(`${p.reserveCount} Réserve${p.reserveCount > 1 ? 's' : ''}`)
+  if (p.actionCount > 0) parts.push(`${p.actionCount} Action${p.actionCount > 1 ? 's' : ''}`)
+  if (p.deadlineCount > 0 && parts.length === 0) parts.push(`${p.deadlineCount} Échéance${p.deadlineCount > 1 ? 's' : ''}`)
+  if (p.reserveCount > 0 && p.correctiveActionCount === 0) parts.push('aucune Action corrective')
+  if (p.nextDeadlineDate) parts.push(`prochaine échéance ${frDate(p.nextDeadlineDate)}`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
 function MarkReviewedButton({ siteId, pointId }: { siteId: string; pointId: string }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -90,6 +106,7 @@ function MarkReviewedButton({ siteId, pointId }: { siteId: string; pointId: stri
 
 function ReviewCard({ p, pointHrefPrefix, siteId }: { p: PointListEntry; pointHrefPrefix: string; siteId: string }) {
   const isNeedsYou = p.needsYouCount > 0
+  const composition = formatPilotageComposition(p)
   return (
     <div className="rounded-xl border p-4">
       <div className="flex items-start justify-between gap-3">
@@ -114,6 +131,7 @@ function ReviewCard({ p, pointHrefPrefix, siteId }: { p: PointListEntry; pointHr
           ))}
         </ul>
       )}
+      {composition && <p className="mt-1.5 text-[12px] text-muted-foreground">{composition}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground">
         <span>Vu dans {p.mentionsCount}/{p.totalSiteVisits} PV</span>
         {p.openedAt && <span>Première apparition : {frDate(p.openedAt)}</span>}

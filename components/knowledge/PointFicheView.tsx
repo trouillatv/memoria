@@ -838,20 +838,25 @@ export function PointFicheView({
 
           <section className="rounded-[16px] border bg-card px-4 py-3.5 space-y-2">
             <h2 className={H2}>Documents liés</h2>
-            {p.evidence.length === 0 ? (
-              <p className="text-[12.5px] text-muted-foreground">Aucun document rattaché.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {[...new Map(p.evidence.filter((e) => e.href).map((e) => [e.documentId, e])).values()].slice(0, 6).map((e) => (
-                  <li key={e.documentId}>
-                    <Link href={e.href!} className="flex items-center gap-1.5 text-[12.5px] text-primary hover:underline">
-                      <FileText className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{e.documentFilename ?? 'Document'}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {(() => {
+              const docs = [...new Map(p.occurrences.filter((o) => o.href).map((o) => [o.documentId, o])).values()].sort(
+                (a, b) => (b.date ?? '').localeCompare(a.date ?? ''),
+              )
+              return docs.length === 0 ? (
+                <p className="text-[12.5px] text-muted-foreground">Aucun document rattaché.</p>
+              ) : (
+                <ul className="space-y-1.5">
+                  {docs.slice(0, 6).map((o) => (
+                    <li key={o.documentId}>
+                      <Link href={o.href!} className="flex items-center gap-1.5 text-[12.5px] text-primary hover:underline">
+                        <FileText className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{o.documentFilename ?? 'Document'}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )
+            })()}
           </section>
         </aside>
       </div>
