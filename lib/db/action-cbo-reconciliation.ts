@@ -26,11 +26,21 @@ import 'server-only'
 // l'état, jamais l'ordre d'import ni une hiérarchie abstraite de statuts.
 //
 // Doctrine (mirror exact de la doctrine SQL, migration 413) :
-//   · Date métier (`businessDate`) = site_reports.started_at du rapport source
-//     (fiable pour l'historique depuis la migration 261 ; alimenté en temps réel
-//     pour le natif) — jamais `created_at` (heure d'insertion en base) quand une
-//     date métier existe. `created_at` ne sert de repli que pour une Action sans
-//     rapport source.
+//   · Date métier (`businessDate`) = repli à 3 niveaux (arbitrage Vincent
+//     2026-09-17, audit P0-B/P0-C started_at=NULL) :
+//       1. site_reports.started_at — fiable quand présent (natif temps réel,
+//          historique migré après la 261).
+//       2. documents.effective_date (via site_reports.source_document_id) —
+//          date documentaire du PV source. Nécessaire car la migration 298
+//          (CREATE OR REPLACE de materialize_historical_visit à partir d'une
+//          base antérieure à 261) a silencieusement réintroduit l'absence
+//          d'insertion de started_at pour tout l'historique importé depuis —
+//          confirmé encore actif en base au moment de l'audit, sans qu'aucune
+//          migration ultérieure (336/337/338/367/368/374/375/413) ne le corrige.
+//       3. `created_at` (heure d'insertion en base) — dernier repli, seulement
+//          si l'Action n'a ni rapport source ni document source avec date.
+//     Ce repli à 3 niveaux ne modifie aucune donnée existante : il ne change
+//     que le tri utilisé par la réconciliation.
 //   · Identité durable = la ligne de date métier la plus ANCIENNE parmi les
 //     Actions encore actives du groupe (status IN 'open'|'planned'|'done' ET
 //     supersededBy IS NULL) — tie-break par id. Choix arbitraire mais stable
@@ -78,8 +88,8 @@ export interface ReconciliationCandidateAction {
   /** Heure d'insertion en base — jamais utilisée pour la logique (P0-B.2). Conservée en repli de businessDate. */
   createdAt: string
   /**
-   * Date métier résolue (P0-B.2) : site_reports.started_at du rapport source,
-   * repli sur createdAt si l'Action n'a pas de rapport ou pas de started_at.
+   * Date métier résolue (P0-B.2, repli 3 niveaux 2026-09-17) : started_at du
+   * rapport source, sinon effective_date du document source, sinon createdAt.
    * Seul champ utilisé pour trier/identifier — jamais createdAt directement.
    */
   businessDate: string
@@ -264,14 +274,32 @@ async function loadCandidateActions(
     )
     .in('id', actionIds)
 
-  // P0-B.2 : date métier = site_reports.started_at du rapport source (jamais
-  // created_at, qui reflète l'ordre d'import et non la chronologie métier).
+  // P0-B.2 + repli 3 niveaux (2026-09-17) : date métier = started_at du
+  // rapport source, sinon effective_date du document source (jamais
+  // created_at en priorité, qui reflète l'ordre d'import et non la
+  // chronologie métier).
   const reportIds = [...new Set((rows ?? []).map((r) => r.report_id as string | null).filter((id): id is string => id !== null))]
-  const reportStartedAt = new Map<string, string>()
+  const reportBusinessDate = new Map<string, string>()
   if (reportIds.length > 0) {
-    const { data: reportRows } = await sb.from('site_reports').select('id, started_at').in('id', reportIds)
+    const { data: reportRows } = await sb
+      .from('site_reports')
+      .select('id, started_at, source_document_id')
+      .in('id', reportIds)
+    const documentIds = [
+      ...new Set((reportRows ?? []).map((r) => r.source_document_id as string | null).filter((id): id is string => id !== null)),
+    ]
+    const documentEffectiveDate = new Map<string, string>()
+    if (documentIds.length > 0) {
+      const { data: documentRows } = await sb.from('documents').select('id, effective_date').in('id', documentIds)
+      for (const d of documentRows ?? []) {
+        if (d.effective_date) documentEffectiveDate.set(d.id as string, d.effective_date as string)
+      }
+    }
     for (const r of reportRows ?? []) {
-      if (r.started_at) reportStartedAt.set(r.id as string, r.started_at as string)
+      const startedAt = r.started_at as string | null
+      const documentId = r.source_document_id as string | null
+      const businessDate = startedAt ?? (documentId ? documentEffectiveDate.get(documentId) : undefined)
+      if (businessDate) reportBusinessDate.set(r.id as string, businessDate)
     }
   }
 
@@ -306,7 +334,7 @@ async function loadCandidateActions(
     const id = r.id as string
     const createdAt = r.created_at as string
     const reportId = r.report_id as string | null
-    const businessDate = (reportId ? reportStartedAt.get(reportId) : undefined) ?? createdAt
+    const businessDate = (reportId ? reportBusinessDate.get(reportId) : undefined) ?? createdAt
     return {
       id,
       createdAt,

@@ -2,6 +2,12 @@
 // AMBIGUOUS. Réutilisable pour tout chantier. Aucune écriture, aucun appel RPC.
 // Usage : node _dryrun-p0b-classify.mjs "<nom exact du site>"
 //
+// businessDate = repli à 3 niveaux (arbitrage Vincent 2026-09-17, audit
+// started_at=NULL) : site_reports.started_at → documents.effective_date (via
+// source_document_id) → site_actions.created_at. Miroir exact de
+// lib/db/action-cbo-reconciliation.ts. Ne modifie aucune donnée — ne change
+// que le tri utilisé pour classifier.
+//
 // Classification :
 //   AUTO_SAFE   = outcome 'merge' avec patch VIDE (doublons déjà identiques
 //                 champ par champ — fusion pure identité/statut).
@@ -108,11 +114,19 @@ for (const idsChunk of chunk(actionIds, 150)) {
 const reportIds = [...new Set(actions.map((a) => a.report_id).filter(Boolean))]
 const reportById = new Map()
 for (const idsChunk of chunk(reportIds, 150)) {
-  const { data, error } = await supabase.from('site_reports').select('id, started_at, title, created_at').in('id', idsChunk)
+  const { data, error } = await supabase.from('site_reports').select('id, started_at, title, created_at, source_document_id').in('id', idsChunk)
   if (error) throw error
   for (const r of data) reportById.set(r.id, r)
 }
 console.log(`${reportIds.length} PV source distincts (started_at null sur ${[...reportById.values()].filter(r=>r.started_at===null).length}/${reportIds.length}).`)
+
+const documentIds = [...new Set([...reportById.values()].map((r) => r.source_document_id).filter(Boolean))]
+const documentById = new Map()
+for (const idsChunk of chunk(documentIds, 150)) {
+  const { data, error } = await supabase.from('documents').select('id, effective_date').in('id', idsChunk)
+  if (error) throw error
+  for (const d of data) documentById.set(d.id, d)
+}
 
 const eventRows = []
 for (const idsChunk of chunk(actionIds, 150)) {
@@ -135,10 +149,12 @@ for (const e of eventRows) {
 
 function toCandidate(a) {
   const report = a.report_id ? reportById.get(a.report_id) : undefined
-  const businessDate = report?.started_at ?? a.created_at
+  const document = report?.source_document_id ? documentById.get(report.source_document_id) : undefined
+  const businessDate = report?.started_at ?? document?.effective_date ?? a.created_at
+  const businessDateTier = report?.started_at ? 'started_at' : document?.effective_date ? 'effective_date' : 'created_at'
   return {
     id: a.id, reportId: a.report_id,
-    reportLabel: report ? `${report.title ?? '(sans titre)'} · started_at=${report.started_at ?? 'null'}` : '(aucun rapport source)',
+    reportLabel: report ? `${report.title ?? '(sans titre)'} · started_at=${report.started_at ?? 'null'} · effective_date=${document?.effective_date ?? 'null'} · tier=${businessDateTier}` : '(aucun rapport source)',
     businessDate, status: a.status, supersededBy: a.superseded_by, title: a.title,
     assignedTo: a.assigned_to, assignedContactId: a.assigned_contact_id, assignedCompanyId: a.assigned_company_id,
     dueDate: a.due_date, dueDateStatus: a.due_date_status, reserveId: a.reserve_id, doneAt: a.done_at,
