@@ -188,6 +188,21 @@ function logError(msg: string, err: unknown) {
   console.error(`[action-cbo-reconciliation] ${msg}`, err)
 }
 
+/**
+ * Vrai si l'erreur PostgREST signale que fn_apply_action_cbo_merge n'existe pas
+ * encore côté base (migration 413 pas encore appliquée). Le code est déployé sur
+ * `main` avant le GO d'application de la migration (revue P0-B.1/P0-B.2,
+ * Vincent 2026-09-17) — tant que la fonction est absente, cette étape doit se
+ * comporter comme un no-op silencieux (comportement pré-P0-B.1), jamais comme un
+ * échec qui bloque le pipeline d'import. Une fois 413 appliquée, toute autre
+ * erreur RPC continue de propager normalement (durcissement point 6 intact).
+ */
+function isMissingReconcileRpcError(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code
+  const message = (err as { message?: string } | null)?.message ?? ''
+  return code === 'PGRST202' || message.includes('fn_apply_action_cbo_merge')
+}
+
 async function loadCandidateActions(
   sb: AdminClient,
   actionIds: string[],
@@ -266,6 +281,13 @@ async function reconcileOneCanonicalBusinessObject(
     p_actor_id: null,
   })
   if (error) {
+    if (isMissingReconcileRpcError(error)) {
+      log(
+        `fn_apply_action_cbo_merge absente en base (migration 413 pas encore appliquée) — ` +
+          `cbo=${canonicalBusinessObjectId} ignoré sans erreur en attendant le GO migration.`,
+      )
+      return { outcome: { kind: 'none' }, actionsSuperseded: 0 }
+    }
     logError(`fn_apply_action_cbo_merge a échoué cbo=${canonicalBusinessObjectId} durable=${outcome.durableId}`, error)
     throw error
   }
