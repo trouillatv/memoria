@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildExtractionPrompt } from '@/lib/documents/historical-visit-extractor'
+import { buildExtractionPrompt, demoteHedgedSingleActionDecisions, type LlmProposal } from '@/lib/documents/historical-visit-extractor'
 
 // Correctif ciblé (audit Dumbéa Mall 10/12 vs 13/12, 2026-09-16) — quatre défauts
 // génériques constatés sur une extraction historique et corrigés dans la doctrine
@@ -52,6 +52,96 @@ describe('3c — doute hédé sur une action unique reste une action, jamais une
     expect(PROMPT).toMatch(/semble nécessaire.*pourrait être utile.*il faudrait.*serait souhaitable.*à envisager/i)
     expect(PROMPT).toMatch(/n'est PAS un choix entre options ni une décision actée/i)
     expect(PROMPT).toMatch(/ne pas basculer en decision au seul motif que la formulation est hédée/i)
+  })
+})
+
+// Correctif complémentaire (audit Dumbéa Mall 13/12, retour Vincent 2026-09-16) — la
+// doctrine 3c ci-dessus décrivait déjà EXACTEMENT ce cas ("semble nécessaire" est cité
+// en exemple dans le prompt), et pourtant le LLM a reclassé "Réunion nécessaire avec la
+// direction des sociétés Lylo et Sphynx" en decision sur un rerun indépendant à
+// température 0 : le mot hédé avait disparu du label généré, alors qu'il survivait
+// encore dans le sourceExcerpt. Le seul texte de prompt ne suffit donc pas à garantir la
+// règle : on ajoute un garde-fou déterministe qui relit le texte RÉELLEMENT produit par
+// le LLM (label + description + sourceExcerpt), et on le prouve par un test qui exécute
+// réellement le chemin de classification (pas seulement une présence de texte dans le
+// prompt).
+describe('demoteHedgedSingleActionDecisions — garde-fou déterministe rejouant le chemin de classification réel', () => {
+  const baseProposal = (overrides: Partial<LlmProposal>): LlmProposal => ({
+    temporaryKey: 'p1',
+    family: 'decision',
+    label: 'placeholder',
+    description: null,
+    sourcePage: 1,
+    sourceExcerpt: null,
+    sourcePayload: null,
+    evidenceKeys: [],
+    ...overrides,
+  })
+
+  it('témoin réel Dumbéa Mall 13/12 : le label a perdu le mot hédé mais le sourceExcerpt le conserve → reclassé en action', () => {
+    const proposals: LlmProposal[] = [
+      baseProposal({
+        temporaryKey: 'reunion-lylo-sphynx',
+        family: 'decision',
+        label: 'Réunion nécessaire avec la direction des sociétés Lylo et Sphynx',
+        sourceExcerpt: 'Une réunion avec la direction des sociétés Lylo et Sphynx semble nécessaire.',
+        sourcePayload: { responsibleParty: 'LYLO', linkedActorTemporaryKey: 'company-lylo' },
+      }),
+    ]
+    const result = demoteHedgedSingleActionDecisions(proposals)
+    expect(result[0].family).toBe('action')
+    expect(result[0].label).toBe('Réunion nécessaire avec la direction des sociétés Lylo et Sphynx')
+    expect(result[0].sourcePayload?.responsibleParty).toBe('LYLO')
+  })
+
+  it('une vraie décision entre plusieurs options actée reste une decision, même si un mot hédé apparaît ailleurs', () => {
+    const proposals: LlmProposal[] = [
+      baseProposal({
+        temporaryKey: 'choix-prestataire',
+        family: 'decision',
+        label: 'Choix du prestataire de maintenance retenu',
+        description: 'Il faudrait choisir entre plusieurs options ; la direction a tranché pour la société A.',
+      }),
+    ]
+    const result = demoteHedgedSingleActionDecisions(proposals)
+    expect(result[0].family).toBe('decision')
+  })
+
+  it('les familles autres que decision ne sont jamais modifiées (no-op)', () => {
+    const proposals: LlmProposal[] = [
+      baseProposal({ temporaryKey: 'a1', family: 'action', label: 'Action existante', sourceExcerpt: 'il faudrait vérifier' }),
+      baseProposal({ temporaryKey: 'o1', family: 'observation', label: 'Observation existante', sourceExcerpt: 'semble nécessaire' }),
+    ]
+    const result = demoteHedgedSingleActionDecisions(proposals)
+    expect(result[0].family).toBe('action')
+    expect(result[1].family).toBe('observation')
+  })
+
+  it('une decision non hédée sans marqueur reste une decision (no faux positif)', () => {
+    const proposals: LlmProposal[] = [
+      baseProposal({
+        temporaryKey: 'decision-actee',
+        family: 'decision',
+        label: 'Décision de fermer temporairement le local technique',
+        sourceExcerpt: 'La direction a décidé de fermer le local technique jusqu’à nouvel ordre.',
+      }),
+    ]
+    const result = demoteHedgedSingleActionDecisions(proposals)
+    expect(result[0].family).toBe('decision')
+  })
+})
+
+describe('Constat + action — un knowledge_fact durable assorti d’une prescription explicite produit AUSSI une action séparée', () => {
+  it('un support/registre/classeur dont l’existence est un fait durable ET assorti d’une prescription (« à mettre à jour »…) doit produire deux propositions', () => {
+    expect(PROMPT).toMatch(/S'applique aussi lorsque l'état constaté est un knowledge_fact \(fait durable\)/i)
+    expect(PROMPT).toMatch(/doit produire DEUX propositions/i)
+  })
+  it('ne fusionne jamais la prescription dans le label ou le statusAtDocumentDate du knowledge_fact', () => {
+    expect(PROMPT).toMatch(/jamais fusionner la prescription dans le seul label ou statusAtDocumentDate du/i)
+    expect(PROMPT).toMatch(/le statut de cycle de vie d'un\s+knowledge_fact décrit l'état du FAIT constaté, jamais l'exécution d'une tâche restante/i)
+  })
+  it('témoin de calibration classeur Lylo : existence (knowledge_fact) + mise à jour prescrite (action)', () => {
+    expect(PROMPT).toMatch(/existence d'un classeur Lylo[\s\S]*basculant les infos SSI et SPK/i)
   })
 })
 

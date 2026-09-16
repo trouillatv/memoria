@@ -258,6 +258,21 @@ jamais écraser l'une dans l'autre : ce sont deux natures différentes du même 
 Ne produis l'action que si la prescription est RÉELLEMENT présente dans le texte — ne jamais
 l'inventer à partir d'un simple constat.
 
+**S'applique aussi lorsque l'état constaté est un knowledge_fact (fait durable), pas seulement une
+observation** : un support, document, registre ou classeur dont l'EXISTENCE est un fait durable
+(→ **knowledge_fact**) mais que le texte qualifie EN PLUS d'une prescription explicite (« à mettre
+à jour », « à compléter », « à réviser », « à basculer vers… ») doit produire DEUX propositions
+distinctes — le **knowledge_fact** (existence du support) ET l'**action** (la mise à jour
+prescrite) — jamais fusionner la prescription dans le seul label ou statusAtDocumentDate du
+knowledge_fact. Exemple (calibration, ne pas réutiliser pour un autre document) : « Il existe un
+classeur Lylo mais à mettre à jour en basculant les infos SSI et SPK du classeur Sphynx » →
+**knowledge_fact** « Existence d'un classeur Lylo » + **action** « Mettre à jour le classeur Lylo
+en basculant les infos SSI et SPK du classeur Sphynx ». Ne jamais absorber la prescription dans un
+unique knowledge_fact au label composite (« Existence d'un classeur Lylo à mettre à jour ») porté
+par un statusAtDocumentDate='ouvert' du knowledge_fact lui-même : le statut de cycle de vie d'un
+knowledge_fact décrit l'état du FAIT constaté, jamais l'exécution d'une tâche restante — une tâche
+restante est TOUJOURS une action séparée, même quand le fait qui la motive est durable.
+
 ---
 
 ## Consolidation intra-document — un sujet répété = UNE proposition à preuves multiples
@@ -577,6 +592,44 @@ ${siteContext
 ${text}`
 }
 
+// ─── Garde-fou déterministe : décision hédée sur une action unique ───────────
+// Backstop de la doctrine 3c ("un doute exprimé sur la nécessité d'une action UNIQUE
+// n'est pas une décision, ça reste une action") : constaté sur un rerun réel que le
+// LLM ne respecte pas systématiquement cette règle, y compris quand le label produit
+// a lui-même déjà perdu le mot hédé ("semble", etc.) présent dans le sourceExcerpt.
+// Ce garde-fou relit le texte RÉELLEMENT produit (label + description + sourceExcerpt),
+// pas le prompt, et rattrape donc la dérive même quand le prompt seul ne suffit pas.
+const HEDGE_MARKERS = [
+  /semble\s+n[ée]cessaire/i,
+  /pourrait\s+[êe]tre\s+utile/i,
+  /il\s+faudrait/i,
+  /serait\s+souhaitable/i,
+  /[àa]\s+envisager/i,
+  /gagnerait\s+[àa]/i,
+  /serait\s+bon\s+de/i,
+]
+const MULTI_OPTION_MARKERS = [
+  /plusieurs\s+options/i,
+  /choix\s+entre/i,
+  /soit\s+.+\s+soit\s+/i,
+  /alternative/i,
+  /deux\s+options/i,
+  /option\s+[a-z12]\b/i,
+]
+
+export function demoteHedgedSingleActionDecisions(proposals: LlmProposal[]): LlmProposal[] {
+  return proposals.map((p) => {
+    if (p.family !== 'decision') return p
+    const text = [p.label, p.description, p.sourceExcerpt].filter(Boolean).join(' ')
+    const isHedged = HEDGE_MARKERS.some((re) => re.test(text))
+    const isMultiOption = MULTI_OPTION_MARKERS.some((re) => re.test(text))
+    if (isHedged && !isMultiOption) {
+      return { ...p, family: 'action' as const }
+    }
+    return p
+  })
+}
+
 // ─── Préfixage des clés temporaires (chunk merge) ────────────────────────────
 
 export function prefixChunkResult(result: LlmExtractionResult, chunkIndex: number): LlmExtractionResult {
@@ -699,7 +752,7 @@ export async function extractHistoricalPvProposals(
       proposals.push(...result.proposals)
       evidence.push(...result.evidence)
     }
-    return { proposals, evidence }
+    return { proposals: demoteHedgedSingleActionDecisions(proposals), evidence }
   } finally {
     try {
       const { logAIUsageDirect } = await import('@/services/ai/tracking')
