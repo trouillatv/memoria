@@ -13,6 +13,7 @@ import {
   type CollaborationNodeView, type CollaborationEdgeView,
 } from '@/lib/knowledge/collaboration-graph'
 import { RING_COLOR, companyFill } from './actor-colors'
+import { connectivitySizeBonus } from '@/lib/graph/graph-utils'
 
 export interface CollaborationControl {
   selectedKey: string | null
@@ -126,7 +127,10 @@ export function CollaborationCanvas({ nodes, edges, membershipEdges = [], contro
           const p = f.P[n.key]; if (!p || p.alpha < 0.02) continue
           const isFocus = n.key === focus
           const contextual = !focus || isFocus || (neigh?.has(n.key) ?? false)
-          const r = SIZE[n.kind] + (isFocus ? 3 : 0)
+          // P1-INT-3 : taille = degré réel (collaborations directes, jamais la somme
+          // des forces — la force est déjà encodée dans l'épaisseur du lien). Pas de
+          // nœud central ici (aucun kind 'site') : aucune exclusion. GO Vincent.
+          const r = SIZE[n.kind] + connectivitySizeBonus(adjacency.get(n.key)?.size ?? 0) + (isFocus ? 3 : 0)
           ctx.globalAlpha = p.alpha * (contextual ? 1 : 0.25)
           ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
           ctx.fillStyle = companyFill(n.companyId); ctx.fill()
@@ -161,7 +165,9 @@ export function CollaborationCanvas({ nodes, edges, membershipEdges = [], contro
       zoom: { min: 0.2, max: 3, factorIn: 1.12, factorOut: 0.893 },
       dprCap: 2,
       placeNewNearNeighbors: true,
-      hitNodeRadius: (id, k) => (SIZE[nodeByKey.get(id)?.kind ?? 'person'] + 6) / k,
+      // Pad porté à 10 (= plafond du bonus de connectivité) : le hit-test reste
+      // toujours ≥ au rayon visuel réel, quel que soit le degré du nœud.
+      hitNodeRadius: (id, k) => (SIZE[nodeByKey.get(id)?.kind ?? 'person'] + 10) / k,
       hitAlphaGate: 0.5,
       edgeHit: { tolerance: (k) => 8 / k, clampA: 0, clampB: 1 },
       features: { pin: false, dblClick: true, edgeTap: true },
@@ -192,6 +198,7 @@ export function CollaborationCanvas({ nodes, edges, membershipEdges = [], contro
         <span>Pâleur = ancienneté</span>
         <span>Halo = attention</span>
         <span>Fond = organisation</span>
+        <span>Taille = plus connecté ici, jamais plus important</span>
       </div>
       <p className="pointer-events-none absolute bottom-3 left-3 text-[11px] text-muted-foreground">Molette : zoom · glisser : déplacer · clic : sélectionner</p>
     </div>

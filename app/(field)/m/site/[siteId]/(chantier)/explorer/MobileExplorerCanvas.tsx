@@ -10,6 +10,7 @@ import {
   COLOR, COLOR_DARK, SIZE, TYPE_LABEL,
   computeVisible, enUnePhrase, recit, ifGone, chainToSource,
 } from '@/lib/graph/site-graph-logic'
+import { connectivitySizeBonus } from '@/lib/graph/graph-utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
@@ -25,8 +26,10 @@ interface Props {
 
 export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
   const { canvasRef, wrapRef, engineRef, fitToView, fitVisibleAnimated, zoomBy } = useGraphCanvas()
+  // Pad = plafond du bonus de connectivité (+10) : le cadrage reste large même
+  // pour les nœuds les plus connectés, jamais rogné.
   const fitAllItems = useMemo(
-    () => graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 6 })),
+    () => graph.nodes.map((n) => ({ id: n.id, radius: SIZE[n.type] + 10 })),
     [graph],
   )
 
@@ -264,7 +267,11 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
           const isSel  = (sel !== null && n.id === sel) || onPicked
           const isNear = selNeigh !== null && selNeigh.has(n.id)
           const dim    = ((sel !== null || selEdgeObj !== null) && !isSel && !isNear) ? 0.18 : 1
-          const baseR  = n.id === E.current.center ? SIZE[n.type] + 6 : SIZE[n.type]
+          // P1-INT-3 : même règle que le desktop — taille = degré réel, sauf le
+          // nœud central déjà volontairement dominant (+6 fixe). GO Vincent.
+          const baseR  = n.id === E.current.center
+            ? SIZE[n.type] + 6
+            : SIZE[n.type] + connectivitySizeBonus(neigh[n.id]?.size ?? 0)
           const r      = isSel ? Math.round(baseR * 1.3) : baseR
 
           // Halo sélection
@@ -411,6 +418,9 @@ export function MobileExplorerCanvas({ graph, canvasHeight }: Props) {
           })}
         </div>
       </div>
+      <p className="px-1 pb-1 text-[10.5px] text-muted-foreground/70">
+        Taille du nœud = plus connecté ici, jamais plus important.
+      </p>
 
       {/* ── Canvas ──────────────────────────────────────────────────────────── */}
       <div

@@ -17,6 +17,7 @@ import { graphTimeline, type ActorsGraph, type ActorGraphKind, type ActorGraphNo
 import { createForceGraphEngine, type ForceGraphEngine, type Vec } from '@/components/graph/force-graph-engine'
 import { RING_COLOR, HISTORICAL_COLOR, NEUTRAL_FILL, companyFill } from './actor-colors'
 import { hierarchicalLayout, radialLayout, layeredLayout, type GraphLayoutKind } from '@/lib/knowledge/graph-layouts'
+import { connectivitySizeBonus } from '@/lib/graph/graph-utils'
 
 export type SelectableKind = 'person' | 'company' | 'team'
 
@@ -293,7 +294,10 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
           const p = f.P[n.id]
           if (!p || p.alpha < 0.02) continue
           const st = state(n.id)
-          const r = SIZE[n.kind] + (st === 'focus' ? 3 : 0)
+          // P1-INT-3 : taille = degré réel, sauf le chantier (déjà hub dominant par
+          // construction, cf. SITE_HUB_FILL/SIZE.site) — GO Vincent.
+          const bonus = n.kind === 'site' ? 0 : connectivitySizeBonus(adjacency.get(n.id)?.size ?? 0)
+          const r = SIZE[n.kind] + bonus + (st === 'focus' ? 3 : 0)
           ctx.globalAlpha = p.alpha * (st === 'out' ? 0.16 : 1)
           // FOND = entreprise (ou neutre) — on regroupe l'organisation à l'œil.
           ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2)
@@ -331,7 +335,9 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
       zoom: { min: 0.2, max: 3, factorIn: 1.12, factorOut: 0.893 },
       dprCap: 2,
       placeNewNearNeighbors: true,
-      hitNodeRadius: (id, k) => (SIZE[nodeById.get(id)?.kind ?? 'action'] + 6) / k,
+      // Pad porté à 10 (= plafond du bonus de connectivité) : le hit-test reste
+      // toujours ≥ au rayon visuel réel, quel que soit le degré du nœud.
+      hitNodeRadius: (id, k) => (SIZE[nodeById.get(id)?.kind ?? 'action'] + 10) / k,
       hitAlphaGate: 0.5,
       edgeHit: { tolerance: (k) => 8 / k, clampA: 0, clampB: 1 },
       features: { pin: false, dblClick: false, edgeTap: !!controlRef.current },
@@ -404,6 +410,14 @@ export function ActorsGraphCanvas({ graph, focusId, heightClass = 'h-[70vh]', on
   return (
     <div ref={containerRef} className={`relative w-full overflow-hidden rounded-2xl border border-border/60 bg-card ${heightClass}`}>
       <canvas ref={canvasRef} className="block h-full w-full touch-none" style={{ cursor: 'grab' }} />
+
+      {/* Légende (P1-INT-3) : ce canvas n'en avait AUCUNE avant — les trois
+          variables visuelles encodées (fond/anneau/taille) restaient muettes. */}
+      <div className="pointer-events-none absolute left-3 top-3 flex flex-col gap-0.5 rounded-lg border border-border/60 bg-background/90 px-2.5 py-2 text-[10.5px] leading-tight text-muted-foreground backdrop-blur">
+        <span>Fond = organisation</span>
+        <span>Anneau = état d&apos;attention</span>
+        <span>Taille = plus connecté ici, jamais plus important</span>
+      </div>
 
       <p className="pointer-events-none absolute bottom-3 left-3 text-[11px] text-muted-foreground">
         Molette : zoom · glisser : déplacer · clic : sélectionner

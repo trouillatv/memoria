@@ -93,6 +93,16 @@ export function fitToContentAnimated(
   requestAnimationFrame(step)
 }
 
+// P1-INT-3 — taille de nœud = degré réel (connexions directes), jamais un score
+// métier inventé. « Plus gros = plus connecté ici », jamais « plus important ».
+// Même définition de degré (nombre d'arêtes directes) et même plafond sur les
+// trois familles de graphe (Explorer, Acteurs, Collaboration) — GO Vincent
+// 2026-09-16 : bonus plafonné, dégressif, pas linéaire au-delà de quelques liens.
+export function connectivitySizeBonus(degree: number): number {
+  if (degree <= 1) return 0
+  return Math.min(10, Math.round(Math.sqrt(degree - 1) * 4))
+}
+
 export function zoomEngine(engine: ForceGraphEngine, factor: number): void {
   const { W, H } = engine.size()
   const nextK = Math.max(0.35, Math.min(3, engine.view.k * factor))

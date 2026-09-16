@@ -28,6 +28,7 @@ import {
   computeVisible, enUnePhrase, recit, ifGone, computeGaps,
   dependencySet, chainToSource,
 } from '@/lib/graph/site-graph-logic'
+import { connectivitySizeBonus } from '@/lib/graph/graph-utils'
 
 type PanelMode = 'fiche' | 'recit' | 'gaps'
 
@@ -166,7 +167,12 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
         }
         for (const n of graph.nodes) {
           const p = f.P[n.id]; if (!p || p.alpha < 0.02) continue
-          const r = (n.id === E.center ? SIZE[n.type] + 6 : SIZE[n.type]) + (hl === n.type ? 2 : 0)
+          // P1-INT-3 : taille = degré réel (nb de connexions directes), sauf le
+          // nœud central déjà volontairement dominant (+6 fixe) — GO Vincent.
+          const r = (n.id === E.center
+            ? SIZE[n.type] + 6
+            : SIZE[n.type] + connectivitySizeBonus(neigh[n.id]?.size ?? 0)
+          ) + (hl === n.type ? 2 : 0)
           ctx.globalAlpha = p.alpha
             * (grabSet && !grabSet.has(n.id) ? (soft ? 0.4 : 0.22) : 1)
             * (hl && hl !== n.type ? 0.45 : 1)
@@ -290,6 +296,7 @@ export function ExplorerWorkspace({ graph }: { graph: SiteGraph }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
           Cliquer = ouvrir · maintenir et glisser = déplacer · molette = zoom · un nœud posé reste posé.
+          <span className="block text-xs text-muted-foreground/70">Taille du nœud = plus connecté ici, jamais plus important.</span>
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <ModeBtn pressed={depth === 1 && !enquete} onClick={() => { setEnquete(null); setDepth(1) }}>Isoler</ModeBtn>

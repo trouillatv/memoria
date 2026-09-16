@@ -33,7 +33,7 @@ vi.mock('@/lib/supabase/admin', () => ({
       const chain: Record<string, unknown> = {}
       const self = () => chain
       Object.assign(chain, {
-        select: self, eq: self, is: self, in: self, order: self,
+        select: self, eq: self, is: self, in: self, order: self, or: self,
         maybeSingle: async () => ({ data: siteRow }),
         limit: async () => ({ data: tables[table] ?? [] }),
         // visit_capture se termine sur .is('hidden_at', null) sans limit :
@@ -50,6 +50,7 @@ beforeEach(() => {
   memberOrgs = new Set<string>(['org-1'])
   siteRow = { id: 's-1', name: 'Petro Attiti', organization_id: 'org-1' }
   tables.site_reports = [{ id: 'r-1', started_at: '2026-07-15T02:07:00Z' }]
+  tables.documents = []
   tables.visit_capture = [
     { id: 'c-1', kind: 'vocal', body: 'les électriciens vont vérifier les lignes…', report_id: 'r-1', attachment_id: null },
     { id: 'c-2', kind: 'photo', body: null, report_id: 'r-1', attachment_id: 'att-1' },
@@ -100,11 +101,53 @@ describe('getSiteGraph', () => {
   it('chaque nœud daté porte sa date d’apparition — le replay en dépend', async () => {
     const g = await getSiteGraph('s-1')
     expect(g!.nodes.find((n) => n.id === 'v_r-1')!.t).toBe('2026-07-15T02:07:00Z')
-    expect(g!.nodes.find((n) => n.id === 'e_e-1')!.t).toBe('2026-07-17T08:20:00Z')
+    // Daté par la date métier du PV source (tOf via report_id), pas par le
+    // created_at propre de la ligne site_deadlines — cf. doctrine
+    // site-graph-business-dates.doctrine.test.ts.
+    expect(g!.nodes.find((n) => n.id === 'e_e-1')!.t).toBe('2026-07-15T02:07:00Z')
   })
 
   it('refuse un chantier d’un autre tenant — fail-closed', async () => {
     siteRow = { id: 's-1', name: 'Autre', organization_id: 'org-AUTRE' }
     expect(await getSiteGraph('s-1')).toBeNull()
+  })
+
+  // P1-INT-3 — import historique sans `started_at` : la date réelle vient du
+  // PV source (documents.effective_date) via source_document_id, jamais un
+  // générique « Visite » répété pour chaque report.
+  it('report sans started_at mais avec PV source : date résolue via documents.effective_date, libellé « (import) »', async () => {
+    tables.site_reports = [{ id: 'r-1', started_at: null, source_document_id: 'doc-1' }]
+    tables.documents = [{ id: 'doc-1', effective_date: '2025-01-29T00:00:00Z' }]
+    const g = await getSiteGraph('s-1')
+    const v = g!.nodes.find((n) => n.id === 'v_r-1')!
+    expect(v.t).toBe('2025-01-29T00:00:00Z')
+    expect(v.label).toContain('29 janvier 2025')
+    expect(v.label).toContain('(import)')
+  })
+
+  it('deux reports sans started_at, PV sources différents : deux libellés Visite distincts, jamais le même', async () => {
+    tables.site_reports = [
+      { id: 'r-1', started_at: null, source_document_id: 'doc-1' },
+      { id: 'r-2', started_at: null, source_document_id: 'doc-2' },
+    ]
+    tables.documents = [
+      { id: 'doc-1', effective_date: '2025-01-29T00:00:00Z' },
+      { id: 'doc-2', effective_date: '2026-07-22T00:00:00Z' },
+    ]
+    const g = await getSiteGraph('s-1')
+    const label1 = g!.nodes.find((n) => n.id === 'v_r-1')!.label
+    const label2 = g!.nodes.find((n) => n.id === 'v_r-2')!.label
+    expect(label1).not.toBe(label2)
+    expect(label1).toContain('29 janvier 2025')
+    expect(label2).toContain('22 juillet 2026')
+  })
+
+  it('report sans started_at ni PV source : repli sur created_at, jamais une date inventée', async () => {
+    tables.site_reports = [{ id: 'r-1', started_at: null, source_document_id: null, created_at: '2026-08-01T00:00:00Z' }]
+    const g = await getSiteGraph('s-1')
+    const v = g!.nodes.find((n) => n.id === 'v_r-1')!
+    expect(v.t).toBe('2026-08-01T00:00:00Z')
+    expect(v.label).toContain('fiche créée le')
+    expect(v.label).toContain('1 août 2026')
   })
 })

@@ -70,7 +70,7 @@ export interface SiteGraph {
 const CAP = { actions: 12, deadlines: 12, decisions: 8, watchpoints: 8, reports: 6, thumbs: 8 }
 
 const dayFmt = new Intl.DateTimeFormat('fr-FR', {
-  timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long',
+  timeZone: 'Pacific/Noumea', day: 'numeric', month: 'long', year: 'numeric',
 })
 const fr = (iso: string | null | undefined) => (iso ? dayFmt.format(new Date(iso)) : null)
 
@@ -92,7 +92,7 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
   // Le casting confirmé part en parallèle des lectures Supabase ci-dessous.
   const intervenantsP = listSiteIntervenants(siteId).catch(() => [])
   const [reports, captures, actions, deadlines, decisions, watchpoints, proposals] = await Promise.all([
-    db.from('site_reports').select('id, started_at').eq('site_id', siteId)
+    db.from('site_reports').select('id, started_at, created_at, source_document_id').eq('site_id', siteId)
       .order('started_at', { ascending: true }).limit(CAP.reports),
     db.from('visit_capture').select('id, kind, body, report_id, attachment_id').eq('site_id', siteId)
       .is('hidden_at', null),
@@ -124,8 +124,29 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
   }
 
   // La date de visite par report — elle date aussi tout ce qui en descend.
-  const reportRows = (reports.data ?? []) as Array<{ id: string; started_at: string | null }>
-  const reportDate = new Map(reportRows.map((r) => [r.id, r.started_at]))
+  // Les visites historiques importées n'ont pas toujours de `started_at` peuplé
+  // (backfill mig 261 non rejoué pour tous les runs) : sans repli, plusieurs
+  // nœuds « Visite » distincts affichent alors le même libellé générique. La
+  // vraie date existe déjà, un saut de FK plus loin, sur le document source.
+  const reportRows = (reports.data ?? []) as Array<{
+    id: string; started_at: string | null; created_at: string; source_document_id: string | null
+  }>
+  const missingDateSourceDocIds = [...new Set(
+    reportRows.filter((r) => !r.started_at && r.source_document_id).map((r) => r.source_document_id as string),
+  )]
+  const sourceDocDates = missingDateSourceDocIds.length > 0
+    ? new Map(
+        ((await db.from('documents').select('id, effective_date').in('id', missingDateSourceDocIds)).data ?? [])
+          .map((d) => [(d as { id: string }).id, (d as { effective_date: string | null }).effective_date]),
+      )
+    : new Map<string, string | null>()
+  // Date résolue par ordre de confiance : captée en direct > date du PV source
+  // importé > date de création de la fiche (toujours vraie, jamais inventée).
+  const resolvedDateOf = (r: { started_at: string | null; source_document_id: string | null; created_at: string }) =>
+    r.started_at
+    ?? (r.source_document_id ? sourceDocDates.get(r.source_document_id) ?? null : null)
+    ?? r.created_at
+  const reportDate = new Map(reportRows.map((r) => [r.id, resolvedDateOf(r)]))
   const tOf = (reportId: string | null | undefined) => (reportId ? reportDate.get(reportId) ?? null : null)
 
   // Visites + leurs preuves (photos groupées AVEC vraies miniatures, mémos textuels).
@@ -138,16 +159,24 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
 
   for (const r of reportRows) {
     const vid = `v_${r.id}`
-    const date = fr(r.started_at)
-    add({ id: vid, type: 'visite', label: date ? `Visite du ${date}` : 'Visite', t: r.started_at })
+    const resolvedDate = resolvedDateOf(r)
+    const date = fr(resolvedDate)
+    // Le libellé dit d'où vient la date dès qu'elle n'est pas la date captée en
+    // direct — jamais présenter une date de repli comme la date réelle de visite.
+    const label = !date
+      ? 'Visite'
+      : resolvedDate === r.started_at ? `Visite du ${date}`
+      : r.source_document_id && sourceDocDates.has(r.source_document_id) ? `Visite du ${date} (import)`
+      : `Visite · fiche créée le ${date}`
+    add({ id: vid, type: 'visite', label, t: resolvedDate })
     link({ a: 'site', b: vid, type: 'visite', why: 'Visite réalisée sur ce chantier', date })
 
     const photos = caps.filter((c) => c.report_id === r.id && c.kind === 'photo')
     if (photos.length > 0) {
       const pid = `ph_${r.id}`
       add({
-        id: pid, type: 'photo', label: 'Photos', count: photos.length,
-        sub: `${photos.length} photo${photos.length > 1 ? 's' : ''} de visite`, t: r.started_at,
+        id: pid, type: 'photo', label: date ? `Photos · ${date}` : 'Photos', count: photos.length,
+        sub: `${photos.length} photo${photos.length > 1 ? 's' : ''} de visite`, t: resolvedDate,
         photos: photos
           .map((c) => ({ id: c.id, url: thumbUrls[c.id]?.url ?? '' }))
           .filter((x) => x.url)
@@ -156,11 +185,12 @@ export async function getSiteGraph(siteId: string): Promise<SiteGraph | null> {
       link({ a: vid, b: pid, type: 'photo', why: `${photos.length} photo${photos.length > 1 ? 's' : ''} prise${photos.length > 1 ? 's' : ''} pendant la visite`, date })
     }
     for (const c of caps.filter((x) => x.report_id === r.id && x.body && ['vocal', 'note'].includes(x.kind))) {
+      const kindLabel = c.kind === 'vocal' ? 'Mémo vocal' : 'Note de visite'
       add({
         id: `m_${c.id}`, type: 'memo',
-        label: c.kind === 'vocal' ? 'Mémo vocal' : 'Note de visite',
+        label: date ? `${kindLabel} · ${date}` : kindLabel,
         excerpt: c.body!.length > 220 ? c.body!.slice(0, 217) + '…' : c.body,
-        t: r.started_at,
+        t: resolvedDate,
       })
       link({ a: vid, b: `m_${c.id}`, type: 'memo', why: 'Dicté pendant la visite', date })
     }
