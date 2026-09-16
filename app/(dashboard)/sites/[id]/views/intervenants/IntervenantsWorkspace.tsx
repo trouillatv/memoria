@@ -44,7 +44,7 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
       ...g,
       people: g.people.filter((p) => {
         if (!q) return true
-        return `${p.name} ${p.companyName} ${p.role} ${p.fonction ?? ''}`.toLowerCase().includes(q)
+        return `${p.name} ${p.companyName} ${p.role ?? ''} ${p.fonction ?? ''}`.toLowerCase().includes(q)
       }),
     }))
     .filter((g) => g.people.length > 0), [view.groups, q])
@@ -144,7 +144,7 @@ export function IntervenantsWorkspace({ view }: { view: SiteIntervenantsView }) 
                       <span className="min-w-0">
                         <span className="text-[13.5px] font-semibold">{p.name}</span>
                         <span className="ml-2 text-[12.5px] text-muted-foreground">
-                          {p.fonction ?? (p.isPerson ? p.role : `Rôle ${p.role}`)}
+                          {p.fonction ?? (p.isPerson ? (p.role ?? 'Rôle à préciser') : `Rôle ${p.role ?? 'à préciser'}`)}
                         </span>
                       </span>
                       {/* UN fait à droite : la dernière activité. (Le point vert

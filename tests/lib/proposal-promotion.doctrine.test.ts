@@ -94,14 +94,16 @@ describe('La règle de sortie — un geste réel, ou rien', () => {
   })
 })
 
-// ── LE RÔLE NE SE DEVINE PAS ─────────────────────────────────────────────────
+// ── LE RÔLE NE SE DEVINE PAS, MAIS IL PEUT MANQUER ───────────────────────────
 // `analysis.intervenants` est un string[] (« Ginger », « Électriciens ») et son
-// payload est vide. Or site_intervenants exige un rôle NOT NULL. Le deviner —
-// « Électriciens » ⇒ rôle ELEC ? — serait inventer un casting que personne n'a
-// dit. On le demande. (Vérifié en base : un intervenant sans rôle est refusé.)
+// payload est vide. Le deviner — « Électriciens » ⇒ rôle ELEC ? — serait
+// inventer un casting que personne n'a dit. Depuis P0-INT-4 (mig 412),
+// site_intervenants.role est NULLABLE : identifier l'acteur suffit, le rôle se
+// précise plus tard. Le champ n'est donc plus dans requiredInputs — mais on ne
+// fabrique toujours aucune valeur : role NULL reste « à préciser ».
 describe("L'intervenant — le rôle se demande, il ne se déduit pas", () => {
-  it('seul un intervenant réclame un rôle', () => {
-    expect(getPromotionCapability('stakeholder').requiredInputs).toEqual(['role'])
+  it("aucun kind ne réclame plus de champ obligatoire", () => {
+    expect(getPromotionCapability('stakeholder').requiredInputs).toEqual([])
     expect(getPromotionCapability('decision').requiredInputs).toEqual([])
     expect(getPromotionCapability('action').requiredInputs).toEqual([])
   })

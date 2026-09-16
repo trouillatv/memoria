@@ -466,7 +466,7 @@ export async function buildSiteIntelligenceContext(
           contactId: p.contactId,
           name: p.name,
           companyName: p.companyName,
-          role: p.role,
+          role: p.role ?? 'Rôle à préciser',
           assignedActionsCount: p.assignedActions.length,
           decisionsCount: p.decisionsCount,
           openObligationsCount: p.openObligationsCount,

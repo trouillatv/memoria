@@ -142,7 +142,7 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
       // D1 (P0-3D) : personne ou entreprise si connues, sinon le rôle porte
       // seul l'affichage — jamais un « — ELECTRICIEN » amputé.
       id: i.id, group: 'Intervenants',
-      title: [i.contactName || i.companyShort || i.companyName || null, i.role].filter(Boolean).join(' — ') || i.role,
+      title: [i.contactName || i.companyShort || i.companyName, i.role].filter(Boolean).join(' — ') || i.role || 'Rôle à préciser',
       nature: null,
       href: `/sites/${siteId}/intervenant/${i.id}`,
       knowledgeEntryId: null,

@@ -87,7 +87,7 @@ function ProposalCard({ proposal, teams, onResolved }: {
     })
   }
 
-  const associateTo = (t: ActorTarget, cast: { role: string } | null) =>
+  const associateTo = (t: ActorTarget, cast: { role?: string } | null) =>
     run(() => confirmActorProposalAction({
       proposalId: proposal.id,
       mode: t.kind === 'contact' ? 'associate_contact' : 'associate_company',
@@ -204,7 +204,7 @@ function AssociatePanel({ proposalTitle, siteName, pending, initialTarget, onCan
   pending: boolean
   initialTarget: ActorTarget | null
   onCancel: () => void
-  onPick: (t: ActorTarget, cast: { role: string } | null) => void
+  onPick: (t: ActorTarget, cast: { role?: string } | null) => void
 }) {
   const [q, setQ] = useState('')
   const [hits, setHits] = useState<ActorTarget[]>([])
@@ -240,8 +240,8 @@ function AssociatePanel({ proposalTitle, siteName, pending, initialTarget, onCan
         <div className="flex items-center gap-2">
           <button
             type="button"
-            disabled={pending || (cast && !role.trim())}
-            onClick={() => onPick(selected, cast ? { role: role.trim() } : null)}
+            disabled={pending}
+            onClick={() => onPick(selected, cast ? { role: role.trim() || undefined } : null)}
             className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
             <Check className="h-3.5 w-3.5" aria-hidden /> Valider l’association
@@ -326,7 +326,7 @@ function CreatePanel({ proposal, teams, siteName, pending, onCancel, onSubmit }:
     }
   }
 
-  const disabled = pending || (isPerson ? !fullName.trim() : !companyName.trim()) || (cast && !role.trim())
+  const disabled = pending || (isPerson ? !fullName.trim() : !companyName.trim())
 
   return (
     <div className="mt-2.5 space-y-2 rounded-lg border border-border/60 bg-muted/30 p-2.5">
@@ -405,7 +405,7 @@ function CastOption({ siteName, cast, setCast, role, setRole }: {
         Ajouter au casting de <b>{siteName}</b>
       </label>
       {cast && (
-        <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Rôle sur le chantier (ex. MOE)" className={`${INPUT} mt-1.5`} />
+        <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Rôle sur le chantier (ex. MOE) — facultatif" className={`${INPUT} mt-1.5`} />
       )}
     </div>
   )

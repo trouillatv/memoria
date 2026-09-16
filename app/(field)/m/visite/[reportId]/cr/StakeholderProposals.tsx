@@ -88,8 +88,10 @@ function StakeholderCard({
 
   const confirm = async () => {
     if (pending) return
-    if (!role.trim()) {
-      setError('Indiquez son rôle sur le chantier — il ne se devine pas.')
+    // Rôle facultatif depuis P0-INT-4 (mig 412) : identifier suffit, le rôle
+    // peut être précisé plus tard — jamais une valeur inventée.
+    if (roleOnly && !role.trim()) {
+      setError('Sans personne ni entreprise, indiquez au moins le rôle sur le chantier.')
       setEditing(true)
       return
     }
@@ -98,7 +100,7 @@ function StakeholderCard({
     const res = await promoteStakeholderProposalAction({
       report_id: reportId,
       proposal_id: proposalId,
-      role: role.trim(),
+      role: role.trim() || undefined,
       company_name: company.trim() || undefined,
       person_name: person.trim() || undefined,
       role_only: roleOnly || undefined,
@@ -204,7 +206,7 @@ function StakeholderCard({
           )}
 
           <label className="mt-1.5 block">
-            <span className="text-[11px] text-muted-foreground">Rôle sur le chantier</span>
+            <span className="text-[11px] text-muted-foreground">Rôle sur le chantier{roleOnly ? '' : ' (facultatif)'}</span>
             <input
               value={role}
               onChange={(e) => setRole(e.target.value)}

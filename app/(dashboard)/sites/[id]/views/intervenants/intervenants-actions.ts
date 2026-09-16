@@ -113,7 +113,9 @@ export async function searchOrgContactsAction(
 const associateSchema = z.object({
   site_id: z.string().uuid(),
   contact_id: z.string().uuid(),
-  role: z.string().trim().min(1).max(60),
+  // Facultatif depuis P0-INT-4 (mig 412) : identifier la personne ne suppose plus
+  // de connaître son rôle sur ce chantier.
+  role: z.string().trim().min(1).max(60).optional(),
 })
 
 /** Rattacher une personne DÉJÀ connue au chantier courant, avec un rôle propre
@@ -141,7 +143,7 @@ export async function associateContactAction(
   try {
     await openSiteIntervenant({
       siteId: parsed.data.site_id,
-      role: parsed.data.role,
+      role: parsed.data.role ?? null,
       companyId: contact.company_id as string,
       mainContactId: contact.id as string,
     })
@@ -216,7 +218,7 @@ export async function searchIntervenantTargetsAction(
     .eq('site_id', parsed.data.site_id)
     .is('effective_to', null)
   const roleByCompany = new Map(
-    ((casting ?? []) as Array<{ company_id: string; role: string }>).map((c) => [c.company_id, c.role]),
+    ((casting ?? []) as Array<{ company_id: string; role: string | null }>).map((c) => [c.company_id, c.role]),
   )
 
   const needle = q.toLowerCase()

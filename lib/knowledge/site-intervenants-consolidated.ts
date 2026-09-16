@@ -72,7 +72,8 @@ export interface ConsolidatedDecisionRow {
 
 export interface ConsolidatedCastingRow {
   id: string
-  role: string
+  /** NULL depuis la mig 412 (P0-INT-4) : identité connue, rôle pas encore précisé. */
+  role: string | null
   active: boolean
   effectiveFrom: string | null
   effectiveTo: string | null
@@ -114,7 +115,7 @@ const CHANTIERS_COUNT_GAP =
 export interface ConsolidatedInputs {
   today: string
   companiesById: Map<string, Pick<Company, 'id' | 'name' | 'status' | 'aliasOfCompanyId'>>
-  casting: Array<{ id: string; companyId: string; role: string; effectiveFrom: string | null; effectiveTo: string | null }>
+  casting: Array<{ id: string; companyId: string; role: string | null; effectiveFrom: string | null; effectiveTo: string | null }>
   actions: Array<{
     id: string
     title: string
@@ -279,7 +280,7 @@ export async function getSiteIntervenantsConsolidated(siteId: string): Promise<S
     db.from('site_decisions').select('id, titre, statut, date_decision, decisionnaire_company_id, decisionnaire_contact_id').eq('site_id', siteId).in('statut', ['proposee', 'actee', 'appliquee']),
     db.from('site_obligation').select('id, responsible_contact_id, status').eq('site_id', siteId).in('status', ['a_produire', 'en_cours']).not('responsible_contact_id', 'is', null),
   ])
-  const casting = (castRes.data ?? []) as Array<{ id: string; company_id: string; role: string; effective_from: string | null; effective_to: string | null }>
+  const casting = (castRes.data ?? []) as Array<{ id: string; company_id: string; role: string | null; effective_from: string | null; effective_to: string | null }>
   const actions = (actRes.data ?? []) as Array<{
     id: string; title: string; due_date: string | null; due_date_status: 'explicit' | 'estimated' | null
     status: string; created_at: string; report_id: string | null; assigned_company_id: string | null; assigned_contact_id: string | null

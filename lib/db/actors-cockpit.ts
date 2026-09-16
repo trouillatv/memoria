@@ -66,7 +66,7 @@ export interface ActorsCockpitInputs {
   teamMembers: Array<{ team_id: string; user_id: string }>       // team_members actifs (left_at null)
   fieldMembers: Array<{ team_id: string; contact_id: string }>   // team_field_members actifs
   missions: Array<{ site_id: string; assigned_team_id: string }> // missions actives avec équipe
-  casting: Array<{ company_id: string; main_contact_id: string | null; role: string }> // casting actif
+  casting: Array<{ company_id: string; main_contact_id: string | null; role: string | null }> // casting actif
   actions: Array<{ assigned_contact_id: string | null; assigned_company_id: string | null; due_date: string | null }> // actions ouvertes
   proposalCount: number  // propositions stakeholder « proposed »
 }
@@ -177,7 +177,7 @@ export function buildActorsCockpit(input: ActorsCockpitInputs): ActorsCockpit {
     const open = openByCompany.get(co.id) ?? 0
     const overdue = overdueByCompany.get(co.id) ?? 0
     const noRef = noReferentByCompany.get(co.id) ?? 0
-    const roles = [...new Set(casting.filter((x) => x.company_id === co.id).map((x) => x.role))]
+    const roles = [...new Set(casting.filter((x) => x.company_id === co.id).map((x) => x.role ?? 'Rôle à préciser'))]
     const contactCount = contacts.filter((x) => x.company_id === co.id).length
     const active = activeCasting || open > 0
     const status: ActorStatus = active ? 'active' : (contactCount === 0 ? 'incomplete' : 'historical')
@@ -293,7 +293,7 @@ export async function getActorsCockpit(orgIds: string[]): Promise<ActorsCockpit>
     teamMembers: (tmRes.data ?? []) as Array<{ team_id: string; user_id: string }>,
     fieldMembers: (tfmRes.data ?? []) as Array<{ team_id: string; contact_id: string }>,
     missions: (missionRes.data ?? []) as Array<{ site_id: string; assigned_team_id: string }>,
-    casting: ((castingRes.data ?? []) as Array<{ company_id: string; main_contact_id: string | null; role: string }>)
+    casting: ((castingRes.data ?? []) as Array<{ company_id: string; main_contact_id: string | null; role: string | null }>)
       .map((c) => ({ ...c, company_id: canon(c.company_id) })),
     actions: ((actionRes.data ?? []) as Array<{ assigned_contact_id: string | null; assigned_company_id: string | null; due_date: string | null }>)
       .map((a) => ({ ...a, assigned_company_id: a.assigned_company_id ? canon(a.assigned_company_id) : null })),

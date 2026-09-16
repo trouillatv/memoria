@@ -31,7 +31,8 @@ function frDate(iso: string | null): string {
   return `${d}/${m}`
 }
 
-function formatRole(role: string): string {
+function formatRole(role: string | null): string {
+  if (!role) return 'Rôle à préciser'
   return role.charAt(0).toUpperCase() + role.slice(1)
 }
 

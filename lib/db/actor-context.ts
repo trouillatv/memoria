@@ -90,9 +90,9 @@ export async function getActorContext(kind: 'person' | 'company', id: string, or
     .select('id, role, effective_from, source_report_id, site_id')
     .eq(castingCol, id)
     .order('effective_from', { ascending: false })
-  for (const c of (castings ?? []) as Array<{ id: string; role: string; effective_from: string | null; source_report_id: string | null; site_id: string }>) {
+  for (const c of (castings ?? []) as Array<{ id: string; role: string | null; effective_from: string | null; source_report_id: string | null; site_id: string }>) {
     const d = day(c.effective_from)
-    if (d) { siteIdsNeeded.add(c.site_id); events.push({ kind: 'casting', date: d, label: `Ajouté au casting (${c.role})`, sub: c.site_id, href: `/sites/${c.site_id}` }) }
+    if (d) { siteIdsNeeded.add(c.site_id); events.push({ kind: 'casting', date: d, label: `Ajouté au casting (${c.role ?? 'rôle à préciser'})`, sub: c.site_id, href: `/sites/${c.site_id}` }) }
     if (c.source_report_id) reportIdsNeeded.add(c.source_report_id)
   }
 

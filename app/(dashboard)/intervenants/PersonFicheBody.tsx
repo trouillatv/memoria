@@ -111,7 +111,7 @@ export function PersonFicheBody({ fiche, network, onSelectActor }: {
           <FicheLinkRow key={t.id} href={t.href} icon={<Users className="h-4 w-4" aria-hidden />} label={t.name} sub="Équipe" />
         ))}
         {activeCasting.map((c) => (
-          <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4" aria-hidden />} label={c.siteName} sub={`Casting · ${c.role}`} />
+          <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4" aria-hidden />} label={c.siteName} sub={`Casting · ${c.role ?? 'à préciser'}`} />
         ))}
         {!fiche.companyName && activeTeams.length === 0 && activeCasting.length === 0 && (
           <FicheEmpty>Aucun rattachement actif.</FicheEmpty>
@@ -140,7 +140,7 @@ export function PersonFicheBody({ fiche, network, onSelectActor }: {
             <FicheLinkRow key={d.id} href={`/sites/${d.siteId}`} icon={<ArrowRight className="h-4 w-4" aria-hidden />} label={d.title} sub={`Décision · ${d.siteName}${d.date ? ` · ${d.date}` : ''}`} />
           ))}
           {historicalCasting.map((c) => (
-            <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4 opacity-60" aria-hidden />} label={c.siteName} sub={`Casting clôturé · ${c.role}`} />
+            <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4 opacity-60" aria-hidden />} label={c.siteName} sub={`Casting clôturé · ${c.role ?? 'à préciser'}`} />
           ))}
           {historicalTeams.map((t) => (
             <FicheLinkRow key={t.id} href={t.href} icon={<Users className="h-4 w-4 opacity-60" aria-hidden />} label={t.name} sub="Équipe (passée)" />

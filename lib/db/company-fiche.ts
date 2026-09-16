@@ -35,7 +35,8 @@ export interface CompanyFicheAction {
 export interface CompanyCastingRow {
   siteId: string
   siteName: string
-  role: string
+  /** NULL depuis la mig 412 (P0-INT-4) : identité connue, rôle pas encore précisé. */
+  role: string | null
   active: boolean
   /** Date de la mention (site_intervenants.effective_from) — jamais « depuis ». */
   effectiveFrom: string | null
@@ -62,7 +63,8 @@ export interface CompanyRoleSource {
  *  fusionnés silencieusement en une seule ligne. Voir audit P0.2 2026-09-09
  *  (18 collisions réelles trouvées avec la clé rôle+date seule). */
 export interface CompanyRoleMention {
-  role: string
+  /** NULL depuis la mig 412 (P0-INT-4) : identité connue, rôle pas encore précisé. */
+  role: string | null
   effectiveFrom: string | null
   siteId: string
   siteName: string
@@ -122,7 +124,7 @@ export interface CompanyFicheInputs {
   today: string
   company: { id: string; name: string; short_name: string | null; siret: string | null; address: string | null; phone: string | null; email: string | null; website: string | null; deleted_at: string | null }
   /** `id` = site_intervenants.id — repli d'identité quand `sourceReportId` est NULL (voir dédup ci-dessous). */
-  casting: Array<{ id: string; siteId: string; siteName: string; role: string; active: boolean; effectiveFrom: string | null; mainContactId: string | null; source: CompanyRoleSource | null; sourceReportId: string | null }>
+  casting: Array<{ id: string; siteId: string; siteName: string; role: string | null; active: boolean; effectiveFrom: string | null; mainContactId: string | null; source: CompanyRoleSource | null; sourceReportId: string | null }>
   actions: Array<{ id: string; title: string; siteId: string; siteName: string; dueDate: string | null; hasReferent: boolean; assignedContactName: string | null }>
   contacts: Array<{ id: string; name: string; function: string | null }>
   /** Ids des contacts référents d'au moins une action ouverte de cette entreprise. */
@@ -158,7 +160,7 @@ export function buildCompanyFiche(input: CompanyFicheInputs): CompanyFiche {
   const mentionByKey = new Map<string, CompanyRoleMention>()
   for (const c of input.casting) {
     const key = c.sourceReportId
-      ? `${c.role}__${c.effectiveFrom ?? ''}__${c.siteId}__report:${c.sourceReportId}`
+      ? `${c.role ?? 'sans-role'}__${c.effectiveFrom ?? ''}__${c.siteId}__report:${c.sourceReportId}`
       : `row:${c.id}`
     const existing = mentionByKey.get(key)
     if (existing) {
@@ -254,7 +256,7 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
     // Toutes les actions (tous statuts) avec canonical_subject_id pour agréger les sujets portés.
     db.from('site_actions').select('canonical_subject_id, status, site_id').in('assigned_company_id', companyIds).not('canonical_subject_id', 'is', null),
   ])
-  const cast = (castRes.data ?? []) as Array<{ id: string; site_id: string; role: string; effective_to: string | null; effective_from: string | null; main_contact_id: string | null; source_report_id: string | null }>
+  const cast = (castRes.data ?? []) as Array<{ id: string; site_id: string; role: string | null; effective_to: string | null; effective_from: string | null; main_contact_id: string | null; source_report_id: string | null }>
   const act = (actRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null; assigned_contact_id: string | null }>
   const contactRows = (contactRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null }>
   const subjectAct = (subjectActRes.data ?? []) as Array<{ canonical_subject_id: string; status: string; site_id: string }>

@@ -29,7 +29,8 @@ export interface FicheActionRef {
 export interface FicheCastingRow {
   siteId: string
   siteName: string
-  role: string
+  /** NULL depuis la mig 412 (P0-INT-4) : identité connue, rôle pas encore précisé. */
+  role: string | null
   active: boolean
   href: string // /sites/{siteId}
 }
@@ -81,7 +82,7 @@ export interface PersonFicheInputs {
   contact: { id: string; full_name: string; function: string | null; company_id: string | null; is_internal_agent: boolean; email: string | null; phone: string | null; mobile: string | null }
   companyName: string | null
   teams: Array<{ id: string; name: string; active: boolean }>
-  casting: Array<{ siteId: string; siteName: string; role: string; active: boolean }>
+  casting: Array<{ siteId: string; siteName: string; role: string | null; active: boolean }>
   referentActions: Array<{ id: string; title: string; siteId: string; siteName: string; dueDate: string | null }>
   companyActions: Array<{ id: string; title: string; siteId: string; siteName: string; dueDate: string | null }>
   decisions: Array<{ id: string; title: string; siteId: string; siteName: string; date: string | null }>
@@ -183,7 +184,7 @@ export async function getPersonFiche(contactId: string, orgIds: string[]): Promi
   ])
 
   const tfm = (tfmRes.data ?? []) as Array<{ team_id: string; left_at: string | null }>
-  const cast = (castRes.data ?? []) as Array<{ site_id: string; role: string; effective_to: string | null }>
+  const cast = (castRes.data ?? []) as Array<{ site_id: string; role: string | null; effective_to: string | null }>
   const refAct = (refActRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null }>
   const coAct = (coActRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null }>
   const dec = (decRes.data ?? []) as Array<{ id: string; titre: string; site_id: string; date_decision: string | null }>

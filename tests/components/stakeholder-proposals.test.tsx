@@ -46,11 +46,13 @@ describe('Les trois issues sont toujours offertes', () => {
 })
 
 describe('Le rôle est demandé, jamais deviné', () => {
-  it('refuse de confirmer sans rôle, et le dit', async () => {
+  it('refuse de confirmer sans rôle ni identité, et le dit', async () => {
     render(<StakeholderProposals reportId="r1" items={[item('Ginger')]} />)
     fireEvent.click(within(carte()).getByRole('button', { name: /Confirmer/ }))
 
-    await waitFor(() => expect(within(carte()).getByText(/il ne se devine pas/)).toBeTruthy())
+    // Depuis P0-INT-4 (mig 412), le rôle seul manquant ne bloque plus — seule
+    // l'absence des trois (personne, entreprise, rôle) est refusée (CHECK SQL).
+    await waitFor(() => expect(within(carte()).getByText(/indiquez au moins le rôle/)).toBeTruthy())
     expect(promoteSpy).not.toHaveBeenCalled()
   })
 

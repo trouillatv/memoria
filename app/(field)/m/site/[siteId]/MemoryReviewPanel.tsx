@@ -387,7 +387,7 @@ function ReviewCard({
             </button>
           </div>
           <div>
-            <p className="mb-1 text-[12px] text-muted-foreground">Rôle sur le chantier</p>
+            <p className="mb-1 text-[12px] text-muted-foreground">Rôle sur le chantier{entityType !== 'role_only' ? ' (facultatif)' : ''}</p>
             <div className="flex flex-wrap gap-1.5">
               {ROLES.map((candidate) => (
                 <button key={candidate} type="button" disabled={pending} onClick={() => setRole(candidate)} className={cn('rounded-full border px-2.5 py-1 text-[12px]', role === candidate ? 'border-primary bg-primary text-primary-foreground' : 'bg-background')}>
@@ -431,7 +431,7 @@ function ReviewCard({
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              disabled={pending || !role || !entityType || (entityType === 'company' ? !companyName.trim() : entityType === 'person' ? !personName.trim() : false)}
+              disabled={pending || !entityType || (entityType === 'company' ? !companyName.trim() : entityType === 'person' ? !personName.trim() : !role)}
               onClick={() => promote({
                 role: role ?? undefined,
                 person_name: entityType === 'person' ? personName.trim() : undefined,
@@ -610,7 +610,7 @@ function StakeholderAttachPanel({
   initialQuery: string
   pending: boolean
   onCancel: () => void
-  onPromote: (target: IntervenantTarget, role: string) => void
+  onPromote: (target: IntervenantTarget, role?: string) => void
 }) {
   const [query, setQuery] = useState(initialQuery)
   const [hits, setHits] = useState<IntervenantTarget[] | null>(null)
@@ -648,9 +648,9 @@ function StakeholderAttachPanel({
       )}
       {selected && (
         <div className="space-y-1.5">
-          <label className="text-[12px] text-muted-foreground" htmlFor={`attach-role-${selected.companyId}`}>Rôle sur le chantier</label>
+          <label className="text-[12px] text-muted-foreground" htmlFor={`attach-role-${selected.companyId}`}>Rôle sur le chantier (facultatif)</label>
           <input id={`attach-role-${selected.companyId}`} value={role} onChange={(event) => setRole(event.target.value)} placeholder="MOA, BET, PAVE…" className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-[13px]" />
-          <button type="button" disabled={pending || !role.trim()} onClick={() => onPromote(selected, role.trim())} className="rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50">Confirmer l’intervenant</button>
+          <button type="button" disabled={pending} onClick={() => onPromote(selected, role.trim() || undefined)} className="rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50">Confirmer l’intervenant</button>
         </div>
       )}
       <button type="button" disabled={pending} onClick={onCancel} className="rounded-lg border px-3 py-1.5 text-[12.5px] text-muted-foreground">Annuler</button>

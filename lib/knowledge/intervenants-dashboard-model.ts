@@ -15,7 +15,8 @@ export interface IntervenantRow {
   contactId: string | null
   isPerson: boolean
   name: string
-  role: string
+  /** NULL depuis la mig 412 (P0-INT-4) : identité connue, rôle pas encore précisé. */
+  role: string | null
   companyName: string
   openActions: number
   lateActions: number

@@ -469,23 +469,26 @@ function LigneIntervenant({
   }
 
   const confirmer = () => {
-    if (!role.trim()) {
-      setErreur('Indiquez son rôle sur le chantier — il ne se devine pas.')
-      return
-    }
     // LES QUATRE ÉTATS SONT LÉGAUX (P0-3C, migs 320+321). Personne et
     // entreprise sont indépendantes et facultatives : vider les deux confirme
     // le RÔLE SEUL — MemorIA retient « l'électricien » sans inventer qui. Une
     // personne sans entreprise est une identité de l'organisation (plus
     // d'entreprise d'attente) ; personne + entreprise écrit l'affiliation datée.
-    setErreur(null)
     const personName = estPersonne ? personne.trim() || undefined : undefined
     const companyName = entreprise.trim() || undefined
+    // Rôle facultatif depuis P0-INT-4 (mig 412) dès qu'une identité est connue —
+    // seul le rôle seul (sans personne ni entreprise) exige encore le rôle,
+    // sinon la ligne serait complètement vide.
+    if (!personName && !companyName && !role.trim()) {
+      setErreur('Sans personne ni entreprise, indiquez au moins le rôle sur le chantier.')
+      return
+    }
+    setErreur(null)
     void agir(pid, () =>
       promoteStakeholderProposalAction({
         report_id: reportId,
         proposal_id: pid,
-        role: role.trim(),
+        role: role.trim() || undefined,
         company_name: companyName,
         person_name: personName,
         role_only: !personName && !companyName ? true : undefined,

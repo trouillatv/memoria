@@ -730,7 +730,9 @@ const CAPABILITIES: Record<string, { label: string; requiredInputs: PromotionInp
   deadline: { label: "Ajouter l'échéance au planning", requiredInputs: [] },
   decision: { label: 'Acter la décision', requiredInputs: [] },
   // Le rôle ne se lit pas dans « Ginger » : la proposition est une chaîne nue.
-  stakeholder: { label: "Créer l'intervenant", requiredInputs: ['role'] },
+  // Depuis P0-INT-4 (mig 412), le rôle n'est plus requis pour créer l'intervenant —
+  // identifier QUI est possible sans savoir encore QUEL rôle il tient.
+  stakeholder: { label: "Créer l'intervenant", requiredInputs: [] },
   vigilance: { label: 'Retenir le point de vigilance', requiredInputs: [] },
   // Périssable ou durable ? L'humain tranche, jamais le modèle.
   knowledge: { label: 'Confirmer cette information', requiredInputs: ['nature'] },
@@ -753,7 +755,8 @@ export function getPromotionCapability(kind: string): PromotionCapability {
 export const PROMOTABLE_KINDS = Object.keys(CAPABILITIES) as readonly string[]
 
 export interface PromotionInput {
-  /** Rôle sur le chantier (ETV / MOE / BET / …). REQUIS pour un intervenant. */
+  /** Rôle sur le chantier (ETV / MOE / BET / …). Facultatif depuis P0-INT-4
+   *  (mig 412) — absent = identité connue, rôle à préciser plus tard. */
   role?: string
   /** L'entreprise, si l'humain corrige le nom lu (« Ginger SAS »). */
   companyName?: string
@@ -919,9 +922,10 @@ export async function promoteProposal(params: {
     })
     result = { objectType: 'site_decision', objectId: id }
   } else if (p.kind === 'stakeholder') {
-    // Le RÔLE ne peut pas être deviné (cf. PromotionInput). Sans lui, on refuse —
-    // on ne fabrique pas un casting que personne n'a dit.
-    const role = params.input!.role!.trim()
+    // Le RÔLE ne peut pas être deviné (cf. PromotionInput). S'il n'est pas fourni,
+    // on ne fabrique pas un rôle que personne n'a dit — la participation naît
+    // avec role NULL, « à préciser » (P0-INT-4, mig 412), jamais une valeur inventée.
+    const role = params.input?.role?.trim() || null
     const orgId = params.organizationId ?? p.organization_id
     if (!orgId) return { status: 'not_found' }
     const personName = params.input?.personName?.trim() || null

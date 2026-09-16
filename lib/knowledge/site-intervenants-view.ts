@@ -32,7 +32,8 @@ export interface IntervenantCitedVisit {
 export interface IntervenantElsewhere {
   siteId: string
   siteName: string
-  role: string
+  /** NULL depuis la mig 412 (P0-INT-4) : identité connue, rôle pas encore précisé. */
+  role: string | null
 }
 
 export interface IntervenantPerson {
@@ -43,7 +44,8 @@ export interface IntervenantPerson {
   isPerson: boolean
   name: string
   fonction: string | null
-  role: string
+  /** NULL depuis la mig 412 (P0-INT-4) : identité connue, rôle pas encore précisé. */
+  role: string | null
   /** NULL = participation sans entreprise (rôle seul ou personne seule, mig 320). */
   companyId: string | null
   companyName: string
@@ -194,7 +196,7 @@ async function buildIntervenantPeople(
       const { data: siteRows } = await db
         .from('sites').select('id, name').in('id', otherSiteIds).in('organization_id', orgIds).is('deleted_at', null)
       const siteName = new Map((siteRows ?? []).map((s) => [s.id as string, s.name as string]))
-      for (const r of (rows ?? []) as Array<{ site_id: string; role: string; company_id: string | null; main_contact_id: string | null }>) {
+      for (const r of (rows ?? []) as Array<{ site_id: string; role: string | null; company_id: string | null; main_contact_id: string | null }>) {
         const name = siteName.get(r.site_id)
         if (!name) continue
         const entry: IntervenantElsewhere = { siteId: r.site_id, siteName: name, role: r.role }
@@ -342,7 +344,7 @@ async function buildIntervenantPeople(
       // D1 (P0-3D) : rôle seul → le RÔLE est l'identité affichable. Un nom vide
       // se lirait comme un bug ; « Électricien — non identifié » dit l'état réel
       // (participation non résolue, jamais un acteur inventé).
-      name: it.contactName ?? (it.companyShort || it.companyName || `${it.role} — non identifié`),
+      name: it.contactName ?? (it.companyShort || it.companyName || `${it.role ?? 'Rôle à préciser'} — non identifié`),
       fonction: it.contactFunction,
       role: it.role,
       companyId: it.companyId,
@@ -400,7 +402,8 @@ export async function getSiteIntervenantsView(siteId: string): Promise<SiteInter
     const g = groupByCompany.get(p.companyId) ?? {
       companyId: p.companyId, companyName: p.companyName || 'Sans entreprise identifiée', roles: [], people: [],
     }
-    if (!g.roles.includes(p.role)) g.roles.push(p.role)
+    const roleLabel = p.role ?? 'Rôle à préciser'
+    if (!g.roles.includes(roleLabel)) g.roles.push(roleLabel)
     g.people.push(p)
     groupByCompany.set(p.companyId, g)
   }

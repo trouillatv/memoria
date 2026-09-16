@@ -8,7 +8,10 @@ import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
 export interface SiteIntervenant {
   id: string
   siteId: string
-  role: string
+  /** NULL depuis la mig 412 : identité connue, rôle pas encore précisé est un
+   *  état métier LÉGITIME (P0-INT-4) — comme companyId, le type dit la vérité
+   *  du modèle plutôt que de simuler l'absence avec une chaîne vide. */
+  role: string | null
   /** NULL depuis la mig 320 : rôle seul et personne-sans-entreprise sont des
    *  états métier LÉGITIMES — le type dit la vérité du modèle, plus de
    *  filter(Boolean) silencieux pour masquer un null. */
@@ -67,7 +70,7 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
     return {
       id: r.id as string,
       siteId: r.site_id as string,
-      role: r.role as string,
+      role: (r.role as string | null) ?? null,
       companyId: (r.company_id as string | null) ?? null,
       companyName: (c?.name as string) ?? '',
       companyShort: (c?.short_name as string | null) ?? null,
@@ -99,7 +102,8 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
  *      (co-traitance et successions possibles). */
 export async function openSiteIntervenant(input: {
   siteId: string
-  role: string
+  /** null = identité connue, rôle pas encore précisé (P0-INT-4, mig 412). */
+  role: string | null
   /** null = entreprise inconnue (niveaux 1-2 de connaissance). */
   companyId: string | null
   mainContactId?: string | null
@@ -107,15 +111,15 @@ export async function openSiteIntervenant(input: {
   sourceReportId?: string | null
 }): Promise<string> {
   const sb = createAdminClient()
-  const role = input.role.trim().toUpperCase()
+  const role = input.role?.trim() ? input.role.trim().toUpperCase() : null
   const contactId = input.mainContactId ?? null
 
   let actifs = sb
     .from('site_intervenants')
     .select('id, main_contact_id')
     .eq('site_id', input.siteId)
-    .eq('role', role)
     .is('effective_to', null)
+  actifs = role ? actifs.eq('role', role) : actifs.is('role', null)
   actifs = input.companyId ? actifs.eq('company_id', input.companyId) : actifs.is('company_id', null)
   const { data: rows } = await actifs
   const candidates = (rows ?? []) as Array<{ id: string; main_contact_id: string | null }>
@@ -174,7 +178,7 @@ export async function replaceSiteIntervenant(input: {
 
   const nextId = await openSiteIntervenant({
     siteId: input.siteId,
-    role: (current as { role: string }).role,
+    role: (current as { role: string | null }).role,
     companyId: input.next.companyId,
     mainContactId: input.next.mainContactId ?? null,
     effectiveFrom: input.effectiveDate,
@@ -293,7 +297,10 @@ export interface RoleActor { company: string; contact: string | null }
 
 /** Résolution rôle → acteur pour un site : « ETV » → { company:'BatiSud', contact:'Jean Dupont' }.
  *  Clé = rôle en MAJUSCULES. En cas de co-traitance (N entreprises/rôle), garde la 1ʳᵉ
- *  et concatène les noms. Sert l'affichage « ETV · BatiSud » dans la colonne ACTION. */
+ *  et concatène les noms. Sert l'affichage « ETV · BatiSud » dans la colonne ACTION.
+ *  Une participation SANS rôle (P0-INT-4) n'a par définition aucun code ACTION à
+ *  résoudre — elle est quand même mappée, sous une clé propre à sa ligne
+ *  (jamais `null` comme clé commune : plusieurs entreprises sans rôle s'écraseraient). */
 export async function getRoleActorMap(siteId: string): Promise<Map<string, RoleActor>> {
   const list = await listSiteIntervenants(siteId)
   const map = new Map<string, RoleActor>()
@@ -301,9 +308,10 @@ export async function getRoleActorMap(siteId: string): Promise<Map<string, RoleA
     // D1 (P0-3D) : une participation à rôle seul n'affiche jamais du vide —
     // « non identifié » est un état de connaissance, pas une anomalie.
     const label = i.companyShort || i.companyName || i.contactName || 'non identifié'
-    const existing = map.get(i.role)
+    const key = i.role ?? `id:${i.id}`
+    const existing = map.get(key)
     if (existing) existing.company = `${existing.company}, ${label}`
-    else map.set(i.role, { company: label, contact: i.contactName })
+    else map.set(key, { company: label, contact: i.contactName })
   }
   return map
 }

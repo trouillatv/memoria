@@ -26,7 +26,8 @@ const TINT_ENGAGEMENTS = '#f59e0b'
 const TINT_PRESENCE = '#10b981'
 const TINT_CONTACTS = '#64748b'
 
-function formatRole(role: string): string {
+function formatRole(role: string | null): string {
+  if (!role) return 'Rôle à préciser'
   return role.charAt(0).toUpperCase() + role.slice(1)
 }
 

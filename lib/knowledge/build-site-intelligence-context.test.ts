@@ -149,7 +149,7 @@ function makeIntervenantsView(people: IntervenantPerson[] = []): SiteIntervenant
       ? [{
           companyId: people[0].companyId,
           companyName: people[0].companyName,
-          roles: [people[0].role],
+          roles: [people[0].role ?? 'Rôle à préciser'],
           people,
         }]
       : [],

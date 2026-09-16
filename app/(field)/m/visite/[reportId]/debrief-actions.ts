@@ -643,8 +643,9 @@ export async function trackDebriefNarrativeDisplayedAction(input: unknown): Prom
 const stakeholderSchema = z.object({
   report_id: z.string().uuid(),
   proposal_id: z.string().uuid(),
-  /** Le rôle sur le chantier. REQUIS : il ne se lit pas dans « Ginger ». */
-  role: z.string().trim().min(1).max(80),
+  /** Le rôle sur le chantier. Facultatif depuis P0-INT-4 (mig 412) : l'identité
+   *  peut être connue sans que le rôle le soit encore — jamais une valeur inventée. */
+  role: z.string().trim().max(80).optional(),
   /** L'entreprise, corrigée si MemorIA l'a mal lue. Facultative (migs 320+321). */
   company_name: z.string().trim().max(160).optional(),
   /** La PERSONNE, si le nom lu désigne quelqu'un et non une société. Depuis
@@ -662,7 +663,7 @@ export async function promoteStakeholderProposalAction(
   const auth = await requireFieldAgent()
   if ('error' in auth) return { ok: false, error: 'Non autorisé' }
   const parsed = stakeholderSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: 'Précisez au moins le rôle sur le chantier.' }
+  if (!parsed.success) return { ok: false, error: 'Champs invalides' }
   const visit = await getVisit(parsed.data.report_id)
   if (!visit) return { ok: false, error: 'Visite introuvable' }
   const access = await requireOrganizationMembership(visit.organization_id ?? '')

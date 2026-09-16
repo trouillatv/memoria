@@ -725,7 +725,7 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   // ── Intervenants validés (casting actif) ──
   const stakeholderConfirmed: KnowledgeItem[] = intervenants.map((it) => ({
     id: it.id,
-    title: [it.contactName, it.companyName].filter(Boolean).join(' · ') || it.role,
+    title: [it.contactName, it.companyName].filter(Boolean).join(' · ') || it.role || 'Rôle à préciser',
   }))
 
   // ── Échéances validées (mig 215) ──

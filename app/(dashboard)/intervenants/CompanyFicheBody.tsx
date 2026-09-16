@@ -110,7 +110,7 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
               <FicheRow
                 key={`${r.role}-${r.effectiveFrom ?? ''}-${r.siteId}-${r.source?.href ?? ''}`}
                 icon={<FileText className={`h-4 w-4 ${r.active ? '' : 'opacity-50'}`} aria-hidden />}
-                label={`${r.role} · ${r.siteName}`}
+                label={`${r.role ?? 'Rôle à préciser'} · ${r.siteName}`}
                 sub={
                   <span>
                     {dateLabel}
@@ -137,7 +137,7 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
           fiche.activeCasting.map((c) => {
             const date = frDateShort(c.effectiveFrom)
             return (
-              <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4" aria-hidden />} label={c.siteName} sub={`Rôle mentionné · ${c.role}${date ? ` — mention du ${date}` : ''}`} />
+              <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4" aria-hidden />} label={c.siteName} sub={`Rôle mentionné · ${c.role ?? 'à préciser'}${date ? ` — mention du ${date}` : ''}`} />
             )
           })
         )}
@@ -194,7 +194,7 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
       {fiche.historicalCasting.length > 0 && (
         <FicheSection title="Historique">
           {fiche.historicalCasting.map((c) => (
-            <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4 opacity-60" aria-hidden />} label={c.siteName} sub={`Casting clôturé · ${c.role}`} />
+            <FicheLinkRow key={`${c.siteId}-${c.role}`} href={c.href} icon={<MapPin className="h-4 w-4 opacity-60" aria-hidden />} label={c.siteName} sub={`Casting clôturé · ${c.role ?? 'à préciser'}`} />
           ))}
         </FicheSection>
       )}

@@ -141,7 +141,7 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false, v
             ? <h1 className="text-base font-semibold">{p.name}</h1>
             : <SheetTitle className={cn('text-base font-semibold', animateContent && FICHE_TITLE_MOTION)}>{p.name}</SheetTitle>}
           <p className="text-[13px] text-muted-foreground">
-            {[p.companyName, p.fonction ?? `Rôle ${p.role}`].filter(Boolean).join(' · ')}
+            {[p.companyName, p.fonction ?? `Rôle ${p.role ?? 'à préciser'}`].filter(Boolean).join(' · ')}
           </p>
           {/* La relation d'identité, puis la provenance en une ligne discrète. */}
           <FicheChapo chapo={chapo} className={animateContent ? FICHE_TITLE_MOTION : undefined} />
@@ -249,7 +249,7 @@ export function IntervenantFicheBody({ siteId, person, animateContent = false, v
                     <Link href={`/sites/${e.siteId}?tab=intervenants`} className="hover:underline">
                       {e.siteName}
                     </Link>
-                    <span className="text-muted-foreground"> — rôle {e.role}</span>
+                    <span className="text-muted-foreground"> — rôle {e.role ?? 'à préciser'}</span>
                   </li>
                 ))}
               </ul>

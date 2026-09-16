@@ -104,7 +104,8 @@ export async function getSiteActorContext(
 
     results.push({
       id: iv.id,
-      role: iv.role,
+      // Rôle facultatif depuis P0-INT-4 (mig 412) : jamais de null exposé au LLM.
+      role: iv.role ?? 'Rôle à préciser',
       mentionedSince: iv.effectiveFrom,
       companyName: iv.companyName,
       contactName: iv.contactName,

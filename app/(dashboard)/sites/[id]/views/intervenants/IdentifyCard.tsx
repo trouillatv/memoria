@@ -33,10 +33,11 @@ export function IdentifyCard({ siteId, item, onDone }: { siteId: string; item: T
   const [companyName, setCompanyName] = useState(item.suggestion?.companyName ?? guess.company ?? '')
 
   function promote(extra: { person_name?: string; company_name?: string; contact_id?: string | null; role_only?: boolean }) {
-    if (!role) return
     setError(null)
     start(async () => {
-      const res = await promoteFromMemoryAction({ site_id: siteId, proposal_id: item.proposalId, role, ...extra })
+      // Rôle facultatif depuis P0-INT-4 (mig 412) : identifier QUI ne suppose
+      // plus de connaître son rôle — role absent = « à préciser », jamais inventé.
+      const res = await promoteFromMemoryAction({ site_id: siteId, proposal_id: item.proposalId, role: role ?? undefined, ...extra })
       if (res.ok) return onDone()
       setError(res.error)
     })
@@ -101,7 +102,7 @@ export function IdentifyCard({ siteId, item, onDone }: { siteId: string; item: T
 
       {mode === 'nouveau' && (
         <div className="mt-2 space-y-2 rounded-lg bg-muted/40 p-2.5">
-          <p className="text-[12px] text-muted-foreground">Son rôle sur le chantier ?</p>
+          <p className="text-[12px] text-muted-foreground">Son rôle sur le chantier ? (facultatif — à préciser plus tard si besoin)</p>
           <div className="flex flex-wrap gap-1.5">
             {ROLES.map((r) => (
               <button
@@ -123,7 +124,7 @@ export function IdentifyCard({ siteId, item, onDone }: { siteId: string; item: T
           {item.suggestion && (
             <button
               type="button"
-              disabled={pending || !role}
+              disabled={pending}
               onClick={() => promote({
                 contact_id: item.suggestion!.contactId,
                 company_name: item.suggestion!.companyName,
@@ -164,7 +165,7 @@ export function IdentifyCard({ siteId, item, onDone }: { siteId: string; item: T
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              disabled={pending || !role}
+              disabled={pending}
               onClick={() => promote({
                 person_name: personName.trim() || undefined,
                 company_name: companyName.trim() || undefined,
@@ -241,15 +242,16 @@ function AttachPanel({
 
   function attach() {
     if (!cible) return
-    // Le rôle en vigueur évite de reposer la question ; sinon l'humain tranche.
+    // Rôle facultatif depuis P0-INT-4 (mig 412) : le rôle en vigueur évite de
+    // reposer la question ; à défaut, l'humain peut le préciser ou le laisser
+    // « à préciser » — jamais une valeur inventée.
     const roleFinal = cible.knownRole ?? role
-    if (!roleFinal) return
     setError(null)
     start(async () => {
       const res = await promoteFromMemoryAction({
         site_id: siteId,
         proposal_id: item.proposalId,
-        role: roleFinal,
+        role: roleFinal ?? undefined,
         company_id: cible.companyId,
         // Une entreprise citée ne devient PAS un contact à son nom : on ne
         // transmet un contact que si l'humain en a désigné un.
@@ -260,7 +262,7 @@ function AttachPanel({
     })
   }
 
-  const roleManquant = cible !== null && !cible.knownRole && !role
+  const showRolePicker = cible !== null && !cible.knownRole
 
   return (
     <div className="mt-2 space-y-2 rounded-lg bg-muted/40 p-2.5">
@@ -320,9 +322,9 @@ function AttachPanel({
         </ul>
       )}
 
-      {roleManquant && (
+      {showRolePicker && (
         <div className="space-y-1.5">
-          <p className="text-[12px] text-muted-foreground">Son rôle sur ce chantier ?</p>
+          <p className="text-[12px] text-muted-foreground">Son rôle sur ce chantier ? (facultatif — à préciser plus tard si besoin)</p>
           <div className="flex flex-wrap gap-1.5">
             {ROLES.map((r) => (
               <button
@@ -345,7 +347,7 @@ function AttachPanel({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={pending || !cible || (!cible.knownRole && !role)}
+          disabled={pending || !cible}
           onClick={attach}
           className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground disabled:opacity-50"
         >

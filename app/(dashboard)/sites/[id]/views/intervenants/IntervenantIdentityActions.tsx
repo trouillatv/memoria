@@ -30,9 +30,10 @@ export function IntervenantIdentityActions({
   intervenantId: string
   personKnown: boolean
   companyKnown: boolean
-  role: string
+  role: string | null
 }) {
   const router = useRouter()
+  const roleLabel = role ?? 'à préciser'
   const [pending, setPending] = useState(false)
   const [mode, setMode] = useState<'personne' | 'entreprise' | 'remplacer' | 'retirer' | null>(null)
   const [valeur, setValeur] = useState('')
@@ -176,7 +177,7 @@ export function IntervenantIdentityActions({
       {mode === 'remplacer' && (
         <div className="space-y-1.5">
           <p className="text-[12px] text-muted-foreground">
-            Qui reprend le rôle « {role} » ? La participation actuelle sera clôturée à la date
+            Qui reprend le rôle « {roleLabel} » ? La participation actuelle sera clôturée à la date
             choisie, la nouvelle chaînée — l’historique reste lisible.
           </p>
           <input
@@ -217,7 +218,7 @@ export function IntervenantIdentityActions({
       {mode === 'retirer' && (
         <div className="space-y-1.5">
           <p className="text-[12px] text-muted-foreground">
-            « {role} » n’intervient plus sur ce chantier à partir de quelle date ? La participation
+            « {roleLabel} » n’intervient plus sur ce chantier à partir de quelle date ? La participation
             est clôturée — son passage reste dans l’historique, rien n’est supprimé.
           </p>
           <input

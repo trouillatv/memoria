@@ -117,8 +117,9 @@ export async function confirmActorProposalAction(input: ConfirmActorProposalInpu
 
   // ── Casting FACULTATIF et explicite sur le chantier source ──────────────────
   if (p.castOnSite) {
-    const role = (p.role ?? '').trim()
-    if (!role) return { ok: false, error: 'Indiquez le rôle pour l’ajout au casting' }
+    // Rôle facultatif depuis P0-INT-4 (mig 412) : le casting identifie QUI,
+    // le rôle peut être précisé plus tard — role NULL, jamais une valeur inventée.
+    const role = (p.role ?? '').trim() || null
     // Vérifier le rattachement au chantier source (isolation stricte).
     if (!(await siteInOrg(proposal.siteId, g.orgIds))) return { ok: false, error: 'Chantier source hors de votre organisation' }
     // Le casting n'exige PLUS d'entreprise (mig 320, P0-3C) : une personne sans
