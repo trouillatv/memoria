@@ -501,6 +501,8 @@ export interface DbSiteReport {
   canonical_reconcile_error?: string | null
   /** corpus_hash (debrief_analysis) au moment de la dernière réconciliation réussie (mig 410, P0-1B). NULL = jamais réconcilié ou réconcilié avant ce lot. */
   canonical_reconciled_corpus_hash?: string | null
+  /** Erreur de la dernière réconciliation CBO des Actions échouée (mig 413, P0-B.1). NULL si succès ou jamais tentée. */
+  action_cbo_reconcile_error?: string | null
   /** Début du pipeline de construction de mémoire (occurrences + similarité) (mig 342). */
   similarity_analysis_started_at?: string | null
   /** Fin réussie du pipeline de construction de mémoire (mig 342). NULL = en cours, jamais lancé, ou en échec. */
@@ -672,7 +674,7 @@ export interface DbSiteAction {
   // NULL = action non issue d'une matérialisation documentaire.
   subject_thread_id: string | null
   // Chaînage avant→après (migration 319) : action qui remplace celle-ci.
-  // NULL = jamais remplacée. Posé par fn_supersede_action_by_cbo (mig 413)
+  // NULL = jamais remplacée. Posé par fn_apply_action_cbo_merge (mig 413)
   // lors de la réconciliation post-CBO des doublons longitudinaux.
   superseded_by: string | null
   superseded_at: string | null

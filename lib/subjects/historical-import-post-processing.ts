@@ -205,23 +205,37 @@ export async function runHistoricalImportPostProcessing(
   })
   await attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId })
 
-  // P0-B (stabilisation post-2-PV, arbitrage Vincent 2026-09-17) : réconciliation
-  // des Actions dupliquées par identité CBO, une fois le rattachement ci-dessus
-  // posé. Best-effort (le module s'auto-protège déjà en interne), même doctrine
-  // que les blocs voisins : un échec ici ne fait jamais échouer l'import.
+  // P0-B / P0-B.1 (stabilisation post-2-PV, arbitrage Vincent 2026-09-17) :
+  // réconciliation des Actions dupliquées par identité CBO, une fois le
+  // rattachement ci-dessus posé. Point 6 de la revue : cette étape protège un
+  // invariant fonctionnel (pas de doublon d'obligation active) — elle n'est
+  // plus un best-effort qui avale son erreur. Un échec persiste la raison
+  // (action_cbo_reconcile_error, mig 413) et fait échouer le post-traitement :
+  // le signal « mémoire à jour » ne doit jamais être renvoyé alors que cette
+  // étape est inachevée. Rejouable : une relance recalcule et retente cette
+  // étape (idempotent côté RPC), sans verrou dédié.
   try {
     const reconcileResult = await reconcileActionsByCanonicalBusinessObjectForReport({ siteReportId })
-    if (reconcileResult.actionsSuperseded > 0) {
+    if (reconcileResult.actionsSuperseded > 0 || reconcileResult.groupsBlockedDoneDurable > 0) {
       console.log(
         `[historical-import-post-processing] réconciliation CBO actions: site=${siteId} report=${siteReportId} ` +
-          `groupes=${reconcileResult.groupsReconciled} actions_superseded=${reconcileResult.actionsSuperseded}`,
+          `groupes=${reconcileResult.groupsReconciled} actions_superseded=${reconcileResult.actionsSuperseded} ` +
+          `groupes_bloques_done=${reconcileResult.groupsBlockedDoneDurable}`,
       )
     }
+    await sb.from('site_reports').update({ action_cbo_reconcile_error: null }).eq('id', siteReportId)
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
     console.error(
       `[historical-import-post-processing] réconciliation CBO actions failed: site=${siteId} report=${siteReportId}`,
-      err instanceof Error ? err.message : String(err),
+      reason,
     )
+    await sb
+      .from('site_reports')
+      .update({ action_cbo_reconcile_error: reason })
+      .eq('id', siteReportId)
+      .then(undefined, () => {})
+    return 'failed'
   }
 
   // P6 Live Writer (mandat Vincent, rollout global, P0-2B : comportement standard sans gate).
