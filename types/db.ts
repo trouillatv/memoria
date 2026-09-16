@@ -671,6 +671,11 @@ export interface DbSiteAction {
   // Fil thématique inter-PV (mig 288 backfill depuis mig 268 sur les proposals).
   // NULL = action non issue d'une matérialisation documentaire.
   subject_thread_id: string | null
+  // Chaînage avant→après (migration 319) : action qui remplace celle-ci.
+  // NULL = jamais remplacée. Posé par fn_supersede_action_by_cbo (mig 413)
+  // lors de la réconciliation post-CBO des doublons longitudinaux.
+  superseded_by: string | null
+  superseded_at: string | null
 }
 
 // Sujets vivants (migration 124) — fil persistant qui agrège dans le temps

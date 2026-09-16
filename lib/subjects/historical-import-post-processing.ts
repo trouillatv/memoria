@@ -9,6 +9,7 @@ import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-su
 import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-historical-occurrence'
 import { attachHistoricalReportEntitiesToCanonicalBusinessObjects } from '@/lib/db/canonical-business-object-attach'
+import { reconcileActionsByCanonicalBusinessObjectForReport } from '@/lib/db/action-cbo-reconciliation'
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
 import { resolveSiteDocumentCompletionsByProposal } from '@/lib/knowledge/document-completion-resolver'
 import { runTrackedPointLiveWriterForHistoricalRun } from '@/lib/db/tracked-point-live-writer-historical-adapter'
@@ -203,6 +204,25 @@ export async function runHistoricalImportPostProcessing(
     touchedCanonicalSubjectIds,
   })
   await attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId, siteReportId })
+
+  // P0-B (stabilisation post-2-PV, arbitrage Vincent 2026-09-17) : réconciliation
+  // des Actions dupliquées par identité CBO, une fois le rattachement ci-dessus
+  // posé. Best-effort (le module s'auto-protège déjà en interne), même doctrine
+  // que les blocs voisins : un échec ici ne fait jamais échouer l'import.
+  try {
+    const reconcileResult = await reconcileActionsByCanonicalBusinessObjectForReport({ siteReportId })
+    if (reconcileResult.actionsSuperseded > 0) {
+      console.log(
+        `[historical-import-post-processing] réconciliation CBO actions: site=${siteId} report=${siteReportId} ` +
+          `groupes=${reconcileResult.groupsReconciled} actions_superseded=${reconcileResult.actionsSuperseded}`,
+      )
+    }
+  } catch (err) {
+    console.error(
+      `[historical-import-post-processing] réconciliation CBO actions failed: site=${siteId} report=${siteReportId}`,
+      err instanceof Error ? err.message : String(err),
+    )
+  }
 
   // P6 Live Writer (mandat Vincent, rollout global, P0-2B : comportement standard sans gate).
   // Best-effort, même doctrine que le pont documentaire ci-dessous : un échec ici ne fait
