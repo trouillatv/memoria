@@ -285,6 +285,27 @@ export function ActorsCockpitView({ directory, teams, proposals = [], graph, col
           </ul>
           <div className="lg:col-span-3">
             <div className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-1.5rem)] lg:overflow-y-auto lg:pr-1">
+              {/* Rappel sticky (P1-INT-1, Vincent) : la fiche complète peut être longue —
+                  sans ce rappel, on perd l'entité sélectionnée en scrollant dans ce
+                  panneau. Local à ce panneau, ne touche pas CompanyFicheBody/PersonFicheBody
+                  (réutilisés tels quels sur les pages fiche dédiées, en scroll de page normal). */}
+              {selectedActor && (
+                <div className="sticky top-0 z-10 mb-3 flex items-center gap-2.5 rounded-2xl border border-border/60 bg-card px-4 py-2.5 shadow-sm">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-50 text-brand-700 dark:bg-brand-600/10 dark:text-brand-300">
+                    <KindIcon kind={selectedActor.kind} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="truncate text-sm font-semibold">{selectedActor.name}</span>
+                      <span className="text-[11px] rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground">{KIND_LABEL[selectedActor.kind]}</span>
+                      <AttentionBadge level={selectedActor.attention.level} />
+                    </div>
+                    {selectedActor.subtitle && (
+                      <p className="truncate text-[11.5px] text-muted-foreground">{selectedActor.subtitle}</p>
+                    )}
+                  </div>
+                </div>
+              )}
               <ActorPreviewPanel actor={selectedActor} preview={previewData} loading={loading} onSelectActor={selectActor} />
             </div>
           </div>

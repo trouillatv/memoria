@@ -70,33 +70,44 @@ export function NodePanel({ node, narration, relations, context, relationsView, 
   const importance = relationsView && (node.kind === 'person' || node.kind === 'company')
     ? buildActorNarrative(node.kind, node.label, relationsView, context ?? null)
     : []
+  // Header d'identité STICKY (Vincent, P1-INT-1) : le panneau peut devenir long
+  // (narration + interactions + chronologie + relations) — sans rappel fixe,
+  // l'utilisateur perd le nom de l'entité en scrollant. Le décalage négatif
+  // (-top/-mx) compense le padding du <aside> parent pour venir se coller
+  // pile au bord du conteneur scrollable (compact = aside embarqué p-3.5,
+  // sinon aside plein écran p-5) — cf. ExplorerAside, seul point d'entrée.
   return (
     <div>
-      <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" aria-hidden /> {KIND_LABEL[node.kind]}
-      </p>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
-        <h3 className={`${compact ? 'text-base' : 'text-lg'} font-semibold leading-snug`}>{node.label}</h3>
-        <LevelBadge node={node} />
-      </div>
-      {node.sub && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{node.sub}</p>}
+      <div className={compact
+        ? 'sticky -top-3.5 z-10 -mx-3.5 border-b border-border/60 bg-card px-3.5 pb-2.5 pt-3'
+        : 'sticky -top-5 z-10 -mx-5 border-b border-border/60 bg-card px-5 pb-3 pt-4'
+      }>
+        <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+          <Icon className="h-3.5 w-3.5" aria-hidden /> {KIND_LABEL[node.kind]}
+        </p>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <h3 className={`${compact ? 'text-base' : 'text-lg'} font-semibold leading-snug`}>{node.label}</h3>
+          <LevelBadge node={node} />
+        </div>
+        {node.sub && <p className="mt-0.5 text-[12.5px] text-muted-foreground">{node.sub}</p>}
 
-      <div className="mt-2.5 flex flex-wrap gap-1.5">
-        {isActor && onActivateActor && (
-          <button type="button" onClick={() => onActivateActor(node)} className="rounded-full border bg-muted/50 px-2.5 py-1 text-[12px] font-semibold hover:border-foreground/30">
-            Ouvrir sa fiche ici
-          </button>
-        )}
-        {isActor && (
-          <button type="button" onClick={onFollow} className="rounded-full border bg-muted/50 px-2.5 py-1 text-[12px] font-semibold hover:border-foreground/30">
-            <Route className="mr-1 inline h-3.5 w-3.5" aria-hidden /> Suivre le chemin…
-          </button>
-        )}
-        {href && !onActivateActor && (
-          <Link href={href} className="rounded-full border bg-muted/50 px-2.5 py-1 text-[12px] font-semibold hover:border-foreground/30">
-            Ouvrir la fiche complète
-          </Link>
-        )}
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {isActor && onActivateActor && (
+            <button type="button" onClick={() => onActivateActor(node)} className="rounded-full border bg-muted/50 px-2.5 py-1 text-[12px] font-semibold hover:border-foreground/30">
+              Ouvrir sa fiche ici
+            </button>
+          )}
+          {isActor && (
+            <button type="button" onClick={onFollow} className="rounded-full border bg-muted/50 px-2.5 py-1 text-[12px] font-semibold hover:border-foreground/30">
+              <Route className="mr-1 inline h-3.5 w-3.5" aria-hidden /> Suivre le chemin…
+            </button>
+          )}
+          {href && !onActivateActor && (
+            <Link href={href} className="rounded-full border bg-muted/50 px-2.5 py-1 text-[12px] font-semibold hover:border-foreground/30">
+              Ouvrir la fiche complète
+            </Link>
+          )}
+        </div>
       </div>
 
       {importance.length > 0 ? (
