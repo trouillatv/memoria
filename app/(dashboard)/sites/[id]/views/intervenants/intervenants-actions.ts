@@ -196,12 +196,17 @@ export async function searchIntervenantTargetsAction(
   const q = parsed.data.q
   const { data: companies } = await db
     .from('companies')
-    .select('id, name, short_name')
+    .select('id, name, short_name, status, alias_of_company_id')
     .eq('organization_id', orgId)
     .is('deleted_at', null)
-  const rows = (companies ?? []) as Array<{ id: string; name: string; short_name: string | null }>
+  const rows = (companies ?? []) as Array<{ id: string; name: string; short_name: string | null; status: string | null; alias_of_company_id: string | null }>
   if (rows.length === 0) return { ok: true, hits: [] }
   const labelById = new Map(rows.map((c) => [c.id, (c.short_name || c.name || '').trim()]))
+  // P0-INT-3 (mandat Vincent 2026-09-16) : un nom-alias (« DIMINC ») doit faire
+  // remonter son canonique (« DIMENC »), jamais l'alias lui-même — même doctrine
+  // qu'à l'écriture (findOrCreateCompanyByName, P0-INT-2).
+  const canonicalIdOf = (c: { id: string; status: string | null; alias_of_company_id: string | null }): string =>
+    c.status === 'alias' && c.alias_of_company_id ? c.alias_of_company_id : c.id
 
   // Le casting en vigueur : c'est lui qui distingue « déjà ici » de « ailleurs
   // dans l'organisation », et qui donne le rôle sans le redemander.
@@ -215,9 +220,14 @@ export async function searchIntervenantTargetsAction(
   )
 
   const needle = q.toLowerCase()
-  const matchedCompanies = rows.filter(
-    (c) => (c.name ?? '').toLowerCase().includes(needle) || (c.short_name ?? '').toLowerCase().includes(needle),
+  const matchedCanonicalIds = new Set(
+    rows
+      .filter((c) => (c.name ?? '').toLowerCase().includes(needle) || (c.short_name ?? '').toLowerCase().includes(needle))
+      .map((c) => canonicalIdOf(c)),
   )
+  // Le canonique remonte même si seul son alias matchait le texte tapé ; jamais
+  // l'inverse (une ligne alias n'est jamais elle-même proposée comme cible).
+  const matchedCompanies = rows.filter((c) => c.status !== 'alias' && matchedCanonicalIds.has(c.id))
 
   const { data: contacts } = await db
     .from('company_contacts')

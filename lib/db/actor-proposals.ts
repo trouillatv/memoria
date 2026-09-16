@@ -167,22 +167,72 @@ export interface ActorTarget {
   id: string
   name: string
   function: string | null
+  /** Nombre de chantiers où cet acteur est déjà présent (casting actif) — permet
+   *  d'afficher « Entreprise existante · X chantiers » avant validation (P0-INT-3). */
+  siteCount: number
 }
 
 /** Recherche unifiée personnes + entreprises de l'org (pour « associer à un
  *  acteur existant »). Nom normalisé, actifs, hors placeholder. Jamais de fusion :
- *  l'humain choisit la cible. */
+ *  l'humain choisit la cible.
+ *
+ *  P0-INT-3 (mandat Vincent 2026-09-16) : un exact-nommé alias (« DIMINC ») doit
+ *  résoudre vers son canonique (« DIMENC ») DANS le résultat lui-même — présenter
+ *  l'alias comme une cible à part entière romprait l'unicité que P0-INT-2 vient de
+ *  garantir à l'écriture. */
 export async function searchOrgActorTargets(orgIds: string[], query: string, limit = 6): Promise<ActorTarget[]> {
   const q = query.trim()
   if (orgIds.length === 0 || q.length < 2) return []
   const db = createAdminClient()
   const [personsRes, companiesRes] = await Promise.all([
     db.from('company_contacts').select('id, full_name, function').in('organization_id', orgIds).is('deleted_at', null).ilike('full_name', `%${q}%`).order('full_name', { ascending: true }).limit(limit),
-    db.from('companies').select('id, name').in('organization_id', orgIds).is('deleted_at', null).eq('is_placeholder', false).ilike('name', `%${q}%`).order('name', { ascending: true }).limit(limit),
+    db.from('companies').select('id, name, status, alias_of_company_id').in('organization_id', orgIds).is('deleted_at', null).eq('is_placeholder', false).ilike('name', `%${q}%`).order('name', { ascending: true }).limit(limit),
   ])
-  const persons: ActorTarget[] = ((personsRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null }>).map((c) => ({ kind: 'contact', id: c.id, name: c.full_name, function: c.function }))
-  const companies: ActorTarget[] = ((companiesRes.data ?? []) as Array<{ id: string; name: string }>).map((c) => ({ kind: 'company', id: c.id, name: c.name, function: null }))
-  return [...persons, ...companies]
+  const persons = (personsRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null }>
+  const companyRows = (companiesRes.data ?? []) as Array<{ id: string; name: string; status: string | null; alias_of_company_id: string | null }>
+
+  // Alias trouvés dont le canonique n'est pas déjà dans le lot matché : on va
+  // chercher son nom pour ne jamais afficher l'orthographe de l'alias comme cible.
+  const missingCanonicalIds = [...new Set(
+    companyRows.filter((c) => c.status === 'alias' && c.alias_of_company_id).map((c) => c.alias_of_company_id as string),
+  )].filter((id) => !companyRows.some((c) => c.id === id))
+  const canonicalRows = missingCanonicalIds.length
+    ? ((await db.from('companies').select('id, name').in('id', missingCanonicalIds)).data ?? []) as Array<{ id: string; name: string }>
+    : []
+  const nameById = new Map<string, string>([...companyRows.map((c): [string, string] => [c.id, c.name]), ...canonicalRows.map((c): [string, string] => [c.id, c.name])])
+
+  const resolvedCompanies = new Map<string, string>() // id canonique → nom canonique
+  for (const c of companyRows) {
+    const resolvedId = c.status === 'alias' && c.alias_of_company_id ? c.alias_of_company_id : c.id
+    resolvedCompanies.set(resolvedId, nameById.get(resolvedId) ?? c.name)
+  }
+
+  const contactIds = persons.map((c) => c.id)
+  const companyIds = [...resolvedCompanies.keys()]
+  const [castingByCompany, castingByContact] = await Promise.all([
+    companyIds.length ? db.from('site_intervenants').select('site_id, company_id').in('company_id', companyIds).is('effective_to', null) : Promise.resolve({ data: [] }),
+    contactIds.length ? db.from('site_intervenants').select('site_id, main_contact_id').in('main_contact_id', contactIds).is('effective_to', null) : Promise.resolve({ data: [] }),
+  ])
+  const siteCountByCompany = new Map<string, Set<string>>()
+  for (const r of (castingByCompany.data ?? []) as Array<{ site_id: string; company_id: string }>) {
+    if (!siteCountByCompany.has(r.company_id)) siteCountByCompany.set(r.company_id, new Set())
+    siteCountByCompany.get(r.company_id)!.add(r.site_id)
+  }
+  const siteCountByContact = new Map<string, Set<string>>()
+  for (const r of (castingByContact.data ?? []) as Array<{ site_id: string; main_contact_id: string }>) {
+    if (!siteCountByContact.has(r.main_contact_id)) siteCountByContact.set(r.main_contact_id, new Set())
+    siteCountByContact.get(r.main_contact_id)!.add(r.site_id)
+  }
+
+  const personTargets: ActorTarget[] = persons.map((c) => ({
+    kind: 'contact', id: c.id, name: c.full_name, function: c.function,
+    siteCount: siteCountByContact.get(c.id)?.size ?? 0,
+  }))
+  const companyTargets: ActorTarget[] = [...resolvedCompanies.entries()].map(([id, name]) => ({
+    kind: 'company', id, name, function: null,
+    siteCount: siteCountByCompany.get(id)?.size ?? 0,
+  }))
+  return [...personTargets, ...companyTargets]
 }
 
 export interface ProposalForConfirm {

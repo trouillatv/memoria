@@ -134,7 +134,7 @@ function ProposalCard({ proposal, teams, onResolved }: {
           <button
             type="button"
             disabled={pending}
-            onClick={() => associateTo({ kind: proposal.suggestion!.kind, id: proposal.suggestion!.id, name: proposal.suggestion!.name, function: null }, null)}
+            onClick={() => associateTo({ kind: proposal.suggestion!.kind, id: proposal.suggestion!.id, name: proposal.suggestion!.name, function: null, siteCount: 0 }, null)}
             className="inline-flex shrink-0 items-center gap-1 rounded-md bg-brand-600 px-2 py-1 text-[11.5px] font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
             <Link2 className="h-3 w-3" aria-hidden /> Associer
@@ -165,7 +165,7 @@ function ProposalCard({ proposal, teams, onResolved }: {
       )}
 
       {panel === 'associate' && (
-        <AssociatePanel siteName={source.siteName} pending={pending} onCancel={() => setPanel('none')} onPick={associateTo} />
+        <AssociatePanel proposalTitle={proposal.title} siteName={source.siteName} pending={pending} onCancel={() => setPanel('none')} onPick={associateTo} />
       )}
       {panel === 'create' && (
         <CreatePanel proposal={proposal} teams={teams} siteName={source.siteName} pending={pending} onCancel={() => setPanel('none')} onSubmit={run} />
@@ -181,8 +181,14 @@ function ProposalCard({ proposal, teams, onResolved }: {
   )
 }
 
-/** Recherche unifiée personnes + entreprises pour associer à un acteur existant. */
-function AssociatePanel({ siteName, pending, onCancel, onPick }: {
+/** Recherche unifiée personnes + entreprises pour associer à un acteur existant.
+ *
+ *  P0-INT-3 (mandat Vincent 2026-09-16) : cliquer un résultat de recherche ne
+ *  valide plus rien — il sélectionne une cible, affichée explicitement (« Associer
+ *  « X » à Y — Entreprise existante · N chantiers »), avec un bouton dédié
+ *  « Valider l'association » avant tout écrit. */
+function AssociatePanel({ proposalTitle, siteName, pending, onCancel, onPick }: {
+  proposalTitle: string
   siteName: string
   pending: boolean
   onCancel: () => void
@@ -193,6 +199,7 @@ function AssociatePanel({ siteName, pending, onCancel, onPick }: {
   const [searching, startSearch] = useTransition()
   const [cast, setCast] = useState(false)
   const [role, setRole] = useState('')
+  const [selected, setSelected] = useState<ActorTarget | null>(null)
 
   const search = (value: string) => {
     setQ(value)
@@ -201,6 +208,32 @@ function AssociatePanel({ siteName, pending, onCancel, onPick }: {
       const res = await searchActorTargetsAction({ query: value })
       if (res.ok) setHits(res.hits)
     })
+  }
+
+  if (selected) {
+    const kindLabel = selected.kind === 'company' ? 'Entreprise existante' : 'Personne existante'
+    return (
+      <div className="mt-2.5 space-y-2 rounded-lg border border-border/60 bg-muted/30 p-2.5">
+        <div className="rounded-md border border-brand-300/70 bg-brand-50/60 px-2.5 py-2 text-[12.5px] dark:border-brand-700/50 dark:bg-brand-600/10">
+          Associer « <b>{proposalTitle}</b> » à <b>{selected.name}</b>
+          <br />
+          <span className="text-muted-foreground">{kindLabel} · {selected.siteCount} chantier{selected.siteCount === 1 ? '' : 's'}</span>
+        </div>
+        <CastOption siteName={siteName} cast={cast} setCast={setCast} role={role} setRole={setRole} />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={pending || (cast && !role.trim())}
+            onClick={() => onPick(selected, cast ? { role: role.trim() } : null)}
+            className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-2.5 py-1 text-[12px] font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            <Check className="h-3.5 w-3.5" aria-hidden /> Valider l’association
+          </button>
+          <button type="button" onClick={() => setSelected(null)} className="text-[11.5px] text-muted-foreground hover:underline">Changer</button>
+          <button type="button" onClick={onCancel} className="text-[11.5px] text-muted-foreground hover:underline">Annuler</button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -213,18 +246,19 @@ function AssociatePanel({ siteName, pending, onCancel, onPick }: {
       {q.trim().length >= 2 && !searching && hits.length === 0 && (
         <p className="text-[11px] text-muted-foreground">Aucun acteur existant. Utilisez « Créer ».</p>
       )}
-      <CastOption siteName={siteName} cast={cast} setCast={setCast} role={role} setRole={setRole} />
       <ul className="space-y-1">
         {hits.map((t) => (
           <li key={`${t.kind}:${t.id}`}>
             <button
               type="button"
-              disabled={pending || (cast && !role.trim())}
-              onClick={() => onPick(t, cast ? { role: role.trim() } : null)}
-              className="flex w-full items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5 text-left text-[12.5px] hover:border-brand-300 disabled:opacity-50"
+              onClick={() => setSelected(t)}
+              className="flex w-full items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5 text-left text-[12.5px] hover:border-brand-300"
             >
               {t.kind === 'contact' ? <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden /> : <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
-              <span className="min-w-0 flex-1 truncate">{t.name}{t.function ? <span className="text-muted-foreground"> · {t.function}</span> : ''}</span>
+              <span className="min-w-0 flex-1 truncate">
+                {t.name}{t.function ? <span className="text-muted-foreground"> · {t.function}</span> : ''}
+                <span className="text-muted-foreground"> · {t.siteCount} chantier{t.siteCount === 1 ? '' : 's'}</span>
+              </span>
               <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
             </button>
           </li>
