@@ -80,3 +80,54 @@ describe('Présence — rubrique "Présents" appliquée uniformément quelle que
     expect(PROMPT).toMatch(/une personne seulement ÉVOQUÉE ailleurs dans le texte[\s\S]*sans figurer comme item de la rubrique « Présents » reste "inconnu"/i)
   })
 })
+
+// Correctif complémentaire (audit Dumbéa Mall 13/12, retour Vincent 2026-09-16) —
+// la règle de rubrique "Présents" ci-dessus manquait une notion de PORTÉE : elle ne
+// disait pas où la liste s'arrête, ce qui a produit un faux "présent" sur un nom
+// mentionné plus loin dans une autre section avec une syntaxe proche (nom +
+// parenthèse). Correction générique : la liste est bornée par la frontière de
+// section suivante, jamais par ressemblance de syntaxe.
+describe('Présence — portée de la rubrique "Présents" bornée par la frontière de section suivante', () => {
+  it('la liste "Présents" s’arrête au prochain intitulé de section/rubrique', () => {
+    expect(PROMPT).toMatch(/Portée de la rubrique « Présents » — où s'arrête la liste/i)
+    expect(PROMPT).toMatch(/s'arrête au prochain intitulé de section\/rubrique du document/i)
+  })
+  it('un nom mentionné après la frontière avec une syntaxe proche (nom + parenthèse) reste "inconnu"', () => {
+    expect(PROMPT).toMatch(/ne jamais élargir la portée de la rubrique par ressemblance syntaxique/i)
+    expect(PROMPT).toMatch(/seule la POSITION du nom avant la frontière de section prouve l'appartenance à la liste/i)
+  })
+  it('exemple witness : plusieurs noms sous "Présents" puis un autre nom mentionné plus loin sous une autre rubrique → seuls les premiers sont "présent"', () => {
+    expect(PROMPT).toMatch(/seuls les noms de la liste initiale sont "présent"/i)
+    expect(PROMPT).toMatch(/la simple similitude de syntaxe \(nom \+ parenthèse\) ne suffit jamais à le rattacher rétroactivement à la rubrique « Présents »/i)
+  })
+})
+
+// Correctif complémentaire (audit Dumbéa Mall 13/12, retour Vincent 2026-09-16) —
+// le témoin métier principal (mise en situation SSIAP : chrono lancé, levée de
+// doute réalisée, appel pompiers simulé, évacuation déclenchée à 4'40) ne
+// traversait pas le filtre malgré la règle 2c, car 2c suppose une défaillance
+// PRÉCÉDEMMENT observée. Règle 2d généralise aux résultats de test/exercice/
+// contrôle/visite déroulés pour la première fois dans le document, avec des
+// garde-fous explicites contre l'extraction de tout fait positif trivial.
+describe('2d — résultat significatif de test/exercice/contrôle capturé même sans défaillance préalable', () => {
+  it('couvre le déroulé d’un exercice/test réalisé pour la première fois dans le document', () => {
+    expect(PROMPT).toMatch(/Résultat significatif d'un test, exercice, contrôle ou mise en situation/i)
+    expect(PROMPT).toMatch(/même lorsqu'il ne répond à AUCUNE défaillance précédemment observée|même s'il ne répond à AUCUNE défaillance précédemment observée|y compris lorsqu'il ne répond à AUCUNE défaillance précédemment observée/i)
+  })
+  it('couvre explicitement chrono lancé / levée de doute réalisée / appel simulé / évacuation déclenchée à un instant précis', () => {
+    expect(PROMPT).toMatch(/chrono lancé, levée de doute effectuée, appel simulé passé, alarme\/évacuation déclenchée à un instant précis/i)
+  })
+  it('ne convertit jamais un test réussi en résolution automatique d’un autre sujet', () => {
+    expect(PROMPT).toMatch(/Ne JAMAIS convertir un « test réussi » en statusAtDocumentDate='réalisé'\/'resolved' pour un autre sujet du même thème/i)
+  })
+  it('exige au moins une condition de valeur de suivi (test explicite, capacité suivie, amélioration/dégradation/maintien, anomalie habituellement suivie)', () => {
+    expect(PROMPT).toMatch(/il provient explicitement d'un test, exercice, contrôle ou visite désigné comme tel par le document/i)
+    expect(PROMPT).toMatch(/il porte sur une capacité ou un système suivi dans la durée sur ce chantier/i)
+    expect(PROMPT).toMatch(/il permet un constat d'amélioration, de dégradation ou de maintien par rapport à un état antérieur/i)
+    expect(PROMPT).toMatch(/il répond à une anomalie ou un point de vigilance habituellement suivi sur ce type de chantier/i)
+  })
+  it('ne devient jamais "extraire tout événement positif" — un fait positif anodin sans valeur de suivi reste hors périmètre', () => {
+    expect(PROMPT).toMatch(/Ne PAS créer de proposition pour un fait positif anodin sans valeur de suivi/i)
+    expect(PROMPT).toMatch(/cette règle ne devient JAMAIS « extraire tout événement positif »/i)
+  })
+})
