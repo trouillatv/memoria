@@ -73,6 +73,7 @@ function ProposalCard({ proposal, teams, onResolved }: {
 }) {
   const router = useRouter()
   const [panel, setPanel] = useState<Panel>('none')
+  const [prefillTarget, setPrefillTarget] = useState<ActorTarget | null>(null)
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const { source } = proposal
@@ -124,7 +125,9 @@ function ProposalCard({ proposal, teams, onResolved }: {
         </div>
       </div>
 
-      {/* Suggestion de rapprochement (jamais imposée). */}
+      {/* Suggestion de rapprochement (jamais imposée) — pré-sélectionne la
+          cible et route vers la même confirmation que la recherche manuelle,
+          jamais une association directe en un clic (mandat Vincent, P0-INT-3.1). */}
       {panel === 'none' && proposal.suggestion && (
         <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-brand-200/70 bg-brand-50/50 px-2.5 py-1.5 text-[12px] dark:border-brand-700/50 dark:bg-brand-600/10">
           <span className="min-w-0 truncate">
@@ -134,7 +137,10 @@ function ProposalCard({ proposal, teams, onResolved }: {
           <button
             type="button"
             disabled={pending}
-            onClick={() => associateTo({ kind: proposal.suggestion!.kind, id: proposal.suggestion!.id, name: proposal.suggestion!.name, function: null, siteCount: 0 }, null)}
+            onClick={() => {
+              setPrefillTarget({ kind: proposal.suggestion!.kind, id: proposal.suggestion!.id, name: proposal.suggestion!.name, function: null, siteCount: 0 })
+              setPanel('associate')
+            }}
             className="inline-flex shrink-0 items-center gap-1 rounded-md bg-brand-600 px-2 py-1 text-[11.5px] font-medium text-white hover:bg-brand-700 disabled:opacity-50"
           >
             <Link2 className="h-3 w-3" aria-hidden /> Associer
@@ -147,7 +153,7 @@ function ProposalCard({ proposal, teams, onResolved }: {
       {/* Actions principales. */}
       {panel === 'none' && (
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={() => setPanel('associate')} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-1 text-[12px] hover:bg-muted disabled:opacity-50">
+          <button type="button" onClick={() => { setPrefillTarget(null); setPanel('associate') }} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-1 text-[12px] hover:bg-muted disabled:opacity-50">
             <Search className="h-3 w-3" aria-hidden /> Associer…
           </button>
           <button type="button" onClick={() => setPanel('create')} disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-border/70 px-2 py-1 text-[12px] hover:bg-muted disabled:opacity-50">
@@ -165,7 +171,7 @@ function ProposalCard({ proposal, teams, onResolved }: {
       )}
 
       {panel === 'associate' && (
-        <AssociatePanel proposalTitle={proposal.title} siteName={source.siteName} pending={pending} onCancel={() => setPanel('none')} onPick={associateTo} />
+        <AssociatePanel proposalTitle={proposal.title} siteName={source.siteName} pending={pending} initialTarget={prefillTarget} onCancel={() => setPanel('none')} onPick={associateTo} />
       )}
       {panel === 'create' && (
         <CreatePanel proposal={proposal} teams={teams} siteName={source.siteName} pending={pending} onCancel={() => setPanel('none')} onSubmit={run} />
@@ -186,11 +192,17 @@ function ProposalCard({ proposal, teams, onResolved }: {
  *  P0-INT-3 (mandat Vincent 2026-09-16) : cliquer un résultat de recherche ne
  *  valide plus rien — il sélectionne une cible, affichée explicitement (« Associer
  *  « X » à Y — Entreprise existante · N chantiers »), avec un bouton dédié
- *  « Valider l'association » avant tout écrit. */
-function AssociatePanel({ proposalTitle, siteName, pending, onCancel, onPick }: {
+ *  « Valider l'association » avant tout écrit.
+ *
+ *  P0-INT-3.1 (FIX_REQUIRED Vincent 2026-09-16) : la suggestion IA passe par la
+ *  MÊME confirmation — `initialTarget` la pré-sélectionne, jamais d'association
+ *  en un clic. Seul l'habillage du bloc de confirmation distingue la source
+ *  (« Suggestion MemorIA » vs le décompte de chantiers de la recherche). */
+function AssociatePanel({ proposalTitle, siteName, pending, initialTarget, onCancel, onPick }: {
   proposalTitle: string
   siteName: string
   pending: boolean
+  initialTarget: ActorTarget | null
   onCancel: () => void
   onPick: (t: ActorTarget, cast: { role: string } | null) => void
 }) {
@@ -199,7 +211,8 @@ function AssociatePanel({ proposalTitle, siteName, pending, onCancel, onPick }: 
   const [searching, startSearch] = useTransition()
   const [cast, setCast] = useState(false)
   const [role, setRole] = useState('')
-  const [selected, setSelected] = useState<ActorTarget | null>(null)
+  const [selected, setSelected] = useState<ActorTarget | null>(initialTarget)
+  const [selectedSource, setSelectedSource] = useState<'search' | 'suggestion'>(initialTarget ? 'suggestion' : 'search')
 
   const search = (value: string) => {
     setQ(value)
@@ -217,7 +230,11 @@ function AssociatePanel({ proposalTitle, siteName, pending, onCancel, onPick }: 
         <div className="rounded-md border border-brand-300/70 bg-brand-50/60 px-2.5 py-2 text-[12.5px] dark:border-brand-700/50 dark:bg-brand-600/10">
           Associer « <b>{proposalTitle}</b> » à <b>{selected.name}</b>
           <br />
-          <span className="text-muted-foreground">{kindLabel} · {selected.siteCount} chantier{selected.siteCount === 1 ? '' : 's'}</span>
+          <span className="text-muted-foreground">
+            {selectedSource === 'suggestion'
+              ? `Suggestion MemorIA · ${kindLabel}`
+              : `${kindLabel} · ${selected.siteCount} chantier${selected.siteCount === 1 ? '' : 's'}`}
+          </span>
         </div>
         <CastOption siteName={siteName} cast={cast} setCast={setCast} role={role} setRole={setRole} />
         <div className="flex items-center gap-2">
@@ -229,7 +246,7 @@ function AssociatePanel({ proposalTitle, siteName, pending, onCancel, onPick }: 
           >
             <Check className="h-3.5 w-3.5" aria-hidden /> Valider l’association
           </button>
-          <button type="button" onClick={() => setSelected(null)} className="text-[11.5px] text-muted-foreground hover:underline">Changer</button>
+          <button type="button" onClick={() => { setSelected(null); setSelectedSource('search') }} className="text-[11.5px] text-muted-foreground hover:underline">Changer</button>
           <button type="button" onClick={onCancel} className="text-[11.5px] text-muted-foreground hover:underline">Annuler</button>
         </div>
       </div>
@@ -251,7 +268,7 @@ function AssociatePanel({ proposalTitle, siteName, pending, onCancel, onPick }: 
           <li key={`${t.kind}:${t.id}`}>
             <button
               type="button"
-              onClick={() => setSelected(t)}
+              onClick={() => { setSelected(t); setSelectedSource('search') }}
               className="flex w-full items-center gap-2 rounded-md border border-border/60 bg-background px-2 py-1.5 text-left text-[12.5px] hover:border-brand-300"
             >
               {t.kind === 'contact' ? <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden /> : <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />}
