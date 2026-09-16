@@ -4,6 +4,7 @@
 // (« ETV ») aux vrais acteurs (« ETV · BatiSud · Jean Dupont »).
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import { resolveCanonicalCompanyId } from '@/lib/db/companies'
 
 export interface SiteIntervenant {
   id: string
@@ -53,8 +54,23 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
 
   // company_id est NULLABLE depuis la mig 320 (rôle seul, personne seule) : on
   // ne passe jamais null à un .in() — la ligne reste servie, sans entreprise.
-  const companyIds = [...new Set(list.map((r) => r.company_id as string | null).filter((x): x is string => !!x))]
+  const rawCompanyIds = [...new Set(list.map((r) => r.company_id as string | null).filter((x): x is string => !!x))]
   const contactIds = list.map((r) => r.main_contact_id as string | null).filter((x): x is string => !!x)
+
+  // P0-INT-5 : un alias (mig 407) ne doit jamais produire une identité/agrégat
+  // séparé de son entreprise canonique dans le casting — on résout AVANT de
+  // charger les fiches entreprise, comme le fait déjà le graphe org (actors-graph.ts).
+  let canon = (id: string) => id
+  if (rawCompanyIds.length > 0) {
+    const { data: aliasRows } = await sb.from('companies').select('id, status, alias_of_company_id').in('id', rawCompanyIds)
+    const aliasMap = new Map((aliasRows ?? []).map((c) => [c.id as string, {
+      id: c.id as string,
+      status: (c.status as string) === 'alias' ? ('alias' as const) : ('active' as const),
+      aliasOfCompanyId: c.alias_of_company_id as string | null,
+    }]))
+    canon = (id: string) => resolveCanonicalCompanyId(aliasMap, id)
+  }
+  const companyIds = [...new Set(rawCompanyIds.map(canon))]
 
   const { data: companies } = await sb.from('companies').select('id, name, short_name').in('id', companyIds)
   const companyById = new Map((companies ?? []).map((c) => [c.id as string, c]))
@@ -65,13 +81,14 @@ export async function listSiteIntervenants(siteId: string): Promise<SiteInterven
   }
 
   return list.map((r) => {
-    const c = r.company_id ? companyById.get(r.company_id as string) : undefined
+    const canonicalCompanyId = r.company_id ? canon(r.company_id as string) : null
+    const c = canonicalCompanyId ? companyById.get(canonicalCompanyId) : undefined
     const ct = r.main_contact_id ? contactById.get(r.main_contact_id as string) : undefined
     return {
       id: r.id as string,
       siteId: r.site_id as string,
       role: (r.role as string | null) ?? null,
-      companyId: (r.company_id as string | null) ?? null,
+      companyId: canonicalCompanyId,
       companyName: (c?.name as string) ?? '',
       companyShort: (c?.short_name as string | null) ?? null,
       mainContactId: (r.main_contact_id as string | null) ?? null,
@@ -304,14 +321,25 @@ export interface RoleActor { company: string; contact: string | null }
 export async function getRoleActorMap(siteId: string): Promise<Map<string, RoleActor>> {
   const list = await listSiteIntervenants(siteId)
   const map = new Map<string, RoleActor>()
+  // P0-INT-5 : company_id est désormais canonicalisé par listSiteIntervenants,
+  // donc un même rôle porté par une entreprise ET son alias (deux lignes
+  // site_intervenants distinctes) résout au MÊME libellé — ne pas le
+  // concaténer deux fois avec lui-même (ce ne serait pas de la co-traitance).
+  const seenPerKey = new Map<string, Set<string>>()
   for (const i of list) {
     // D1 (P0-3D) : une participation à rôle seul n'affiche jamais du vide —
     // « non identifié » est un état de connaissance, pas une anomalie.
     const label = i.companyShort || i.companyName || i.contactName || 'non identifié'
     const key = i.role ?? `id:${i.id}`
+    const seen = seenPerKey.get(key) ?? new Set<string>()
     const existing = map.get(key)
-    if (existing) existing.company = `${existing.company}, ${label}`
-    else map.set(key, { company: label, contact: i.contactName })
+    if (existing) {
+      if (!seen.has(label)) existing.company = `${existing.company}, ${label}`
+    } else {
+      map.set(key, { company: label, contact: i.contactName })
+    }
+    seen.add(label)
+    seenPerKey.set(key, seen)
   }
   return map
 }
