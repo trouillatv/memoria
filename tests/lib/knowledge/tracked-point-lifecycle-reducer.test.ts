@@ -214,4 +214,37 @@ describe('reduceTrackedPointLifecycle — invariance à la permutation d\'ordre'
     expect(a.computedCurrentState).toBe(b.computedCurrentState)
     expect(a.computedCurrentState).toBe('reopened')
   })
+
+  // Invariant permanent — import rétroactif / ordre d'ingestion. Promu depuis l'audit
+  // jetable _audit-temporal-retroactive.test.ts (FINAL CHECK LIVE WRITER RESOLVED-POINT
+  // MATCHING, GO Vincent) : les archives peuvent être importées dans n'importe quel
+  // ordre, le Point doit reconstruire la vérité selon les dates métier.
+  it('les 6 permutations d\'un jeu de 3 événements produisent un résultat strictement identique', () => {
+    const events = [
+      ev('open_signal', '2026-01-15', '2026-01-15'),
+      ev('open_signal', '2026-06-08', '2026-06-08'),
+      ev('resolution_signal', '2026-07-22', '2026-07-22'),
+    ]
+    const permute = <T,>(arr: T[]): T[][] =>
+      arr.length <= 1 ? [arr] : arr.flatMap((x, i) => permute([...arr.slice(0, i), ...arr.slice(i + 1)]).map((p) => [x, ...p]))
+    const results = permute(events).map((docs) => reduceTrackedPointLifecycle([], docs, []))
+    for (const r of results) expect(r).toEqual(results[0])
+    expect(results[0].computedCurrentState).toBe('resolved')
+  })
+
+  it('reopened seulement si OPEN est métier-postérieur à RESOLVED, jamais si OPEN précède', () => {
+    const openBeforeResolved = reduceTrackedPointLifecycle(
+      [], [ev('open_signal', '2026-06-08', '2026-06-08'), ev('resolution_signal', '2026-07-22', '2026-07-22')], [],
+    )
+    expect(openBeforeResolved.computedCurrentState).toBe('resolved')
+
+    const openAfterResolved = reduceTrackedPointLifecycle(
+      [], [ev('resolution_signal', '2026-06-08', '2026-06-08'), ev('open_signal', '2026-07-22', '2026-07-22')], [],
+    )
+    const sameReversed = reduceTrackedPointLifecycle(
+      [], [ev('open_signal', '2026-07-22', '2026-07-22'), ev('resolution_signal', '2026-06-08', '2026-06-08')], [],
+    )
+    expect(openAfterResolved.computedCurrentState).toBe('reopened')
+    expect(sameReversed).toEqual(openAfterResolved)
+  })
 })
