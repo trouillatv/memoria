@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
-  Users, User, Building2, ArrowRight, AlertTriangle, Clock, List, Share2,
+  Users, User, Building2, ArrowRight, AlertTriangle, Clock, List, Share2, Maximize2,
 } from 'lucide-react'
 import type { ActorKind, ActorStatus, CockpitActor, ActorsCockpit } from '@/lib/db/actors-cockpit'
 import { attentionLevelLabel, type AttentionLevel } from '@/lib/knowledge/actor-attention'
@@ -70,6 +70,46 @@ function norm(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 }
 
+// Mode Focus (P1-INT-2, mandat Vincent 2026-09-16) : retour « ← Intervenants » restaure
+// sélection/filtres/recherche/scroll — sessionStorage plutôt qu'une query param (état
+// purement transitoire, jamais partageable par URL). Écrit juste avant la navigation
+// vers la fiche dédiée, lu une seule fois au montage puis effacé.
+const COCKPIT_STATE_KEY = 'intervenants-cockpit-state-v1'
+
+interface CockpitSavedState {
+  tab: Tab
+  query: string
+  alertsOnly: boolean
+  selectedKey: string | null
+  scrollY: number
+}
+
+function focusHref(kind: ActorKind, id: string): string | null {
+  if (kind === 'company') return `/intervenants/entreprise/${id}`
+  if (kind === 'person') return `/intervenants/personne/${id}`
+  if (kind === 'team') return `/equipes/${id}`
+  return null
+}
+
+/** Lecture unique, au montage : lit puis efface immédiatement l'état sauvegardé (ne doit
+ *  jamais survivre à un rechargement normal). SSR-safe (`window` absent côté serveur). */
+function readSavedCockpitState(): CockpitSavedState | null {
+  if (typeof window === 'undefined') return null
+  let raw: string | null = null
+  try {
+    raw = sessionStorage.getItem(COCKPIT_STATE_KEY)
+    if (raw) sessionStorage.removeItem(COCKPIT_STATE_KEY)
+  } catch {
+    return null
+  }
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as CockpitSavedState
+  } catch {
+    return null
+  }
+}
+
 function KindIcon({ kind }: { kind: ActorKind }) {
   if (kind === 'company') return <Building2 className="h-4 w-4" aria-hidden />
   if (kind === 'team') return <Users className="h-4 w-4" aria-hidden />
@@ -97,11 +137,18 @@ export function ActorsCockpitView({ directory, teams, proposals = [], graph, col
   view?: 'list' | 'graph'
 }) {
   const isGraph = view === 'graph'
-  const [tab, setTab] = useState<Tab>('all')
-  const [query, setQuery] = useState('')
-  const [alertsOnly, setAlertsOnly] = useState(false)
-  const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  // Restauration au retour depuis le Mode Focus — lue une seule fois via l'initialiseur
+  // paresseux (pas d'effet, pas de setState post-montage : évite tout rendu en cascade).
+  const [savedCockpitState] = useState<CockpitSavedState | null>(() => readSavedCockpitState())
+  const [tab, setTab] = useState<Tab>(() => savedCockpitState?.tab ?? 'all')
+  const [query, setQuery] = useState(() => savedCockpitState?.query ?? '')
+  const [alertsOnly, setAlertsOnly] = useState(() => savedCockpitState?.alertsOnly ?? false)
+  const [selectedKey, setSelectedKey] = useState<string | null>(() => savedCockpitState?.selectedKey ?? null)
   const [preview, setPreview] = useState<{ key: string; data: ActorPreview } | null>(null)
+
+  useEffect(() => {
+    if (savedCockpitState) requestAnimationFrame(() => window.scrollTo(0, savedCockpitState.scrollY))
+  }, [savedCockpitState])
 
   const { counters } = directory
   const filtered = useMemo(() => {
@@ -154,6 +201,15 @@ export function ActorsCockpitView({ directory, teams, proposals = [], graph, col
 
   const previewData = preview && preview.key === effectiveKey ? preview.data : null
   const loading = !!effectiveKey && (!preview || preview.key !== effectiveKey)
+
+  function saveStateForFocusReturn() {
+    try {
+      const state: CockpitSavedState = { tab, query, alertsOnly, selectedKey: effectiveKey, scrollY: window.scrollY }
+      sessionStorage.setItem(COCKPIT_STATE_KEY, JSON.stringify(state))
+    } catch {
+      // sessionStorage indisponible (navigation privée stricte) — dégrade en navigation simple.
+    }
+  }
 
   const hasAttention =
     counters.actionsWithoutOwner > 0 || counters.companiesOverdue > 0 || counters.agentsWithoutTeam > 0 ||
@@ -304,6 +360,16 @@ export function ActorsCockpitView({ directory, teams, proposals = [], graph, col
                       <p className="truncate text-[11.5px] text-muted-foreground">{selectedActor.subtitle}</p>
                     )}
                   </div>
+                  {focusHref(selectedActor.kind, selectedActor.id) && (
+                    <Link
+                      href={focusHref(selectedActor.kind, selectedActor.id)!}
+                      onClick={saveStateForFocusReturn}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-[11px] font-medium text-muted-foreground hover:border-brand-200 hover:text-brand-700 dark:hover:text-brand-300"
+                      title="Ouvrir la fiche complète en plein écran"
+                    >
+                      <Maximize2 className="h-3 w-3" aria-hidden /> Mode focus
+                    </Link>
+                  )}
                 </div>
               )}
               <ActorPreviewPanel actor={selectedActor} preview={previewData} loading={loading} onSelectActor={selectActor} />

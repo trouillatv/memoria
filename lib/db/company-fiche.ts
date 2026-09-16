@@ -19,6 +19,7 @@ import { todayLocalIso } from '@/lib/time/local-date'
 import { deriveActorAttentionState, type AttentionState } from '@/lib/knowledge/actor-attention'
 import type { ActorStatus } from '@/lib/db/actors-cockpit'
 import { reportProvenanceType, desktopSourceHref, PROVENANCE_LINK_LABEL } from '@/lib/knowledge/action-provenance'
+import { getPilotedPointsByCompanies, type CompanyPilotedPointRow } from '@/lib/db/tracked-point-responsible-companies'
 
 export interface CompanyFicheAction {
   id: string
@@ -118,6 +119,14 @@ export interface CompanyFiche {
   contacts: CompanyContactRow[]
   // Sujets portés : sujets canoniques rattachés à des actions dont cette entreprise est responsable
   subjectsCarried: CompanySubjectRow[]
+  // Responsabilités (Mode Focus, mandat Vincent 2026-09-16) : désignation structurée
+  // (tracked_point_responsible_companies, mig 406) — jamais une déduction depuis une citation.
+  pilotedPoints: CompanyPilotedPointRow[]
+  // Présence & mentions : signal FAIBLE, jamais une responsabilité — nombre de chantiers où
+  // cette entreprise a été détectée comme acteur candidat (canonical_subject kind=actor), sans
+  // détection exhaustive Point par Point (cf. HARD STOP Vincent 2026-09-16 : pas de moteur
+  // cross-site de citation dans ce lot).
+  citedSitesCount: number
 }
 
 export interface CompanyFicheInputs {
@@ -130,6 +139,8 @@ export interface CompanyFicheInputs {
   /** Ids des contacts référents d'au moins une action ouverte de cette entreprise. */
   referentContactIds: string[]
   subjectsCarried: CompanySubjectRow[]
+  pilotedPoints: CompanyPilotedPointRow[]
+  citedSitesCount: number
 }
 
 /** Composition PURE. Déterministe ; attention via la politique commune. */
@@ -214,6 +225,8 @@ export function buildCompanyFiche(input: CompanyFicheInputs): CompanyFiche {
     historicalCasting,
     contacts,
     subjectsCarried: input.subjectsCarried,
+    pilotedPoints: input.pilotedPoints,
+    citedSitesCount: input.citedSitesCount,
   }
 }
 
@@ -249,17 +262,22 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
   const { data: aliasRows } = await db.from('companies').select('id').eq('alias_of_company_id', canonicalId).eq('status', 'alias')
   const companyIds = [canonicalId, ...((aliasRows ?? []) as Array<{ id: string }>).map((r) => r.id)]
 
-  const [castRes, actRes, contactRes, subjectActRes] = await Promise.all([
+  const [castRes, actRes, contactRes, subjectActRes, pilotedPoints, citedSubjectRes] = await Promise.all([
     db.from('site_intervenants').select('id, site_id, role, effective_to, effective_from, main_contact_id, source_report_id').in('company_id', companyIds),
     db.from('site_actions').select('id, title, site_id, due_date, assigned_contact_id').in('assigned_company_id', companyIds).eq('status', 'open'),
     db.from('company_contacts').select('id, full_name, function').in('company_id', companyIds).is('deleted_at', null),
     // Toutes les actions (tous statuts) avec canonical_subject_id pour agréger les sujets portés.
     db.from('site_actions').select('canonical_subject_id, status, site_id').in('assigned_company_id', companyIds).not('canonical_subject_id', 'is', null),
+    // Points pilotés (Mode Focus) — désignation structurée cross-site, mig 406.
+    getPilotedPointsByCompanies(companyIds, orgIds),
+    // Présence & mentions — comptage seul (pas de liste), voir doctrine sur CompanyFiche.citedSitesCount.
+    db.from('canonical_subject').select('site_id').in('company_id', companyIds).eq('kind', 'actor').eq('status', 'active').is('contact_id', null),
   ])
   const cast = (castRes.data ?? []) as Array<{ id: string; site_id: string; role: string | null; effective_to: string | null; effective_from: string | null; main_contact_id: string | null; source_report_id: string | null }>
   const act = (actRes.data ?? []) as Array<{ id: string; title: string; site_id: string; due_date: string | null; assigned_contact_id: string | null }>
   const contactRows = (contactRes.data ?? []) as Array<{ id: string; full_name: string; function: string | null }>
   const subjectAct = (subjectActRes.data ?? []) as Array<{ canonical_subject_id: string; status: string; site_id: string }>
+  const citedSitesCount = new Set(((citedSubjectRes.data ?? []) as Array<{ site_id: string }>).map((r) => r.site_id)).size
 
   const siteIds = [...new Set([...cast.map((r) => r.site_id), ...act.map((r) => r.site_id), ...subjectAct.map((a) => a.site_id)])]
   const { data: siteRows } = siteIds.length
@@ -323,5 +341,7 @@ export async function getCompanyFiche(companyId: string, orgIds: string[]): Prom
     contacts: contactRows.map((c) => ({ id: c.id, name: c.full_name, function: c.function })),
     referentContactIds: [...new Set(act.map((a) => a.assigned_contact_id).filter((v): v is string => !!v))],
     subjectsCarried,
+    pilotedPoints,
+    citedSitesCount,
   })
 }

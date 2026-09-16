@@ -23,6 +23,57 @@ export interface ResponsibleCompanyDesignation {
   designatedAt: string
 }
 
+export interface CompanyPilotedPointRow {
+  id: string
+  label: string
+  siteId: string
+  siteName: string
+  designatedAt: string
+  href: string // /sites/{siteId}/point/{id}
+}
+
+/** Points pilotés, cross-site, pour un ensemble d'entreprises (canonique + alias) — mandat
+ *  Vincent 2026-09-16 (Mode Focus). Même table que `getActiveResponsibleCompanyDesignations`,
+ *  interrogée en sens inverse (par `company_id` au lieu de `tracked_point_id`) ; modèle sur la
+ *  requête site-scopée de `site-intervenants-consolidated.ts`. */
+export async function getPilotedPointsByCompanies(
+  companyIds: string[],
+  orgIds: string[],
+): Promise<CompanyPilotedPointRow[]> {
+  if (companyIds.length === 0 || orgIds.length === 0) return []
+  const db = createAdminClient()
+  const { data, error } = await db
+    .from('tracked_point_responsible_companies')
+    .select('company_id, designated_at, tracked_point_id, site_id')
+    .in('company_id', companyIds)
+    .in('organization_id', orgIds)
+    .is('revoked_at', null)
+  if (error) throw error
+  type Row = { company_id: string; designated_at: string; tracked_point_id: string; site_id: string }
+  const designations = (data ?? []) as Row[]
+  if (designations.length === 0) return []
+
+  const pointIds = [...new Set(designations.map((d) => d.tracked_point_id))]
+  const siteIds = [...new Set(designations.map((d) => d.site_id))]
+  const [{ data: pointRows }, { data: siteRows }] = await Promise.all([
+    db.from('tracked_point').select('id, label').in('id', pointIds),
+    db.from('sites').select('id, name').in('id', siteIds),
+  ])
+  const labelById = new Map(((pointRows ?? []) as Array<{ id: string; label: string }>).map((p) => [p.id, p.label]))
+  const siteNameById = new Map(((siteRows ?? []) as Array<{ id: string; name: string }>).map((s) => [s.id, s.name]))
+
+  return designations
+    .map((d) => ({
+      id: d.tracked_point_id,
+      label: labelById.get(d.tracked_point_id) ?? '(Point)',
+      siteId: d.site_id,
+      siteName: siteNameById.get(d.site_id) ?? 'Chantier',
+      designatedAt: d.designated_at,
+      href: `/sites/${d.site_id}/point/${d.tracked_point_id}`,
+    }))
+    .sort((a, b) => b.designatedAt.localeCompare(a.designatedAt))
+}
+
 async function getSiteOrganizationId(siteId: string): Promise<string | null> {
   const db = createAdminClient()
   const { data } = await db.from('sites').select('organization_id').eq('id', siteId).maybeSingle()

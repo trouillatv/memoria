@@ -9,6 +9,7 @@ function base(): CompanyFicheInputs {
     today: '2026-07-27',
     company: { id: 'co1', name: 'SOTRAP SARL', short_name: 'SOTRAP', siret: null, address: null, phone: null, email: null, website: null, deleted_at: null },
     casting: [], actions: [], contacts: [], referentContactIds: [], subjectsCarried: [],
+    pilotedPoints: [], citedSitesCount: 0,
   }
 }
 

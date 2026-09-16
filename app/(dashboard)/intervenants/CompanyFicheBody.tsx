@@ -2,7 +2,7 @@
 // détail de /intervenants. Une seule source de rendu. Purement présentationnel.
 
 import Link from 'next/link'
-import { Building2, Layers, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe, FileText } from 'lucide-react'
+import { Building2, Layers, MapPin, User, ArrowRight, Clock, Mail, Phone, Globe, FileText, Compass, Eye } from 'lucide-react'
 import type { CompanyFiche } from '@/lib/db/company-fiche'
 import type { ActorsGraph } from '@/lib/knowledge/actors-graph'
 import { AttentionBadge, FicheSection, FicheLinkRow, FicheRow, FicheEmpty } from './fiche-ui'
@@ -43,26 +43,27 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
               <AttentionBadge level={fiche.attention.level} />
               {fiche.isArchived && <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">Archivée</span>}
             </div>
-            {/* FAITS OPÉRATIONNELS d'abord (prominents). */}
+            {/* KPI Responsabilités (Mode Focus, mandat Vincent 2026-09-16) — toujours les
+                3 compteurs, y compris à 0 : ne jamais masquer un « 0 » qui distingue
+                responsable / pilote / cité (cf. cas Lylo, jamais reproduire la confusion). */}
             <p className="mt-1.5 text-sm font-medium text-foreground/90">
-              {fiche.openCount > 0 ? (
-                <>
-                  {fiche.openCount} action{fiche.openCount > 1 ? 's' : ''} ouverte{fiche.openCount > 1 ? 's' : ''}
-                  {fiche.overdueCount > 0 && <span className="text-red-700 dark:text-red-400"> · {fiche.overdueCount} en retard</span>}
-                  {fiche.noReferentCount > 0 && <span className="text-amber-700 dark:text-amber-400"> · {fiche.noReferentCount} sans référent</span>}
-                  <span className="text-muted-foreground font-normal"> · {fiche.activeSitesCount} chantier{fiche.activeSitesCount > 1 ? 's' : ''} actif{fiche.activeSitesCount > 1 ? 's' : ''}</span>
-                </>
-              ) : fiche.activeSitesCount > 0 ? (
-                <>{fiche.activeSitesCount} chantier{fiche.activeSitesCount > 1 ? 's' : ''} actif{fiche.activeSitesCount > 1 ? 's' : ''}<span className="text-muted-foreground font-normal"> · aucune action ouverte</span></>
-              ) : (
-                <span className="text-muted-foreground font-normal">Aucun chantier actif ni action ouverte</span>
-              )}
+              {fiche.activeSitesCount} chantier{fiche.activeSitesCount > 1 ? 's' : ''}
+              <span className="text-muted-foreground font-normal"> · </span>
+              {fiche.openCount} action{fiche.openCount > 1 ? 's' : ''} responsable{fiche.openCount > 1 ? 's' : ''}
+              {fiche.overdueCount > 0 && <span className="text-red-700 dark:text-red-400"> ({fiche.overdueCount} en retard)</span>}
+              <span className="text-muted-foreground font-normal"> · </span>
+              {fiche.pilotedPoints.length} Point{fiche.pilotedPoints.length > 1 ? 's' : ''} piloté{fiche.pilotedPoints.length > 1 ? 's' : ''}
+              {fiche.noReferentCount > 0 && <span className="text-amber-700 dark:text-amber-400"> · {fiche.noReferentCount} sans référent</span>}
             </p>
             {/* Phrase de synthèse (discrète) — jamais de rôle ici : un rôle mentionné
                 n'est pas un fait à résumer en une ligne, voir la section dédiée. */}
             <p className="mt-0.5 text-xs text-muted-foreground">
               {[
-                fiche.activeCasting[0] ? `Intervient sur ${fiche.activeCasting[0].siteName}` : null,
+                fiche.activeCasting.length > 0
+                  ? `Intervient sur ${fiche.activeCasting.slice(0, 3).map((c) => c.siteName).join(', ')}${
+                      fiche.activeCasting.length > 3 ? `, +${fiche.activeCasting.length - 3} autre${fiche.activeCasting.length - 3 > 1 ? 's' : ''}` : ''
+                    }`
+                  : null,
                 `${fiche.contacts.length} contact${fiche.contacts.length > 1 ? 's' : ''} connu${fiche.contacts.length > 1 ? 's' : ''}`,
               ].filter(Boolean).join(' · ')}
             </p>
@@ -85,6 +86,38 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
         </div>
         <CompanyIdentityActions companyId={fiche.id} companyName={fiche.name} />
       </section>
+
+      {/* ── RESPONSABILITÉS — Mode Focus (mandat Vincent 2026-09-16). Deux niveaux
+          structurés SEULEMENT : pilote d'un Point (désignation explicite,
+          tracked_point_responsible_companies) et responsable d'une Action
+          (assigned_company_id). Ne jamais y mélanger une citation documentaire —
+          voir la section « Présence & mentions » plus bas, volontairement séparée. */}
+      <FicheSection title="Responsabilités">
+        <div className="space-y-4">
+          <div>
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Points pilotés{fiche.pilotedPoints.length > 0 && ` (${fiche.pilotedPoints.length})`}
+            </h3>
+            {fiche.pilotedPoints.length === 0 ? (
+              <FicheEmpty>Aucun Point piloté par cette entreprise.</FicheEmpty>
+            ) : (
+              fiche.pilotedPoints.map((p) => (
+                <FicheLinkRow key={p.id} href={p.href} icon={<Compass className="h-4 w-4" aria-hidden />} label={p.label} sub={p.siteName} />
+              ))
+            )}
+          </div>
+          <div>
+            <h3 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Actions dont elle est responsable{fiche.openCount > 0 && ` (${fiche.openCount})`}
+            </h3>
+            {fiche.actions.length === 0 ? (
+              <FicheEmpty>Aucune action ouverte dont cette entreprise est responsable.</FicheEmpty>
+            ) : (
+              fiche.actions.map((a) => <ActionRow key={a.id} action={a} />)
+            )}
+          </div>
+        </div>
+      </FicheSection>
 
       {/* ── RÉSEAU — l'explorateur DANS la fiche (aucune fenêtre intermédiaire). */}
       {network && network.nodes.length > 1 && (
@@ -181,14 +214,20 @@ export function CompanyFicheBody({ fiche, network, onSelectActor }: {
         </FicheSection>
       )}
 
-      {/* ── TRAVAIL EN COURS — actions ──────────────────────────────────────────── */}
-      <FicheSection title="Travail en cours" count={fiche.openCount}>
-        {fiche.actions.length === 0 ? (
-          <FicheEmpty>Aucune action ouverte dont cette entreprise est responsable.</FicheEmpty>
-        ) : (
-          fiche.actions.map((a) => <ActionRow key={a.id} action={a} />)
-        )}
-      </FicheSection>
+      {/* ── PRÉSENCE & MENTIONS — signal documentaire délibérément discret, JAMAIS
+          mélangé aux compteurs de responsabilité ci-dessus (mandat Vincent
+          2026-09-16) : une entreprise peut afficher 0 Point piloté/Action
+          responsable et être citée sur plusieurs chantiers, et inversement.
+          Comptage volontairement grossier (sites distincts avec un candidat
+          acteur détecté) — pas de détection exhaustive Point par Point ici. */}
+      {fiche.citedSitesCount > 0 && (
+        <section className="rounded-xl border border-border/40 bg-muted/30 px-4 py-3">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            Présence &amp; mentions · Citée dans des visites/documents sur {fiche.citedSitesCount} chantier{fiche.citedSitesCount > 1 ? 's' : ''}
+          </p>
+        </section>
+      )}
 
       {/* ── HISTORIQUE — chantiers clôturés ─────────────────────────────────────── */}
       {fiche.historicalCasting.length > 0 && (
