@@ -66,7 +66,7 @@
 --    la ligne durable, distinct de `cancelled` qui documente la ligne perdante).
 ALTER TABLE public.site_action_events DROP CONSTRAINT IF EXISTS site_action_events_kind_check;
 ALTER TABLE public.site_action_events ADD CONSTRAINT site_action_events_kind_check
-  CHECK (kind in ('created','assigned','unassigned','due_date_changed','completed','reopened','cancelled','merged'));
+  CHECK (kind in ('created','assigned','unassigned','due_date_changed','completed','reopened','cancelled','confirmed_open','merged'));
 
 -- 1bis. Observabilité/retry de la réconciliation CBO des Actions (point 6).
 ALTER TABLE public.site_reports
