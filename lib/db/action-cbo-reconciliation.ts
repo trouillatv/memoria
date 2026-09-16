@@ -1,6 +1,6 @@
 import 'server-only'
 
-// P0-B / P0-B.1 (stabilisation post-2-PV, arbitrage Vincent 2026-09-17) —
+// P0-B / P0-B.1 / P0-B.2 (stabilisation post-2-PV, arbitrage Vincent 2026-09-17) —
 // réconciliation post-CBO des Actions longitudinales.
 //
 // Constat : canonical_business_object (CBO) identifie déjà correctement qu'une
@@ -17,22 +17,46 @@ import 'server-only'
 //      « le plus ancien gagne » qui écraserait silencieusement une donnée plus
 //      riche ou plus récente.
 //
+// P0-B.2 (revue Vincent 2026-09-17, FIX_REQUIRED avant migration 413) corrige
+// un défaut P0 de P0-B.1 : la chronologie utilisée était l'ordre d'IMPORT
+// (createdAt), pas la chronologie MÉTIER. Un historique importé rétroactivement
+// peut arriver dans n'importe quel ordre (PV du 13/12 importé avant le PV du
+// 10/12) — la même doctrine déjà validée ailleurs dans MemorIA (moteur temporel
+// des Points, `runEffectiveDate()`) s'applique ici : la date métier détermine
+// l'état, jamais l'ordre d'import ni une hiérarchie abstraite de statuts.
+//
 // Doctrine (mirror exact de la doctrine SQL, migration 413) :
-//   · Identité durable = la ligne la plus ancienne parmi les Actions encore
-//     actives du groupe (status IN 'open'|'planned'|'done' ET supersededBy
-//     IS NULL) — tie-break par id. Jamais changée.
-//   · Si la durable est déjà 'done' : AUCUNE fusion, quel que soit l'état des
-//     autres membres — jamais de réouverture automatique par ce module (cas C,
-//     DONE → OPEN plus tard = divergence à arbitrer humainement, hors
-//     périmètre de ce module ; cf. cbo-lifecycle-reducer.ts, non branché ici).
-//   · Sinon, le statut ne progresse JAMAIS qu'en avant sur l'échelle
-//     planned(0) < open(1) < done(2) — jamais de recul. La durable adopte le
-//     statut le plus avancé parmi tous les membres actifs du groupe (cas A/B/D).
+//   · Date métier (`businessDate`) = site_reports.started_at du rapport source
+//     (fiable pour l'historique depuis la migration 261 ; alimenté en temps réel
+//     pour le natif) — jamais `created_at` (heure d'insertion en base) quand une
+//     date métier existe. `created_at` ne sert de repli que pour une Action sans
+//     rapport source.
+//   · Identité durable = la ligne de date métier la plus ANCIENNE parmi les
+//     Actions encore actives du groupe (status IN 'open'|'planned'|'done' ET
+//     supersededBy IS NULL) — tie-break par id. Choix arbitraire mais stable
+//     (indépendant de l'ordre d'import), jamais changé une fois posé.
+//   · Le statut final adopté est celui du membre actif de date métier la plus
+//     RÉCENTE (« latest ») — jamais une hiérarchie planned<open<done comparée
+//     sans tenir compte des dates, qui ferait gagner un `done` ancien sur un
+//     `open` métier plus récent selon l'ordre d'import (cas A/B/C/D corrigés).
+//   · Exception P0 : si un membre `done` existe à une date métier ANTÉRIEURE à
+//     la date métier la plus récente, et que celle-ci n'est pas elle-même
+//     `done` — c'est une réouverture métier après clôture. AUCUNE fusion
+//     automatique : jamais de réouverture silencieuse d'un `done` (cas B),
+//     divergence à arbitrer humainement (cf. cbo-lifecycle-reducer.ts, non
+//     branché ici).
+//   · Exception P0 : si le groupe contient PLUSIEURS occurrences `done` (à des
+//     dates métier distinctes), ce n'est jamais supposé être un doublon fusible
+//     sans preuve — peut représenter deux exécutions réelles distinctes de la
+//     même obligation récurrente (cas E). Signalé, jamais fusionné.
 //   · Champs simples (titre, corps, entreprise assignée, réserve liée) : ne
 //     sont comblés que si vides côté durable — jamais écrasés.
-//   · Contact assigné et échéance sont protégés plus fort : si un humain les a
-//     explicitement retirés (événement `unassigned` / `due_date_changed` vers
-//     null au journal), un doublon ne peut jamais les re-remplir silencieusement.
+//   · Contact assigné, entreprise assignée et échéance sont protégés plus fort :
+//     si un humain les a explicitement retirés (événement `unassigned` /
+//     `due_date_changed` vers null au journal), un doublon ne peut jamais les
+//     re-remplir silencieusement (protection entreprise ajoutée en P0-B.2,
+//     cf. migration 414 — fn_update_action ne journalisait pas encore le
+//     retrait d'entreprise).
 //   · « Une donnée humaine explicite ne doit jamais être écrasée silencieusement
 //     par une valeur issue d'un import. »
 //
@@ -43,7 +67,7 @@ import 'server-only'
 //
 // Idempotent : rejouer sur un groupe déjà réconcilié ne change rien (les
 // perdants ont déjà status='cancelled', donc exclus des candidats ; une
-// durable déjà 'done' bloque toute nouvelle fusion).
+// durable déjà 'done' sans membre actif plus récent ne produit plus de patch).
 
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -51,7 +75,14 @@ type AdminClient = ReturnType<typeof createAdminClient>
 
 export interface ReconciliationCandidateAction {
   id: string
+  /** Heure d'insertion en base — jamais utilisée pour la logique (P0-B.2). Conservée en repli de businessDate. */
   createdAt: string
+  /**
+   * Date métier résolue (P0-B.2) : site_reports.started_at du rapport source,
+   * repli sur createdAt si l'Action n'a pas de rapport ou pas de started_at.
+   * Seul champ utilisé pour trier/identifier — jamais createdAt directement.
+   */
+  businessDate: string
   status: 'open' | 'planned' | 'done' | 'cancelled'
   supersededBy: string | null
   title: string | null
@@ -65,8 +96,10 @@ export interface ReconciliationCandidateAction {
   doneAt: string | null
   completedComment: string | null
   completedPhotoPath: string | null
-  /** Un événement `unassigned` existe déjà pour cette action (retrait humain explicite). */
+  /** Un événement `unassigned` (clé contact_id) existe déjà pour cette action (retrait humain explicite). */
   contactExplicitlyCleared: boolean
+  /** Un événement `unassigned` (clé company_id) existe déjà pour cette action (retrait humain explicite, P0-B.2 / mig 414). */
+  companyExplicitlyCleared: boolean
   /** Un événement `due_date_changed` vers null existe déjà pour cette action. */
   dueDateExplicitlyCleared: boolean
 }
@@ -89,13 +122,17 @@ export type ActionCboMergePatch = Partial<{
 
 export type ReconciliationOutcome =
   | { kind: 'none' }
-  | { kind: 'blocked_done_durable'; durableId: string; pendingActiveIds: string[] }
+  | {
+      kind: 'blocked_done_durable'
+      /** P0-B.2 : pourquoi aucune fusion n'a été appliquée, pour un signal humain précis. */
+      reason: 'reopened_after_done' | 'multiple_done_occurrences'
+      durableId: string
+      pendingActiveIds: string[]
+    }
   | { kind: 'merge'; durableId: string; loserIds: string[]; patch: ActionCboMergePatch }
 
 type ActiveStatus = 'planned' | 'open' | 'done'
 type ActiveCandidateAction = ReconciliationCandidateAction & { status: ActiveStatus }
-
-const STATUS_RANK: Record<ActiveStatus, number> = { planned: 0, open: 1, done: 2 }
 
 function isActiveCandidate(a: ReconciliationCandidateAction): a is ActiveCandidateAction {
   return a.status !== 'cancelled' && a.supersededBy === null
@@ -106,6 +143,10 @@ function isActiveCandidate(a: ReconciliationCandidateAction): a is ActiveCandida
  * durable et le meilleur état opérationnel courant (doctrine ci-dessus). Miroir
  * exact des règles appliquées par fn_apply_action_cbo_merge (migration 413) —
  * toute divergence entre les deux doit être traitée comme un bug.
+ *
+ * P0-B.2 : tri et décision reposent exclusivement sur `businessDate` — jamais
+ * sur l'ordre du tableau `actions` ni sur `createdAt`. Permuter l'ordre d'entrée
+ * ne doit jamais changer le résultat (propriété vérifiée par les tests A→E).
  */
 export function planActionCboReconciliation(
   actions: ReconciliationCandidateAction[],
@@ -114,30 +155,36 @@ export function planActionCboReconciliation(
   if (active.length <= 1) return { kind: 'none' }
 
   const sorted = [...active].sort(
-    (a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id),
+    (a, b) => a.businessDate.localeCompare(b.businessDate) || a.id.localeCompare(b.id),
   )
   const [durable, ...others] = sorted
+  const latest = sorted[sorted.length - 1]
+  const pendingIds = others.map((a) => a.id)
 
-  if (durable.status === 'done') {
-    return { kind: 'blocked_done_durable', durableId: durable.id, pendingActiveIds: others.map((a) => a.id) }
+  const doneCount = sorted.filter((a) => a.status === 'done').length
+  // Un `done` existe à une date métier antérieure à la plus récente, qui n'est
+  // elle-même pas `done` : réouverture métier après clôture (cas B). Jamais
+  // silencieux — cf. doctrine ci-dessus.
+  const reopenedAfterDone = latest.status !== 'done' && sorted.slice(0, -1).some((a) => a.status === 'done')
+  if (reopenedAfterDone) {
+    return { kind: 'blocked_done_durable', reason: 'reopened_after_done', durableId: durable.id, pendingActiveIds: pendingIds }
+  }
+  // Plusieurs occurrences `done` à des dates métier distinctes : jamais supposé
+  // doublon fusible sans preuve — peut être deux exécutions réelles (cas E).
+  if (doneCount >= 2) {
+    return { kind: 'blocked_done_durable', reason: 'multiple_done_occurrences', durableId: durable.id, pendingActiveIds: pendingIds }
   }
 
   const patch: ActionCboMergePatch = {}
 
-  // Échelle de statut : ne progresse jamais qu'en avant.
-  let targetStatus: ActiveStatus = durable.status
-  for (const other of others) {
-    if (STATUS_RANK[other.status] > STATUS_RANK[targetStatus]) targetStatus = other.status
-  }
-  if (targetStatus !== durable.status) {
-    patch.status = targetStatus
-    if (targetStatus === 'done') {
-      const doneSource = others.find((o) => o.status === 'done')
-      if (doneSource) {
-        if (doneSource.doneAt) patch.doneAt = doneSource.doneAt
-        if (doneSource.completedComment) patch.completedComment = doneSource.completedComment
-        if (doneSource.completedPhotoPath) patch.completedPhotoPath = doneSource.completedPhotoPath
-      }
+  // Le statut final adopté est celui du membre de date métier la plus récente
+  // (jamais une hiérarchie planned<open<done indépendante des dates).
+  if (latest.status !== durable.status) {
+    patch.status = latest.status
+    if (latest.status === 'done') {
+      if (latest.doneAt) patch.doneAt = latest.doneAt
+      if (latest.completedComment) patch.completedComment = latest.completedComment
+      if (latest.completedPhotoPath) patch.completedPhotoPath = latest.completedPhotoPath
     }
   }
 
@@ -154,13 +201,16 @@ export function planActionCboReconciliation(
     const source = others.find((o) => o.assignedTo)
     if (source?.assignedTo) patch.assignedTo = source.assignedTo
   }
-  if (!durable.assignedCompanyId) {
-    const source = others.find((o) => o.assignedCompanyId)
-    if (source?.assignedCompanyId) patch.assignedCompanyId = source.assignedCompanyId
-  }
   if (!durable.reserveId) {
     const source = others.find((o) => o.reserveId)
     if (source?.reserveId) patch.reserveId = source.reserveId
+  }
+
+  // Entreprise assignée : protection renforcée (P0-B.2 / mig 414) — un retrait
+  // humain explicite bloque tout remplissage, comme contact et échéance.
+  if (!durable.assignedCompanyId && !durable.companyExplicitlyCleared) {
+    const source = others.find((o) => o.assignedCompanyId)
+    if (source?.assignedCompanyId) patch.assignedCompanyId = source.assignedCompanyId
   }
 
   // Contact assigné : protection renforcée — un retrait humain explicite bloque tout remplissage.
@@ -178,7 +228,7 @@ export function planActionCboReconciliation(
     }
   }
 
-  return { kind: 'merge', durableId: durable.id, loserIds: others.map((a) => a.id), patch }
+  return { kind: 'merge', durableId: durable.id, loserIds: pendingIds, patch }
 }
 
 function log(msg: string) {
@@ -210,46 +260,75 @@ async function loadCandidateActions(
   const { data: rows } = await sb
     .from('site_actions')
     .select(
-      'id, created_at, status, superseded_by, title, body, assigned_to, assigned_contact_id, assigned_company_id, due_date, due_date_status, reserve_id, done_at, completed_comment, completed_photo_path',
+      'id, report_id, created_at, status, superseded_by, title, body, assigned_to, assigned_contact_id, assigned_company_id, due_date, due_date_status, reserve_id, done_at, completed_comment, completed_photo_path',
     )
     .in('id', actionIds)
 
+  // P0-B.2 : date métier = site_reports.started_at du rapport source (jamais
+  // created_at, qui reflète l'ordre d'import et non la chronologie métier).
+  const reportIds = [...new Set((rows ?? []).map((r) => r.report_id as string | null).filter((id): id is string => id !== null))]
+  const reportStartedAt = new Map<string, string>()
+  if (reportIds.length > 0) {
+    const { data: reportRows } = await sb.from('site_reports').select('id, started_at').in('id', reportIds)
+    for (const r of reportRows ?? []) {
+      if (r.started_at) reportStartedAt.set(r.id as string, r.started_at as string)
+    }
+  }
+
   const { data: eventRows } = await sb
     .from('site_action_events')
-    .select('action_id, kind, after_value')
+    .select('action_id, kind, before_value, after_value')
     .in('action_id', actionIds)
     .in('kind', ['unassigned', 'due_date_changed'])
 
   const contactCleared = new Set<string>()
+  const companyCleared = new Set<string>()
   const dueDateCleared = new Set<string>()
-  for (const e of (eventRows ?? []) as Array<{ action_id: string; kind: string; after_value: unknown }>) {
+  for (const e of (eventRows ?? []) as Array<{
+    action_id: string
+    kind: string
+    before_value: unknown
+    after_value: unknown
+  }>) {
     if (e.kind === 'unassigned') {
-      contactCleared.add(e.action_id)
+      // Le payload d'un retrait est stocké dans before_value (mig 245/414) —
+      // jamais after_value. La clé jsonb distingue contact_id de company_id.
+      const before = e.before_value as { contact_id?: string; company_id?: string } | null
+      if (before && 'contact_id' in before) contactCleared.add(e.action_id)
+      if (before && 'company_id' in before) companyCleared.add(e.action_id)
     } else if (e.kind === 'due_date_changed') {
       const after = e.after_value as { date?: string | null } | null
       if (after && after.date == null) dueDateCleared.add(e.action_id)
     }
   }
 
-  return (rows ?? []).map((r) => ({
-    id: r.id as string,
-    createdAt: r.created_at as string,
-    status: r.status as ReconciliationCandidateAction['status'],
-    supersededBy: r.superseded_by as string | null,
-    title: r.title as string | null,
-    body: r.body as string | null,
-    assignedTo: r.assigned_to as string | null,
-    assignedContactId: r.assigned_contact_id as string | null,
-    assignedCompanyId: r.assigned_company_id as string | null,
-    dueDate: r.due_date as string | null,
-    dueDateStatus: r.due_date_status as ReconciliationCandidateAction['dueDateStatus'],
-    reserveId: r.reserve_id as string | null,
-    doneAt: r.done_at as string | null,
-    completedComment: r.completed_comment as string | null,
-    completedPhotoPath: r.completed_photo_path as string | null,
-    contactExplicitlyCleared: contactCleared.has(r.id as string),
-    dueDateExplicitlyCleared: dueDateCleared.has(r.id as string),
-  }))
+  return (rows ?? []).map((r) => {
+    const id = r.id as string
+    const createdAt = r.created_at as string
+    const reportId = r.report_id as string | null
+    const businessDate = (reportId ? reportStartedAt.get(reportId) : undefined) ?? createdAt
+    return {
+      id,
+      createdAt,
+      businessDate,
+      status: r.status as ReconciliationCandidateAction['status'],
+      supersededBy: r.superseded_by as string | null,
+      title: r.title as string | null,
+      body: r.body as string | null,
+      assignedTo: r.assigned_to as string | null,
+      assignedContactId: r.assigned_contact_id as string | null,
+      assignedCompanyId: r.assigned_company_id as string | null,
+      dueDate: r.due_date as string | null,
+      dueDateStatus: r.due_date_status as ReconciliationCandidateAction['dueDateStatus'],
+      reserveId: r.reserve_id as string | null,
+      doneAt: r.done_at as string | null,
+      completedComment: r.completed_comment as string | null,
+      completedPhotoPath: r.completed_photo_path as string | null,
+      contactExplicitlyCleared: contactCleared.has(id),
+      companyExplicitlyCleared: companyCleared.has(id),
+      dueDateExplicitlyCleared: dueDateCleared.has(id),
+    }
+  })
 }
 
 interface ReconcileGroupResult {
