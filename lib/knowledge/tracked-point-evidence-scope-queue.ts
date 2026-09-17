@@ -102,6 +102,43 @@ export type EvidenceScopeQueue = {
   siteId: string
   entries: EvidenceScopeQueueEntry[]
   totalEntries: number
+  // P0-D (mandat Vincent, 2026-09-17) : threads exclus car déjà membres actifs d'un tracked_point
+  // (ou déjà founding_reference littéral) — MÊME calcul et même doctrine que
+  // excludedAlreadyTracked dans tracked-point-pending-trackability-queue.ts. Cette file en était
+  // dépourvue alors qu'elle porte les mêmes traces (TRACKABILITY_UNDETERMINED /
+  // RESOLUTION_WITHOUT_KNOWN_PROBLEM) : une preuve à préciser sur un thread déjà tracké n'a plus
+  // de décision à prendre, jamais perdue en silence (ids conservés ici, jamais retirés sans trace).
+  excludedAlreadyTracked: string[]
+}
+
+function normalizeExcerptForDedup(s: string | null): string {
+  return String(s ?? '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+// P0-D (mandat Vincent, 2026-09-17, défaut "preuves identiques répétées") : deux propositions du
+// MÊME document, MÊME page, avec un extrait normalisé strictement identique sont la même preuve
+// vue deux fois (artefact d'extraction), jamais deux preuves distinctes — dédupliquer ici ne
+// retire rien côté DB (document_extraction_proposal/site_knowledge_proposals restent intacts),
+// cela réduit uniquement le nombre d'options affichées/sélectionnables pour l'humain.
+// resolvePendingEvidenceScope résout au niveau de la pending trace avec la liste choisie
+// (evidenceCount), jamais proposition par proposition : aucune proposition dupliquée non montrée
+// ne reste "à résoudre" quelque part. Un extrait vide/absent n'est JAMAIS déduplié (identité non
+// prouvée) — seule une correspondance verbatim non vide fusionne.
+function dedupeProposals(proposals: EvidenceScopeCandidateProposal[]): EvidenceScopeCandidateProposal[] {
+  const seen = new Set<string>()
+  const out: EvidenceScopeCandidateProposal[] = []
+  for (const p of proposals) {
+    const normalized = normalizeExcerptForDedup(p.sourceExcerpt)
+    if (normalized === '') {
+      out.push(p)
+      continue
+    }
+    const key = `${p.documentId ?? `native:${p.family}`}|${p.sourcePage ?? 'nopage'}|${normalized}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(p)
+  }
+  return out
 }
 
 export type EvidenceScopePendingTraceRow = {
@@ -121,11 +158,20 @@ export function buildEvidenceScopeQueue(
   proposalsByThreadId: Map<string, EvidenceScopeCandidateProposal[]>,
   subjectIdByThreadId: Map<string, string | null>,
   subjectLabelBySubjectId: Map<string, string | null>,
+  alreadyTrackedThreadIds: Set<string>,
 ): EvidenceScopeQueue {
-  const entries: EvidenceScopeQueueEntry[] = traces.map((trace) => {
-    const proposals = proposalsByThreadId.get(trace.sourceThreadId) ?? []
+  const entries: EvidenceScopeQueueEntry[] = []
+  const excludedAlreadyTracked: string[] = []
+
+  for (const trace of traces) {
+    if (alreadyTrackedThreadIds.has(trace.sourceThreadId)) {
+      excludedAlreadyTracked.push(trace.id)
+      continue
+    }
+
+    const proposals = dedupeProposals(proposalsByThreadId.get(trace.sourceThreadId) ?? [])
     const subjectId = subjectIdByThreadId.get(trace.sourceThreadId) ?? null
-    return {
+    entries.push({
       pendingTraceId: trace.id,
       kind: trace.kind,
       sourceThreadId: trace.sourceThreadId,
@@ -136,10 +182,10 @@ export function buildEvidenceScopeQueue(
       createdAt: trace.createdAt,
       proposals,
       proposalCount: proposals.length,
-    }
-  })
+    })
+  }
 
-  return { siteId, entries, totalEntries: entries.length }
+  return { siteId, entries, totalEntries: entries.length, excludedAlreadyTracked }
 }
 
 const NIL_UUID = '00000000-0000-0000-0000-000000000000'
@@ -285,5 +331,26 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
     for (const s of rawSubjects ?? []) subjectLabelBySubjectId.set(s.id, s.label)
   }
 
-  return buildEvidenceScopeQueue(siteId, traces, proposalsByThreadId, subjectIdByThreadId, subjectLabelBySubjectId)
+  // STALE_ALREADY_TRACKED : même double calcul qu'alreadyTrackedThreadIds dans
+  // tracked-point-pending-trackability-queue.ts (thread déjà membre actif d'un tracked_point, ou
+  // déjà founding_reference littéral d'un tracked_point).
+  const { data: rawMembers, error: memErr } = await db
+    .from('tracked_point_member')
+    .select('subject_thread_id')
+    .eq('status', 'active')
+    .in('subject_thread_id', threadIds.length > 0 ? threadIds : [NIL_UUID])
+  if (memErr) throw memErr
+  const alreadyTrackedThreadIds = new Set((rawMembers ?? []).map((m) => m.subject_thread_id))
+
+  const { data: rawFounders, error: founderErr } = await db
+    .from('tracked_point')
+    .select('founding_reference')
+    .eq('site_id', siteId)
+    .in('founding_reference', threadIds.length > 0 ? threadIds : [NIL_UUID])
+  if (founderErr) throw founderErr
+  for (const f of rawFounders ?? []) {
+    if (f.founding_reference) alreadyTrackedThreadIds.add(f.founding_reference)
+  }
+
+  return buildEvidenceScopeQueue(siteId, traces, proposalsByThreadId, subjectIdByThreadId, subjectLabelBySubjectId, alreadyTrackedThreadIds)
 }

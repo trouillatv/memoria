@@ -158,7 +158,7 @@ function resolutionEntry(
 }
 
 function evidenceScopeQueue(entries: EvidenceScopeQueueEntry[]): EvidenceScopeQueue {
-  return { siteId: SITE_ID, entries, totalEntries: entries.length }
+  return { siteId: SITE_ID, entries, totalEntries: entries.length, excludedAlreadyTracked: [] }
 }
 
 function evidenceScopeEntry(pendingTraceId: string, kind: string): EvidenceScopeQueueEntry {
