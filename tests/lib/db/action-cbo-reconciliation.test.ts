@@ -232,6 +232,21 @@ describe('planActionCboReconciliation — fusion de champs (jamais un écrasemen
     expect(plan.patch.title).toBeUndefined()
   })
 
+  it("ne remplace JAMAIS un corps (body) déjà renseigné côté durable, même par un texte plus détaillé (P0-B.4)", () => {
+    const actions = [
+      action({ id: 'a-earlier', businessDate: '2026-01-01T00:00:00Z', body: 'Corps concis côté durable' }),
+      action({
+        id: 'a-later',
+        businessDate: '2026-02-01T00:00:00Z',
+        body: 'Corps beaucoup plus détaillé (réserve, secteur, façade) côté doublon',
+      }),
+    ]
+    const plan = planActionCboReconciliation(actions)
+    expect(plan.kind).toBe('merge')
+    if (plan.kind !== 'merge') throw new Error('unreachable')
+    expect(plan.patch.body).toBeUndefined()
+  })
+
   it("exemple de la revue : PV1 sans responsable/échéance, PV2 fournit due_date + responsable — la durable absorbe les deux", () => {
     const actions = [
       action({ id: 'pv1', businessDate: '2026-01-01T00:00:00Z' }),
