@@ -263,7 +263,7 @@ const TRANSITION_CONFIG: Record<DeltaTransitionKey, { label: string; icon: strin
   progressé:     { label: 'En progression',             icon: '↑', color: 'text-blue-600 dark:text-blue-400' },
   annulé:        { label: 'Annulés',                    icon: '×', color: 'text-muted-foreground' },
   maintenu:      { label: 'Toujours ouverts',           icon: '→', color: 'text-muted-foreground' },
-  non_mentionné: { label: 'Non mentionnés dans ce PV', icon: '○', color: 'text-orange-700 dark:text-orange-400' },
+  non_mentionné: { label: 'Non mentionnés dans ce PV', icon: '╌', color: 'text-orange-700 dark:text-orange-400' },
   changé:        { label: 'Autres changements',         icon: '~', color: 'text-muted-foreground' },
 }
 

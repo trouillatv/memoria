@@ -24,6 +24,9 @@ function plural(n: number, singular: string, pluralStr?: string): string {
 
 // P0 — catégories OCCURRENCE-FIRST, SÉPARÉES (jamais aggravé/réouvert fusionnés,
 // nouveau ≠ réapparu, non-mention ≠ résolution ; knowledge_fact JAMAIS exclu).
+// Icône non-mention = '╌' (mandat Vincent sous-lot 5, 2026-09-17) : dans la matrice globale
+// (SubjectLifelineGrid) '○' signifie déjà « première apparition », son opposé sémantique — '╌'
+// est le glyphe que cette même grille utilise pour « non mentionné », jamais réutilisé ailleurs.
 const DELTA_ROWS: Array<{
   key: keyof OccurrencePvSummary
   label: string
@@ -38,7 +41,7 @@ const DELTA_ROWS: Array<{
   { key: 'résolu',       label: 'Sujets résolus / levés',  icon: '✓', color: 'text-emerald-600 dark:text-emerald-400' },
   { key: 'progressé',    label: 'Sujets en progression',   icon: '↑', color: 'text-blue-500 dark:text-blue-300', hideIfEmpty: true },
   { key: 'maintenu',     label: 'Sujets maintenus',        icon: '→', color: 'text-muted-foreground', hideIfEmpty: true },
-  { key: 'nonMentionné', label: 'Sujets non mentionnés',   icon: '○', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'nonMentionné', label: 'Sujets non mentionnés',   icon: '╌', color: 'text-muted-foreground', hideIfEmpty: true },
   { key: 'annulé',       label: 'Sujets annulés',          icon: '×', color: 'text-muted-foreground', hideIfEmpty: true },
   { key: 'changé',       label: 'Autres changements de sujet', icon: '~', color: 'text-muted-foreground', hideIfEmpty: true },
 ]
@@ -387,7 +390,7 @@ const SNAP_TRANSITIONS: Array<{ key: string; icon: string; color: string; label:
   { key: 'réalisé',       icon: '✓', color: 'text-emerald-600 dark:text-emerald-400', label: 'Sujets réalisés' },
   { key: 'levé',          icon: '✓', color: 'text-emerald-600 dark:text-emerald-400', label: 'Sujets levés' },
   { key: 'progressé',     icon: '↑', color: 'text-blue-500 dark:text-blue-300',  label: 'Sujets en progression' },
-  { key: 'non_mentionné', icon: '○', color: 'text-muted-foreground',             label: 'Sujets non mentionnés' },
+  { key: 'non_mentionné', icon: '╌', color: 'text-muted-foreground',             label: 'Sujets non mentionnés' },
 ]
 
 function HistoireBloc({

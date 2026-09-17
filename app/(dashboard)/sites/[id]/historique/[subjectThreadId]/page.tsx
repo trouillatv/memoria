@@ -49,7 +49,7 @@ const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: st
   progressé:     { label: 'En progression',       icon: '↑', color: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-300' },
   annulé:        { label: 'Annulé',               icon: '×', color: 'bg-muted text-muted-foreground' },
   maintenu:      { label: 'Inchangé',             icon: '→', color: 'bg-muted text-muted-foreground' },
-  non_mentionné: { label: 'Non mentionné',        icon: '○', color: 'bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300' },
+  non_mentionné: { label: 'Non mentionné',        icon: '╌', color: 'bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300' },
   réapparu:      { label: 'Réapparu',             icon: '↗', color: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' },
   changé:        { label: 'Changement',           icon: '~', color: 'bg-muted text-muted-foreground' },
 }

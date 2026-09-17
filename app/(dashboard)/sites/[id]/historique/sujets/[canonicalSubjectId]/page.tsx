@@ -123,7 +123,10 @@ const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: st
   progressé:      { label: 'En progression', icon: '↑',  color: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-300' },
   annulé:         { label: 'Annulé',         icon: '×',  color: 'bg-muted text-muted-foreground' },
   maintenu:       { label: 'Inchangé',       icon: '→',  color: 'bg-muted text-muted-foreground' },
-  non_mentionné:  { label: 'Non mentionné',  icon: '○',  color: 'bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300' },
+  // '╌' (pas '○') : dans la matrice globale (SubjectLifelineGrid) '○' = « première apparition »,
+  // sens opposé ; '╌' est le glyphe déjà utilisé là-bas pour « non mentionné » (mandat Vincent
+  // sous-lot 5, 2026-09-17).
+  non_mentionné:  { label: 'Non mentionné',  icon: '╌',  color: 'bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300' },
   réapparu:       { label: 'Réapparu',       icon: '↗',  color: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300' },
   changé:         { label: 'Changé',         icon: '~',  color: 'bg-muted text-muted-foreground' },
 }
@@ -555,7 +558,9 @@ function toPct(ms: number, minMs: number, maxMs: number): number {
 
 /** Couleur et symbole du point de la lifeline selon status et transition. */
 function lifelineDot(occ: SubjectOccurrenceMerged): { symbol: string; colorClass: string } {
-  if (occ.isGap) return { symbol: '○', colorClass: 'text-muted-foreground/40' }
+  // '╌' (pas '○') : même glyphe « non mentionné » que SubjectLifelineGrid, pour ne jamais
+  // collisionner avec '○' = « première apparition » ailleurs (mandat Vincent sous-lot 5).
+  if (occ.isGap) return { symbol: '╌', colorClass: 'text-muted-foreground/40' }
   if (occ.sourceKind === 'field_visit') {
     if (occ.visitStatus === 'field_checked')  return { symbol: '✓', colorClass: 'text-teal-600 dark:text-teal-400' }
     if (occ.visitStatus === 'still_open')     return { symbol: '●', colorClass: 'text-orange-500 dark:text-orange-400' }
@@ -588,8 +593,9 @@ const LIFELINE_DOT_LEGEND: { symbol: string; colorClass: string; label: string }
   { symbol: '↗', colorClass: 'text-blue-600 dark:text-blue-400', label: 'PV en cours' },
   { symbol: '○', colorClass: 'text-sky-500', label: 'PV planifié' },
   { symbol: '●', colorClass: 'text-blue-500', label: 'Mention initiale' },
+  { symbol: '●', colorClass: 'text-muted-foreground', label: 'Autre mention' },
   { symbol: '○', colorClass: 'text-muted-foreground/60', label: 'Non applicable' },
-  { symbol: '○', colorClass: 'text-muted-foreground/40', label: 'Non mentionné dans ce PV' },
+  { symbol: '╌', colorClass: 'text-muted-foreground/40', label: 'Non mentionné dans ce PV' },
 ]
 
 function TransitionBadge({ transition }: { transition: string }) {
@@ -887,7 +893,7 @@ function OccurrenceCard({ occ, siteId }: { occ: SubjectOccurrenceMerged; siteId:
       <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-3">
         <div className="flex items-center gap-3">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted/50 text-sm text-muted-foreground/60">
-            ○
+            ╌
           </div>
           <div>
             <p className="text-sm text-muted-foreground">{frDate(occ.effectiveDate)}</p>
