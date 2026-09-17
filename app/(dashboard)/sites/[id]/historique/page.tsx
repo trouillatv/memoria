@@ -3,8 +3,6 @@ import { after } from 'next/server'
 import Link from 'next/link'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { getSiteMemoryBuildStatus } from '@/lib/db/site-reports'
-import { SiteMemoryBuildIndicator } from '@/components/knowledge/SiteMemoryBuildIndicator'
 import { SiteChantierNav } from '../SiteChantierNav'
 import { getSiteHistoricalTimeline, getSiteSubjectMatrix, canonicalRunsForSite, runEffectiveDate } from '@/lib/documents/pv-history'
 import { suiviLoadPlan } from '@/lib/documents/suivi-view-plan'
@@ -87,7 +85,7 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
   // occurrences natives pour les compteurs) est inconditionnel ; matrice / timeline /
   // sujets importants / delta sont conditionnés à la vue qui les affiche (suiviLoadPlan).
   const plan = suiviLoadPlan(view)
-  const [site, matrix, timeline, importantSubjects, nativeOccurrences, runsLite, memoryBuildStatus] = await Promise.all([
+  const [site, matrix, timeline, importantSubjects, nativeOccurrences, runsLite] = await Promise.all([
     getSiteIdentity(siteId).catch(() => null),
     plan.matrix ? getSiteSubjectMatrix(siteId).catch(() => null) : null,
     plan.timeline ? getSiteHistoricalTimeline(siteId).catch(() => ({ siteId, snapshots: [] })) : { siteId, snapshots: [] },
@@ -95,9 +93,6 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
     getSiteNativeOccurrencesBySubject(siteId).catch(() => ({})),
     // Runs légers pour les vues rendues sans matrice — même source et même tri que matrix.runs.
     plan.matrix ? null : canonicalRunsForSite(siteId).catch(() => []),
-    // Sous-lot 4 (mandat Vincent 2026-09-17) : signal chantier du pipeline post-import, partagé par
-    // toutes les vues Suivi via l'en-tête commun ci-dessous — jamais recalculé par vue.
-    getSiteMemoryBuildStatus(siteId).catch(() => ({ isProcessing: false, hasError: false, siteReportId: null })),
   ])
 
   const depsGraph = view === 'deps'
@@ -325,7 +320,6 @@ export default async function SiteHistoriquePage({ params, searchParams }: PageP
                 {nativeVisitCount > 0 && ` · ${nativeVisitCount} visite${nativeVisitCount > 1 ? 's' : ''} terrain`}
                 {nativeMeetingCount > 0 && ` · ${nativeMeetingCount} réunion${nativeMeetingCount > 1 ? 's' : ''}`}
               </p>
-              <SiteMemoryBuildIndicator status={memoryBuildStatus} />
             </div>
             {(runs.length > 0 || nativeLastDate) && (
               <p className="shrink-0 text-sm text-muted-foreground">
