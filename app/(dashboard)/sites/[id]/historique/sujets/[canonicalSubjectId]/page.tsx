@@ -128,11 +128,18 @@ const TRANSITION_CONFIG: Record<string, { label: string; icon: string; color: st
   changé:         { label: 'Changé',         icon: '~',  color: 'bg-muted text-muted-foreground' },
 }
 
+// Couleurs harmonisées (mandat Vincent, sous-lot 7 « couleurs Action/Réserve/Échéance »,
+// 2026-09-17) avec la doctrine déjà validée ailleurs (PointFicheView.tsx OBJECT_TYPE_BADGE_CLS,
+// PointsPilotageView.tsx, PointsListView.tsx) : Action=sky, Réserve=amber, Échéance=violet.
+// site_reserve portait ROUGE avant ce lot — un rouge de TYPE, pas d'urgence, en contradiction
+// directe avec la règle « rouge/orange réservés à l'urgence/retard ». site_decision (hors
+// périmètre du triplet Action/Réserve/Échéance) passe à indigo pour ne plus entrer en collision
+// avec Échéance une fois celle-ci recolorée en violet.
 const ENTITY_TYPE_META: Record<MaterializedEntityType, { label: string; plural: string; color: string }> = {
-  site_action:   { label: 'Action',    plural: 'Actions',    color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' },
-  site_decision: { label: 'Décision',  plural: 'Décisions',  color: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
-  site_reserve:  { label: 'Réserve',   plural: 'Réserves',   color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
-  site_deadline: { label: 'Échéance',  plural: 'Échéances',  color: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
+  site_action:   { label: 'Action',    plural: 'Actions',    color: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300' },
+  site_decision: { label: 'Décision',  plural: 'Décisions',  color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300' },
+  site_reserve:  { label: 'Réserve',   plural: 'Réserves',   color: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' },
+  site_deadline: { label: 'Échéance',  plural: 'Échéances',  color: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300' },
 }
 
 const ENTITY_STATUS_LABELS: Record<string, string> = {
@@ -568,7 +575,22 @@ function lifelineDot(occ: SubjectOccurrenceMerged): { symbol: string; colorClass
   return { symbol: '●', colorClass: 'text-muted-foreground' }
 }
 
-// ── Composants ────────────────────────────────────────────────────────────────
+// Légende explicite des combinaisons symbole/couleur réellement produites par lifelineDot()
+// ci-dessus (mandat Vincent sous-lot 5, 2026-09-17) — la seule surface de cette page où le
+// symbole est affiché seul, sans libellé texte visible à côté.
+const LIFELINE_DOT_LEGEND: { symbol: string; colorClass: string; label: string }[] = [
+  { symbol: '✓', colorClass: 'text-teal-600 dark:text-teal-400', label: 'Visite conforme' },
+  { symbol: '▶', colorClass: 'text-teal-500', label: 'Visite terrain' },
+  { symbol: '◇', colorClass: 'text-violet-600 dark:text-violet-400', label: 'Réunion' },
+  { symbol: '✓', colorClass: 'text-emerald-600 dark:text-emerald-400', label: 'PV clôturé' },
+  { symbol: '⚠', colorClass: 'text-red-600 dark:text-red-400', label: 'PV non conforme' },
+  { symbol: '●', colorClass: 'text-orange-500 dark:text-orange-400', label: 'Encore ouvert' },
+  { symbol: '↗', colorClass: 'text-blue-600 dark:text-blue-400', label: 'PV en cours' },
+  { symbol: '○', colorClass: 'text-sky-500', label: 'PV planifié' },
+  { symbol: '●', colorClass: 'text-blue-500', label: 'Mention initiale' },
+  { symbol: '○', colorClass: 'text-muted-foreground/60', label: 'Non applicable' },
+  { symbol: '○', colorClass: 'text-muted-foreground/40', label: 'Non mentionné dans ce PV' },
+]
 
 function TransitionBadge({ transition }: { transition: string }) {
   const cfg = TRANSITION_CONFIG[transition] ?? { label: transition, icon: '·', color: 'bg-muted text-muted-foreground' }
@@ -1656,6 +1678,23 @@ export default async function CanonicalSubjectLifePage({ params, searchParams }:
             <p className="mt-1 text-[10px] text-muted-foreground">
               Espacé selon les dates réelles · les cercles grisés = PV où le sujet n'est pas mentionné
             </p>
+            {/* Légende — lifelineDot() ci-dessus est le seul système de symboles de cette page qui
+                n'affiche jamais son libellé en clair (contrairement à TransitionBadge/ENTITY_TYPE_META,
+                déjà auto-documentés par leur texte visible). Mandat Vincent sous-lot 5 « chaque symbole
+                rendu doit avoir une légende », 2026-09-17. */}
+            <details className="mt-2 group/legend">
+              <summary className="cursor-pointer list-none text-[10px] font-medium text-muted-foreground hover:underline select-none">
+                <span className="inline-block transition-transform group-open/legend:rotate-90">▸</span> Légende des symboles
+              </summary>
+              <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                {LIFELINE_DOT_LEGEND.map(({ symbol, colorClass, label }, i) => (
+                  <span key={i} className="inline-flex items-center gap-1">
+                    <span className={cn('font-bold', colorClass)}>{symbol}</span>
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </details>
           </section>
         )}
 

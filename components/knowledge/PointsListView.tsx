@@ -55,17 +55,44 @@ const frDate = (iso: string | null): string | null => (iso ? DATE_FMT.format(new
 // Composition réelle du Point (quick win Vincent 2026-09-15) : « 2 Actions · 3 Réserves ·
 // 1 Échéance », compteurs déjà actifs uniquement (cf. PointListEntry). N'affiche jamais un
 // compteur à 0 — un Point sans objet lié n'a simplement pas cette ligne.
-function formatComposition(p: PointListEntry): string | null {
-  const parts: string[] = []
+//
+// Couleurs (mandat Vincent, harmonisation sous-lot 7 2026-09-17) : mêmes teintes que
+// `OBJECT_TYPE_BADGE_CLS` (PointFicheView.tsx) et `buildPilotageCompositionSegments`
+// (PointsPilotageView.tsx) — Action=sky, Réserve=amber, Échéance=violet — jamais de nouvelle
+// couleur inventée ici. Simple pastille de couleur (pas un badge plein) pour rester compact en
+// vue « Liste » dense ; « Par sujet » (non dense) affiche exactement le même rendu.
+type CompositionSegment = { key: string; dotCls: string; textCls: string; label: string }
+
+function buildCompositionSegments(p: PointListEntry): CompositionSegment[] {
+  const segments: CompositionSegment[] = []
   if (p.actionCount > 0) {
     const corrective = p.correctiveActionCount > 0
       ? ` (dont ${p.correctiveActionCount} corrective${p.correctiveActionCount > 1 ? 's' : ''})`
       : ''
-    parts.push(`${p.actionCount} Action${p.actionCount > 1 ? 's' : ''}${corrective}`)
+    segments.push({
+      key: 'action',
+      dotCls: 'bg-sky-500',
+      textCls: 'text-sky-700 dark:text-sky-300',
+      label: `${p.actionCount} Action${p.actionCount > 1 ? 's' : ''}${corrective}`,
+    })
   }
-  if (p.reserveCount > 0) parts.push(`${p.reserveCount} Réserve${p.reserveCount > 1 ? 's' : ''}`)
-  if (p.deadlineCount > 0) parts.push(`${p.deadlineCount} Échéance${p.deadlineCount > 1 ? 's' : ''}`)
-  return parts.length > 0 ? parts.join(' · ') : null
+  if (p.reserveCount > 0) {
+    segments.push({
+      key: 'reserve',
+      dotCls: 'bg-amber-500',
+      textCls: 'text-amber-700 dark:text-amber-300',
+      label: `${p.reserveCount} Réserve${p.reserveCount > 1 ? 's' : ''}`,
+    })
+  }
+  if (p.deadlineCount > 0) {
+    segments.push({
+      key: 'deadline',
+      dotCls: 'bg-violet-500',
+      textCls: 'text-violet-700 dark:text-violet-300',
+      label: `${p.deadlineCount} Échéance${p.deadlineCount > 1 ? 's' : ''}`,
+    })
+  }
+  return segments
 }
 
 const SELECT_CLS = 'rounded-lg border bg-background px-2.5 py-1.5 text-[13px]'
@@ -85,7 +112,7 @@ interface PointRowProps {
 }
 
 function PointRow({ p, pointHrefPrefix, subjectHrefPrefix, showSubject, dense = false }: PointRowProps) {
-  const composition = formatComposition(p)
+  const composition = buildCompositionSegments(p)
   return (
     <li className={cn('rounded-xl border', dense ? 'px-3 py-2' : 'px-4 py-3')}>
       <div className="flex items-start justify-between gap-3">
@@ -115,9 +142,14 @@ function PointRow({ p, pointHrefPrefix, subjectHrefPrefix, showSubject, dense = 
         {p.actorNames.length > 0 && <span>{p.actorNames.join(', ')}</span>}
         {p.latestMeaningfulEventAt && <span>Dernière évolution : {frDate(p.latestMeaningfulEventAt)}</span>}
       </div>
-      {(composition || p.nextDeadlineDate) && (
+      {(composition.length > 0 || p.nextDeadlineDate) && (
         <div className={cn('flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground', dense ? 'mt-1 text-[11.5px]' : 'mt-1.5 text-[12px]')}>
-          {composition && <span>{composition}</span>}
+          {composition.map((seg) => (
+            <span key={seg.key} className={cn('inline-flex items-center gap-1', seg.textCls)}>
+              <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', seg.dotCls)} aria-hidden />
+              {seg.label}
+            </span>
+          ))}
           {p.nextDeadlineDate && <span>Prochaine échéance : {frDate(p.nextDeadlineDate)}</span>}
         </div>
       )}
@@ -190,7 +222,10 @@ export function SubjectGroupCard({
             </span>
           )}
           {needsYouCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-inset ring-violet-300 dark:bg-violet-900/40 dark:text-violet-300 dark:ring-violet-800">
+            <span
+              title={`${needsYouCount} question${needsYouCount !== 1 ? 's' : ''} liée${needsYouCount !== 1 ? 's' : ''} à un Point de ce sujet`}
+              className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-inset ring-violet-300 dark:bg-violet-900/40 dark:text-violet-300 dark:ring-violet-800"
+            >
               <HelpCircle className="h-3 w-3" /> {needsYouCount}
             </span>
           )}

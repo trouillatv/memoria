@@ -268,11 +268,14 @@ function parseDeadlineFilter(v: string | undefined): PilotageDeadlineFilter {
   return v === 'late' || v === 'upcoming' || v === 'none' ? v : 'all'
 }
 
-const TYPE_FILTERS: Array<{ key: PilotageTypeFilter; label: string }> = [
+// Pastille de couleur sur les filtres Type (harmonisation sous-lot 7, mandat Vincent
+// 2026-09-17) : mêmes teintes que `buildPilotageCompositionSegments` ci-dessus — « Tous »
+// reste neutre, jamais de nouvelle couleur inventée.
+const TYPE_FILTERS: Array<{ key: PilotageTypeFilter; label: string; dotCls?: string }> = [
   { key: 'all', label: 'Tous' },
-  { key: 'action', label: 'Avec Action' },
-  { key: 'reserve', label: 'Avec Réserve' },
-  { key: 'deadline', label: 'Avec Échéance' },
+  { key: 'action', label: 'Avec Action', dotCls: 'bg-sky-500' },
+  { key: 'reserve', label: 'Avec Réserve', dotCls: 'bg-amber-500' },
+  { key: 'deadline', label: 'Avec Échéance', dotCls: 'bg-violet-500' },
 ]
 const DEADLINE_FILTERS: Array<{ key: PilotageDeadlineFilter; label: string }> = [
   { key: 'all', label: 'Toutes' },
@@ -393,8 +396,9 @@ export function PointsPilotageView({
             key={f.key}
             type="button"
             onClick={() => setTypeFilter(f.key)}
-            className={cn('rounded-md px-2.5 py-1 font-medium', typeFilter === f.key ? 'bg-muted text-foreground' : 'text-muted-foreground')}
+            className={cn('inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 font-medium', typeFilter === f.key ? 'bg-muted text-foreground' : 'text-muted-foreground')}
           >
+            {f.dotCls && <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', f.dotCls)} aria-hidden />}
             {f.label}
           </button>
         ))}

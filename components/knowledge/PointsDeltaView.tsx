@@ -203,14 +203,14 @@ export function PointsDeltaView({
     <div className="space-y-4">
       <div className="rounded-xl border p-4">
         <p className="text-[14.5px] font-medium text-foreground">
-          {lastPvDate ? `Depuis le dernier PV du ${frDate(lastPvDate)}` : 'Depuis le dernier PV'}
+          {lastPvDate ? `Points — depuis le dernier PV du ${frDate(lastPvDate)}` : 'Points — depuis le dernier PV'}
         </p>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
           {nouveaux.length} nouveau{nouveaux.length !== 1 ? 'x' : ''} · {resolus.length} résolu{resolus.length !== 1 ? 's' : ''} ·{' '}
           {reouverts.length} réouvert{reouverts.length !== 1 ? 's' : ''} · {modifies.length} modifié{modifies.length !== 1 ? 's' : ''}
         </p>
         <p className="text-[12.5px] text-muted-foreground">
-          {unchangedCount} sans évolution notable
+          {unchangedCount} Point{unchangedCount !== 1 ? 's' : ''} sans évolution notable
           {toujoursBloques.length > 0 ? `, dont ${toujoursBloques.length} sans évolution prolongée` : ''}
         </p>
       </div>
@@ -232,7 +232,7 @@ export function PointsDeltaView({
           <DeltaSection
             title="Nouveaux"
             icon={<Sparkles className="h-3.5 w-3.5" />}
-            accentCls="text-sky-700 dark:text-sky-300"
+            accentCls="text-indigo-700 dark:text-indigo-300"
             points={nouveaux}
             pointHrefPrefix={pointHrefPrefix}
           />
@@ -246,7 +246,7 @@ export function PointsDeltaView({
           <DeltaSection
             title="Modifiés"
             icon={<AlertTriangle className="h-3.5 w-3.5" />}
-            accentCls="text-amber-700 dark:text-amber-300"
+            accentCls="text-slate-700 dark:text-slate-300"
             points={modifies}
             pointHrefPrefix={pointHrefPrefix}
           />

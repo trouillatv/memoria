@@ -854,13 +854,18 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
         </span>
       </div>
 
-      {/* Légende */}
+      {/* Légende — chaque symbole/couleur réellement produit par cellStyle() ci-dessus doit
+          apparaître ici (mandat Vincent, sous-lot 5 « un symbole = un sens partout », 2026-09-17).
+          « Réapparu » et « En progression » étaient calculés par cellStyle mais absents de cette
+          légende — ajoutés sans changer aucune couleur/icône existante. */}
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
         {[
           { icon: '○', label: 'Apparition PV', color: 'text-blue-600' },
           { icon: '●', label: 'Maintenu PV', color: 'text-muted-foreground' },
+          { icon: '●', label: 'En progression', color: 'text-blue-500' },
           { icon: '⚠', label: 'Aggravé', color: 'text-red-600' },
           { icon: '↩', label: 'Réouvert', color: 'text-red-500' },
+          { icon: '↗', label: 'Réapparu', color: 'text-purple-600' },
           { icon: '✓', label: 'Clôturé PV', color: 'text-emerald-600' },
           { icon: '✖', label: 'Annulé', color: 'text-muted-foreground' },
           { icon: '╌', label: 'Non mentionné', color: 'text-muted-foreground/40' },

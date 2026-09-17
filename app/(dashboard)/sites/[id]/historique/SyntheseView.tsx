@@ -31,16 +31,16 @@ const DELTA_ROWS: Array<{
   color: string
   hideIfEmpty?: boolean
 }> = [
-  { key: 'réouvert',     label: 'Réouverts',          icon: '↩', color: 'text-orange-600 dark:text-orange-400' },
-  { key: 'aggravé',      label: 'Aggravés',           icon: '!', color: 'text-red-600 dark:text-red-400', hideIfEmpty: true },
-  { key: 'nouveau',      label: 'Nouveaux',           icon: '+', color: 'text-blue-600 dark:text-blue-400' },
-  { key: 'réapparu',     label: 'Réapparus',          icon: '↗', color: 'text-purple-600 dark:text-purple-400', hideIfEmpty: true },
-  { key: 'résolu',       label: 'Résolus / levés',    icon: '✓', color: 'text-emerald-600 dark:text-emerald-400' },
-  { key: 'progressé',    label: 'En progression',     icon: '↑', color: 'text-blue-500 dark:text-blue-300', hideIfEmpty: true },
-  { key: 'maintenu',     label: 'Maintenus',          icon: '→', color: 'text-muted-foreground', hideIfEmpty: true },
-  { key: 'nonMentionné', label: 'Non mentionnés',     icon: '○', color: 'text-muted-foreground', hideIfEmpty: true },
-  { key: 'annulé',       label: 'Annulés',            icon: '×', color: 'text-muted-foreground', hideIfEmpty: true },
-  { key: 'changé',       label: 'Autres changements', icon: '~', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'réouvert',     label: 'Sujets réouverts',        icon: '↩', color: 'text-orange-600 dark:text-orange-400' },
+  { key: 'aggravé',      label: 'Sujets aggravés',         icon: '!', color: 'text-red-600 dark:text-red-400', hideIfEmpty: true },
+  { key: 'nouveau',      label: 'Nouveaux sujets',         icon: '+', color: 'text-blue-600 dark:text-blue-400' },
+  { key: 'réapparu',     label: 'Sujets réapparus',        icon: '↗', color: 'text-purple-600 dark:text-purple-400', hideIfEmpty: true },
+  { key: 'résolu',       label: 'Sujets résolus / levés',  icon: '✓', color: 'text-emerald-600 dark:text-emerald-400' },
+  { key: 'progressé',    label: 'Sujets en progression',   icon: '↑', color: 'text-blue-500 dark:text-blue-300', hideIfEmpty: true },
+  { key: 'maintenu',     label: 'Sujets maintenus',        icon: '→', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'nonMentionné', label: 'Sujets non mentionnés',   icon: '○', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'annulé',       label: 'Sujets annulés',          icon: '×', color: 'text-muted-foreground', hideIfEmpty: true },
+  { key: 'changé',       label: 'Autres changements de sujet', icon: '~', color: 'text-muted-foreground', hideIfEmpty: true },
 ]
 
 function DeltaBloc({
@@ -340,6 +340,11 @@ function ProgressionBloc({ categories }: { categories: CategoryProgress[] }) {
   return (
     <section className="rounded-[18px] border bg-card p-5 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Progression du chantier</p>
+      {/* Précision population (mandat Vincent sous-lot 8 « cohérence des compteurs et vocabulaire »,
+          2026-09-17) : chaque pastille ci-dessous compte des Sujets par état, pas des Points ni des
+          Actions/Réserves/Échéances. Une seule mention ici plutôt que sur chaque pastille pour ne pas
+          alourdir une liste déjà dense (doctrine sous-lot 7). */}
+      <p className="mt-0.5 text-[11px] text-muted-foreground">Répartition des sujets par catégorie et par état</p>
       <div className="mt-3 divide-y divide-border">
         {operational.map((cat) => (
           <CategoryRow
@@ -372,14 +377,17 @@ function ProgressionBloc({ categories }: { categories: CategoryProgress[] }) {
 
 // ── Bloc 4 — Histoire récente ─────────────────────────────────────────────────
 
-const SNAP_TRANSITIONS: Array<{ key: string; icon: string; color: string }> = [
-  { key: 'aggravé',       icon: '!', color: 'text-red-600 dark:text-red-400' },
-  { key: 'réouvert',      icon: '↩', color: 'text-red-500 dark:text-red-400' },
-  { key: 'nouveau',       icon: '+', color: 'text-blue-600 dark:text-blue-400' },
-  { key: 'réalisé',       icon: '✓', color: 'text-emerald-600 dark:text-emerald-400' },
-  { key: 'levé',          icon: '✓', color: 'text-emerald-600 dark:text-emerald-400' },
-  { key: 'progressé',     icon: '↑', color: 'text-blue-500 dark:text-blue-300' },
-  { key: 'non_mentionné', icon: '○', color: 'text-muted-foreground' },
+// `label` alimente uniquement le title="" ci-dessous (survol) — mandat Vincent sous-lot 8
+// « cohérence des compteurs et vocabulaire », 2026-09-17 : ces badges n'affichaient qu'une
+// icône + un chiffre sans jamais dire qu'il s'agit de Sujets, ambigu au survol comme au clic.
+const SNAP_TRANSITIONS: Array<{ key: string; icon: string; color: string; label: string }> = [
+  { key: 'aggravé',       icon: '!', color: 'text-red-600 dark:text-red-400',    label: 'Sujets aggravés' },
+  { key: 'réouvert',      icon: '↩', color: 'text-red-500 dark:text-red-400',    label: 'Sujets réouverts' },
+  { key: 'nouveau',       icon: '+', color: 'text-blue-600 dark:text-blue-400',  label: 'Nouveaux sujets' },
+  { key: 'réalisé',       icon: '✓', color: 'text-emerald-600 dark:text-emerald-400', label: 'Sujets réalisés' },
+  { key: 'levé',          icon: '✓', color: 'text-emerald-600 dark:text-emerald-400', label: 'Sujets levés' },
+  { key: 'progressé',     icon: '↑', color: 'text-blue-500 dark:text-blue-300',  label: 'Sujets en progression' },
+  { key: 'non_mentionné', icon: '○', color: 'text-muted-foreground',             label: 'Sujets non mentionnés' },
 ]
 
 function HistoireBloc({
@@ -414,11 +422,11 @@ function HistoireBloc({
             const total = Object.values(counts).reduce((s, v) => s + (v ?? 0), 0)
 
             const badges = SNAP_TRANSITIONS
-              .map(({ key, icon, color }) => {
+              .map(({ key, icon, color, label }) => {
                 const n = counts[key as keyof typeof counts] ?? 0
                 if (!n) return null
                 return (
-                  <span key={key} className={cn('tabular-nums text-xs', color)}>
+                  <span key={key} title={`${n} ${label.toLowerCase()}`} className={cn('tabular-nums text-xs', color)}>
                     <span className="font-bold">{icon}</span>{' '}{n}
                   </span>
                 )

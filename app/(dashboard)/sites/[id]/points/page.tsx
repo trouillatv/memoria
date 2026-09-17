@@ -2,10 +2,12 @@ import { redirect, notFound } from 'next/navigation'
 import { ListChecks, MapPin } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
+import { getSiteMemoryBuildStatus } from '@/lib/db/site-reports'
 import { loadSiteTrackedPointList } from '@/lib/knowledge/tracked-point-list'
 import { loadMemoriaNeedsYouSummary, computeChantierNeedsYouCount } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { PointsPageTabs } from '@/components/knowledge/PointsPageTabs'
+import { SiteMemoryBuildIndicator } from '@/components/knowledge/SiteMemoryBuildIndicator'
 import { SiteChantierNav } from '../SiteChantierNav'
 
 interface PageProps {
@@ -21,10 +23,12 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
 
   const { id } = await params
   const { tab, ptype, pdeadline } = await searchParams
-  const [identity, list, needsYouSummary] = await Promise.all([
+  const [identity, list, needsYouSummary, memoryBuildStatus] = await Promise.all([
     getSiteIdentity(id),
     loadSiteTrackedPointList(id, user.id),
     loadMemoriaNeedsYouSummary(id),
+    // Sous-lot 4 (mandat Vincent 2026-09-17) : même signal chantier que Suivi, même primitive.
+    getSiteMemoryBuildStatus(id).catch(() => ({ isProcessing: false, hasError: false, siteReportId: null })),
   ])
   if (!identity) notFound()
 
@@ -60,6 +64,7 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
         <p className="text-xs text-muted-foreground">
           Toutes les situations suivies sur ce chantier, avec leur état réel et leur dernière évolution.
         </p>
+        <SiteMemoryBuildIndicator status={memoryBuildStatus} className="mt-1" />
       </header>
 
       <PointsPageTabs

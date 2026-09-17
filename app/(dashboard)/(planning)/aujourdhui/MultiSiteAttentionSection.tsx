@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { ArrowRight, RefreshCw, ShieldAlert, TrendingDown } from 'lucide-react'
 import { deriveMultiSiteAttention, type SiteAttentionScore } from '@/lib/knowledge/multi-site-attention'
 import type { CanonicalAttentionItem } from '@/lib/knowledge/canonical-attention'
+import { getSitesMemoryBuildStatus, type SiteMemoryBuildStatus } from '@/lib/db/site-reports'
+import { SiteMemoryBuildIndicator } from '@/components/knowledge/SiteMemoryBuildIndicator'
 import { cn } from '@/lib/utils'
 
 // ── BLOC "CHANTIERS À SURVEILLER" ─────────────────────────────────────────────
@@ -45,7 +47,7 @@ function SubjectLine({ item }: { item: CanonicalAttentionItem }) {
   )
 }
 
-function SiteCard({ entry }: { entry: SiteAttentionScore }) {
+function SiteCard({ entry, memoryBuildStatus }: { entry: SiteAttentionScore; memoryBuildStatus?: SiteMemoryBuildStatus }) {
   if (entry.urgency === 'none') return null
   const badge = URGENCY_BADGE[entry.urgency]
   const Icon = urgencyIcon(entry.urgency)
@@ -77,6 +79,14 @@ function SiteCard({ entry }: { entry: SiteAttentionScore }) {
         <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-muted-foreground" />
       </Link>
 
+      {/* Signal pipeline post-import (sous-lot 4, mandat Vincent 2026-09-17) — ne rend rien
+          si rien n'est en cours ni en échec, jamais un bandeau permanent par chantier. */}
+      {memoryBuildStatus && (memoryBuildStatus.isProcessing || memoryBuildStatus.hasError) && (
+        <div className="px-4 pt-2">
+          <SiteMemoryBuildIndicator status={memoryBuildStatus} />
+        </div>
+      )}
+
       {/* Sujets représentatifs */}
       {entry.topSubjects.length > 0 && (
         <div className="px-4 pb-3 border-t bg-muted/20 space-y-0.5 pt-2">
@@ -93,6 +103,12 @@ export async function MultiSiteAttentionSection() {
   const sites = await deriveMultiSiteAttention({ limit: 5 }).catch(() => [])
   if (sites.length === 0) return null
 
+  // Sous-lot 4 (mandat Vincent 2026-09-17) : un seul aller-retour pour les chantiers déjà
+  // affichés, jamais une requête par carte.
+  const memoryBuildStatuses = await getSitesMemoryBuildStatus(sites.map((s) => s.siteId)).catch(
+    () => new Map<string, SiteMemoryBuildStatus>(),
+  )
+
   return (
     <section aria-labelledby="multisite-attention-heading">
       <div className="mb-3">
@@ -105,7 +121,7 @@ export async function MultiSiteAttentionSection() {
       </div>
       <div className="space-y-2">
         {sites.map((entry) => (
-          <SiteCard key={entry.siteId} entry={entry} />
+          <SiteCard key={entry.siteId} entry={entry} memoryBuildStatus={memoryBuildStatuses.get(entry.siteId)} />
         ))}
       </div>
     </section>
