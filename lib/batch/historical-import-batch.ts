@@ -45,6 +45,7 @@ export type BatchQuarantineReason =
   | 'NON_VISIT_SIGNAL'
   | 'MATERIALIZATION_FAILED'
   | 'POST_PROCESSING_STUCK'
+  | 'SOURCE_DOCUMENT_DELETED'
   | 'UNKNOWN_ERROR'
 
 export interface HistoricalBatchDocumentInput {
@@ -189,7 +190,12 @@ export async function processHistoricalBatchDocument(
   if (postProcessingOutcome !== 'completed' && postProcessingOutcome !== 'already_completed') {
     return {
       documentId, runId, siteReportId, status: 'quarantined',
-      quarantineReason: postProcessingOutcome === 'failed' ? 'MATERIALIZATION_FAILED' : 'POST_PROCESSING_STUCK',
+      quarantineReason:
+        postProcessingOutcome === 'failed'
+          ? 'MATERIALIZATION_FAILED'
+          : postProcessingOutcome === 'source_deleted'
+            ? 'SOURCE_DOCUMENT_DELETED'
+            : 'POST_PROCESSING_STUCK',
       detail: `Post-traitement non terminé (dernier statut : ${postProcessingOutcome})`,
       postProcessingOutcome,
       ...(await attachReports(runId, siteReportId)),
@@ -292,7 +298,14 @@ async function awaitPostProcessingWithRetry(
   let outcome: HistoricalImportPostProcessingOutcome = 'failed'
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     outcome = await runHistoricalImportPostProcessing(params)
-    if (outcome === 'completed' || outcome === 'already_completed' || outcome === 'failed') return outcome
+    if (
+      outcome === 'completed' ||
+      outcome === 'already_completed' ||
+      outcome === 'failed' ||
+      outcome === 'source_deleted'
+    ) {
+      return outcome
+    }
     // 'concurrent' / 'lock_lost' : états transitoires du verrou à bail, on relance.
     if (attempt < maxRetries) {
       await sleep(backoff)

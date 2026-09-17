@@ -13,6 +13,7 @@ import { reconcileActionsByCanonicalBusinessObjectForReport } from '@/lib/db/act
 import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pipeline'
 import { resolveSiteDocumentCompletionsByProposal } from '@/lib/knowledge/document-completion-resolver'
 import { runTrackedPointLiveWriterForHistoricalRun } from '@/lib/db/tracked-point-live-writer-historical-adapter'
+import { isSourceDocumentDeleted } from '@/lib/documents/historical-source-eligibility'
 
 export type HistoricalImportPostProcessingOutcome =
   | 'completed'
@@ -20,6 +21,7 @@ export type HistoricalImportPostProcessingOutcome =
   | 'concurrent'
   | 'lock_lost'
   | 'failed'
+  | 'source_deleted'
 
 export interface HistoricalImportPostProcessingParams {
   runId: string
@@ -129,18 +131,27 @@ export async function runHistoricalImportPostProcessing(
   const { data: reportStatus } = await sb
     .from('site_reports')
     .select(
-      'canonical_reconciled_at, canonical_reconcile_started_at, ' +
+      'source_document_id, canonical_reconciled_at, canonical_reconcile_started_at, ' +
         'similarity_analysis_completed_at, similarity_analysis_error',
     )
     .eq('id', siteReportId)
     .maybeSingle()
 
   const typedStatus = reportStatus as {
+    source_document_id?: string | null
     canonical_reconciled_at?: string | null
     canonical_reconcile_started_at?: string | null
     similarity_analysis_completed_at?: string | null
     similarity_analysis_error?: string | null
   } | null
+
+  // P0 — DELETED HISTORICAL SOURCE (2026-09-17) : porte d'entrée unique du
+  // pipeline d'écriture (occurrences, CBO, actions-CBO, Live Writer, ponts de
+  // complétion). Un document supprimé après import ne doit plus jamais
+  // déclencher aucune de ces écritures — court-circuit avant tout verrou/lecture.
+  if (await isSourceDocumentDeleted(sb, typedStatus?.source_document_id)) {
+    return 'source_deleted'
+  }
   const decision = decideReconcileLock(typedStatus, Date.now())
   if (decision === 'concurrent') return 'concurrent'
   if (decision === 'done' && typedStatus?.similarity_analysis_completed_at && !typedStatus.similarity_analysis_error) {

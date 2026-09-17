@@ -21,6 +21,7 @@ import {
   computeProofContextFingerprint, COMPLETION_POLICY_VERSION,
   type CompletionDecision, type ConfidenceClass, type CandidateVerdict, type IntentMatch,
 } from '@/lib/db/document-completion-resolution'
+import { getDeletedDocumentIds } from '@/lib/documents/historical-source-eligibility'
 
 // Version de policy ACTIVE de ce resolver. Distincte du défaut P1-4B1 (COMPLETION_POLICY_VERSION,
 // laissé à 'p1.4b.v2' — schéma B1 étendu additivement, jamais backfillé). V2.1 a généralisé
@@ -320,12 +321,17 @@ export async function loadProposalProofs(siteId: string): Promise<Array<{ proof:
 
   const docIds = [...new Set(props.map((p) => p.document_id).filter((x): x is string => !!x))]
   const docDate = new Map<string, string | null>()
+  let eligibleProps = props
   if (docIds.length) {
+    const deletedDocIds = await getDeletedDocumentIds(sb, docIds)
+    eligibleProps = props.filter((p) => !p.document_id || !deletedDocIds.has(p.document_id))
     const { data: docs } = await sb.from('documents').select('id, effective_date').in('id', docIds)
-    for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) docDate.set(d.id, d.effective_date)
+    for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) {
+      if (!deletedDocIds.has(d.id)) docDate.set(d.id, d.effective_date)
+    }
   }
 
-  return props.map((p) => {
+  return eligibleProps.map((p) => {
     const csId = threadToSubj.get(p.subject_thread_id) ?? ''
     return {
       canonicalSubjectId: csId,

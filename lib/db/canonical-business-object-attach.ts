@@ -45,6 +45,7 @@ import {
 } from '@/lib/db/canonical-business-object-resolve'
 import { resolveOrCreateSingleObjectSubject } from '@/lib/db/canonical-subject-source-reconcile'
 import { produceObjectStateOccurrenceSignal } from '@/lib/db/object-state-occurrence-signal'
+import { isSourceDocumentDeleted } from '@/lib/documents/historical-source-eligibility'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -466,10 +467,11 @@ export async function attachHistoricalEntityToCanonicalBusinessObject(params: {
 
     const { data: proposal } = await sb
       .from('document_extraction_proposal')
-      .select('subject_thread_id')
+      .select('subject_thread_id, document_id')
       .eq('id', mat.proposal_id)
       .maybeSingle()
     if (!proposal?.subject_thread_id) return
+    if (await isSourceDocumentDeleted(sb, proposal.document_id)) return
 
     const { data: identity } = await sb
       .from('subject_thread_identity')
@@ -527,6 +529,13 @@ export async function attachHistoricalReportEntitiesToCanonicalBusinessObjects(p
   const { siteId, siteReportId } = params
   try {
     const sb = createAdminClient()
+
+    const { data: report } = await sb
+      .from('site_reports')
+      .select('source_document_id')
+      .eq('id', siteReportId)
+      .maybeSingle()
+    if (await isSourceDocumentDeleted(sb, report?.source_document_id)) return
 
     const [{ data: actions }, { data: deadlines }, { data: reserves }] = await Promise.all([
       sb.from('site_actions').select('id, title, due_date, canonical_subject_id').eq('report_id', siteReportId),

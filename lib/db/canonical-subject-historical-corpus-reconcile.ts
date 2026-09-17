@@ -31,6 +31,7 @@ import {
   reconcileHistoricalPvCanonicalSubjects,
   type HistoricalReconcileFamilyStat,
 } from '@/lib/db/canonical-subject-historical-reconcile'
+import { getDeletedDocumentIds } from '@/lib/documents/historical-source-eligibility'
 import type { DocumentProposalFamily } from '@/types/db'
 
 /**
@@ -42,6 +43,10 @@ import type { DocumentProposalFamily } from '@/types/db'
  * non canonique doit quand même être pris en compte (découverte Guillaume,
  * P0-J.1). Partagée par les deux points d'entrée production (review-actions.ts
  * et reconciliation-sweep.ts) pour qu'ils ne puissent jamais diverger.
+ *
+ * P0 (2026-09-17) — un rapport dont le document source a été supprimé
+ * (documents.deleted_at) n'est jamais « matérialisé » au sens de cette
+ * doctrine : son run est exclu, quel que soit son état de réconciliation.
  */
 export async function getMaterializedRunIdsForSite(
   supabase: SupabaseClient,
@@ -49,10 +54,13 @@ export async function getMaterializedRunIdsForSite(
 ): Promise<string[]> {
   const { data } = await supabase
     .from('site_reports')
-    .select('extraction_run_id')
+    .select('extraction_run_id, source_document_id')
     .eq('site_id', siteId)
     .not('extraction_run_id', 'is', null)
-  return [...new Set((data ?? []).map((r) => (r as { extraction_run_id: string }).extraction_run_id))]
+  const rows = (data ?? []) as Array<{ extraction_run_id: string; source_document_id: string | null }>
+  const deletedDocIds = await getDeletedDocumentIds(supabase, rows.map((r) => r.source_document_id))
+  const eligible = rows.filter((r) => !r.source_document_id || !deletedDocIds.has(r.source_document_id))
+  return [...new Set(eligible.map((r) => r.extraction_run_id))]
 }
 
 export interface HistoricalCorpusReconcileResult {

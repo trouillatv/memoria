@@ -35,6 +35,7 @@ import {
 import { reconcileTrackedPointUnit, type ReconcileVerdict } from '@/lib/db/tracked-point-live-writer'
 import type { PlanUnitContext } from '@/lib/knowledge/tracked-point-write-plan'
 import type { TrackedPointCandidate } from '@/lib/knowledge/tracked-point-membership-candidates'
+import { getDeletedDocumentIds, isExtractionRunSourceDeleted } from '@/lib/documents/historical-source-eligibility'
 
 type Db = ReturnType<typeof createAdminClient>
 
@@ -147,14 +148,18 @@ async function loadRunFoundingInput(db: Db, siteId: string, runId: string): Prom
       'id, proposal_family, document_status, label, subject_thread_id, document_id, extraction_run_id, created_at, review_status, source_payload',
     )
     .in('subject_thread_id', threadIds)
-  const props = (propRows ?? []) as PropRow[]
+  const allProps = (propRows ?? []) as PropRow[]
 
-  const docIds = [...new Set(props.map((p) => p.document_id).filter((x): x is string => !!x))]
+  const docIds = [...new Set(allProps.map((p) => p.document_id).filter((x): x is string => !!x))]
   const docDate = new Map<string, string | null>()
+  const deletedDocIds = await getDeletedDocumentIds(db, docIds)
   if (docIds.length > 0) {
     const { data: docs } = await db.from('documents').select('id, effective_date').in('id', docIds)
-    for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) docDate.set(d.id, d.effective_date)
+    for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) {
+      if (!deletedDocIds.has(d.id)) docDate.set(d.id, d.effective_date)
+    }
   }
+  const props = allProps.filter((p) => !p.document_id || !deletedDocIds.has(p.document_id))
 
   const propsByThread = new Map<string, PropRow[]>()
   for (const p of props) {
@@ -305,13 +310,17 @@ async function loadSitePointCandidates(db: Db, siteId: string, resolver: Subject
 
     const memberDocIds = [...new Set(memberProps.map((p) => p.document_id).filter((x): x is string => !!x))]
     const memberDocDate = new Map<string, string | null>()
+    const deletedMemberDocIds = await getDeletedDocumentIds(db, memberDocIds)
     if (memberDocIds.length > 0) {
       const { data: docs } = await db.from('documents').select('id, effective_date').in('id', memberDocIds)
-      for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) memberDocDate.set(d.id, d.effective_date)
+      for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) {
+        if (!deletedMemberDocIds.has(d.id)) memberDocDate.set(d.id, d.effective_date)
+      }
     }
+    const eligibleMemberProps = memberProps.filter((p) => !p.document_id || !deletedMemberDocIds.has(p.document_id))
 
     const propsByMemberThread = new Map<string, MemberPropRow[]>()
-    for (const p of memberProps) {
+    for (const p of eligibleMemberProps) {
       if (!p.subject_thread_id) continue
       const l = propsByMemberThread.get(p.subject_thread_id) ?? []
       l.push(p)
@@ -417,6 +426,10 @@ export async function runTrackedPointLiveWriterForHistoricalRun(params: {
   const { runId, siteId } = params
 
   const db = createAdminClient()
+
+  if (await isExtractionRunSourceDeleted(db, runId)) {
+    return null
+  }
 
   const { data: runRow } = await db
     .from('document_extraction_run')

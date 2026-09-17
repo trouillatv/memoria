@@ -49,6 +49,21 @@ describe('historical import post-processing orchestration', () => {
     expect(source).not.toMatch(/object_state_occurrence_signal/)
   })
 
+  it('P0 (2026-09-17) — un document source supprimé court-circuite avant tout verrou/écriture', () => {
+    const source = read('lib/subjects/historical-import-post-processing.ts')
+    expect(source).toMatch(/isSourceDocumentDeleted\(sb, typedStatus\?\.source_document_id\)/)
+    expect(source).toMatch(/return 'source_deleted'/)
+
+    const gate = source.indexOf('isSourceDocumentDeleted(sb, typedStatus?.source_document_id)')
+    const lockDecision = source.indexOf('decideReconcileLock(typedStatus, Date.now())')
+    const acquireLock = source.indexOf('acquireReconcileLock(sb, siteReportId')
+    expect(gate).toBeGreaterThan(-1)
+    // La porte P0 précède la décision de verrou ET toute acquisition — jamais de
+    // lecture/écriture de verrou sur un rapport dont le document source est supprimé.
+    expect(lockDecision).toBeGreaterThan(gate)
+    expect(acquireLock).toBeGreaterThan(gate)
+  })
+
   it('câble le P6 Live Writer historical_pdf en best-effort, après attach et avant le pont documentaire', () => {
     const source = read('lib/subjects/historical-import-post-processing.ts')
     expect(source).toMatch(/runTrackedPointLiveWriterForHistoricalRun\(\{ runId, siteId \}\)/)

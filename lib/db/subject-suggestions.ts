@@ -121,6 +121,11 @@ export async function listSuggestionsForReview(
  * Toutes les suggestions pending au niveau du chantier — vue globale "Sujets à rapprocher".
  * Triées par confiance DESC puis ancienneté ASC.
  * Enrichies avec l'origine (nom du document + date).
+ *
+ * P0 (2026-09-17) : une suggestion issue d'un run dont le document source a été
+ * supprimé (documents.deleted_at) n'a plus lieu d'être proposée à la résolution
+ * humaine — exclue avant tout enrichissement, via le même join documents déjà
+ * nécessaire au libellé d'origine (pas de requête supplémentaire).
  */
 export async function listPendingSuggestionsForSite(siteId: string): Promise<SiteSubjectSuggestionRow[]> {
   const admin = createAdminClient()
@@ -152,15 +157,20 @@ export async function listPendingSuggestionsForSite(siteId: string): Promise<Sit
   type RunMeta = {
     id: string
     created_at: string
-    documents: { filename: string; effective_date: string | null } | null
+    documents: { filename: string; effective_date: string | null; deleted_at: string | null } | null
   }
   const runMetaMap = new Map<string, { origin_label: string | null; origin_date: string | null }>()
+  const deletedSourceRunIds = new Set<string>()
   if (runIds.length > 0) {
     const { data: runRows } = await admin
       .from('document_extraction_run')
-      .select('id, created_at, documents!document_id(filename, effective_date)')
+      .select('id, created_at, documents!document_id(filename, effective_date, deleted_at)')
       .in('id', runIds)
     for (const r of (runRows as RunMeta[] | null) ?? []) {
+      if (r.documents?.deleted_at) {
+        deletedSourceRunIds.add(r.id)
+        continue
+      }
       runMetaMap.set(r.id, {
         origin_label: r.documents?.filename ?? null,
         origin_date: r.documents?.effective_date ?? r.created_at.slice(0, 10),
@@ -168,9 +178,15 @@ export async function listPendingSuggestionsForSite(siteId: string): Promise<Sit
     }
   }
 
+  // P0 (2026-09-17) : une suggestion dont le run référence un document supprimé
+  // n'est plus jamais proposée — exclue ici, avant tout enrichissement ultérieur.
+  const eligibleRows = deletedSourceRunIds.size === 0
+    ? allRows
+    : allRows.filter((r) => !r.extraction_run_id || !deletedSourceRunIds.has(r.extraction_run_id))
+
   // Origine terrain : date de visite depuis site_knowledge_proposals → site_reports
   const visitProposalIds = [...new Set(
-    allRows
+    eligibleRows
       .filter(r => r.extraction_run_id === null && r.source_proposal_id !== null)
       .map(r => r.source_proposal_id as string)
   )]
@@ -195,7 +211,7 @@ export async function listPendingSuggestionsForSite(siteId: string): Promise<Sit
 
   // Labels canonical_subject
   const csIds = [...new Set(
-    allRows.map(r => r.candidate_canonical_subject_id).filter((id): id is string => id !== null)
+    eligibleRows.map(r => r.candidate_canonical_subject_id).filter((id): id is string => id !== null)
   )]
   const csLabelMap = new Map<string, string>()
   if (csIds.length > 0) {
@@ -203,7 +219,7 @@ export async function listPendingSuggestionsForSite(siteId: string): Promise<Sit
     for (const cs of csRows ?? []) csLabelMap.set(cs.id, cs.label)
   }
 
-  return allRows.map(row => {
+  return eligibleRows.map(row => {
     let meta: { origin_label: string | null; origin_date: string | null } | null = null
     if (row.extraction_run_id) {
       meta = runMetaMap.get(row.extraction_run_id) ?? null

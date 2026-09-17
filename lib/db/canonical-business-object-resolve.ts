@@ -21,6 +21,7 @@ import 'server-only'
 
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getDeletedDocumentIds } from '@/lib/documents/historical-source-eligibility'
 
 export type CanonicalBusinessObjectEntityType = 'site_action' | 'site_reserve' | 'site_deadline'
 
@@ -69,10 +70,14 @@ async function fetchViaHistoricalChain(
 
   const { data: proposals } = await sb
     .from('document_extraction_proposal')
-    .select('id, stable_key')
+    .select('id, stable_key, document_id')
     .in('subject_thread_id', threadIds)
 
-  const proposalIds = (proposals ?? []).map((p) => p.id)
+  const proposalRows = (proposals ?? []) as Array<{ id: string; stable_key: string | null; document_id: string | null }>
+  const deletedDocIds = await getDeletedDocumentIds(sb, proposalRows.map((p) => p.document_id))
+  const eligibleProposals = proposalRows.filter((p) => !p.document_id || !deletedDocIds.has(p.document_id))
+
+  const proposalIds = eligibleProposals.map((p) => p.id)
   if (!proposalIds.length) return []
 
   const { data: mats } = await sb
@@ -86,7 +91,7 @@ async function fetchViaHistoricalChain(
   const entityIds = mats.map((m) => m.target_entity_id)
   const stableKeyByEntityId = new Map<string, string | null>()
   for (const m of mats) {
-    const prop = proposals?.find((p) => p.id === m.proposal_id)
+    const prop = eligibleProposals.find((p) => p.id === m.proposal_id)
     stableKeyByEntityId.set(m.target_entity_id, prop?.stable_key ?? null)
   }
 
@@ -116,17 +121,21 @@ async function fetchRowsByIds(
   return fetchRowsByFilter(sb, targetType, (q) => q.in('id', ids))
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+interface EntityQuery extends PromiseLike<{ data: unknown[] | null }> {
+  eq(column: string, value: string): EntityQuery;
+  in(column: string, values: string[]): EntityQuery;
+}
+
 async function fetchRowsByFilter(
   sb: AdminClient,
   targetType: CanonicalBusinessObjectEntityType,
-  applyFilter: (q: any) => any,
+  applyFilter: (q: EntityQuery) => EntityQuery,
 ): Promise<RawRow[]> {
   if (targetType === 'site_action') {
     const { data } = await applyFilter(
-      sb.from('site_actions').select('id, title, created_at, canonical_subject_id'),
+      sb.from('site_actions').select('id, title, created_at, canonical_subject_id') as unknown as EntityQuery,
     )
-    return (data ?? []).map((r: { id: string; title: string | null; created_at: string | null; canonical_subject_id: string | null }) => ({
+    return ((data ?? []) as Array<{ id: string; title: string | null; created_at: string | null; canonical_subject_id: string | null }>).map((r) => ({
       id: r.id,
       label: r.title ?? '',
       date: r.created_at?.slice(0, 10) ?? null,
@@ -136,9 +145,9 @@ async function fetchRowsByFilter(
 
   if (targetType === 'site_reserve') {
     const { data } = await applyFilter(
-      sb.from('site_reserve').select('id, label, issued_on, status, canonical_subject_id').not('status', 'in', '("lifted")'),
+      sb.from('site_reserve').select('id, label, issued_on, status, canonical_subject_id').not('status', 'in', '("lifted")') as unknown as EntityQuery,
     )
-    return (data ?? []).map((r: { id: string; label: string | null; issued_on: string | null; canonical_subject_id: string | null }) => ({
+    return ((data ?? []) as Array<{ id: string; label: string | null; issued_on: string | null; canonical_subject_id: string | null }>).map((r) => ({
       id: r.id,
       label: r.label ?? '',
       date: r.issued_on ?? null,
@@ -148,9 +157,9 @@ async function fetchRowsByFilter(
 
   // site_deadline
   const { data } = await applyFilter(
-    sb.from('site_deadlines').select('id, title, due_date, status, canonical_subject_id').not('status', 'in', '("done","cancelled")'),
+    sb.from('site_deadlines').select('id, title, due_date, status, canonical_subject_id').not('status', 'in', '("done","cancelled")') as unknown as EntityQuery,
   )
-  return (data ?? []).map((r: { id: string; title: string | null; due_date: string | null; canonical_subject_id: string | null }) => ({
+  return ((data ?? []) as Array<{ id: string; title: string | null; due_date: string | null; canonical_subject_id: string | null }>).map((r) => ({
     id: r.id,
     label: r.title ?? '',
     date: r.due_date ?? null,

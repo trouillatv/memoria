@@ -57,6 +57,7 @@ import {
 } from './tracked-point-read-model'
 import { loadCboReducedStates, loadNonActionCboReducedStates } from './canonical-business-object-evolution'
 import { buildPointMergeComponents, type MergeGraphPoint } from './tracked-point-merge'
+import { getDeletedDocumentIds } from '@/lib/documents/historical-source-eligibility'
 
 export type SubjectPointMiniContextEntry = PointReadModelEntry & { isCurrent: boolean }
 
@@ -279,12 +280,15 @@ export async function loadSubjectPointMiniContext(
 
   const docIds = [...new Set([...proposalById.values()].map((p) => p.document_id))]
   const docDate = new Map<string, string | null>()
+  const deletedDocIds = await getDeletedDocumentIds(supabase, docIds)
   const docRows = await fetchAllChunks<{ id: string; effective_date: string | null }>(docIds, async (chunk) => {
     const { data, error } = await supabase.from('documents').select('id, effective_date').in('id', chunk)
     if (error) throw new Error(`loadSubjectPointMiniContext: documents — ${error.message}`)
     return data ?? []
   })
-  for (const d of docRows) docDate.set(d.id, d.effective_date)
+  for (const d of docRows) {
+    if (!deletedDocIds.has(d.id)) docDate.set(d.id, d.effective_date)
+  }
 
   const cboRows = await fetchAllChunks(pointIds, async (chunk) => {
     const { data, error } = await supabase

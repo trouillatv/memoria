@@ -429,13 +429,21 @@ export async function readEvents(
   if (importRows.length > 0) {
     const docIds = [...new Set(importRows.map((r) => r.source_document_id).filter((x): x is string => !!x))]
     const effectiveByDoc = new Map<string, string | null>()
+    const deletedDocIds = new Set<string>()
     if (docIds.length > 0) {
-      const { data: docs } = await db.from('documents').select('id, effective_date').in('id', docIds)
-      for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null }>) {
+      const { data: docs } = await db.from('documents').select('id, effective_date, deleted_at').in('id', docIds)
+      for (const d of (docs ?? []) as Array<{ id: string; effective_date: string | null; deleted_at: string | null }>) {
+        if (d.deleted_at) {
+          deletedDocIds.add(d.id)
+          continue
+        }
         effectiveByDoc.set(d.id, d.effective_date)
       }
     }
     for (const r of importRows) {
+      // P0 (2026-09-17) : un PV dont le document source a été supprimé n'a plus lieu
+      // d'être — il reste en base pour l'audit mais disparaît de tout flux d'événements.
+      if (r.source_document_id && deletedDocIds.has(r.source_document_id)) continue
       const effectiveDate = r.source_document_id ? effectiveByDoc.get(r.source_document_id) ?? null : null
       // Date documentaire connue → elle seule décide de la présence dans la fenêtre
       // [from, to]. Inconnue → on n'exclut pas le PV sur un champ technique absent.

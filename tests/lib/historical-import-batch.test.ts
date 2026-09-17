@@ -17,6 +17,9 @@ const mocks = vi.hoisted(() => ({
   getExtractionRun: vi.fn(),
   getLatestExtractionRunForDocument: vi.fn(),
   acceptAllPendingForRun: vi.fn(),
+  pinAllSnapshotsForRun: vi.fn(),
+  getProposalMaterializationReport: vi.fn(),
+  getPhotoMaterializationReport: vi.fn(),
   extractHistoricalPv: vi.fn(),
   materializeHistoricalRun: vi.fn(),
   getExistingMaterializedVisit: vi.fn(),
@@ -32,6 +35,9 @@ vi.mock('@/lib/db/document-extractions', () => ({
   getExtractionRun: mocks.getExtractionRun,
   getLatestExtractionRunForDocument: mocks.getLatestExtractionRunForDocument,
   acceptAllPendingForRun: mocks.acceptAllPendingForRun,
+  pinAllSnapshotsForRun: mocks.pinAllSnapshotsForRun,
+  getProposalMaterializationReport: mocks.getProposalMaterializationReport,
+  getPhotoMaterializationReport: mocks.getPhotoMaterializationReport,
 }))
 
 vi.mock('@/lib/documents/extract-historical-pv', () => ({
@@ -83,6 +89,14 @@ describe('BATCH-0 — runHistoricalImportBatch', () => {
     mocks.getExtractionRun.mockResolvedValue({ id: 'run-1', status: 'ready_for_review', error_message: null })
     mocks.getExistingMaterializedVisit.mockResolvedValue(null)
     mocks.acceptAllPendingForRun.mockResolvedValue({ ok: true, count: 2 })
+    mocks.pinAllSnapshotsForRun.mockResolvedValue(undefined)
+    mocks.getProposalMaterializationReport.mockResolvedValue({
+      totalExtracted: 0, autoAccepted: 0, rejectedByGuard: 0, materialized: 0,
+    })
+    mocks.getPhotoMaterializationReport.mockResolvedValue({
+      detected: 0, nativeRetained: 0, snapshotFallbackRetained: 0, integratedToVisit: 0,
+      illustratesConfirmed: 0, candidatesRemaining: 0, dismissed: 0, lostSilently: 0,
+    })
     mocks.materializeHistoricalRun.mockResolvedValue({
       ok: true, siteReportId: 'report-1', siteId: 'site-1', visitDate: '2025-03-27', message: 'ok',
     })
@@ -161,6 +175,21 @@ describe('BATCH-0 — runHistoricalImportBatch', () => {
     expect(result.status).toBe('quarantined')
     expect(result.quarantineReason).toBe('POST_PROCESSING_STUCK')
     expect(mocks.runHistoricalImportPostProcessing).toHaveBeenCalledTimes(3) // 1 + 2 relances
+  })
+
+  it('5b. post-processing: source_deleted is terminal and never retried (P0 deleted source document)', async () => {
+    mocks.runHistoricalImportPostProcessing.mockResolvedValue('source_deleted')
+
+    const result = await processHistoricalBatchDocument(
+      baseInput,
+      { userId: 'user-1', postProcessingMaxRetries: 5, postProcessingBackoffMs: 1 },
+    )
+
+    expect(result.status).toBe('quarantined')
+    expect(result.quarantineReason).toBe('SOURCE_DOCUMENT_DELETED')
+    // Unlike concurrent/lock_lost, never retry: a deleted document cannot become
+    // eligible again between attempts.
+    expect(mocks.runHistoricalImportPostProcessing).toHaveBeenCalledTimes(1)
   })
 
   it('6. le document suivant ne démarre qu\'une fois le post-traitement du précédent terminé', async () => {

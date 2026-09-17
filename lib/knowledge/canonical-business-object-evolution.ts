@@ -12,6 +12,7 @@ import {
 } from '@/lib/knowledge/cbo-lifecycle-reducer'
 import { loadProposalProofs, ACTIVE_POLICY_VERSION } from '@/lib/knowledge/document-completion-resolver'
 import { getEffectiveResolutionsByProposalBatch, computeProofContextFingerprint } from '@/lib/db/document-completion-resolution'
+import { getDeletedDocumentIds } from '@/lib/documents/historical-source-eligibility'
 
 // Read-model de trajectoire longitudinale par CBO — P1-C2B.4 H2-B.4UI.
 //
@@ -336,9 +337,18 @@ async function loadCboReducedStatesUncached(
   )) if (r.source_document_id) reportDoc.set(r.id, r.source_document_id)
   const docDate = new Map<string, string>()
   const docIds = [...new Set([...reportDoc.values()])]
+  // P0 (2026-09-17) : un membre issu d'un document supprimé cesse d'exister pour
+  // la réduction CBO. Il ne produit ni doc_open, ni native journal, ni targetActionId.
+  const deletedMemberDocIds = await getDeletedDocumentIds(sb, docIds)
   for (const d of await fetchAllChunks<{ id: string; effective_date: string | null }>(
     docIds, (c) => sb.from('documents').select('id, effective_date').in('id', c),
-  )) if (d.effective_date) docDate.set(d.id, d.effective_date)
+  )) if (d.effective_date && !deletedMemberDocIds.has(d.id)) docDate.set(d.id, d.effective_date)
+  const isMemberSourceDeleted = (memberId: string): boolean => {
+    const reportId = actionInfo.get(memberId)?.reportId
+    if (!reportId) return false
+    const docId = reportDoc.get(reportId)
+    return !!docId && deletedMemberDocIds.has(docId)
+  }
   // date métier + document source d'un membre (undefined si dangling ou chaîne incomplète).
   const memberBusiness = (memberId: string): { docId: string; date: string } | null => {
     const a = actionInfo.get(memberId); if (!a?.reportId) return null
@@ -368,6 +378,7 @@ async function loadCboReducedStatesUncached(
   for (const p of await fetchAllChunks<{ id: string; document_id: string | null }>(
     proofs.map((x) => x.proof.proposalId), (c) => sb.from('document_extraction_proposal').select('id, document_id').in('id', c),
   )) proofDocByProposal.set(p.id, p.document_id)
+  const deletedProofDocIds = await getDeletedDocumentIds(sb, [...proofDocByProposal.values()])
   // P0-PERF-1 : lecture BATCH des résolutions effectives (même sélection policy + fingerprint
   // courant, appliquée en mémoire) — remplace le N+1 d'1 requête par preuve (92 sur RUS,
   // 234 sur OCEF Compostage) qui dominait le coût de chaque rendu.
@@ -381,26 +392,31 @@ async function loadCboReducedStatesUncached(
   for (const it of proofs) {
     const eff = effByProposal.get(it.proof.proposalId) ?? null
     if (!eff || eff.decision !== 'MATCH' || eff.confidenceClass !== 'HIGH' || !eff.selectedCboId) continue
+    const proofDocId = proofDocByProposal.get(it.proof.proposalId) ?? null
+    // P0 (2026-09-17) : une preuve dont le document a été supprimé ne fonde plus de
+    // complétion — le document n'est plus une source active (même doctrine que doc_open).
+    if (proofDocId && deletedProofDocIds.has(proofDocId)) continue
     const l = highByCbo.get(eff.selectedCboId) ?? []
-    l.push({ date: it.proof.effectiveDate ?? null, proposalId: it.proof.proposalId, docId: proofDocByProposal.get(it.proof.proposalId) ?? null })
+    l.push({ date: it.proof.effectiveDate ?? null, proposalId: it.proof.proposalId, docId: proofDocId })
     highByCbo.set(eff.selectedCboId, l)
   }
 
   // 6. Réduction par CBO — assemblage PUR (assembleCboEvents) puis reduceCboLifecycle.
   for (const cbo of cbos) {
     const memberIds = memberIdsByCbo.get(cbo.id) ?? []
-    const members: CboMemberProvenance[] = memberIds.map((memberId) => {
+    const eligibleMemberIds = memberIds.filter((memberId) => !isMemberSourceDeleted(memberId))
+    const members: CboMemberProvenance[] = eligibleMemberIds.map((memberId) => {
       const biz = memberBusiness(memberId)
       return { memberId, docId: biz?.docId ?? null, date: biz?.date ?? null }
     })
     const completions: CboCompletionProof[] = (highByCbo.get(cbo.id) ?? []).map((h) => ({ proposalId: h.proposalId, docId: h.docId, date: h.date }))
-    const natives: CboNativeJournalEvent[] = memberIds.flatMap((memberId) => (journalByAction.get(memberId) ?? []).map((e) => ({ kind: e.kind, occurredAt: e.occurredAt })))
+    const natives: CboNativeJournalEvent[] = eligibleMemberIds.flatMap((memberId) => (journalByAction.get(memberId) ?? []).map((e) => ({ kind: e.kind, occurredAt: e.occurredAt })))
 
     const asm = assembleCboEvents(cbo.label, members, completions, natives)
     const reduced = reduceCboLifecycle(asm.events)
     // Target déterministe : membre VIVANT (présent dans actionInfo) à la date métier la plus
     // récente, tie → id. Seul un membre vivant peut porter le geste natif (close/reopen).
-    const liveMembers = memberIds.filter((m) => actionInfo.has(m))
+    const liveMembers = eligibleMemberIds.filter((m) => actionInfo.has(m))
     const targetActionId = liveMembers.length === 0 ? null : [...liveMembers].sort((a, b) => {
       const da = memberBusiness(a)?.date ?? ''
       const db = memberBusiness(b)?.date ?? ''
@@ -540,9 +556,18 @@ async function loadNonActionCboReducedStatesUncached(
   )) if (r.source_document_id) reportDoc.set(r.id, r.source_document_id)
   const docDate = new Map<string, string>()
   const docIds = [...new Set([...reportDoc.values()])]
+  // P0 (2026-09-17) : même doctrine que loadCboReducedStates — un membre issu
+  // d'un document supprimé est exclu de la réduction, pas seulement rendu non datable.
+  const deletedMemberDocIds = await getDeletedDocumentIds(sb, docIds)
   for (const d of await fetchAllChunks<{ id: string; effective_date: string | null }>(
     docIds, (c) => sb.from('documents').select('id, effective_date').in('id', c),
-  )) if (d.effective_date) docDate.set(d.id, d.effective_date)
+  )) if (d.effective_date && !deletedMemberDocIds.has(d.id)) docDate.set(d.id, d.effective_date)
+  const isMemberSourceDeleted = (memberId: string): boolean => {
+    const reportId = memberReportId.get(memberId)
+    if (!reportId) return false
+    const docId = reportDoc.get(reportId)
+    return !!docId && deletedMemberDocIds.has(docId)
+  }
 
   const memberBusiness = (memberId: string): { docId: string; date: string } | null => {
     const reportId = memberReportId.get(memberId); if (!reportId) return null
@@ -560,6 +585,7 @@ async function loadNonActionCboReducedStatesUncached(
   for (const p of await fetchAllChunks<{ id: string; document_id: string | null }>(
     proofs.map((x) => x.proof.proposalId), (c) => sb.from('document_extraction_proposal').select('id, document_id').in('id', c),
   )) proofDocByProposal.set(p.id, p.document_id)
+  const deletedProofDocIds = await getDeletedDocumentIds(sb, [...proofDocByProposal.values()])
   const effByProposal = await getEffectiveResolutionsByProposalBatch(
     proofs.map((it) => ({
       proofProposalId: it.proof.proposalId,
@@ -571,15 +597,19 @@ async function loadNonActionCboReducedStatesUncached(
     const eff = effByProposal.get(it.proof.proposalId) ?? null
     if (!eff || eff.decision !== 'MATCH' || eff.confidenceClass !== 'HIGH' || !eff.selectedCboId) continue
     if (!cboIdSet.has(eff.selectedCboId)) continue
+    const proofDocId = proofDocByProposal.get(it.proof.proposalId) ?? null
+    // P0 (2026-09-17) : une preuve dont le document a été supprimé ne fonde plus de complétion.
+    if (proofDocId && deletedProofDocIds.has(proofDocId)) continue
     const l = highByCbo.get(eff.selectedCboId) ?? []
-    l.push({ date: it.proof.effectiveDate ?? null, proposalId: it.proof.proposalId, docId: proofDocByProposal.get(it.proof.proposalId) ?? null })
+    l.push({ date: it.proof.effectiveDate ?? null, proposalId: it.proof.proposalId, docId: proofDocId })
     highByCbo.set(eff.selectedCboId, l)
   }
 
   // Réduction — même moteur générique. natives=[] toujours (aucun journal natif pour ces types).
   for (const cbo of cbos) {
     const memberIds = memberIdsByCbo.get(cbo.id) ?? []
-    const members: CboMemberProvenance[] = memberIds.map((memberId) => {
+    const eligibleMemberIds = memberIds.filter((memberId) => !isMemberSourceDeleted(memberId))
+    const members: CboMemberProvenance[] = eligibleMemberIds.map((memberId) => {
       const biz = memberBusiness(memberId)
       return { memberId, docId: biz?.docId ?? null, date: biz?.date ?? null }
     })

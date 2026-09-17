@@ -24,6 +24,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { RECONCILE_LOCK_TTL_MS } from '@/lib/db/canonical-subject-source-reconcile'
+import { getDeletedDocumentIds, isSourceDocumentDeleted } from '@/lib/documents/historical-source-eligibility'
 
 /**
  * Âge minimal d'une projection avant de la considérer abandonnée.
@@ -64,15 +65,23 @@ export function isSweepable(
   return nowMs - Date.parse(eligibleAt) >= thresholdMs
 }
 
-/** Les visites projetées mais jamais canonicalisées, au-delà du seuil. */
+/** Les visites projetées mais jamais canonicalisées, au-delà du seuil.
+ *
+ * P0 (2026-09-17) : un rapport dont le document source a été supprimé
+ * (documents.deleted_at) n'est jamais « coincé » — il n'a plus vocation à être
+ * réconcilié du tout. Exclu ici, pas seulement laissé de côté par un appelant :
+ * ce sweep est le point d'entrée du cron, la dernière ligne de défense avant
+ * un rejeu automatique.
+ */
 export async function findStuckReconciliations(
   thresholdMs: number = SWEEP_THRESHOLD_MS,
   nowMs: number = Date.now(),
 ): Promise<StuckReconciliation[]> {
-  const { data, error } = await createAdminClient()
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
     .from('site_reports')
     .select(
-      'id, site_id, extraction_run_id, debrief_projected_at, created_at, ' +
+      'id, site_id, extraction_run_id, source_document_id, debrief_projected_at, created_at, ' +
         'canonical_reconciled_at, canonical_reconcile_started_at, canonical_reconcile_error',
     )
     .is('canonical_reconciled_at', null)
@@ -82,6 +91,7 @@ export async function findStuckReconciliations(
     id: string
     site_id: string | null
     extraction_run_id: string | null
+    source_document_id: string | null
     debrief_projected_at: string | null
     canonical_reconciled_at: string | null
     canonical_reconcile_started_at: string | null
@@ -89,7 +99,11 @@ export async function findStuckReconciliations(
     created_at: string | null
   }
 
-  return ((data ?? []) as unknown as Row[])
+  const rows = (data ?? []) as unknown as Row[]
+  const deletedDocIds = await getDeletedDocumentIds(supabase, rows.map((r) => r.source_document_id))
+
+  return rows
+    .filter((r) => !r.source_document_id || !deletedDocIds.has(r.source_document_id))
     .filter((r) => isSweepable(r, nowMs, thresholdMs))
     .map((r) => ({
       reportId: r.id,
@@ -108,6 +122,7 @@ export type SweepOutcome =
   | 'lock_lost'
   | 'failed'
   | 'no_site'
+  | 'source_deleted'
 
 /**
  * Rejoue la réconciliation d'une visite coincée, par le chemin qui lui correspond.
@@ -139,6 +154,10 @@ export async function replayReconciliation(item: StuckReconciliation): Promise<S
     .maybeSingle()
   const documentId = (run as { document_id: string | null } | null)?.document_id
   if (!documentId) return 'failed'
+  // Défense en profondeur : findStuckReconciliations exclut déjà ces rapports, mais
+  // cette fonction reste appelable indépendamment (item construit à la main) — jamais
+  // rejouer un import dont le document source a été supprimé entre-temps.
+  if (await isSourceDocumentDeleted(sharedClient, documentId)) return 'source_deleted'
   const { data: doc } = await sharedClient
     .from('documents')
     .select('effective_date')
@@ -178,18 +197,24 @@ export interface ReconciliationHealth {
  * davantage tant qu'ils restent à zéro.
  */
 export async function getReconciliationHealth(nowMs: number = Date.now()): Promise<ReconciliationHealth> {
-  const { data, error } = await createAdminClient()
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
     .from('site_reports')
-    .select('debrief_projected_at, extraction_run_id, created_at, canonical_reconcile_error')
+    .select('debrief_projected_at, extraction_run_id, source_document_id, created_at, canonical_reconcile_error')
     .is('canonical_reconciled_at', null)
   if (error) throw error
 
-  const rows = ((data ?? []) as Array<{
+  const allRows = (data ?? []) as Array<{
     debrief_projected_at: string | null
     extraction_run_id: string | null
+    source_document_id: string | null
     created_at: string | null
     canonical_reconcile_error: string | null
-  }>).filter((row) => row.debrief_projected_at || (row.extraction_run_id && row.created_at))
+  }>
+  const deletedDocIds = await getDeletedDocumentIds(supabase, allRows.map((r) => r.source_document_id))
+  const rows = allRows
+    .filter((row) => !row.source_document_id || !deletedDocIds.has(row.source_document_id))
+    .filter((row) => row.debrief_projected_at || (row.extraction_run_id && row.created_at))
   const ages = rows
     .map((r) => nowMs - Date.parse((r.debrief_projected_at ?? r.created_at)!))
     .sort((a, b) => b - a)
