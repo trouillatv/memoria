@@ -3,6 +3,7 @@ import { ListChecks, MapPin } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { loadSiteTrackedPointList } from '@/lib/knowledge/tracked-point-list'
+import { loadMemoriaNeedsYouSummary, computeChantierNeedsYouCount } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { PointsPageTabs } from '@/components/knowledge/PointsPageTabs'
 import { SiteChantierNav } from '../SiteChantierNav'
@@ -20,11 +21,18 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
 
   const { id } = await params
   const { tab, ptype, pdeadline } = await searchParams
-  const [identity, list] = await Promise.all([
+  const [identity, list, needsYouSummary] = await Promise.all([
     getSiteIdentity(id),
     loadSiteTrackedPointList(id, user.id),
+    loadMemoriaNeedsYouSummary(id),
   ])
   if (!identity) notFound()
+
+  // Doctrine « Question sur un Point connu → sur le Point. Question avant création/rattachement
+  // d'un Point → au niveau chantier. » (mandat Vincent 2026-09-17) : confirm_trackability et
+  // clarify_evidence n'ont jamais de pointId, donc jamais de badge Point — surfacées ici comme
+  // compteur chantier distinct, transmis à PointsPageTabs → PointsPilotageView.
+  const chantierNeedsYouCount = computeChantierNeedsYouCount(needsYouSummary.categories)
 
   return (
     <div className="space-y-6 w-full">
@@ -61,6 +69,7 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
         subjectHrefPrefix={`/sites/${id}/historique/sujets`}
         siteId={id}
         lastPvDate={list.lastPvDate}
+        chantierNeedsYouCount={chantierNeedsYouCount}
         defaultTab={tab === 'delta' ? 'delta' : undefined}
         defaultPilotageTypeFilter={ptype}
         defaultPilotageDeadlineFilter={pdeadline}

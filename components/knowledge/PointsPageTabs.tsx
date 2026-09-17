@@ -36,6 +36,7 @@ export function PointsPageTabs({
   subjectHrefPrefix,
   siteId,
   lastPvDate,
+  chantierNeedsYouCount,
   defaultTab,
   defaultPilotageTypeFilter,
   defaultPilotageDeadlineFilter,
@@ -46,6 +47,10 @@ export function PointsPageTabs({
   subjectHrefPrefix: string
   siteId: string
   lastPvDate: string | null
+  /** Questions NeedsYou pré-Point (confirm_trackability + clarify_evidence) — jamais rattachables
+   *  à un Point (aucun pointId), surfacées comme carte chantier distincte dans Pilotage (mandat
+   *  Vincent 2026-09-17, doctrine « question avant Point → au niveau chantier »). */
+  chantierNeedsYouCount: number
   /** Onglet initial. Permet à `?tab=delta` de rouvrir directement Delta chantier après
    *  un retour depuis la fiche Point, sans perdre le contexte de David. */
   defaultTab?: Tab
@@ -85,6 +90,7 @@ export function PointsPageTabs({
           points={points}
           pointHrefPrefix={pointHrefPrefix}
           siteId={siteId}
+          chantierNeedsYouCount={chantierNeedsYouCount}
           defaultTypeFilter={defaultPilotageTypeFilter}
           defaultDeadlineFilter={defaultPilotageDeadlineFilter}
         />

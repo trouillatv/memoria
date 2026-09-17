@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 // ── POINTS — PILOTAGE (mandat Vincent « POINTS PILOTAGE — AJUSTEMENT AVANT RECETTE » +
 // Couche 1.1 « Mémoire de revue ») ──
@@ -26,6 +26,17 @@
 // d'acquittement fingerprint) et le bouton « Clarifier » ouvre directement la question précise sur
 // la page de clarification (jamais la fiche Point, jamais la boîte générale) quand elle est
 // identifiable sans ambiguïté (`needsYouQuestionId`).
+//
+// Doctrine à 2 niveaux (mandat Vincent 2026-09-17, suite audit P0-D « 9 Points à revoir / 0 avec
+// question MemorIA » vs 23 questions actives sur le même chantier) : « Question sur un Point
+// connu → sur le Point. Question avant création/rattachement d'un Point → au niveau chantier. »
+// `needsYouCount` (par Point, ci-dessous) ne compte QUE les catégories qui portent réellement un
+// pointId (duplicate_points/attach_information/assign_resolution) — voir
+// filterMemoriaNeedsYouQuestionsForPoint. confirm_trackability et clarify_evidence n'ont
+// STRUCTURELLEMENT aucun pointId : ce ne sont jamais des Points, jamais un faux rattachement — ce
+// sont des questions de mémoire chantier, reçues via la prop `chantierNeedsYouCount` et affichées
+// par une carte dédiée séparée de la liste des Points (jamais fusionnées, jamais comptées comme
+// "N Points").
 
 import { useMemo, useState, useTransition } from 'react'
 import type { ReactNode } from 'react'
@@ -274,12 +285,17 @@ export function PointsPilotageView({
   points,
   pointHrefPrefix,
   siteId,
+  chantierNeedsYouCount,
   defaultTypeFilter,
   defaultDeadlineFilter,
 }: {
   points: PointListEntry[]
   pointHrefPrefix: string
   siteId: string
+  /** Questions NeedsYou pré-Point (confirm_trackability + clarify_evidence) — jamais rattachables
+   *  à un Point (aucun pointId). Jamais compté ni affiché comme des Points : ce sont des questions
+   *  de mémoire chantier, surfacées par la carte dédiée ci-dessous (mandat Vincent 2026-09-17). */
+  chantierNeedsYouCount: number
   /** Filtres Pilotage lus depuis l'URL par le serveur (`?ptype=`/`?pdeadline=`) — mandat Vincent
    *  2026-09-15 : « je ferais ces filtres directement en pensant qu'ils devront finir dans
    *  l'URL » (préparation du chantier navigation sans perte de contexte). Valeur brute non
@@ -526,13 +542,14 @@ export function PointsPilotageView({
           {visibleToReview.length} Point{visibleToReview.length !== 1 ? 's' : ''} à revoir
         </p>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
-          dont {reopenedCount} réouvert{reopenedCount !== 1 ? 's' : ''} ·{' '}
-          {needsYouCount > 0 ? (
-            <Link href={`/sites/${siteId}/besoin-de-toi`} className="font-medium text-violet-700 hover:underline dark:text-violet-300">
-              {needsYouCount} avec question MemorIA
-            </Link>
-          ) : (
-            <>{needsYouCount} avec question MemorIA</>
+          dont {reopenedCount} réouvert{reopenedCount !== 1 ? 's' : ''}
+          {needsYouCount > 0 && (
+            <>
+              {' · '}
+              <Link href={`/sites/${siteId}/besoin-de-toi`} className="font-medium text-violet-700 hover:underline dark:text-violet-300">
+                {needsYouCount} avec question liée au Point
+              </Link>
+            </>
           )}
           {lingeringCount > 0 && <> · {lingeringCount} qui traîne{lingeringCount !== 1 ? 'nt' : ''}</>}
           {changedCount > 0 && <> · {changedCount} changé{changedCount !== 1 ? 's' : ''} au dernier PV</>}
@@ -546,6 +563,24 @@ export function PointsPilotageView({
           Commencer ma revue — {visibleToReview.length}
         </button>
       </div>
+
+      {chantierNeedsYouCount > 0 && (
+        <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900 dark:bg-violet-950/20">
+          <p className="text-[14.5px] font-medium text-violet-900 dark:text-violet-200">
+            MemorIA a besoin de toi — {chantierNeedsYouCount} question{chantierNeedsYouCount !== 1 ? 's' : ''}
+          </p>
+          <p className="mt-1 text-[12.5px] text-muted-foreground">
+            Certaines questions concernent des éléments qui ne sont pas encore rattachés à un Point.
+            Elles doivent être clarifiées avant de pouvoir créer ou enrichir des Points.
+          </p>
+          <Link
+            href={`/sites/${siteId}/besoin-de-toi`}
+            className="mt-3 inline-flex items-center rounded-lg border border-violet-300 px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-900/40"
+          >
+            Examiner les questions
+          </Link>
+        </div>
+      )}
 
       <div className="space-y-2">
         <p className="text-[12.5px] font-medium text-muted-foreground">À revoir maintenant</p>

@@ -12,8 +12,10 @@ import {
   filterMemoriaNeedsYouQuestionsForSubject,
   resolveMemoriaNeedsYouSubjectPointRef,
   needsYouQuestionHref,
+  computeChantierNeedsYouCount,
   MEMORIA_NEEDS_YOU_CATEGORY_ORDER,
   type MemoriaNeedsYouQuestion,
+  type MemoriaNeedsYouCategorySummary,
 } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import type { ConsolidationQueue, ConsolidationQueueEntry, ConsolidationQueuePointSide } from '@/lib/knowledge/tracked-point-consolidation-queue'
 import type { TraceIdentityQueue, TraceIdentitySourceEntry, TraceIdentityTarget } from '@/lib/knowledge/tracked-point-trace-queue'
@@ -456,5 +458,26 @@ describe('needsYouQuestionHref (lot UX Point 1.1)', () => {
 
   it("encode l'identifiant de question", () => {
     expect(needsYouQuestionHref('/sites/site-1/besoin-de-toi', 'q 1&x')).toBe('/sites/site-1/besoin-de-toi?q=q%201%26x')
+  })
+})
+
+// Doctrine 2 niveaux (mandat Vincent 2026-09-17) : confirm_trackability + clarify_evidence sont
+// les seules catégories STRUCTURELLEMENT sans pointId — jamais des Points, toujours des questions
+// chantier. Les 3 autres catégories (duplicate_points/attach_information/assign_resolution) sont
+// exclues du compte chantier même si leur count est non nul.
+describe('computeChantierNeedsYouCount (mandat Vincent 2026-09-17)', () => {
+  function categories(counts: Partial<Record<MemoriaNeedsYouCategorySummary['category'], number>>): MemoriaNeedsYouCategorySummary[] {
+    return MEMORIA_NEEDS_YOU_CATEGORY_ORDER.map((category) => ({ category, label: category, count: counts[category] ?? 0 }))
+  }
+
+  it('additionne confirm_trackability + clarify_evidence, jamais les autres catégories', () => {
+    const count = computeChantierNeedsYouCount(
+      categories({ duplicate_points: 5, attach_information: 7, confirm_trackability: 3, assign_resolution: 11, clarify_evidence: 20 }),
+    )
+    expect(count).toBe(23)
+  })
+
+  it('vaut 0 quand aucune question chantier active', () => {
+    expect(computeChantierNeedsYouCount(categories({ duplicate_points: 5, attach_information: 7, assign_resolution: 11 }))).toBe(0)
   })
 })

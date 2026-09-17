@@ -27,6 +27,17 @@ export type MemoriaNeedsYouCategorySummary = {
   count: number
 }
 
+// Doctrine « Question sur un Point connu → sur le Point. Question avant création/rattachement
+// d'un Point → au niveau chantier. » (mandat Vincent, 2026-09-17) : confirm_trackability et
+// clarify_evidence n'ont jamais de pointId (cf. filterMemoriaNeedsYouQuestionsForPoint ci-dessous)
+// — elles ne sont donc jamais comptées comme des Points, seulement comme des questions de mémoire
+// au niveau chantier, surfacées par une carte dédiée dans Pilotage (jamais un pointId fabriqué).
+export function computeChantierNeedsYouCount(categories: MemoriaNeedsYouCategorySummary[]): number {
+  return categories
+    .filter((c) => c.category === 'confirm_trackability' || c.category === 'clarify_evidence')
+    .reduce((sum, c) => sum + c.count, 0)
+}
+
 // Lot UX Point 3F (mandat Vincent) — NeedsYou contextuel À l'échelle d'UN Point : seules les
 // catégories dont la donnée référence RÉELLEMENT ce Point qualifient. confirm_trackability et
 // clarify_evidence n'ont AUCUNE référence Point dans leur source (vérifié : zéro `pointId` dans

@@ -36,6 +36,7 @@ import {
   filterMemoriaNeedsYouQuestionsForSubject,
   resolveMemoriaNeedsYouSubjectPointRef,
   needsYouQuestionHref,
+  computeChantierNeedsYouCount,
   type MemoriaNeedsYouQuestion,
   type MemoriaNeedsYouCategorySummary,
 } from './tracked-point-needs-you-question'
@@ -53,6 +54,7 @@ export {
   filterMemoriaNeedsYouQuestionsForSubject,
   resolveMemoriaNeedsYouSubjectPointRef,
   needsYouQuestionHref,
+  computeChantierNeedsYouCount,
 }
 export type { MemoriaNeedsYouQuestion, MemoriaNeedsYouCategorySummary }
 

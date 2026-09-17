@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadSiteTrackedPointList } from '@/lib/knowledge/tracked-point-list'
+import { loadMemoriaNeedsYouSummary, computeChantierNeedsYouCount } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { PointsPageTabs } from '@/components/knowledge/PointsPageTabs'
 
 export const dynamic = 'force-dynamic'
@@ -27,7 +28,13 @@ export default async function MobilePointsPage({
     .maybeSingle()
   if (!site) notFound()
 
-  const list = await loadSiteTrackedPointList(siteId, user.id)
+  const [list, needsYouSummary] = await Promise.all([
+    loadSiteTrackedPointList(siteId, user.id),
+    loadMemoriaNeedsYouSummary(siteId),
+  ])
+  // Doctrine « question sur un Point connu → sur le Point ; question avant Point → chantier »
+  // (mandat Vincent 2026-09-17), même calcul que la page desktop.
+  const chantierNeedsYouCount = computeChantierNeedsYouCount(needsYouSummary.categories)
 
   return (
     <div className="max-w-md space-y-4 pb-16">
@@ -45,6 +52,7 @@ export default async function MobilePointsPage({
         subjectHrefPrefix={`/m/site/${siteId}/sujets`}
         siteId={siteId}
         lastPvDate={list.lastPvDate}
+        chantierNeedsYouCount={chantierNeedsYouCount}
         defaultTab={tab === 'delta' ? 'delta' : undefined}
         defaultPilotageTypeFilter={ptype}
         defaultPilotageDeadlineFilter={pdeadline}
