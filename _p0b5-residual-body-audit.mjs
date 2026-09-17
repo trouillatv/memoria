@@ -164,4 +164,30 @@ console.log('=== RÉCAPITULATIF ===')
 for (const v of verdicts) {
   console.log(`  durable=${v.durableId} CBO=${v.cboId} → ${v.classification}`)
 }
-console.log('\nAUCUNE ÉCRITURE EFFECTUÉE — script lecture seule.')
+
+const APPLY = process.argv.includes('--apply')
+if (!APPLY) {
+  console.log('\nAUCUNE ÉCRITURE EFFECTUÉE — script lecture seule (relancer avec --apply pour le GO par item Vincent 2026-09-17).')
+  process.exit(0)
+}
+
+// GO Vincent 2026-09-17 — par item : réparer UNIQUEMENT le durable classé
+// SAFE_CONTENT_COPY (b650502e), ne jamais toucher aux 2 CONTENT_AMBIGUOUS
+// (996f92ca, e39a5a72) ni à leurs losers/CBO/superseded_by.
+const EXPECTED_BODY = "Les cadres d'astreinte doivent être formés à la lecture du SSI, au déclenchement du sprinkler et à la gestion de l'évacuation."
+const TARGET_DURABLE_ID = 'b650502e-c66b-4655-a757-aaeb0a156ed4'
+
+console.log('\n=== APPLICATION — GO par item (b650502e uniquement) ===')
+const target = verdicts.find((v) => v.durableId === TARGET_DURABLE_ID)
+if (!target) throw new Error('durable cible introuvable dans les verdicts — abandon, aucune écriture.')
+if (target.classification !== 'SAFE_CONTENT_COPY') throw new Error(`classification inattendue (${target.classification}) — abandon, aucune écriture.`)
+if (target.proposedBody !== EXPECTED_BODY) throw new Error(`body proposé a dérivé depuis le GO ("${target.proposedBody}") — abandon, aucune écriture.`)
+
+const { data, error } = await supabase.rpc('fn_update_action', {
+  p_id: TARGET_DURABLE_ID,
+  p_patch: { body: EXPECTED_BODY },
+  p_actor_id: null,
+})
+if (error) throw error
+console.log(`OK durable=${TARGET_DURABLE_ID} (site_id retourné=${data})`)
+console.log('996f92ca et e39a5a72 non touchés (aucun appel RPC les concernant).')
