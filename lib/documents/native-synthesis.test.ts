@@ -33,6 +33,7 @@ function makeSubject(overrides: Partial<NavigableSubjectSummary> & { canonicalSu
     displayState: 'open',
     provenOpen: false,
     activeObjectsCboAware: 0,
+    activeCboActionCount: null,
     presentInLastPv: false,
     pvSinceLastMention: 0,
     ...overrides,

@@ -868,6 +868,7 @@ export function SubjectLifelineGrid({ matrix, siteId, initialThread, initialThem
           { icon: '↗', label: 'Réapparu', color: 'text-purple-600' },
           { icon: '✓', label: 'Clôturé PV', color: 'text-emerald-600' },
           { icon: '✖', label: 'Annulé', color: 'text-muted-foreground' },
+          { icon: '~', label: 'Changement', color: 'text-muted-foreground' },
           { icon: '╌', label: 'Non mentionné', color: 'text-muted-foreground/40' },
           { icon: '✓', label: 'Visite terrain', color: 'text-teal-600' },
           { icon: '◇', label: 'Réunion', color: 'text-violet-600' },

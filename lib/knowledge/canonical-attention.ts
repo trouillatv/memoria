@@ -495,12 +495,17 @@ export async function deriveCanonicalAttentionItems(
     if (trajLine) reasons.push(trajLine)
 
     // Ligne 3 : action en retard, à vérifier, ou objets actifs
+    // Correctif Attention/Pilotage (2026-09-17) : le nombre d'actions affiché doit être le compte CBO
+    // déduplique (activeCboActionCount), MÊME comptage que « Sujets à piloter » — jamais le brut
+    // activeObjects.actionsOpen, qui compte une formulation par PV et sur-compte un CBO écarté/complété
+    // dont d'autres formulations documentaires du même objet restent techniquement `open`.
+    const actionsOpenCount = s.activeCboActionCount ?? s.activeObjects.actionsOpen
     if (overdue) {
       reasons.push(overdue.reason)
-    } else if (s.activeObjects.total > 0) {
+    } else if (actionsOpenCount > 0 || s.activeObjects.reservesOpen > 0) {
       const objParts: string[] = []
-      if (s.activeObjects.actionsOpen > 0)
-        objParts.push(`${s.activeObjects.actionsOpen} action${s.activeObjects.actionsOpen > 1 ? 's' : ''} ouverte${s.activeObjects.actionsOpen > 1 ? 's' : ''}`)
+      if (actionsOpenCount > 0)
+        objParts.push(`${actionsOpenCount} action${actionsOpenCount > 1 ? 's' : ''} ouverte${actionsOpenCount > 1 ? 's' : ''}`)
       if (s.activeObjects.reservesOpen > 0)
         objParts.push(`${s.activeObjects.reservesOpen} réserve${s.activeObjects.reservesOpen > 1 ? 's' : ''} ouverte${s.activeObjects.reservesOpen > 1 ? 's' : ''}`)
       if (objParts.length > 0) reasons.push(objParts.join(' · '))

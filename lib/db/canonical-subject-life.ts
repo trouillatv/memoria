@@ -1300,6 +1300,15 @@ export interface NavigableSubjectSummary {
    */
   activeObjectsCboAware: number
   /**
+   * Correctif Attention/Pilotage (2026-09-17) — nombre d'Actions CBO réellement actives (open/reopened/
+   * progressing), MÊME comptage que `PilotageSubject.activeCboCount` (actions-pilotage.ts). `null` si le
+   * sujet n'a aucune Action CBO trackée (l'appelant retombe alors sur `activeObjects.actionsOpen` brut).
+   * À utiliser pour tout texte affichant un NOMBRE d'actions ouvertes — `activeObjects.actionsOpen` compte
+   * les formulations brutes (une par PV), pas les objets métier déduplique, et sur-compte donc un CBO
+   * écarté/complété dont d'autres formulations documentaires restent techniquement `open`.
+   */
+  activeCboActionCount: number | null
+  /**
    * P2-2 — Métriques documentaires GÉNÉRIQUES, source UNIQUE. Calculées sur la CHRONOLOGIE MÉTIER du
    * chantier (dates effectives des PV/visites, JAMAIS created_at). L'Attention et ses consommateurs
    * LISENT ces champs, ils ne les recalculent pas.
@@ -1804,6 +1813,10 @@ async function getNavigableSubjectsForSiteUncached(siteId: string): Promise<Navi
       displayState: currentState.displayState,
       provenOpen: currentState.provenOpen,
       activeObjectsCboAware,
+      activeCboActionCount: (() => {
+        const cbo = subjectCboBySubject.get(csId)
+        return cbo && cbo.totalCboTotal > 0 ? cbo.activeCboTotal : null
+      })(),
       // P2-2 — chronologie métier (source unique) : nb de PV depuis la dernière mention + présence au dernier PV.
       pvSinceLastMention: pvSinceMentionCount(lastSeenAt, siteTimelineDates),
       presentInLastPv: lastSiteDate != null && lastSeenAt != null && lastSeenAt >= lastSiteDate,
