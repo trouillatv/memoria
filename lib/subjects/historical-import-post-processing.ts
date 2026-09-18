@@ -5,6 +5,7 @@ import {
   reconcileHistoricalCorpusForSite,
   getMaterializedRunIdsForSite,
 } from '@/lib/db/canonical-subject-historical-corpus-reconcile'
+import { getProposalMaterializationReport } from '@/lib/db/document-extractions'
 import { decideReconcileLock, acquireReconcileLock } from '@/lib/db/canonical-subject-source-reconcile'
 import { projectCanonicalSubjectSafely } from '@/lib/db/canonical-subject-project'
 import { ensureHistoricalPdfOccurrences } from '@/lib/db/canonical-subject-historical-occurrence'
@@ -152,6 +153,27 @@ export async function runHistoricalImportPostProcessing(
   if (await isSourceDocumentDeleted(sb, typedStatus?.source_document_id)) {
     return 'source_deleted'
   }
+
+  // P0 (2026-09-18) — reprise historique incomplète : le sweep/retry ne doit
+  // jamais construire Canonical/CBO/Live Writer au-dessus d'un site_report dont
+  // les propositions acceptées n'ont pas été matérialisées en objets métier. Ce
+  // post-processing ne rejoue volontairement pas la matérialisation principale
+  // (geste séparé, non idempotent au bon niveau ici) : il bloque et rend l'état
+  // observable pour un dry-run/rattrapage explicite.
+  const materializationReport = await getProposalMaterializationReport(runId)
+  const acceptedNotRejected = materializationReport.autoAccepted - materializationReport.rejectedByGuard
+  if (acceptedNotRejected > 0 && materializationReport.materialized < acceptedNotRejected) {
+    const reason =
+      `Matérialisation historique incomplète: ${materializationReport.materialized}/` +
+      `${acceptedNotRejected} propositions acceptées matérialisées (run ${runId})`
+    await sb
+      .from('site_reports')
+      .update({ canonical_reconcile_error: reason, canonical_reconcile_started_at: null })
+      .eq('id', siteReportId)
+      .then(undefined, () => {})
+    return 'failed'
+  }
+
   const decision = decideReconcileLock(typedStatus, Date.now())
   if (decision === 'concurrent') return 'concurrent'
   if (decision === 'done' && typedStatus?.similarity_analysis_completed_at && !typedStatus.similarity_analysis_error) {

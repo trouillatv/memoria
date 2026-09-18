@@ -28,10 +28,30 @@ describe('historical import post-processing orchestration', () => {
 
   it('l’orchestrateur ne rappelle jamais la matérialisation principale', () => {
     const source = read('lib/subjects/historical-import-post-processing.ts')
-    expect(source).not.toMatch(/materializeHistoricalVisit/)
+    expect(source).not.toMatch(/\bmaterializeHistoricalVisit\(/)
     expect(source).not.toMatch(/visit_capture/)
     expect(source).toMatch(/decideReconcileLock/)
     expect(source).toMatch(/runHistoricalMemoryBuildPipeline/)
+  })
+
+  it('P0 (2026-09-18) — bloque une reprise si les propositions acceptées ne sont pas matérialisées', () => {
+    const source = read('lib/subjects/historical-import-post-processing.ts')
+    expect(source).toMatch(/getProposalMaterializationReport\(runId\)/)
+    expect(source).toMatch(/materializationReport\.materialized < acceptedNotRejected/)
+    expect(source).toMatch(/Matérialisation historique incomplète/)
+    expect(source).toMatch(/return 'failed'/)
+
+    const deletedSourceGate = source.indexOf('isSourceDocumentDeleted(sb, typedStatus?.source_document_id)')
+    const materializationCheck = source.indexOf('getProposalMaterializationReport(runId)')
+    const lockDecision = source.indexOf('decideReconcileLock(typedStatus, Date.now())')
+    const memoryPipeline = source.indexOf('runHistoricalMemoryBuildPipeline({')
+    const liveWriter = source.indexOf('runTrackedPointLiveWriterForHistoricalRun({ runId, siteId })')
+
+    expect(deletedSourceGate).toBeGreaterThan(-1)
+    expect(materializationCheck).toBeGreaterThan(deletedSourceGate)
+    expect(lockDecision).toBeGreaterThan(materializationCheck)
+    expect(memoryPipeline).toBeGreaterThan(materializationCheck)
+    expect(liveWriter).toBeGreaterThan(materializationCheck)
   })
 
   it('branche le pont documentaire proposal-level (P1-4B-WIRING), pas occurrence-level', () => {

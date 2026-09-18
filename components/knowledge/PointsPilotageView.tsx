@@ -258,6 +258,27 @@ function ReviewedCard({ p, pointHrefPrefix }: { p: PointListEntry; pointHrefPref
   )
 }
 
+function ChantierNeedsYouCard({ siteId, count }: { siteId: string; count: number }) {
+  if (count <= 0) return null
+  return (
+    <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900 dark:bg-violet-950/20">
+      <p className="text-[14.5px] font-medium text-violet-900 dark:text-violet-200">
+        MemorIA a besoin de toi — {count} question{count !== 1 ? 's' : ''}
+      </p>
+      <p className="mt-1 text-[12.5px] text-muted-foreground">
+        Certaines questions concernent des éléments qui ne sont pas encore rattachés à un Point.
+        Elles doivent être clarifiées avant de pouvoir créer ou enrichir des Points.
+      </p>
+      <Link
+        href={`/sites/${siteId}/besoin-de-toi`}
+        className="mt-3 inline-flex items-center rounded-lg border border-violet-300 px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-900/40"
+      >
+        Examiner les questions
+      </Link>
+    </div>
+  )
+}
+
 type PilotageTypeFilter = 'all' | 'action' | 'reserve' | 'deadline'
 type PilotageDeadlineFilter = 'all' | 'late' | 'upcoming' | 'none'
 
@@ -463,6 +484,7 @@ export function PointsPilotageView({
         <p className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-muted-foreground">
           Aucun Point à revoir : rien de réouvert, aucune question MemorIA en attente, rien qui traîne ni n’a changé récemment.
         </p>
+        <ChantierNeedsYouCard siteId={siteId} count={chantierNeedsYouCount} />
       </div>
     )
   }
@@ -482,6 +504,7 @@ export function PointsPilotageView({
             Réinitialiser les filtres
           </button>
         </div>
+        <ChantierNeedsYouCard siteId={siteId} count={chantierNeedsYouCount} />
       </div>
     )
   }
@@ -568,23 +591,7 @@ export function PointsPilotageView({
         </button>
       </div>
 
-      {chantierNeedsYouCount > 0 && (
-        <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900 dark:bg-violet-950/20">
-          <p className="text-[14.5px] font-medium text-violet-900 dark:text-violet-200">
-            MemorIA a besoin de toi — {chantierNeedsYouCount} question{chantierNeedsYouCount !== 1 ? 's' : ''}
-          </p>
-          <p className="mt-1 text-[12.5px] text-muted-foreground">
-            Certaines questions concernent des éléments qui ne sont pas encore rattachés à un Point.
-            Elles doivent être clarifiées avant de pouvoir créer ou enrichir des Points.
-          </p>
-          <Link
-            href={`/sites/${siteId}/besoin-de-toi`}
-            className="mt-3 inline-flex items-center rounded-lg border border-violet-300 px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-900/40"
-          >
-            Examiner les questions
-          </Link>
-        </div>
-      )}
+      <ChantierNeedsYouCard siteId={siteId} count={chantierNeedsYouCount} />
 
       <div className="space-y-2">
         <p className="text-[12.5px] font-medium text-muted-foreground">À revoir maintenant</p>
