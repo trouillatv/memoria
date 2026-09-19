@@ -6,6 +6,8 @@ import { loadMemoriaNeedsYouSummary, filterMemoriaNeedsYouQuestionsForPoint } fr
 import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { loadSubjectPointMiniContext } from '@/lib/knowledge/tracked-point-subject-context'
+import { listActiveCanonicalSubjects, listSubjectsForPicker, type SubjectPickerItem } from '@/lib/db/canonical-subject-life'
+import { getTrackedPointSubjectCurationState } from '@/lib/db/tracked-point-subject-curation'
 import { PointFicheView } from '@/components/knowledge/PointFicheView'
 
 export const dynamic = 'force-dynamic'
@@ -34,7 +36,16 @@ export default async function PointFichePage({
   ])
   if (!identity || !point) notFound()
 
-  const subjectMiniContext = await loadSubjectPointMiniContext(id, point.ownerCanonicalSubjectId, point.id).catch(() => null)
+  const [subjectMiniContext, subjectCurationState, subjectPickerItems] = await Promise.all([
+    loadSubjectPointMiniContext(id, point.ownerCanonicalSubjectId, point.id).catch(() => null),
+    getTrackedPointSubjectCurationState(point.id).catch(() => ({
+      isManual: false,
+      overrideId: null,
+      previousCanonicalSubjectId: null,
+      targetCanonicalSubjectId: null,
+    })),
+    loadPointSubjectPickerItems(id, point.ownerCanonicalSubjectId).catch(() => []),
+  ])
 
   // Retour au Delta chantier ou au Pilotage si on en vient (recette Vincent 2026-09-14) :
   // préserve le contexte de David dans sa revue plutôt que de le renvoyer systématiquement au sujet.
@@ -70,8 +81,24 @@ export default async function PointFichePage({
         responsibleCandidates={responsibleCandidates}
         companies={companies}
         subjectMiniContext={subjectMiniContext}
+        subjectCuration={{ subjects: subjectPickerItems, isManual: subjectCurationState.isManual }}
         subjectHref={point.ownerCanonicalSubjectId ? `/sites/${id}/historique/sujets/${point.ownerCanonicalSubjectId}` : undefined}
       />
     </div>
   )
+}
+
+async function loadPointSubjectPickerItems(siteId: string, currentCanonicalSubjectId: string | null): Promise<SubjectPickerItem[]> {
+  if (currentCanonicalSubjectId) return listSubjectsForPicker(siteId, currentCanonicalSubjectId)
+
+  const subjects = await listActiveCanonicalSubjects(siteId)
+  return subjects.map((s) => ({
+    id: s.id,
+    label: s.label,
+    aliases: s.aliases,
+    status: s.status,
+    family: null,
+    pvCount: 0,
+    coOccurrenceCount: 0,
+  }))
 }

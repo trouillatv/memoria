@@ -38,9 +38,11 @@ import { PointReserveMenu } from '@/components/knowledge/PointReserveMenu'
 import { DeadlineActions } from '@/app/(dashboard)/sites/[id]/views/planning/DeadlineActions'
 import { PointCitedCompanyPromote } from '@/components/knowledge/PointCitedCompanyPromote'
 import { PointResponsibleCompanyRevoke } from '@/components/knowledge/PointResponsibleCompanyRevoke'
+import { PointSubjectCurationControl } from '@/components/knowledge/PointSubjectCurationControl'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
 import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
 import type { SubjectPointMiniContext } from '@/lib/knowledge/tracked-point-subject-context'
+import type { SubjectPickerItem } from '@/lib/db/canonical-subject-life'
 
 const STATE_CLS: Record<TrackedPointDetail['derivedState'], string> = {
   unknown: 'bg-muted text-muted-foreground ring-border',
@@ -443,6 +445,7 @@ export function PointFicheView({
   responsibleCandidates = [],
   companies = [],
   subjectMiniContext = null,
+  subjectCuration,
   subjectHref,
   entrepriseLinksEnabled = true,
 }: {
@@ -454,6 +457,10 @@ export function PointFicheView({
   responsibleCandidates?: ResponsibleCandidate[]
   companies?: SiteCandidateCompany[]
   subjectMiniContext?: SubjectPointMiniContext | null
+  subjectCuration?: {
+    subjects: SubjectPickerItem[]
+    isManual: boolean
+  }
   subjectHref?: string
   /** La fiche entreprise (`/sites/[id]/entreprise/[companyId]`) n'existe qu'en
    *  desktop (groupe `(dashboard)`, redirige tout chef_equipe vers `/m`). Sur
@@ -682,6 +689,23 @@ export function PointFicheView({
               responsabilité — leur donner un pseudo-responsable ici recréerait l'ambiguïté
               qu'on vient d'éliminer ; une Réserve se lève, au besoin via une Action
               corrective qui, elle, porte un vrai responsable. */}
+          {subjectCuration && (
+            <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
+              <h2 className={H2}>Rattachement au sujet</h2>
+              <p className="text-[13px] text-muted-foreground">
+                Sujet actuel : <span className="font-medium text-foreground">{p.ownerCanonicalSubjectLabel ?? 'Sans sujet'}</span>
+              </p>
+              <PointSubjectCurationControl
+                siteId={p.siteId}
+                pointId={p.id}
+                currentSubjectId={p.ownerCanonicalSubjectId}
+                currentSubjectLabel={p.ownerCanonicalSubjectLabel}
+                subjects={subjectCuration.subjects}
+                isManual={subjectCuration.isManual}
+              />
+            </section>
+          )}
+
           <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
             <h2 className={H2}>3. Acteurs</h2>
             <div>

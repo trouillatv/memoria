@@ -1,3 +1,5 @@
+import 'server-only'
+
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export type CurateTrackedPointSubjectCode =
@@ -52,4 +54,49 @@ export async function curateTrackedPointSubject(input: {
   }
 
   return data as CurateTrackedPointSubjectResult
+}
+
+export type TrackedPointSubjectCurationState = {
+  isManual: boolean
+  overrideId: string | null
+  previousCanonicalSubjectId: string | null
+  targetCanonicalSubjectId: string | null
+}
+
+export async function getTrackedPointSubjectCurationState(trackedPointId: string): Promise<TrackedPointSubjectCurationState> {
+  const db = createAdminClient()
+  const { data, error } = await (db as unknown as {
+    from: (table: 'tracked_point_subject_override') => {
+      select: (columns: string) => {
+        eq: (column: string, value: string) => {
+          is: (column: string, value: null) => {
+            maybeSingle: () => Promise<{ data: unknown; error: { message: string } | null }>
+          }
+        }
+      }
+    }
+  })
+    .from('tracked_point_subject_override')
+    .select('id, previous_canonical_subject_id, target_canonical_subject_id')
+    .eq('tracked_point_id', trackedPointId)
+    .is('superseded_at', null)
+    .maybeSingle()
+
+  if (error) {
+    const message = 'message' in error ? String(error.message) : 'unknown error'
+    throw new Error(`getTrackedPointSubjectCurationState: ${message}`)
+  }
+
+  const row = data as {
+    id: string
+    previous_canonical_subject_id: string | null
+    target_canonical_subject_id: string | null
+  } | null
+
+  return {
+    isManual: Boolean(row),
+    overrideId: row?.id ?? null,
+    previousCanonicalSubjectId: row?.previous_canonical_subject_id ?? null,
+    targetCanonicalSubjectId: row?.target_canonical_subject_id ?? null,
+  }
 }
