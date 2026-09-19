@@ -42,4 +42,15 @@ describe('deleted historical source consumers', () => {
     expect(attach).toMatch(/isSourceDocumentDeleted\(sb, proposal\.document_id\)/)
     expect(attach).toMatch(/isSourceDocumentDeleted\(sb, report\?\.source_document_id\)/)
   })
+
+  it('les compteurs de PV importes excluent les rapports dont le document source est supprime', () => {
+    const sites = read('lib/db/sites.ts')
+    const visits = read('lib/db/visits.ts')
+    expect(sites).toMatch(/filterEligibleBySourceDocument/)
+    expect(sites).toMatch(/select\('site_id, source_document_id'\)/)
+    expect(sites).toMatch(/eligiblePvImported/)
+    expect(visits).toMatch(/filterEligibleBySourceDocument/)
+    expect(visits).toMatch(/select\('id, source_document_id'\)/)
+    expect(visits).toMatch(/importedDocs: eligibleImportedReports\.length/)
+  })
 })

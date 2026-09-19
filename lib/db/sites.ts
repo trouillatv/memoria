@@ -1,4 +1,5 @@
 import { resolveResourceAccess } from '@/lib/auth/resource-access'
+import { filterEligibleBySourceDocument } from '@/lib/documents/historical-source-eligibility'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { TERRAIN_VISIT_ORIGINS, IMPORTED_DOCUMENT_ORIGIN } from '@/lib/field/visit-origins'
@@ -350,7 +351,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
     // définition fiabilisée que la provenance, jamais comptés comme visite.
     supabase
       .from('site_reports')
-      .select('site_id')
+      .select('site_id, source_document_id')
       .in('site_id', siteIds)
       .eq('origin', IMPORTED_DOCUMENT_ORIGIN),
   ])
@@ -428,8 +429,12 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
   for (const a of (actionsRes.data ?? []) as Array<{ site_id: string }>) {
     actionsBySite.set(a.site_id, (actionsBySite.get(a.site_id) ?? 0) + 1)
   }
+  const eligiblePvImported = await filterEligibleBySourceDocument(
+    supabase,
+    (pvImportedRes.data ?? []) as Array<{ site_id: string; source_document_id: string | null }>,
+  )
   const pvImportedBySite = new Map<string, number>()
-  for (const p of (pvImportedRes.data ?? []) as Array<{ site_id: string }>) {
+  for (const p of eligiblePvImported) {
     pvImportedBySite.set(p.site_id, (pvImportedBySite.get(p.site_id) ?? 0) + 1)
   }
 

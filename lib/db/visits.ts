@@ -13,6 +13,7 @@
 // Invariant : un résultat qualifie le LIEU/OUVRAGE/SUJET, jamais la personne.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { filterEligibleBySourceDocument } from '@/lib/documents/historical-source-eligibility'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
 import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow, type CaptureCrTier, type DebriefCapturedNote } from '@/lib/db/visit-captures'
@@ -803,9 +804,9 @@ export interface SitePatrimoine {
  *  date (date métier du document, jamais la date technique d'import). */
 export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoine> {
   const supabase = createAdminClient()
-  const [visitsRes, importsRes, meetingsRes, photosRes, actionsRes, reservesRes, subjectsRes, firstVisitRes, importDocsRes] = await Promise.all([
+  const [visitsRes, importsRes, meetingsRes, photosRes, actionsRes, reservesRes, subjectsRes, firstVisitRes] = await Promise.all([
     supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).in('origin', TERRAIN_ORIGINS),
-    supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('origin', 'import'),
+    supabase.from('site_reports').select('id, source_document_id').eq('site_id', siteId).eq('origin', 'import'),
     supabase.from('site_reports').select('id', { count: 'exact', head: true }).eq('site_id', siteId).is('origin', null).neq('status', 'draft'),
     supabase.from('visit_capture').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('kind', 'photo').neq('status', 'discarded'),
     supabase.from('site_actions').select('id', { count: 'exact', head: true }).eq('site_id', siteId),
@@ -813,17 +814,19 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
     supabase.from('canonical_subject').select('id', { count: 'exact', head: true }).eq('site_id', siteId).eq('status', 'active'),
     // Première visite TERRAIN : started_at réel d'une visite (jamais un import).
     supabase.from('site_reports').select('started_at').eq('site_id', siteId).in('origin', TERRAIN_ORIGINS).not('started_at', 'is', null).order('started_at', { ascending: true }).limit(1).maybeSingle(),
-    // Documents source des imports → plus ancienne date documentaire PROUVÉE.
-    supabase.from('site_reports').select('source_document_id').eq('site_id', siteId).eq('origin', 'import').not('source_document_id', 'is', null),
   ])
 
   const firstVisit = firstVisitRes.data as { started_at: string | null } | null
   const firstVisitIso = firstVisit?.started_at ?? null
+  // Les imports soft-deleted restent audités en base, mais ne comptent plus
+  // dans le patrimoine visible ni dans la date documentaire du chantier.
+  const importedReportRows = (importsRes.data ?? []) as Array<{ id: string; source_document_id: string | null }>
+  const eligibleImportedReports = await filterEligibleBySourceDocument(supabase, importedReportRows)
 
   // Date documentaire la plus ancienne = MIN(documents.effective_date) des imports.
   // JAMAIS de repli sur started_at/created_at/run : une date métier non prouvée reste absente.
   let firstDocIso: string | null = null
-  const docIds = [...new Set(((importDocsRes.data ?? []) as Array<{ source_document_id: string | null }>)
+  const docIds = [...new Set(eligibleImportedReports
     .map((r) => r.source_document_id).filter((x): x is string => !!x))]
   if (docIds.length > 0) {
     const { data: docs } = await supabase
@@ -839,7 +842,7 @@ export async function buildSitePatrimoine(siteId: string): Promise<SitePatrimoin
     firstDocDateLabel: firstDocIso ? frLong(firstDocIso) : null,
     photos: photosRes.count ?? 0,
     visits: visitsRes.count ?? 0,
-    importedDocs: importsRes.count ?? 0,
+    importedDocs: eligibleImportedReports.length,
     meetings: meetingsRes.count ?? 0,
     actions: actionsRes.count ?? 0,
     reserves: reservesRes.count ?? 0,
