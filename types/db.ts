@@ -503,6 +503,11 @@ export interface DbSiteReport {
   canonical_reconciled_corpus_hash?: string | null
   /** Erreur de la dernière réconciliation CBO des Actions échouée (mig 413, P0-B.1). NULL si succès ou jamais tentée. */
   action_cbo_reconcile_error?: string | null
+  action_cbo_reconciled_at?: string | null
+  tracked_point_live_writer_completed_at?: string | null
+  tracked_point_live_writer_error?: string | null
+  document_completion_resolved_at?: string | null
+  document_completion_error?: string | null
   /** Début du pipeline de construction de mémoire (occurrences + similarité) (mig 342). */
   similarity_analysis_started_at?: string | null
   /** Fin réussie du pipeline de construction de mémoire (mig 342). NULL = en cours, jamais lancé, ou en échec. */

@@ -374,10 +374,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
             <MemoryBuildStatus
               siteId={id}
               siteReportId={visitId}
-              startedAt={visit.similarity_analysis_started_at ?? null}
-              completedAt={visit.similarity_analysis_completed_at ?? null}
-              error={visit.similarity_analysis_error ?? null}
-              subjectCount={visit.similarity_analysis_subject_count ?? null}
+              runId={runId}
             />
           )}
 

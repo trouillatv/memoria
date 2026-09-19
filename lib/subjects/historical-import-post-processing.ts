@@ -133,7 +133,10 @@ export async function runHistoricalImportPostProcessing(
     .from('site_reports')
     .select(
       'source_document_id, canonical_reconciled_at, canonical_reconcile_started_at, ' +
-        'similarity_analysis_completed_at, similarity_analysis_error',
+        'similarity_analysis_completed_at, similarity_analysis_error, ' +
+        'action_cbo_reconciled_at, action_cbo_reconcile_error, ' +
+        'tracked_point_live_writer_completed_at, tracked_point_live_writer_error, ' +
+        'document_completion_resolved_at, document_completion_error',
     )
     .eq('id', siteReportId)
     .maybeSingle()
@@ -144,6 +147,12 @@ export async function runHistoricalImportPostProcessing(
     canonical_reconcile_started_at?: string | null
     similarity_analysis_completed_at?: string | null
     similarity_analysis_error?: string | null
+    action_cbo_reconciled_at?: string | null
+    action_cbo_reconcile_error?: string | null
+    tracked_point_live_writer_completed_at?: string | null
+    tracked_point_live_writer_error?: string | null
+    document_completion_resolved_at?: string | null
+    document_completion_error?: string | null
   } | null
 
   // P0 — DELETED HISTORICAL SOURCE (2026-09-17) : porte d'entrée unique du
@@ -176,7 +185,17 @@ export async function runHistoricalImportPostProcessing(
 
   const decision = decideReconcileLock(typedStatus, Date.now())
   if (decision === 'concurrent') return 'concurrent'
-  if (decision === 'done' && typedStatus?.similarity_analysis_completed_at && !typedStatus.similarity_analysis_error) {
+  if (
+    decision === 'done' &&
+    typedStatus?.similarity_analysis_completed_at &&
+    !typedStatus.similarity_analysis_error &&
+    typedStatus.action_cbo_reconciled_at &&
+    !typedStatus.action_cbo_reconcile_error &&
+    typedStatus.tracked_point_live_writer_completed_at &&
+    !typedStatus.tracked_point_live_writer_error &&
+    typedStatus.document_completion_resolved_at &&
+    !typedStatus.document_completion_error
+  ) {
     return 'already_completed'
   }
 
@@ -256,7 +275,10 @@ export async function runHistoricalImportPostProcessing(
           `groupes_bloques_done=${reconcileResult.groupsBlockedDoneDurable}`,
       )
     }
-    await sb.from('site_reports').update({ action_cbo_reconcile_error: null }).eq('id', siteReportId)
+    await sb
+      .from('site_reports')
+      .update({ action_cbo_reconciled_at: new Date().toISOString(), action_cbo_reconcile_error: null })
+      .eq('id', siteReportId)
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err)
     console.error(
@@ -283,11 +305,24 @@ export async function runHistoricalImportPostProcessing(
           `verdicts=${JSON.stringify(liveWriterResult.verdictCounts)} refusals=${liveWriterResult.refusals}`,
       )
     }
+    await sb
+      .from('site_reports')
+      .update({
+        tracked_point_live_writer_completed_at: new Date().toISOString(),
+        tracked_point_live_writer_error: null,
+      })
+      .eq('id', siteReportId)
   } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err)
     console.error(
       `[historical-import-post-processing] tracked point live writer failed: site=${siteId} run=${runId}`,
-      err instanceof Error ? err.message : String(err),
+      reason,
     )
+    await sb
+      .from('site_reports')
+      .update({ tracked_point_live_writer_error: reason })
+      .eq('id', siteReportId)
+      .then(undefined, () => {})
   }
 
   // Pont documentaire de complétion (P1-4B-WIRING) : UNITÉ DE PREUVE = document_extraction_proposal
@@ -298,8 +333,21 @@ export async function runHistoricalImportPostProcessing(
   // l'import. Les résolutions occurrence-level antérieures restent lisibles (audit), non recalculées.
   try {
     await resolveSiteDocumentCompletionsByProposal(siteId)
+    await sb
+      .from('site_reports')
+      .update({
+        document_completion_resolved_at: new Date().toISOString(),
+        document_completion_error: null,
+      })
+      .eq('id', siteReportId)
   } catch (err) {
-    console.error('[historical-import-post-processing] document completion resolver (proposal) failed:', err instanceof Error ? err.message : String(err))
+    const reason = err instanceof Error ? err.message : String(err)
+    console.error('[historical-import-post-processing] document completion resolver (proposal) failed:', reason)
+    await sb
+      .from('site_reports')
+      .update({ document_completion_error: reason })
+      .eq('id', siteReportId)
+      .then(undefined, () => {})
   }
 
   return decision === 'done' ? 'already_completed' : 'completed'
