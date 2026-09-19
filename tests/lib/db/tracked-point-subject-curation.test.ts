@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 const ROOT = process.cwd()
 const MIGRATION = readFileSync(join(ROOT, 'supabase/migrations/417_tracked_point_subject_curation.sql'), 'utf8')
+const REDEPLOY = readFileSync(join(ROOT, 'supabase/migrations/418_redeploy_tracked_point_subject_curation_fn.sql'), 'utf8')
 const WRAPPER = readFileSync(join(ROOT, 'lib/db/tracked-point-subject-curation.ts'), 'utf8')
 
 describe('tracked point subject curation', () => {
@@ -31,6 +32,13 @@ describe('tracked point subject curation', () => {
     expect(MIGRATION).toMatch(/UPDATE public\.site_actions[\s\S]*canonical_subject_id = p_target_canonical_subject_id/)
     expect(MIGRATION).toMatch(/UPDATE public\.site_deadlines[\s\S]*canonical_subject_id = p_target_canonical_subject_id/)
     expect(MIGRATION).toMatch(/UPDATE public\.site_reserve[\s\S]*canonical_subject_id = p_target_canonical_subject_id/)
+  })
+
+  it('redéploie la RPC sans écrire de colonne updated_at inexistante sur site_actions', () => {
+    const actionBlock = REDEPLOY.match(/UPDATE public\.site_actions sa[\s\S]*?RETURNING sa\.id/)?.[0] ?? ''
+    expect(REDEPLOY).toContain('CREATE OR REPLACE FUNCTION public.curate_tracked_point_subject')
+    expect(actionBlock).toContain('SET canonical_subject_id = p_target_canonical_subject_id')
+    expect(actionBlock).not.toContain('updated_at')
   })
 
   it('déplace les occurrences historiques sans réintroduire les sources supprimées', () => {
