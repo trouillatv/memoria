@@ -170,6 +170,7 @@ export async function ensureHistoricalPdfOccurrences(params: {
     .eq('extraction_run_id', runId)
     // P3-B1 : on récupère aussi les observations ; le garde de signification tranche ensuite.
     .in('proposal_family', [...STATE_BEARING_FAMILIES, 'observation'])
+    .in('review_status', ['accepted', 'edited', 'materialized'])
     .not('subject_thread_id', 'is', null)
 
   if (propErr) {
@@ -239,6 +240,7 @@ export async function ensureHistoricalPdfOccurrences(params: {
     .select('subject_thread_id')
     .eq('extraction_run_id', runId)
     .in('proposal_family', ['person', 'company'])
+    .in('review_status', ['accepted', 'edited', 'materialized'])
     .not('subject_thread_id', 'is', null)
   const actorThreadIds = [...new Set((actorProps ?? []).map(p => p.subject_thread_id as string))]
   let actorList: ActorSubject[] = []

@@ -179,7 +179,9 @@ describe('Section 1 — Requêtes de données et affichage', () => {
       if (table === 'document_proposal_evidence') {
         return {
           select: vi.fn().mockReturnValue({
-            in: vi.fn().mockResolvedValue({ data: linked, error: null }),
+            in: vi.fn().mockReturnValue({
+              neq: vi.fn().mockResolvedValue({ data: linked, error: null }),
+            }),
           }),
         }
       }
@@ -206,7 +208,9 @@ describe('Section 1 — Requêtes de données et affichage', () => {
       }
       return {
         select: vi.fn().mockReturnValue({
-          in: vi.fn().mockResolvedValue({ data: linked, error: null }),
+          in: vi.fn().mockReturnValue({
+            neq: vi.fn().mockResolvedValue({ data: linked, error: null }),
+          }),
         }),
       }
     })
@@ -228,7 +232,9 @@ describe('Section 1 — Requêtes de données et affichage', () => {
       }
       return {
         select: vi.fn().mockReturnValue({
-          in: vi.fn().mockResolvedValue({ data: [], error: null }),
+          in: vi.fn().mockReturnValue({
+            neq: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }),
         }),
       }
     })
@@ -301,7 +307,6 @@ describe('Section 2 — Actions de revue', () => {
 // ─── Section 3 : Contrôle d'accès (Server Actions) ───────────────────────────
 
 import {
-  acceptProposalAction,
   verifyReviewAccess,
   verifyProposalOwnership,
   createHistoricalVisitAction,

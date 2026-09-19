@@ -6,12 +6,83 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
-import { reviewProposal, linkProposalEvidence, acceptAllPendingForRun, pinAllSnapshotsForRun } from '@/lib/db/document-extractions'
+import {
+  reviewProposal,
+  linkProposalEvidence,
+  acceptAllPendingForRun,
+  pinAllSnapshotsForRun,
+  getProposalMaterializationReport,
+} from '@/lib/db/document-extractions'
 import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-import-post-processing'
 import { materializeHistoricalRun } from '@/lib/documents/materialize-historical-run'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
+
+async function materializeReviewedProposalIfVisitExists(input: {
+  proposalId: string
+  documentId: string
+  userId: string
+  materializeAcceptedProposal: boolean
+}): Promise<ActionResult> {
+  const admin = createAdminClient()
+  const { data: proposal, error: proposalError } = await admin
+    .from('document_extraction_proposal')
+    .select('extraction_run_id')
+    .eq('id', input.proposalId)
+    .eq('document_id', input.documentId)
+    .maybeSingle()
+  if (proposalError) return { ok: false, error: proposalError.message }
+
+  const runId = (proposal as { extraction_run_id: string | null } | null)?.extraction_run_id
+  if (!runId) return { ok: true }
+
+  const { data: report, error: reportError } = await admin
+    .from('site_reports')
+    .select('id, site_id')
+    .eq('extraction_run_id', runId)
+    .maybeSingle()
+  if (reportError) return { ok: false, error: reportError.message }
+  if (!report) return { ok: true }
+
+  const before = await getProposalMaterializationReport(runId)
+  let materializeResult: Awaited<ReturnType<typeof materializeHistoricalRun>> | null = null
+  if (input.materializeAcceptedProposal) {
+    materializeResult = await materializeHistoricalRun({
+      runId,
+      documentId: input.documentId,
+      userId: input.userId,
+    })
+    if (!materializeResult.ok || !materializeResult.siteReportId || !materializeResult.siteId || !materializeResult.visitDate) {
+      return { ok: false, error: materializeResult.error ?? 'Erreur lors de la materialisation incrementale' }
+    }
+  }
+
+  const afterReport = await getProposalMaterializationReport(runId)
+  const materializedSomething = afterReport.materialized > before.materialized
+  if (!materializedSomething || !materializeResult?.siteId || !materializeResult.visitDate) return { ok: true }
+
+  await admin
+    .from('site_reports')
+    .update({
+      canonical_reconciled_at: null,
+      canonical_reconcile_started_at: null,
+      canonical_reconcile_error: null,
+      similarity_analysis_completed_at: null,
+      similarity_analysis_error: null,
+      action_cbo_reconcile_error: null,
+    })
+    .eq('id', (report as { id: string }).id)
+
+  after(() => runHistoricalImportPostProcessing({
+    runId,
+    siteId: materializeResult.siteId!,
+    siteReportId: (report as { id: string }).id,
+    visitDate: materializeResult.visitDate!,
+  }))
+
+  return { ok: true }
+}
 
 // ─── Vérification d'accès commune ────────────────────────────────────────────
 
@@ -113,6 +184,14 @@ export async function acceptProposalAction(fd: FormData): Promise<ActionResult> 
       .eq('id', proposalId)
   }
 
+  const incremental = await materializeReviewedProposalIfVisitExists({
+    proposalId,
+    documentId,
+    userId: access.userId,
+    materializeAcceptedProposal: true,
+  })
+  if (!incremental.ok) return incremental
+
   return { ok: true }
 }
 
@@ -137,6 +216,14 @@ export async function editProposalAction(fd: FormData): Promise<ActionResult> {
     { action: 'edit', label: label.trim(), description: description || null, family },
     access.userId,
   )
+  const incremental = await materializeReviewedProposalIfVisitExists({
+    proposalId,
+    documentId,
+    userId: access.userId,
+    materializeAcceptedProposal: true,
+  })
+  if (!incremental.ok) return incremental
+
   return { ok: true }
 }
 
@@ -153,6 +240,14 @@ export async function rejectProposalAction(fd: FormData): Promise<ActionResult> 
   }
 
   await reviewProposal(proposalId, { action: 'reject' }, access.userId)
+  const incremental = await materializeReviewedProposalIfVisitExists({
+    proposalId,
+    documentId,
+    userId: access.userId,
+    materializeAcceptedProposal: false,
+  })
+  if (!incremental.ok) return incremental
+
   return { ok: true }
 }
 

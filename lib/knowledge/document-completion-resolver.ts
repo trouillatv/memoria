@@ -303,7 +303,9 @@ export async function loadProposalProofs(siteId: string): Promise<Array<{ proof:
     sb.from('document_extraction_proposal')
       .select('id, subject_thread_id, label, description, source_excerpt, document_status, document_id')
       .in('subject_thread_id', c)
-      .eq('proposal_family', PROPOSAL_PROOF_FAMILY).eq('document_status', PROPOSAL_PROOF_STATUS),
+      .eq('proposal_family', PROPOSAL_PROOF_FAMILY)
+      .eq('document_status', PROPOSAL_PROOF_STATUS)
+      .in('review_status', ['accepted', 'edited', 'materialized']),
   ))
   const props: Array<{ id: string; subject_thread_id: string; label: string; description: string | null; source_excerpt: string | null; document_status: string | null; document_id: string | null }> = []
   for (const { data } of chunkResults) props.push(...((data ?? []) as typeof props))

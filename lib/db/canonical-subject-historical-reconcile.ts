@@ -133,6 +133,7 @@ export async function reconcileHistoricalPvCanonicalSubjects(params: {
     .select('id, proposal_family, label, description, subject_thread_id')
     .eq('extraction_run_id', runId)
     .in('proposal_family', Object.keys(FAMILY_TO_KIND))
+    .in('review_status', ['accepted', 'edited', 'materialized'])
     .not('subject_thread_id', 'is', null)
 
   if (propErr) {

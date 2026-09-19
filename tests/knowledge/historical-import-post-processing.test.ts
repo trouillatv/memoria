@@ -5,28 +5,29 @@ import { describe, expect, it } from 'vitest'
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
 describe('historical import post-processing orchestration', () => {
-  it('répond après la matérialisation principale et planifie la mémoire avec after()', () => {
+  it('schedules memory after the main historical visit materialization', () => {
     const source = read('app/(dashboard)/documents/[id]/extraction/[runId]/review-actions.ts')
-    const materialize = source.indexOf('materializeHistoricalVisit({')
-    const finalizeRun = source.indexOf(".update({ status: 'materialized' })")
-    const schedule = source.indexOf('after(() => runHistoricalImportPostProcessing({')
-    const success = source.indexOf("message: 'Visite créée. La mise à jour de la mémoire se poursuit.'")
+    const createAction = source.indexOf('export async function createHistoricalVisitAction')
+    const materialize = source.indexOf('const result = await materializeHistoricalRun({', createAction)
+    const schedule = source.indexOf('after(() => runHistoricalImportPostProcessing({', materialize)
+    const success = source.indexOf('message: result.message', schedule)
 
+    expect(createAction).toBeGreaterThan(-1)
     expect(materialize).toBeGreaterThan(-1)
-    expect(finalizeRun).toBeGreaterThan(materialize)
-    expect(schedule).toBeGreaterThan(finalizeRun)
+    expect(schedule).toBeGreaterThan(materialize)
     expect(success).toBeGreaterThan(schedule)
     expect(source.slice(materialize, schedule)).not.toMatch(/reconcileHistoricalCorpusForSite\(/)
   })
 
-  it('le retry manuel et le sweep réutilisent le même orchestrateur', () => {
+  it('retry, sweep, and late review reuse the same post-processing orchestrator', () => {
     const actions = read('app/(dashboard)/documents/[id]/extraction/[runId]/review-actions.ts')
     const sweep = read('lib/db/reconciliation-sweep.ts')
-    expect(actions.match(/runHistoricalImportPostProcessing/g)).toHaveLength(3) // import + création + retry
+    // import + late accept/edit + creation + manual retry
+    expect(actions.match(/runHistoricalImportPostProcessing/g)).toHaveLength(4)
     expect(sweep).toMatch(/runHistoricalImportPostProcessing/)
   })
 
-  it('l’orchestrateur ne rappelle jamais la matérialisation principale', () => {
+  it('the orchestrator never calls the main materialization RPC', () => {
     const source = read('lib/subjects/historical-import-post-processing.ts')
     expect(source).not.toMatch(/\bmaterializeHistoricalVisit\(/)
     expect(source).not.toMatch(/visit_capture/)
@@ -34,11 +35,11 @@ describe('historical import post-processing orchestration', () => {
     expect(source).toMatch(/runHistoricalMemoryBuildPipeline/)
   })
 
-  it('P0 (2026-09-18) — bloque une reprise si les propositions acceptées ne sont pas matérialisées', () => {
+  it('blocks post-processing when accepted proposals are not materialized', () => {
     const source = read('lib/subjects/historical-import-post-processing.ts')
     expect(source).toMatch(/getProposalMaterializationReport\(runId\)/)
     expect(source).toMatch(/materializationReport\.materialized < acceptedNotRejected/)
-    expect(source).toMatch(/Matérialisation historique incomplète/)
+    expect(source).toMatch(/Mat.rialisation historique incompl.te/)
     expect(source).toMatch(/return 'failed'/)
 
     const deletedSourceGate = source.indexOf('isSourceDocumentDeleted(sb, typedStatus?.source_document_id)')
@@ -54,22 +55,19 @@ describe('historical import post-processing orchestration', () => {
     expect(liveWriter).toBeGreaterThan(materializationCheck)
   })
 
-  it('branche le pont documentaire proposal-level (P1-4B-WIRING), pas occurrence-level', () => {
+  it('wires the proposal-level document completion bridge, not the occurrence-level one', () => {
     const source = read('lib/subjects/historical-import-post-processing.ts')
-    // Nouvelle vérité de production = unité de preuve proposition atomique.
     expect(source).toMatch(/resolveSiteDocumentCompletionsByProposal\(siteId\)/)
-    // Le chemin occurrence-level ne doit plus être appelé pour les nouveaux imports.
     expect(source).not.toMatch(/\bresolveSiteDocumentCompletions\(siteId\)/)
-    // Appelé après canonicalisation + attach des CBO (les candidats doivent exister).
+
     const attach = source.indexOf('attachHistoricalReportEntitiesToCanonicalBusinessObjects({ siteId')
     const resolve = source.indexOf('resolveSiteDocumentCompletionsByProposal(siteId)')
     expect(attach).toBeGreaterThan(-1)
     expect(resolve).toBeGreaterThan(attach)
-    // Best-effort : n'écrit jamais de signal lifecycle.
     expect(source).not.toMatch(/object_state_occurrence_signal/)
   })
 
-  it('P0 (2026-09-17) — un document source supprimé court-circuite avant tout verrou/écriture', () => {
+  it('short-circuits a deleted source document before locks or writes', () => {
     const source = read('lib/subjects/historical-import-post-processing.ts')
     expect(source).toMatch(/isSourceDocumentDeleted\(sb, typedStatus\?\.source_document_id\)/)
     expect(source).toMatch(/return 'source_deleted'/)
@@ -78,13 +76,11 @@ describe('historical import post-processing orchestration', () => {
     const lockDecision = source.indexOf('decideReconcileLock(typedStatus, Date.now())')
     const acquireLock = source.indexOf('acquireReconcileLock(sb, siteReportId')
     expect(gate).toBeGreaterThan(-1)
-    // La porte P0 précède la décision de verrou ET toute acquisition — jamais de
-    // lecture/écriture de verrou sur un rapport dont le document source est supprimé.
     expect(lockDecision).toBeGreaterThan(gate)
     expect(acquireLock).toBeGreaterThan(gate)
   })
 
-  it('câble le P6 Live Writer historical_pdf en best-effort, après attach et avant le pont documentaire', () => {
+  it('runs the historical_pdf Live Writer best-effort after CBO attach and before completions', () => {
     const source = read('lib/subjects/historical-import-post-processing.ts')
     expect(source).toMatch(/runTrackedPointLiveWriterForHistoricalRun\(\{ runId, siteId \}\)/)
 
@@ -95,7 +91,6 @@ describe('historical import post-processing orchestration', () => {
     expect(liveWriter).toBeGreaterThan(attach)
     expect(resolve).toBeGreaterThan(liveWriter)
 
-    // Best-effort : l'appel est enveloppé dans un try/catch dédié, jamais laissé remonter.
     const tryStart = source.lastIndexOf('try {', liveWriter)
     const catchStart = source.indexOf('} catch (err) {', liveWriter)
     expect(tryStart).toBeGreaterThan(attach)

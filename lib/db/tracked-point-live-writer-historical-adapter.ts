@@ -127,6 +127,7 @@ async function loadRunFoundingInput(db: Db, siteId: string, runId: string): Prom
     .from('document_extraction_proposal')
     .select('subject_thread_id')
     .eq('extraction_run_id', runId)
+    .in('review_status', ['accepted', 'edited', 'materialized'])
     .not('subject_thread_id', 'is', null)
   const threadIds = [...new Set((runProps ?? []).map((r) => r.subject_thread_id as string))]
   if (threadIds.length === 0) return null
@@ -148,6 +149,7 @@ async function loadRunFoundingInput(db: Db, siteId: string, runId: string): Prom
       'id, proposal_family, document_status, label, subject_thread_id, document_id, extraction_run_id, created_at, review_status, source_payload',
     )
     .in('subject_thread_id', threadIds)
+    .in('review_status', ['accepted', 'edited', 'materialized'])
   const allProps = (propRows ?? []) as PropRow[]
 
   const docIds = [...new Set(allProps.map((p) => p.document_id).filter((x): x is string => !!x))]
