@@ -482,22 +482,29 @@ function SubjectPilotageSection({ summary, pointHref }: { summary: SubjectPilota
   if (summary.openPointsCount === 0) return null
   const { openPointsCount, actionsCount, actionsWithResponsibleCount, actionsWithoutResponsibleCount, single } = summary
 
-  const parts: string[] = [`${openPointsCount} Point${openPointsCount > 1 ? 's' : ''} ouvert${openPointsCount > 1 ? 's' : ''}`]
+  const countParts: string[] = [`${openPointsCount} Point${openPointsCount > 1 ? 's' : ''} ouvert${openPointsCount > 1 ? 's' : ''}`]
   const isSimple = openPointsCount === 1 && actionsCount <= 1 && single !== null
+  // Vincent 2026-09-21 : le manque d'affectation est l'information opérationnelle à
+  // faire ressortir — chaque ligne Pilote/Responsable sur sa propre ligne plutôt que
+  // noyée dans une phrase unique jointe par « · ».
+  const detailLines: string[] = []
   if (isSimple) {
-    if (actionsCount === 1) parts.push('1 Action ouverte')
-    parts.push(`Pilote du Point : ${single!.pointPilotName ?? 'Non affecté'}`)
-    if (actionsCount === 1) parts.push(`Responsable de l'Action : ${single!.actionResponsibleName ?? 'Non affecté'}`)
+    if (actionsCount === 1) countParts.push('1 Action ouverte')
+    detailLines.push(`Pilote du Point : ${single!.pointPilotName ?? 'Non affecté'}`)
+    if (actionsCount === 1) detailLines.push(`Responsable de l'Action : ${single!.actionResponsibleName ?? 'Non affecté'}`)
   } else if (actionsCount > 0) {
-    parts.push(`${actionsCount} Action${actionsCount > 1 ? 's' : ''}`)
-    if (actionsWithResponsibleCount > 0) parts.push(`${actionsWithResponsibleCount} affectée${actionsWithResponsibleCount > 1 ? 's' : ''}`)
-    if (actionsWithoutResponsibleCount > 0) parts.push(`${actionsWithoutResponsibleCount} sans responsable`)
+    countParts.push(`${actionsCount} Action${actionsCount > 1 ? 's' : ''}`)
+    if (actionsWithResponsibleCount > 0) countParts.push(`${actionsWithResponsibleCount} affectée${actionsWithResponsibleCount > 1 ? 's' : ''}`)
+    if (actionsWithoutResponsibleCount > 0) countParts.push(`${actionsWithoutResponsibleCount} sans responsable`)
   }
 
   return (
     <section className="rounded-[18px] border bg-card px-5 py-4 space-y-1.5">
       <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">À piloter</h2>
-      <p className="text-[13px] text-foreground/90">{parts.join(' · ')}</p>
+      <p className="text-[13px] text-foreground/90">{countParts.join(' · ')}</p>
+      {detailLines.map((line) => (
+        <p key={line} className="text-[13px] text-foreground/90">{line}</p>
+      ))}
       {openPointsCount === 1 && pointHref && (
         <Link href={pointHref} className="inline-flex items-center gap-1 text-[12.5px] font-medium text-foreground hover:underline">
           Voir le Point <ChevronRight className="h-3.5 w-3.5" />

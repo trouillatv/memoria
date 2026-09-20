@@ -96,7 +96,20 @@ export function PointActionMenu({
   }
 
   return (
-    <div className="relative inline-block text-left">
+    <div className="relative inline-flex items-center gap-1 text-left">
+      {/* Recette Vincent 2026-09-21 : « Affecter » doit être visible directement sur
+          la ligne quand il n'y a pas de responsable, pas seulement accessible via le
+          menu « … ». Même mécanisme (mode='edit' → ActionAssignmentPanel), pas de
+          nouveau chemin. */}
+      {!responsible && (
+        <button
+          type="button"
+          onClick={() => { setMode('edit'); setError(null) }}
+          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400"
+        >
+          <UserPlus className="h-3 w-3" /> Affecter
+        </button>
+      )}
       <button
         type="button"
         aria-label="Autres gestes sur cette action"

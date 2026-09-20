@@ -736,7 +736,7 @@ export function PointFicheView({
                   {siteActions.map((a) => (
                     <li key={a.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px]">
                       <span className={cn('font-medium', a.isDone && 'text-muted-foreground line-through')}>{a.title}</span>
-                      <span className="text-muted-foreground">
+                      <span className={cn(!a.responsible ? 'font-medium text-amber-700 dark:text-amber-500' : 'text-muted-foreground')}>
                         {' · Responsable : '}
                         {!a.responsible || a.responsible.kind === 'text'
                           ? (a.responsible?.label ?? 'Non affecté')
