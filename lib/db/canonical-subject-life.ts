@@ -1855,6 +1855,7 @@ export interface CanonicalSubjectSummary {
   aliases: string[]
   /** 'active' | 'merged' | 'split' */
   status: string
+  durableKind?: 'actor' | 'business_subject' | null
 }
 
 // ── Picker navigable ──────────────────────────────────────────────────────────
@@ -1880,20 +1881,21 @@ export interface SubjectPickerItem {
  */
 export async function listSubjectsForPicker(
   siteId: string,
-  currentCanonicalSubjectId: string,
+  currentCanonicalSubjectId: string | null,
 ): Promise<SubjectPickerItem[]> {
   const supabase = createAdminClient()
 
-  // Canonical subjects du chantier (hors acteurs)
+  // Canonical subjects du chantier (sujets métier uniquement ; jamais acteurs/personnes/entreprises).
   const { data: csRaw, error: csErr } = await supabase
     .from('canonical_subject')
-    .select('id, label, aliases, status')
+    .select('id, label, aliases, status, kind')
     .eq('site_id', siteId)
     .is('company_id', null)
     .is('contact_id', null)
     .order('label', { ascending: true })
   if (csErr) throw new Error(csErr.message)
-  const allCs = (csRaw ?? []) as Array<{ id: string; label: string; aliases: string[]; status: string }>
+  const allCs = ((csRaw ?? []) as Array<{ id: string; label: string; aliases: string[]; status: string; kind: 'actor' | 'business_subject' | null }>)
+    .filter((cs) => isOperationalSubject(cs.kind))
 
   // Runs du chantier
   const runs = await canonicalRunsForSite(siteId)
@@ -1942,7 +1944,7 @@ export async function listSubjectsForPicker(
     fc.set(p.proposal_family, (fc.get(p.proposal_family) ?? 0) + 1)
   }
 
-  const currentRunIds = csRunIds.get(currentCanonicalSubjectId) ?? new Set<string>()
+  const currentRunIds = currentCanonicalSubjectId ? csRunIds.get(currentCanonicalSubjectId) ?? new Set<string>() : new Set<string>()
 
   return allCs
     .filter((cs) => cs.id !== currentCanonicalSubjectId)
@@ -1967,16 +1969,19 @@ export async function listActiveCanonicalSubjects(siteId: string): Promise<Canon
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('canonical_subject')
-    .select('id, label, aliases, status')
+    .select('id, label, aliases, status, kind')
     .eq('site_id', siteId)
     .is('company_id', null)
     .is('contact_id', null)
     .order('label', { ascending: true })
   if (error) throw new Error(error.message)
-  return ((data ?? []) as Array<{ id: string; label: string; aliases: string[]; status: string }>).map((r) => ({
-    id: r.id,
-    label: r.label,
-    aliases: r.aliases ?? [],
-    status: r.status,
-  }))
+  return ((data ?? []) as Array<{ id: string; label: string; aliases: string[]; status: string; kind: 'actor' | 'business_subject' | null }>)
+    .filter((r) => isOperationalSubject(r.kind))
+    .map((r) => ({
+      id: r.id,
+      label: r.label,
+      aliases: r.aliases ?? [],
+      status: r.status,
+      durableKind: r.kind,
+    }))
 }

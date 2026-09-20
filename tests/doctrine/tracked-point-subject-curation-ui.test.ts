@@ -10,6 +10,7 @@ describe('Point subject curation UI', () => {
   const control = read('components/knowledge/PointSubjectCurationControl.tsx')
   const pointView = read('components/knowledge/PointFicheView.tsx')
   const pointPage = read('app/(dashboard)/sites/[id]/point/[pointId]/page.tsx')
+  const canonicalSubjectLife = read('lib/db/canonical-subject-life.ts')
 
   it('routes every mutation through the durable backend primitive', () => {
     expect(action).toContain("'use server'")
@@ -34,5 +35,12 @@ describe('Point subject curation UI', () => {
 
   it('does not offer the current subject as a target', () => {
     expect(control).toContain("subjects.filter((s) => s.status === 'active' && s.id !== currentSubjectId)")
+  })
+
+  it('uses the same business-subject picker population for attached and subjectless Points', () => {
+    expect(pointPage).toContain('return listSubjectsForPicker(siteId, currentCanonicalSubjectId)')
+    expect(pointPage).not.toContain('listActiveCanonicalSubjects')
+    expect(canonicalSubjectLife).toContain("select('id, label, aliases, status, kind')")
+    expect(canonicalSubjectLife).toContain('.filter((cs) => isOperationalSubject(cs.kind))')
   })
 })

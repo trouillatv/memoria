@@ -6,7 +6,7 @@ import { loadMemoriaNeedsYouSummary, filterMemoriaNeedsYouQuestionsForPoint } fr
 import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { loadSubjectPointMiniContext } from '@/lib/knowledge/tracked-point-subject-context'
-import { listActiveCanonicalSubjects, listSubjectsForPicker, type SubjectPickerItem } from '@/lib/db/canonical-subject-life'
+import { listSubjectsForPicker, type SubjectPickerItem } from '@/lib/db/canonical-subject-life'
 import { getTrackedPointSubjectCurationState } from '@/lib/db/tracked-point-subject-curation'
 import { PointFicheView } from '@/components/knowledge/PointFicheView'
 
@@ -89,16 +89,5 @@ export default async function PointFichePage({
 }
 
 async function loadPointSubjectPickerItems(siteId: string, currentCanonicalSubjectId: string | null): Promise<SubjectPickerItem[]> {
-  if (currentCanonicalSubjectId) return listSubjectsForPicker(siteId, currentCanonicalSubjectId)
-
-  const subjects = await listActiveCanonicalSubjects(siteId)
-  return subjects.map((s) => ({
-    id: s.id,
-    label: s.label,
-    aliases: s.aliases,
-    status: s.status,
-    family: null,
-    pvCount: 0,
-    coOccurrenceCount: 0,
-  }))
+  return listSubjectsForPicker(siteId, currentCanonicalSubjectId)
 }
