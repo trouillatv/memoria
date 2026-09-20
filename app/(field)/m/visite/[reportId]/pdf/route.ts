@@ -17,6 +17,12 @@ import { resolveCrMapSnapshotForPdf } from '@/lib/pdf/cr-map-snapshot'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
+// Une visite avec beaucoup de photos (Photos clés + Reportage, jusqu'à 42 images
+// en pleine résolution) peut dépasser la limite implicite d'une fonction serverless
+// sans durée explicite — comme les autres routes de génération lourde du dépôt
+// (tenders/analyze, extraction/historical-pv), on porte la limite à 300s plutôt
+// que de dépendre du défaut de la plateforme.
+export const maxDuration = 300
 
 interface RouteCtx {
   params: Promise<{ reportId: string }>
