@@ -326,10 +326,10 @@ async function loadCboReducedStatesUncached(
 
   // 3. Résolution des membres → site_action vivant → report → document (id + date métier).
   //    Un membre sans site_action = DANGLING → absent de cette map → ignoré (jamais inventé).
-  const actionInfo = new Map<string, { reportId: string | null; supersededBy: string | null }>()
-  for (const a of await fetchAllChunks<{ id: string; report_id: string | null; superseded_by: string | null }>(
-    [...allMemberIds], (c) => sb.from('site_actions').select('id, report_id, superseded_by').in('id', c),
-  )) actionInfo.set(a.id, { reportId: a.report_id, supersededBy: a.superseded_by })
+  const actionInfo = new Map<string, { reportId: string | null; supersededBy: string | null; status: string | null }>()
+  for (const a of await fetchAllChunks<{ id: string; report_id: string | null; superseded_by: string | null; status: string | null }>(
+    [...allMemberIds], (c) => sb.from('site_actions').select('id, report_id, superseded_by, status').in('id', c),
+  )) actionInfo.set(a.id, { reportId: a.report_id, supersededBy: a.superseded_by, status: a.status })
   const reportIds = [...new Set([...actionInfo.values()].map((a) => a.reportId).filter((x): x is string => !!x))]
   const reportDoc = new Map<string, string>()
   for (const r of await fetchAllChunks<{ id: string; source_document_id: string | null }>(
@@ -353,7 +353,13 @@ async function loadCboReducedStatesUncached(
   // superseded_by posé automatiquement) n'est pas un signal métier — son cancelled ne doit jamais
   // faire compter le CBO comme résolu. Distinct du geste humain « Écarter » (fn_cancel_action),
   // qui laisse superseded_by null et reste inchangé (native_cancelled = resolving conservé).
-  const isMemberSuperseded = (memberId: string): boolean => !!actionInfo.get(memberId)?.supersededBy
+  // status === 'cancelled' est requis en plus de supersededBy : fn_reopen_action (mig 385) ne
+  // remet jamais superseded_by à null par conception (colonne = historique, pas état courant),
+  // donc un membre réouvert par un humain après une fusion technique redevient vivant ici.
+  const isMemberSuperseded = (memberId: string): boolean => {
+    const a = actionInfo.get(memberId)
+    return !!a?.supersededBy && a.status === 'cancelled'
+  }
   // date métier + document source d'un membre (undefined si dangling ou chaîne incomplète).
   const memberBusiness = (memberId: string): { docId: string; date: string } | null => {
     const a = actionInfo.get(memberId); if (!a?.reportId) return null
