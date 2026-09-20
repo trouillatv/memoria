@@ -20,9 +20,7 @@ import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
 import {
   loadMemoriaNeedsYouSummary,
   filterMemoriaNeedsYouQuestionsForSubject,
-  resolveMemoriaNeedsYouSubjectPointRef,
   needsYouQuestionHref,
-  MEMORIA_NEEDS_YOU_CATEGORY_LABELS,
   type MemoriaNeedsYouQuestion,
 } from '@/lib/knowledge/tracked-point-needs-you-summary'
 
@@ -384,17 +382,12 @@ function PointsSection({ points, siteId }: { points: PointReadModelEntry[]; site
   )
 }
 
-// NeedsYou contextuel à l'échelle du Sujet (mandat Vincent, lot UX Point 1.1) : mêmes conventions
-// visuelles que le bloc violet MemoriaNeedsYouBlock.tsx, silence total si vide. Contrairement au
-// bloc Point, aucune catégorie n'est exclue (les 5 read-models sources portent tous un subjectId
-// vérifié — cf. filterMemoriaNeedsYouQuestionsForSubject). Le Point concerné n'est affiché que
-// lorsque resolveMemoriaNeedsYouSubjectPointRef identifie un SEUL Point candidat pour cette
-// question précise (aucune heuristique de rattachement) ; le deep-link `?q=<id>` n'est utilisé que
-// lorsqu'une seule question concerne le sujet — jamais un choix arbitraire parmi plusieurs.
+// NeedsYou contextuel à l'échelle du Sujet : résumé actionnable uniquement. Les libellés de
+// catégorie répétés (ex. « Preuve à préciser ») sont gardés pour la page dédiée, où chaque question
+// dispose de son contexte documentaire ; ici on évite une liste trompeuse de faux doublons.
 function NeedsYouForSubjectSection({
   questions,
   siteId,
-  canonicalSubjectId,
 }: {
   questions: MemoriaNeedsYouQuestion[]
   siteId: string
@@ -403,6 +396,7 @@ function NeedsYouForSubjectSection({
   if (questions.length === 0) return null
   const baseHref = `/m/site/${siteId}/besoin-de-toi`
   const targetHref = questions.length === 1 ? needsYouQuestionHref(baseHref, questions[0].id) : baseHref
+  const questionLabel = `${questions.length} question${questions.length > 1 ? 's' : ''}`
   return (
     <section className="rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-900/40 dark:bg-violet-950/20">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -414,30 +408,19 @@ function NeedsYouForSubjectSection({
             MemorIA a besoin de toi
           </h2>
           <p className="text-[12.5px] font-semibold">
-            {questions.length} question{questions.length > 1 ? 's' : ''} à clarifier
+            {questionLabel} à clarifier
           </p>
         </div>
         <Link
           href={targetHref}
           className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-[12.5px] font-medium text-violet-700 active:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
         >
-          Répondre <ChevronRight className="h-3.5 w-3.5" />
+          Examiner <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
-      <ul className="mt-2 space-y-1">
-        {questions.map((q) => {
-          const pointRef = resolveMemoriaNeedsYouSubjectPointRef(q, canonicalSubjectId)
-          return (
-            <li key={q.id} className="flex items-center gap-2 text-[12px] text-foreground/90">
-              <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
-              <span>{MEMORIA_NEEDS_YOU_CATEGORY_LABELS[q.category]}</span>
-              {pointRef?.pointLabel && (
-                <span className="min-w-0 truncate text-muted-foreground">· {pointRef.pointLabel}</span>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      <p className="mt-2 text-[12px] text-muted-foreground">
+        Certaines informations de ce sujet doivent encore être confirmées ou précisées.
+      </p>
     </section>
   )
 }

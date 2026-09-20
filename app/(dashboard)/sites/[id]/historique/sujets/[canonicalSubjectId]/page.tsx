@@ -19,9 +19,7 @@ import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
 import {
   loadMemoriaNeedsYouSummary,
   filterMemoriaNeedsYouQuestionsForSubject,
-  resolveMemoriaNeedsYouSubjectPointRef,
   needsYouQuestionHref,
-  MEMORIA_NEEDS_YOU_CATEGORY_LABELS,
   type MemoriaNeedsYouQuestion,
 } from '@/lib/knowledge/tracked-point-needs-you-summary'
 import { buildSubjectNarrative } from '@/services/ai/subject-narrative'
@@ -1053,18 +1051,14 @@ function PointsSection({ points, siteId }: { points: PointReadModelEntry[]; site
   )
 }
 
-// NeedsYou contextuel à l'échelle du Sujet (mandat Vincent, lot UX Point 1.1) : mêmes conventions
-// visuelles que NeedsYouForPointSection (PointFicheView.tsx), silence total si vide — jamais un
-// compteur à zéro. Contrairement au bloc Point, aucune catégorie n'est exclue (les 5 read-models
-// sources portent tous un subjectId vérifié — cf. filterMemoriaNeedsYouQuestionsForSubject). Le
-// Point concerné n'est affiché que lorsque resolveMemoriaNeedsYouSubjectPointRef identifie un SEUL
-// Point candidat pour cette question précise (aucune heuristique de rattachement) ; le deep-link
-// `?q=<id>` (needsYouQuestionHref) n'est utilisé que lorsqu'une seule question concerne le sujet —
-// jamais un choix arbitraire parmi plusieurs.
+// NeedsYou contextuel à l'échelle du Sujet : la fiche Sujet reste un résumé actionnable. Les
+// libellés de catégorie (ex. « Preuve à préciser ») sont utiles comme filtres dans la page dédiée,
+// mais répétés ici ils ressemblent à des doublons et n'expliquent pas la décision attendue.
+// Les cartes détaillées de `/besoin-de-toi` portent le vrai contexte (question, information,
+// provenance) ; ce bloc y envoie donc sans inventer de texte.
 function NeedsYouForSubjectSection({
   questions,
   siteId,
-  canonicalSubjectId,
 }: {
   questions: MemoriaNeedsYouQuestion[]
   siteId: string
@@ -1073,6 +1067,7 @@ function NeedsYouForSubjectSection({
   if (questions.length === 0) return null
   const baseHref = `/sites/${siteId}/besoin-de-toi`
   const targetHref = questions.length === 1 ? needsYouQuestionHref(baseHref, questions[0].id) : baseHref
+  const questionLabel = `${questions.length} question${questions.length > 1 ? 's' : ''}`
   return (
     <section className="rounded-[16px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1081,33 +1076,22 @@ function NeedsYouForSubjectSection({
         </span>
         <div className="min-w-0">
           <h2 className="text-[11.5px] font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-200">
-            MemorIA a besoin de toi sur ce sujet
+            MemorIA a besoin de toi
           </h2>
           <p className="text-[13px] font-semibold">
-            {questions.length} question{questions.length > 1 ? 's' : ''} à clarifier
+            {questionLabel} à clarifier
           </p>
         </div>
         <Link
           href={targetHref}
           className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
         >
-          Répondre <ChevronRight className="h-3.5 w-3.5" />
+          Examiner {questions.length === 1 ? 'la question' : `les ${questions.length} questions`} <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
-      <ul className="mt-2.5 space-y-1">
-        {questions.map((q) => {
-          const pointRef = resolveMemoriaNeedsYouSubjectPointRef(q, canonicalSubjectId)
-          return (
-            <li key={q.id} className="flex items-center gap-2 text-[12.5px] text-foreground/90">
-              <span className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-violet-400" />
-              <span>{MEMORIA_NEEDS_YOU_CATEGORY_LABELS[q.category]}</span>
-              {pointRef?.pointLabel && (
-                <span className="min-w-0 truncate text-muted-foreground">· {pointRef.pointLabel}</span>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      <p className="mt-2 text-[12.5px] text-muted-foreground">
+        Certaines informations de ce sujet doivent encore être confirmées ou précisées.
+      </p>
     </section>
   )
 }
