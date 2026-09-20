@@ -396,7 +396,13 @@ function NeedsYouForSubjectSection({
   if (questions.length === 0) return null
   const baseHref = `/m/site/${siteId}/besoin-de-toi`
   const targetHref = questions.length === 1 ? needsYouQuestionHref(baseHref, questions[0].id) : baseHref
-  const questionLabel = `${questions.length} question${questions.length > 1 ? 's' : ''}`
+  // Même règle que la fiche Sujet desktop (mandat Vincent) : « N clarification(s) » quand
+  // TOUTES les questions du sujet sont des clarifications de preuve, jamais le vocabulaire
+  // générique « question(s) » qui ne dit pas ce que MemorIA attend.
+  const isAllClarifyEvidence = questions.every((q) => q.category === 'clarify_evidence')
+  const count = questions.length
+  const questionLabel = `${count} question${count > 1 ? 's' : ''}`
+  const clarificationLabel = `${count} clarification${count > 1 ? 's' : ''}`
   return (
     <section className="rounded-2xl border border-violet-200 bg-violet-50/50 p-3.5 dark:border-violet-900/40 dark:bg-violet-950/20">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -408,14 +414,19 @@ function NeedsYouForSubjectSection({
             MemorIA a besoin de toi
           </h2>
           <p className="text-[12.5px] font-semibold">
-            {questionLabel} à clarifier
+            {isAllClarifyEvidence ? clarificationLabel : `${questionLabel} à clarifier`}
           </p>
         </div>
         <Link
           href={targetHref}
           className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-2.5 py-1 text-[12.5px] font-medium text-violet-700 active:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
         >
-          Examiner <ChevronRight className="h-3.5 w-3.5" />
+          {isAllClarifyEvidence
+            ? count === 1
+              ? 'Clarifier'
+              : `Examiner les ${count}`
+            : `Examiner ${count === 1 ? 'la question' : `les ${count} questions`}`}
+          <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
       <p className="mt-2 text-[12px] text-muted-foreground">

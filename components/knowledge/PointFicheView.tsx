@@ -36,7 +36,7 @@ import { needsYouQuestionHref, type MemoriaNeedsYouQuestion } from '@/lib/knowle
 import { PointActionMenu } from '@/components/knowledge/PointActionMenu'
 import { PointReserveMenu } from '@/components/knowledge/PointReserveMenu'
 import { DeadlineActions } from '@/app/(dashboard)/sites/[id]/views/planning/DeadlineActions'
-import { PointCitedCompanyPromote } from '@/components/knowledge/PointCitedCompanyPromote'
+import { PointPilotAssign } from '@/components/knowledge/PointPilotAssign'
 import { PointResponsibleCompanyRevoke } from '@/components/knowledge/PointResponsibleCompanyRevoke'
 import { PointSubjectCurationControl } from '@/components/knowledge/PointSubjectCurationControl'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
@@ -470,31 +470,11 @@ export function PointFicheView({
   entrepriseLinksEnabled?: boolean
 }) {
   const p = point
-  // Cibles éligibles pour « Affecter… → Affecter à l'Action » (mandat Vincent 2026-09-14) :
-  // une par groupe d'Actions ouvertes, jamais Réserve/Échéance (aucune affectation
-  // structurelle possible pour ces deux types aujourd'hui).
-  const openActions = p.openLinkedObjectGroups
-    .filter((g) => g.objectType === 'site_action')
-    .map((g) => ({ id: g.representative.id, title: g.title, dueDate: g.representative.dueDate }))
-
-  // §3 « Responsables des actions liées » (doctrine Vincent 2026-09-14, consolidation
-  // vocabulaire) : responsabilité humaine = Point (pilotage transverse) ou Action
-  // (exécution), jamais Réserve/Échéance qui n'ont pas de champ structurel pour ça —
-  // donc union des SEULS responsables `site_action`, avec le(s) titre(s) réel(s) de la ou
-  // des Actions portées, jamais un simple comptage. Ouvertes ET terminées, mêmes objets
-  // que `computePointActors` (union honnête des FK déjà posées, jamais une déduction).
-  const actionResponsibles = (() => {
-    const map = new Map<string, { key: string; name: string; companyId?: string; titles: string[] }>()
-    for (const o of p.linkedObjects) {
-      if (o.objectType !== 'site_action' || !o.responsible || o.responsible.kind === 'text') continue
-      const key = `${o.responsible.kind}:${o.responsible.name}`
-      const companyId = o.responsible.kind === 'company' ? o.responsible.companyId : undefined
-      const entry = map.get(key) ?? { key, name: o.responsible.name, companyId, titles: [] }
-      if (!entry.titles.includes(o.title)) entry.titles.push(o.title)
-      map.set(key, entry)
-    }
-    return [...map.values()]
-  })()
+  // §3 Acteurs (mandat Vincent 2026-09-20, séparation visuelle Pilotage/Actions/Citées) :
+  // une ligne par Action liée (ouverte ET terminée, mêmes objets que `computePointActors`),
+  // jamais un regroupement par responsable — sinon une Action sans responsable disparaissait
+  // de la liste au lieu d'afficher explicitement « Non affecté ».
+  const siteActions = p.linkedObjects.filter((o) => o.objectType === 'site_action')
 
   return (
     <div className="space-y-5">
@@ -708,18 +688,26 @@ export function PointFicheView({
             </section>
           )}
 
-          <section className="rounded-[18px] border bg-card px-5 py-4 space-y-2">
+          <section className="rounded-[18px] border bg-card px-5 py-4 space-y-3">
             <h2 className={H2}>3. Acteurs</h2>
-            <div>
-              <p className="text-[11px] font-medium text-muted-foreground">Pilotage du Point</p>
+
+            {/* (a) Pilotage du Point — désignation transverse explicite, indépendante de
+                toute entreprise citée dans une preuve (mandat Vincent 2026-09-20 : « piloter
+                ce Point » doit rester atteignable même si aucune entreprise n'a encore été
+                détectée par extraction). */}
+            <div className="rounded-lg border px-3 py-2.5 space-y-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[11px] font-medium text-muted-foreground">Pilotage du Point</p>
+                <PointPilotAssign siteId={p.siteId} pointId={p.id} companies={companies} />
+              </div>
               {p.responsibleCompanyDesignations.length === 0 ? (
-                <p className="mt-1 text-[12.5px] text-muted-foreground">Aucun pilote du Point.</p>
+                <p className="text-[12.5px] text-muted-foreground">Pilote : Non affecté.</p>
               ) : (
                 <>
                   <p className="text-[11px] text-muted-foreground">
                     Le pilotage du Point ne modifie pas automatiquement les actions et réserves liées.
                   </p>
-                  <ul className="mt-1 flex flex-wrap gap-2">
+                  <ul className="flex flex-wrap gap-2">
                     {p.responsibleCompanyDesignations.map((d) => (
                       <li key={d.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50 px-2.5 py-1 text-[12.5px] dark:border-sky-800 dark:bg-sky-950/30">
                         {entrepriseLinksEnabled ? (
@@ -735,32 +723,41 @@ export function PointFicheView({
                 </>
               )}
             </div>
-            <div className="pt-1.5">
-              <p className="text-[11px] font-medium text-muted-foreground">Responsables des actions liées</p>
-              {actionResponsibles.length === 0 ? (
-                <p className="mt-1 text-[12.5px] text-muted-foreground">Aucune Action affectée sur ce Point.</p>
+
+            {/* (b) Actions — une ligne par Action liée (jamais un regroupement par
+                responsable), avec le point d'entrée « Affecter » déjà existant
+                (PointActionMenu, mode='edit') plutôt qu'un nouveau mécanisme. */}
+            <div className="rounded-lg border px-3 py-2.5 space-y-1.5">
+              <p className="text-[11px] font-medium text-muted-foreground">Actions</p>
+              {siteActions.length === 0 ? (
+                <p className="text-[12.5px] text-muted-foreground">Aucune Action liée à ce Point.</p>
               ) : (
-                <ul className="mt-1 flex flex-wrap gap-2">
-                  {actionResponsibles.map((a) => (
-                    <li key={a.key} className="rounded-lg border px-2.5 py-1 text-[12.5px]">
-                      {a.companyId && entrepriseLinksEnabled ? (
-                        <Link href={`/sites/${p.siteId}/entreprise/${a.companyId}`} className="font-medium hover:underline">{a.name}</Link>
-                      ) : (
-                        a.name
-                      )}
+                <ul className="space-y-1.5">
+                  {siteActions.map((a) => (
+                    <li key={a.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px]">
+                      <span className={cn('font-medium', a.isDone && 'text-muted-foreground line-through')}>{a.title}</span>
                       <span className="text-muted-foreground">
-                        {' · '}
-                        {a.titles.map((t) => `Action « ${t} »`).join(', ')}
+                        {' · Responsable : '}
+                        {!a.responsible || a.responsible.kind === 'text'
+                          ? (a.responsible?.label ?? 'Non affecté')
+                          : a.responsible.kind === 'company' && a.responsible.companyId && entrepriseLinksEnabled
+                            ? <Link href={`/sites/${p.siteId}/entreprise/${a.responsible.companyId}`} className="font-medium text-foreground hover:underline">{a.responsible.name}</Link>
+                            : <span className="font-medium text-foreground">{a.responsible.name}</span>}
                       </span>
+                      <PointActionMenu action={a} siteId={p.siteId} pointId={p.id} responsibleCandidates={responsibleCandidates} companies={companies} />
                     </li>
                   ))}
                 </ul>
               )}
             </div>
+
+            {/* (c) Entreprises citées dans les preuves — chips de lecture seule. Invariant
+                Vincent 2026-09-20 : « cité ≠ responsable doit rester vrai dans l'UI » — donc
+                AUCUN bouton Affecter ici ; piloter passe par (a), affecter une Action par (b). */}
             {p.citedCompanies.length > 0 && (
-              <div className="pt-1.5">
+              <div className="rounded-lg border border-dashed px-3 py-2.5 space-y-1.5">
                 <p className="text-[11px] font-medium text-muted-foreground">Entreprises citées dans les preuves</p>
-                <ul className="mt-1 flex flex-wrap items-center gap-2">
+                <ul className="flex flex-wrap items-center gap-2">
                   {p.citedCompanies.map((c) => (
                     <li key={c.id} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-dashed px-2.5 py-1 text-[12.5px] text-muted-foreground">
                       {c.companyId && entrepriseLinksEnabled ? (
@@ -769,15 +766,6 @@ export function PointFicheView({
                         <span>{c.name}</span>
                       )}
                       <span className="rounded-full bg-muted px-1.5 py-px text-[10px] font-medium">Citée dans les preuves</span>
-                      {c.companyId && (
-                        <PointCitedCompanyPromote
-                          siteId={p.siteId}
-                          pointId={p.id}
-                          companyId={c.companyId}
-                          companyName={c.name}
-                          openActions={openActions}
-                        />
-                      )}
                     </li>
                   ))}
                 </ul>

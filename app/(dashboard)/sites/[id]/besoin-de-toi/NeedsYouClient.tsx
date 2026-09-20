@@ -45,7 +45,7 @@ const FILTER_LABELS: Record<FilterValue, string> = {
   attach_information: 'À rattacher',
   confirm_trackability: 'À suivre',
   assign_resolution: 'Résolutions',
-  clarify_evidence: 'Preuves',
+  clarify_evidence: 'Clarifications',
 }
 const FILTER_ORDER: FilterValue[] = ['all', ...MEMORIA_NEEDS_YOU_CATEGORY_ORDER]
 

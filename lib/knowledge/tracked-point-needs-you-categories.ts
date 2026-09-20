@@ -26,5 +26,5 @@ export const MEMORIA_NEEDS_YOU_CATEGORY_LABELS: Record<MemoriaNeedsYouCategory, 
   attach_information: 'Informations à rattacher',
   confirm_trackability: 'Situations à confirmer comme suivi',
   assign_resolution: 'Résolutions à attribuer',
-  clarify_evidence: 'Preuve à préciser',
+  clarify_evidence: 'Validation de preuve',
 }

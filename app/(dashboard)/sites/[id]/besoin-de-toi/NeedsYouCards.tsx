@@ -1036,14 +1036,17 @@ function ClarifyEvidenceCard({
   }
 
   const isTrackability = entry.kind === 'TRACKABILITY_UNDETERMINED'
-  const title = isTrackability ? "Quelle information confirme qu'il faut suivre cette situation ?" : 'Quelle information constitue la preuve de résolution ?'
-  const hint = isTrackability ? 'Cette preuve pourrait servir à confirmer un nouveau suivi.' : 'Cette preuve pourrait résoudre une situation déjà suivie.'
+  const title = entry.subjectLabel ? `À confirmer — ${entry.subjectLabel}` : 'À confirmer'
+  const explanation = isTrackability
+    ? 'MemorIA a identifié cette situation mais doit savoir quelle preuve justifie de continuer à la suivre.'
+    : 'MemorIA a identifié une résolution possible mais doit savoir quelle preuve la confirme.'
+  const subQuestion = isTrackability ? 'Quelles preuves confirment cette situation ?' : 'Quelles preuves confirment cette résolution ?'
 
   return (
     <CardShell category="clarify_evidence" title={title}>
       <QuestionRationale text={clarifyEvidenceRationale(entry)} />
-      {entry.subjectLabel && <p className="text-[11px] text-muted-foreground">À propos de : {entry.subjectLabel}</p>}
-      <p className="text-[12px] text-foreground/80">{hint}</p>
+      <p className="text-[12px] text-foreground/80">{explanation}</p>
+      <p className="text-[12px] font-medium text-foreground">{subQuestion}</p>
       <div className="space-y-1.5">
         {entry.proposals.map((p) => {
           const dateLine = provenanceLine(p.documentEffectiveDate, p.sourcePage, p.createdAt)
@@ -1078,7 +1081,7 @@ function ClarifyEvidenceCard({
             )
           }
         >
-          Confirmer la sélection
+          Confirmer les preuves sélectionnées
         </button>
       </div>
     </CardShell>

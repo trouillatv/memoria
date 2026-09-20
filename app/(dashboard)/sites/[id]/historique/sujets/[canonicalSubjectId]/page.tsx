@@ -16,6 +16,7 @@ import type { CboComputedCurrentState, CboEventKind } from '@/lib/knowledge/cbo-
 import { partitionFilGroups } from '@/lib/knowledge/fil-metier-visibility'
 import { loadTrackedPointReadModel, sortPointsForSubjectDisplay, type PointReadModelEntry } from '@/lib/knowledge/tracked-point-read-model'
 import { POINT_STATE_LABEL } from '@/lib/knowledge/tracked-point-detail'
+import { loadSubjectPilotageSummary, type SubjectPilotageSummary } from '@/lib/knowledge/subject-pilotage-summary'
 import {
   loadMemoriaNeedsYouSummary,
   filterMemoriaNeedsYouQuestionsForSubject,
@@ -467,6 +468,40 @@ function SubjectIntelligenceCard({
             )}
           </div>
         </div>
+      )}
+    </section>
+  )
+}
+
+// « À piloter » (mandat Vincent 2026-09-20, items 1+6 du lot Acteurs) : jamais un
+// « Responsable du Sujet » (le Sujet est un thème durable, pas une tâche) — un résumé
+// dérivé de ce qui reste réellement à piloter sur ce Sujet. Situation simple (1 seul
+// Point ouvert) : le Pilote du Point et le Responsable de l'unique Action sont nommés
+// explicitement. Situation plus riche : seuls les compteurs agrégés ont un sens.
+function SubjectPilotageSection({ summary, pointHref }: { summary: SubjectPilotageSummary; pointHref: string | null }) {
+  if (summary.openPointsCount === 0) return null
+  const { openPointsCount, actionsCount, actionsWithResponsibleCount, actionsWithoutResponsibleCount, single } = summary
+
+  const parts: string[] = [`${openPointsCount} Point${openPointsCount > 1 ? 's' : ''} ouvert${openPointsCount > 1 ? 's' : ''}`]
+  const isSimple = openPointsCount === 1 && actionsCount <= 1 && single !== null
+  if (isSimple) {
+    if (actionsCount === 1) parts.push('1 Action ouverte')
+    parts.push(`Pilote du Point : ${single!.pointPilotName ?? 'Non affecté'}`)
+    if (actionsCount === 1) parts.push(`Responsable de l'Action : ${single!.actionResponsibleName ?? 'Non affecté'}`)
+  } else if (actionsCount > 0) {
+    parts.push(`${actionsCount} Action${actionsCount > 1 ? 's' : ''}`)
+    if (actionsWithResponsibleCount > 0) parts.push(`${actionsWithResponsibleCount} affectée${actionsWithResponsibleCount > 1 ? 's' : ''}`)
+    if (actionsWithoutResponsibleCount > 0) parts.push(`${actionsWithoutResponsibleCount} sans responsable`)
+  }
+
+  return (
+    <section className="rounded-[18px] border bg-card px-5 py-4 space-y-1.5">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">À piloter</h2>
+      <p className="text-[13px] text-foreground/90">{parts.join(' · ')}</p>
+      {openPointsCount === 1 && pointHref && (
+        <Link href={pointHref} className="inline-flex items-center gap-1 text-[12.5px] font-medium text-foreground hover:underline">
+          Voir le Point <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
       )}
     </section>
   )
@@ -1067,7 +1102,14 @@ function NeedsYouForSubjectSection({
   if (questions.length === 0) return null
   const baseHref = `/sites/${siteId}/besoin-de-toi`
   const targetHref = questions.length === 1 ? needsYouQuestionHref(baseHref, questions[0].id) : baseHref
-  const questionLabel = `${questions.length} question${questions.length > 1 ? 's' : ''}`
+  // Copie dédiée quand TOUTES les questions du Sujet sont des clarifications de preuve
+  // (mandat Vincent) : « N clarification(s) », jamais le vocabulaire générique « question(s) »
+  // qui ne dit pas ce que MemorIA attend. Sujet mixte (autres catégories présentes) → copie
+  // générique inchangée, pour ne jamais affirmer « clarification » sur une autre nature de geste.
+  const isAllClarifyEvidence = questions.every((q) => q.category === 'clarify_evidence')
+  const count = questions.length
+  const questionLabel = `${count} question${count > 1 ? 's' : ''}`
+  const clarificationLabel = `${count} clarification${count > 1 ? 's' : ''}`
   return (
     <section className="rounded-[16px] border border-violet-200 bg-violet-50/50 p-4 shadow-sm dark:border-violet-900/40 dark:bg-violet-950/20">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -1079,18 +1121,27 @@ function NeedsYouForSubjectSection({
             MemorIA a besoin de toi
           </h2>
           <p className="text-[13px] font-semibold">
-            {questionLabel} à clarifier
+            {isAllClarifyEvidence ? clarificationLabel : `${questionLabel} à clarifier`}
           </p>
         </div>
         <Link
           href={targetHref}
           className="ml-auto inline-flex items-center gap-1 rounded-lg border border-violet-300 bg-white px-3 py-1.5 text-[13px] font-medium text-violet-700 hover:bg-violet-100 dark:border-violet-800 dark:bg-transparent dark:text-violet-300"
         >
-          Examiner {questions.length === 1 ? 'la question' : `les ${questions.length} questions`} <ChevronRight className="h-3.5 w-3.5" />
+          {isAllClarifyEvidence
+            ? count === 1
+              ? 'Clarifier'
+              : `Examiner les ${count}`
+            : `Examiner ${count === 1 ? 'la question' : `les ${count} questions`}`}
+          <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
       <p className="mt-2 text-[12.5px] text-muted-foreground">
-        Certaines informations de ce sujet doivent encore être confirmées ou précisées.
+        {isAllClarifyEvidence
+          ? count === 1
+            ? 'Une preuve reste à confirmer pour ce Sujet.'
+            : 'Plusieurs preuves restent à confirmer pour ce Sujet.'
+          : 'Certaines informations de ce sujet doivent encore être confirmées ou précisées.'}
       </p>
     </section>
   )
@@ -1535,6 +1586,10 @@ export default async function CanonicalSubjectLifePage({ params, searchParams }:
   const trackedPoints = await loadTrackedPointReadModel(siteId)
     .then((r) => sortPointsForSubjectDisplay(r.bySubject.get(canonicalSubjectId)?.points ?? []))
     .catch(() => [] as PointReadModelEntry[])
+  const pilotageSummary = await loadSubjectPilotageSummary(trackedPoints)
+  const openTrackedPoints = trackedPoints.filter((p) => p.derivedState !== 'resolved')
+  const pilotagePointHref =
+    openTrackedPoints.length === 1 ? `/sites/${siteId}/point/${openTrackedPoints[0].id}` : null
   // LOT UX Cockpit+Points (mandat Vincent 2026-09-11) — un CBO réellement rattaché à un
   // Point (tracked_point_member.cbo_id, cf. PointReadModelEntry.cboIds) ne doit plus être
   // affiché comme une seconde hiérarchie parallèle aux Points. Critère structurel uniquement
@@ -1660,6 +1715,9 @@ export default async function CanonicalSubjectLifePage({ params, searchParams }:
 
         {/* Intelligence proactive */}
         <SubjectIntelligenceCard intel={intel} lastSeenAt={life.lastSeenAt} cboSummary={cboSummary} />
+
+        {/* À piloter */}
+        <SubjectPilotageSection summary={pilotageSummary} pointHref={pilotagePointHref} />
 
         {/* Pourquoi ce sujet compte */}
         <WhyThisSubjectSection links={life.links} siteId={siteId} />
