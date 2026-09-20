@@ -80,3 +80,76 @@ export function shouldKeepEmbeddedImage(m: EmbeddedImageMetrics): boolean {
     m.nativeHeight >= MIN_NATIVE_PX
   )
 }
+
+// --- Classification géométrique en 2 niveaux (P0 PV4 Photos) --------------------
+//
+// Preuve d'audit (PV4, PDF "Mail-Galerie") : une image photographique réelle et un
+// élément décoratif peuvent avoir des dimensions natives du même ordre de grandeur
+// (photo réelle 298×201 px = 59 898 px² > bandeau décoratif déjà verrouillé en test
+// 337×153 px = 51 561 px²). Aucun seuil de taille absolue ne peut séparer les deux
+// populations de façon générique — la géométrie ne peut donc plus, seule, trancher
+// pour les blocs de taille intermédiaire.
+//
+// Doctrine retenue : la géométrie ne fait qu'un tri de plausibilité minimale ; c'est
+// la classification sémantique Vision (`is_decorative`, voir extract-historical-pv.ts)
+// qui arbitre les blocs ambigus. En cas d'échec ou d'incertitude Vision sur un bloc
+// ambigu, le comportement est fail-closed (jamais affiché comme photo de visite) —
+// pour ne jamais transformer un logo/bandeau en photo par défaut.
+export type EmbeddedImageGeometryTier = 'reject' | 'candidate' | 'strong'
+
+/**
+ * Classe géométrique d'un bloc image, AVANT toute analyse sémantique.
+ * - 'reject'    : bruit/dégénéré (icône minuscule, puce, séparateur) — jamais extrait.
+ * - 'candidate' : taille plausible mais insuffisante pour trancher seule — nécessite
+ *   la confirmation Vision avant d'être retenu comme photo de visite.
+ * - 'strong'    : doctrine historique (photographique par résolution native, ou
+ *   figure/scan couvrant substantiellement la page) — retenu même si Vision est
+ *   indisponible ou incertain, pour ne jamais régresser sur le comportement existant.
+ */
+export function classifyEmbeddedImageGeometry(m: EmbeddedImageMetrics): EmbeddedImageGeometryTier {
+  if (shouldKeepEmbeddedImage(m)) return 'strong'
+  if (m.nativeWidth >= MIN_NATIVE_PX && m.nativeHeight >= MIN_NATIVE_PX) return 'candidate'
+  return 'reject'
+}
+
+// --- Contrat final de rétention (P0 PV4 Photos) ---------------------------------
+//
+// Classification sémantique Vision, telle que produite par `classifyImage()` dans
+// extract-historical-pv.ts (dupliquée ici comme union de littéraux pour rester un
+// module pur, sans dépendance vers l'orchestrateur).
+export type ImageSemanticClass = 'decorative' | 'document_context' | 'evidence' | 'uncertain'
+
+// Couverture de page au-delà de laquelle un `decorative=true` Vision n'est pas retenu
+// comme disqualifiant sur un bloc 'strong' — garde-fou contre un faux positif Vision
+// sur une grande photo réelle qui couvre substantiellement la page. Ne s'applique pas
+// aux blocs 'candidate' : pour une taille intermédiaire/ambiguë, Vision arbitre seule.
+export const DECORATIVE_MAX_COVERAGE_STRONG = 0.15
+
+export interface EmbeddedImageRetentionInput {
+  geometryTier: EmbeddedImageGeometryTier
+  imageClass: ImageSemanticClass
+  bboxCoverage: number // fraction 0..1 de la page couverte par la bbox d'affichage
+}
+
+/**
+ * Contrat global : ce bloc doit-il apparaître comme photo finale de la visite ?
+ * Ne dépend jamais du seul document/nom de fichier — uniquement de la géométrie et
+ * de l'arbitrage sémantique Vision. Doctrine (GO Vincent) :
+ * - 'reject'    : jamais (bruit/dégénéré, déjà éliminé avant extraction).
+ * - 'candidate' : Vision arbitre seule, fail-closed — 'evidence'/'document_context'
+ *   conservés ; 'decorative' rejeté ; 'uncertain' (Vision indisponible/incertaine)
+ *   jamais affiché par défaut.
+ * - 'strong'    : doctrine historique — conservé sauf 'decorative' confirmé sur une
+ *   couverture de page faible (< DECORATIVE_MAX_COVERAGE_STRONG) ; 'uncertain' reste
+ *   conservé (fail-open, non-régression sur les grandes photos historiques).
+ */
+export function shouldRetainAsVisitPhoto(input: EmbeddedImageRetentionInput): boolean {
+  const { geometryTier, imageClass, bboxCoverage } = input
+  if (geometryTier === 'reject') return false
+  if (geometryTier === 'candidate') {
+    return imageClass === 'evidence' || imageClass === 'document_context'
+  }
+  // geometryTier === 'strong'
+  if (imageClass === 'decorative' && bboxCoverage < DECORATIVE_MAX_COVERAGE_STRONG) return false
+  return true
+}

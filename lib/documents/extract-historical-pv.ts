@@ -18,6 +18,7 @@ import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
 import { embedDocumentChunks } from '@/lib/ai/embed-knowledge-chunks'
 import type { DocumentProposalFamily, DocumentEvidenceType, DocumentEvidenceRelationType, DocumentExtractionEmptyReason } from '@/types/db'
 import type { CaptionResult } from '@/services/pdf/caption-image'
+import { shouldRetainAsVisitPhoto, type EmbeddedImageGeometryTier } from '@/services/pdf/photo-filter'
 
 // Classe sentinelle pour distinguer l'échec OCR/extraction texte.
 class OcrFailureError extends Error {
@@ -73,10 +74,6 @@ type ImageClass = 'decorative' | 'document_context' | 'evidence' | 'uncertain'
 
 // Mots-clés dans visual_description indiquant un plan/carte/schéma (document_context).
 const DOC_CONTEXT_KEYWORDS = ['plan', 'carte', 'schéma', 'schema', 'coupe', "vue d'ensemble", 'réseau', 'réseaux', 'tracé']
-
-// Au-delà de 15 % de couverture de page, un is_decorative=true n'est pas exclu silencieusement
-// (garde-rail contre faux positif Vision sur une grande photo).
-const DECORATIVE_MAX_COVERAGE = 0.15
 
 function classifyImage(
   captionResult: CaptionResult | null,
@@ -260,6 +257,7 @@ export async function extractHistoricalPv(
       bbox: [number, number, number, number]
       normalizedBbox: [number, number, number, number]
       pageText: string
+      geometryTier: EmbeddedImageGeometryTier
     }
     const rawImages: RawImage[] = []
 
@@ -302,6 +300,7 @@ export async function extractHistoricalPv(
             bbox: img.bbox,
             normalizedBbox,
             pageText: pageResult.pageText,
+            geometryTier: img.geometryTier,
           })
         } else {
           log('image_upload_failed', documentId, { page: pageNum, idx: i, error: uploadErr.message })
@@ -329,14 +328,22 @@ export async function extractHistoricalPv(
 
     const extractedImageInfos: ImageInfo[] = []
     let decorativeDropped = 0
+    let ambiguousDropped = 0
     for (const raw of rawImages) {
       const cr = captionResultMap.get(raw.storagePath) ?? null
       const { imageClass, bboxCoverage } = classifyImage(cr, raw.normalizedBbox)
 
-      // decorative + petite surface (<15%) → exclure silencieusement (garde-rail inclus)
-      if (imageClass === 'decorative' && bboxCoverage < DECORATIVE_MAX_COVERAGE) {
-        decorativeDropped++
-        log('image_excluded_decorative', documentId, { page: raw.pageNum, coverage: bboxCoverage.toFixed(3) })
+      // P0 PV4 Photos — contrat de rétention centralisé (doctrine 2 niveaux, GO Vincent) :
+      // voir shouldRetainAsVisitPhoto (photo-filter.ts) pour la logique complète
+      // 'candidate' (Vision arbitre seule, fail-closed) vs 'strong' (fail-open, non-régression).
+      if (!shouldRetainAsVisitPhoto({ geometryTier: raw.geometryTier, imageClass, bboxCoverage })) {
+        if (raw.geometryTier === 'candidate') {
+          ambiguousDropped++
+          log('image_excluded_ambiguous', documentId, { page: raw.pageNum, imageClass })
+        } else {
+          decorativeDropped++
+          log('image_excluded_decorative', documentId, { page: raw.pageNum, coverage: bboxCoverage.toFixed(3) })
+        }
         continue
       }
 
@@ -361,7 +368,7 @@ export async function extractHistoricalPv(
         document_caption_raw: documentCaptionRaw,
       })
     }
-    log('images_extracted', documentId, { count: extractedImageInfos.length, dropped_decorative: decorativeDropped })
+    log('images_extracted', documentId, { count: extractedImageInfos.length, dropped_decorative: decorativeDropped, dropped_ambiguous: ambiguousDropped })
 
     await updateExtractionStage(runId, 'llm_analysis')
     log('step_llm_analysis', documentId, { runId })

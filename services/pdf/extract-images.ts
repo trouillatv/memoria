@@ -1,5 +1,5 @@
 import 'server-only'
-import { shouldKeepEmbeddedImage, MIN_NATIVE_PX } from './photo-filter'
+import { classifyEmbeddedImageGeometry, MIN_NATIVE_PX, type EmbeddedImageGeometryTier } from './photo-filter'
 
 // Extrait les objets image embarqués dans une page PDF via mupdf WASM.
 // Approche native : pas de vision — on lit directement la structure PDF.
@@ -13,6 +13,9 @@ export interface ExtractedImage {
   nativeWidth: number   // pixels natifs
   nativeHeight: number
   buffer: Buffer      // PNG
+  // Classification géométrique avant analyse sémantique — 'reject' n'apparaît jamais
+  // ici (filtré en amont). Voir `photo-filter.ts` pour la doctrine des 2 niveaux.
+  geometryTier: EmbeddedImageGeometryTier
 }
 
 export interface ExtractPageResult {
@@ -21,9 +24,9 @@ export interface ExtractPageResult {
   pageBounds: [number, number, number, number]  // mediabox PDF [x0, y0, x1, y1] en points
 }
 
-// Décision « garder / rejeter » externalisée dans `photo-filter.ts` (module pur,
-// testable) : conservée si photographique par résolution native OU figure/scan
-// couvrant substantiellement la page. Voir ce module pour la justification des seuils.
+// Classification géométrique externalisée dans `photo-filter.ts` (module pur,
+// testable). Le tri final photo/décoratif des blocs ambigus se fait en aval, par
+// Vision (extract-historical-pv.ts) — voir ce module pour la doctrine des 2 niveaux.
 
 export async function extractPageImages(
   pdfBuffer: Buffer,
@@ -56,11 +59,13 @@ export async function extractPageImages(
         const w = img.getWidth() as number
         const h = img.getHeight() as number
 
-        // Filtre : conservée si photographique par résolution native (ex. vignette
-        // de planche photo, 640×850 px couvrant 3 % de la page) OU figure/scan
-        // couvrant substantiellement la page. Rejette logos, bandeaux, icônes.
+        // Tri géométrique de plausibilité (doctrine 2 niveaux, voir photo-filter.ts) :
+        // 'reject' = bruit/dégénéré, jamais extrait. 'strong'/'candidate' remontent
+        // tous les deux — l'arbitrage photo/décoratif des blocs 'candidate' se fait
+        // en aval, par Vision (extract-historical-pv.ts).
         const bboxArea = (bbox[2] - bbox[0]) * (bbox[3] - bbox[1])
-        if (!shouldKeepEmbeddedImage({ nativeWidth: w, nativeHeight: h, bboxArea, pageArea })) return
+        const geometryTier = classifyEmbeddedImageGeometry({ nativeWidth: w, nativeHeight: h, bboxArea, pageArea })
+        if (geometryTier === 'reject') return
 
         try {
           let pixmap = img.toPixmap()
@@ -82,6 +87,7 @@ export async function extractPageImages(
             nativeWidth: w,
             nativeHeight: h,
             buffer: Buffer.from(png),
+            geometryTier,
           })
         } catch {
           // L'objet image ne peut pas être décodé nativement (JPEG2000, JBIG2, CMYK non-standard…).
@@ -107,6 +113,7 @@ export async function extractPageImages(
                 nativeWidth: rx1 - rx0,
                 nativeHeight: ry1 - ry0,
                 buffer: Buffer.from(png),
+                geometryTier,
               })
             }
           } catch {
