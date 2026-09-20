@@ -132,7 +132,7 @@ export async function runHistoricalImportPostProcessing(
   const { data: reportStatus } = await sb
     .from('site_reports')
     .select(
-      'source_document_id, canonical_reconciled_at, canonical_reconcile_started_at, ' +
+      'source_document_id, canonical_reconciled_at, canonical_reconcile_started_at, canonical_reconcile_error, ' +
         'similarity_analysis_completed_at, similarity_analysis_error, ' +
         'action_cbo_reconciled_at, action_cbo_reconcile_error, ' +
         'tracked_point_live_writer_completed_at, tracked_point_live_writer_error, ' +
@@ -145,6 +145,7 @@ export async function runHistoricalImportPostProcessing(
     source_document_id?: string | null
     canonical_reconciled_at?: string | null
     canonical_reconcile_started_at?: string | null
+    canonical_reconcile_error?: string | null
     similarity_analysis_completed_at?: string | null
     similarity_analysis_error?: string | null
     action_cbo_reconciled_at?: string | null
@@ -186,7 +187,21 @@ export async function runHistoricalImportPostProcessing(
     return 'failed'
   }
 
-  const decision = decideReconcileLock(typedStatus, Date.now())
+  // P0 (2026-09-21) — decideReconcileLock ne fournit pas de hash de contenu sur
+  // cette voie historique (cf. sa doc : comportement mig 318 strict). Il traite
+  // donc 'done' comme définitif dès que canonical_reconciled_at est renseigné,
+  // sans jamais regarder canonical_reconcile_error. Or ce champ peut avoir été
+  // écrit par une tentative POSTÉRIEURE à ce succès (garde de complétude ou
+  // exception de réconciliation, cf. plus haut/plus bas) sans toucher
+  // canonical_reconciled_at : l'erreur reste alors affichée indéfiniment même
+  // après correction de sa cause, car la branche 'acquire' — seule à l'effacer —
+  // n'est jamais reprise. Une erreur résiduelle invalide donc 'done' : on force
+  // une nouvelle tentative, qui l'efface (succès) ou la remplace par l'état réel
+  // (échec persistant), jamais un silence stale.
+  let decision = decideReconcileLock(typedStatus, Date.now())
+  if (decision === 'done' && typedStatus?.canonical_reconcile_error) {
+    decision = 'acquire'
+  }
   if (decision === 'concurrent') return 'concurrent'
   if (
     decision === 'done' &&

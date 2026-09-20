@@ -84,6 +84,29 @@ describe('historical import post-processing orchestration', () => {
     expect(acquireLock).toBeGreaterThan(gate)
   })
 
+  it('P0 (2026-09-21) — une erreur canonique résiduelle invalide un décision "done" stale', () => {
+    const source = read('lib/subjects/historical-import-post-processing.ts')
+    // decideReconcileLock ne connaît pas canonical_reconcile_error sur cette voie
+    // (pas de hash de contenu) : le point d'appel doit forcer une reprise si une
+    // erreur traîne, sinon elle ne s'efface jamais après correction de sa cause.
+    expect(source).toMatch(
+      /if \(decision === 'done' && typedStatus\?\.canonical_reconcile_error\) \{\s*decision = 'acquire'\s*\}/,
+    )
+
+    const decisionCall = source.indexOf('decideReconcileLock(typedStatus, Date.now())')
+    const overrideCheck = source.indexOf("decision === 'done' && typedStatus?.canonical_reconcile_error")
+    const concurrentCheck = source.indexOf("if (decision === 'concurrent') return 'concurrent'")
+    const alreadyCompletedCheck = source.indexOf("return 'already_completed'")
+
+    expect(decisionCall).toBeGreaterThan(-1)
+    // L'override doit intervenir entre le calcul de la décision et tout usage de
+    // celle-ci (concurrent / already_completed / acquire) — sinon une erreur
+    // résiduelle continuerait de produire un faux 'already_completed'.
+    expect(overrideCheck).toBeGreaterThan(decisionCall)
+    expect(concurrentCheck).toBeGreaterThan(overrideCheck)
+    expect(alreadyCompletedCheck).toBeGreaterThan(overrideCheck)
+  })
+
   it('câble le P6 Live Writer historical_pdf en best-effort, après attach et avant le pont documentaire', () => {
     const source = read('lib/subjects/historical-import-post-processing.ts')
     expect(source).toMatch(/runTrackedPointLiveWriterForHistoricalRun\(\{ runId, siteId \}\)/)
