@@ -60,8 +60,9 @@ export async function MemoryBuildStatus({
 
   if (pendingCount > 0) {
     return (
-      <section className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-[13px]">
-        <p>
+      <section className="flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-[13px] dark:border-emerald-900/50 dark:bg-emerald-950/20">
+        <p className="flex items-center gap-1.5">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
           Mémoire à jour — {status.subjectCount} sujets métier analysés · {pendingCount} rapprochement{pendingCount > 1 ? 's' : ''} à examiner
         </p>
         <Link
@@ -75,7 +76,8 @@ export async function MemoryBuildStatus({
   }
 
   return (
-    <section className="rounded-xl border px-4 py-3 text-[13px] text-muted-foreground">
+    <section className="flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3 text-[13px] text-muted-foreground dark:border-emerald-900/50 dark:bg-emerald-950/20">
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
       Mémoire à jour — Aucun rapprochement à examiner
     </section>
   )

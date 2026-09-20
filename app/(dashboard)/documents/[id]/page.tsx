@@ -11,7 +11,7 @@ import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
 import { listTenders } from '@/lib/db/tenders'
 import { listTeams } from '@/lib/db/teams'
-import { indexationState } from '@/lib/documents/labels'
+import { indexationState, documentTypeLabel } from '@/lib/documents/labels'
 import { canViewDocument } from '@/lib/documents/access'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getAverageCostForFeatures } from '@/lib/db/ai-usage-rollup'
@@ -160,10 +160,14 @@ export default async function DocumentViewerPage({
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold break-words">{doc.filename}</h1>
           <p className="text-sm text-muted-foreground">
-            {doc.document_type} · {ANALYSIS_LABEL[doc.analysis_status] ?? doc.analysis_status}
-            {doc.analysis_status === 'failed' && doc.failed_reason
-              ? ` — ${doc.failed_reason}`
-              : ''}
+            {doc.document_type === 'historical_visit_report' ? (
+              documentTypeLabel(doc.document_type)
+            ) : (
+              <>
+                {documentTypeLabel(doc.document_type)} · {ANALYSIS_LABEL[doc.analysis_status] ?? doc.analysis_status}
+                {doc.analysis_status === 'failed' && doc.failed_reason ? ` — ${doc.failed_reason}` : ''}
+              </>
+            )}
           </p>
         </div>
         {(role === 'admin' || role === 'manager') && (
@@ -226,12 +230,14 @@ export default async function DocumentViewerPage({
             <dt className="text-xs text-muted-foreground">Visibilité</dt>
             <dd className="font-medium">{doc.visibility_level}</dd>
           </div>
-          <div>
-            <dt className="text-xs text-muted-foreground">Statut</dt>
-            <dd className="font-medium">
-              {ANALYSIS_LABEL[doc.analysis_status] ?? doc.analysis_status}
-            </dd>
-          </div>
+          {doc.document_type !== 'historical_visit_report' && (
+            <div>
+              <dt className="text-xs text-muted-foreground">Statut</dt>
+              <dd className="font-medium">
+                {ANALYSIS_LABEL[doc.analysis_status] ?? doc.analysis_status}
+              </dd>
+            </div>
+          )}
           <div>
             <dt className="text-xs text-muted-foreground">Temps mémoriel</dt>
             <dd className="font-medium" title={memState ? MEMORY_STATE_MEANING[memState] : undefined}>

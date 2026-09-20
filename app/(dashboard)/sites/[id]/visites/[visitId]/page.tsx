@@ -339,7 +339,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
           {isImport && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">Visite historique importée</span>
           )}
-          <EtatCr crHref={crHref} doc={narrative.validated.document} />
+          {!isImport && <EtatCr crHref={crHref} doc={narrative.validated.document} />}
         </div>
         {isImport && (
           <p className="mt-1 text-[13px] text-muted-foreground">{frDate(debut)}</p>
@@ -360,14 +360,20 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
               Par <span className="font-medium text-foreground">{conducteur}</span> · Conducteur de travaux
             </span>
           )}
-          {!visit.ended_at && <span>visite en cours</span>}
+          {!isImport && !visit.ended_at && <span>visite en cours</span>}
         </p>
       </header>
 
       <div className="lg:flex lg:items-start lg:gap-4">
         <div className="min-w-0 flex-1 space-y-4">
-          {/* ── ÉTAT DE L'ANALYSE — jamais un numéro de version ─────────────── */}
-          <BandeauAnalyse enrichment={enrichment} visitId={visitId} crHref={crHref} isImport={isImport} />
+          {/* ── ÉTAT DE L'ANALYSE — jamais un numéro de version ───────────────
+              Sur une visite historique, MemoryBuildStatus ci-dessous est l'ÉTAT
+              PRINCIPAL unique : ce bandeau (fraîcheur d'extraction) ne doit
+              jamais lui faire concurrence (ex. « Analyse MemorIA à jour » à
+              côté de « Mise à jour de la mémoire interrompue »). */}
+          {!isImport && (
+            <BandeauAnalyse enrichment={enrichment} visitId={visitId} crHref={crHref} />
+          )}
 
           {/* ── CONSTRUCTION DE LA MÉMOIRE — statut du pipeline occurrences + similarité (P1-A) ── */}
           {isImport && runId && (
@@ -732,19 +738,15 @@ function BandeauAnalyse({
   enrichment,
   visitId,
   crHref,
-  isImport,
 }: {
   enrichment: { afterVisit: number; sinceLastAnalysis: number; lastAnalysisAt: string | null }
   visitId: string
   crHref: string | null
-  isImport?: boolean
 }) {
   if (!enrichment.lastAnalysisAt) {
     return (
       <section className="rounded-xl border border-dashed px-4 py-3 text-[13px] text-muted-foreground">
-        {isImport
-          ? "Visite historique — importée depuis un PV, aucune analyse IA sur place."
-          : "Cette visite n’a pas encore été lue par MemorIA."}
+        Cette visite n’a pas encore été lue par MemorIA.
       </section>
     )
   }

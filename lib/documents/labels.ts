@@ -44,8 +44,14 @@ export const DOCUMENT_TYPE_OPTIONS: { value: DocumentType; label: string }[] = [
   { value: 'facture', label: 'Facture' },
   { value: 'preuve', label: 'Preuve' },
   { value: 'autre', label: 'Autre' },
-  { value: 'historical_visit_report', label: 'PV / rapport de visite historique' },
+  { value: 'historical_visit_report', label: 'PV historique' },
 ]
+
+const DOCUMENT_TYPE_LABEL = new Map(DOCUMENT_TYPE_OPTIONS.map((o) => [o.value, o.label]))
+
+export function documentTypeLabel(type: DocumentType | string): string {
+  return DOCUMENT_TYPE_LABEL.get(type as DocumentType) ?? type
+}
 
 export const VISIBILITY_OPTIONS: { value: string; label: string }[] = [
   { value: 'admin_only', label: 'Admin uniquement' },

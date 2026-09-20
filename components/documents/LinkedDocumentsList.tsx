@@ -1,6 +1,6 @@
 import { documentHref } from '@/lib/knowledge/document-href'
 import Link from 'next/link'
-import { analysisStatusLabel } from '@/lib/documents/labels'
+import { analysisStatusLabel, documentTypeLabel } from '@/lib/documents/labels'
 import type { DbDocument } from '@/types/db'
 
 // Composant PRÉSENTATIONNEL partagé (site, contrat, …) — consommateur mince
@@ -48,12 +48,14 @@ export function LinkedDocumentsList({
               </Link>
             )}
             <span className="text-xs text-muted-foreground">
-              {' '}· {d.document_type}
+              {' '}· {documentTypeLabel(d.document_type)}
             </span>
           </span>
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            {analysisStatusLabel(d.analysis_status)}
-          </span>
+          {d.document_type !== 'historical_visit_report' && (
+            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+              {analysisStatusLabel(d.analysis_status)}
+            </span>
+          )}
         </li>
       ))}
     </ul>
