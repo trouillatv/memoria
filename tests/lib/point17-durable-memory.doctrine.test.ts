@@ -16,13 +16,15 @@ describe('Point 17A — read-model : durabilité par thematic_category, sans tou
   })
 
   it('les familles non-knowledge (intervenants/décisions/vigilances) restent durables', () => {
-    expect(review).toMatch(/durable: true, thematicCategory: null, sourceCount: 0/)
+    expect(review).toMatch(/durable: true, thematicCategory: null, sourceCount: 0, sourceOccurrences: \[\]/)
   })
 
   it('provenance « N sources » construite depuis les colonnes existantes, jamais inventée', () => {
     expect(entries).toContain('source_capture_ids')
     expect(entries).toContain('thematic_category')
-    expect(review).toMatch(/sourceCount: new Set\(\[\.\.\.\(e\.sourceReportId/)
+    expect(review).toContain('readConfirmedSourceOccurrences')
+    expect(review).toContain('sourceOccurrences.get(e.id)')
+    expect(review).toContain('sourceOccurrences.get(w.id)')
   })
 
   it('aucune écriture, aucune migration : lecture seule (status reste décidé par la base)', () => {
@@ -57,5 +59,12 @@ describe('Point 17A — UI : deux niveaux, rien de perdu, gestes préservés', (
     // ArchiveKnowledgeEntryButton est dans ConfirmedRow, utilisé par CappedList (head + reste)
     expect(ui).toMatch(/function ConfirmedRow[\s\S]*?ArchiveKnowledgeEntryButton/)
     expect(ui).toContain('WhyButton')
+  })
+
+  it('les occurrences sont rendues par ConfirmedRow, donc visibles avant et apres le +N autres', () => {
+    expect(ui).toContain('formatOccurrenceSummary(item)')
+    expect(ui).toMatch(/head\.map\(\(c\) => <ConfirmedRow/)
+    expect(ui).toMatch(/rest\.map\(\(c\) => <ConfirmedRow/)
+    expect(ui).toContain('occurrence')
   })
 })

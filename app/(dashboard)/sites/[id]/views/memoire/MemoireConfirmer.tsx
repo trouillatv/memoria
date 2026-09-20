@@ -36,6 +36,7 @@ const ACTIVITY_THEME_LABEL: Record<string, string> = {
 }
 
 function ConfirmedRow({ item, siteId }: { item: ConfirmedItem; siteId: string }) {
+  const occurrenceSummary = formatOccurrenceSummary(item)
   return (
     <li className="flex items-start gap-2 text-[13px] text-foreground/90">
       <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
@@ -45,11 +46,8 @@ function ConfirmedRow({ item, siteId }: { item: ConfirmedItem; siteId: string })
         ) : (
           item.title
         )}
+        {occurrenceSummary}
         {item.nature && <span className="ml-1.5 text-[11px] text-muted-foreground">· {item.nature}</span>}
-        {/* Provenance discrète, jamais inventée : seulement si des sources existent. */}
-        {item.sourceCount > 0 && (
-          <span className="ml-1.5 text-[11px] text-muted-foreground/70">· confirmé dans {item.sourceCount} source{item.sourceCount > 1 ? 's' : ''}</span>
-        )}
         {item.group === 'Décisions' && (
           <span className="mt-0.5 block"><WhyButton objectType="decision" objectId={item.id} label="Voir l’origine" /></span>
         )}
@@ -63,6 +61,30 @@ function ConfirmedRow({ item, siteId }: { item: ConfirmedItem; siteId: string })
 
 /** Liste plafonnée : les CAP premiers d'emblée, le reste derrière un <details>.
  *  Rien n'est perdu, aucun geste enterré, jamais 381 cartes visibles d'emblée. */
+function formatOccurrenceSummary(item: ConfirmedItem): ReactNode {
+  const occurrences = item.sourceOccurrences
+  if (!occurrences || occurrences.length === 0) return null
+  const count = occurrences.length
+  const countLabel = `${count} occurrence${count > 1 ? 's' : ''}`
+  const shown = count > 3 ? occurrences.slice(-1) : occurrences
+  const prefix = count > 3 ? `${countLabel} - derniere ` : `${countLabel} - `
+  return (
+    <span className="ml-1.5 text-[11px] text-muted-foreground/70">
+      - {prefix}
+      {shown.map((occ, index) => (
+        <span key={occ.reportId}>
+          {index > 0 && ' - '}
+          {occ.href ? (
+            <Link href={occ.href} className="hover:underline">{occ.label}</Link>
+          ) : (
+            occ.label
+          )}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 function CappedList({ items, siteId }: { items: ConfirmedItem[]; siteId: string }) {
   const head = items.slice(0, CAP)
   const rest = items.slice(CAP)

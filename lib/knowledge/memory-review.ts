@@ -20,6 +20,8 @@ import {
 import { isDurableTheme } from '@/lib/knowledge/memory-durability'
 import { listDecisionsBySite, type SiteDecision } from '@/lib/db/site-decisions'
 import { listSiteIntervenants, type SiteIntervenant } from '@/lib/db/site-intervenants'
+import { desktopSourceHref, reportProvenanceType } from '@/lib/knowledge/action-provenance'
+import { readImportDocumentDates } from '@/lib/knowledge/repository'
 import type { DbKnowledgeProposal } from '@/lib/db/knowledge-proposals'
 import type { KnowledgeEntry, Watchpoint } from '@/lib/db/site-memory-entries'
 
@@ -33,6 +35,13 @@ export interface ProposalProvenance {
   visitedAt: string | null
   photos: number
   vocals: number
+}
+
+export interface ConfirmedSourceOccurrence {
+  reportId: string
+  label: string
+  dateLabel: string | null
+  href: string | null
 }
 
 /** Un élément à examiner, avec son geste et sa provenance. */
@@ -84,6 +93,7 @@ export interface ConfirmedItem {
    *  (`source_report_id` ∪ `source_capture_ids`) — provenance discrète « confirmé
    *  dans N source(s) ». `0` = non démontrable, on n'affiche rien (jamais inventé). */
   sourceCount: number
+  sourceOccurrences?: ConfirmedSourceOccurrence[]
 }
 
 export interface MemoryReview {
@@ -120,6 +130,10 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
     (r) => allowedKinds.includes(r.kind) && (!orgIds.length || !r.organization_id || orgIds.includes(r.organization_id)),
   )
   const provenance = await readProvenance([...new Set(proposed.map((r) => r.report_id).filter((id): id is string => !!id))])
+  const sourceOccurrences = await readConfirmedSourceOccurrences(siteId, [
+    ...entries.map((e) => ({ key: e.id, reportId: e.sourceReportId, captureIds: e.sourceCaptureIds })),
+    ...watchpoints.map((w) => ({ key: w.id, reportId: w.sourceReportId, captureIds: w.sourceCaptureIds })),
+  ]).catch(() => new Map<string, ConfirmedSourceOccurrence[]>())
 
   // Ce que le chantier sait, lu dans les objets eux-mêmes. L'ordre suit ce qu'un
   // conducteur cherche : le durable d'abord, le périssable ensuite.
@@ -131,7 +145,8 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
     href: null, knowledgeEntryId: e.id,
     durable: isDurableTheme(e.thematicCategory),
     thematicCategory: e.thematicCategory,
-    sourceCount: new Set([...(e.sourceReportId ? [e.sourceReportId] : []), ...e.sourceCaptureIds]).size,
+    sourceCount: sourceOccurrences.get(e.id)?.length ?? 0,
+    sourceOccurrences: sourceOccurrences.get(e.id) ?? [],
   })
   const confirmed: ConfirmedItem[] = [
     // Ordre inchangé (durable_knowledge d'abord) ; la sélection d'affichage
@@ -146,17 +161,19 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
       nature: null,
       href: `/sites/${siteId}/intervenant/${i.id}`,
       knowledgeEntryId: null,
-      durable: true, thematicCategory: null, sourceCount: 0,
+      durable: true, thematicCategory: null, sourceCount: 0, sourceOccurrences: [],
     })),
     ...decisions.map((d) => ({
       id: d.id, group: 'Décisions', title: d.titre, nature: null,
       href: `/sites/${siteId}/decision/${d.id}`,
       knowledgeEntryId: null,
-      durable: true, thematicCategory: null, sourceCount: 0,
+      durable: true, thematicCategory: null, sourceCount: 0, sourceOccurrences: [],
     })),
     ...watchpoints.map((w) => ({
       id: w.id, group: 'Points de vigilance', title: w.title, nature: null, href: null,
-      knowledgeEntryId: null, durable: true, thematicCategory: null, sourceCount: 0,
+      knowledgeEntryId: null, durable: true, thematicCategory: null,
+      sourceCount: sourceOccurrences.get(w.id)?.length ?? 0,
+      sourceOccurrences: sourceOccurrences.get(w.id) ?? [],
     })),
   ]
 
@@ -179,6 +196,88 @@ export async function getMemoryReview(siteId: string, options?: { includeWork?: 
 /** La nature d'une information, dite au conducteur — jamais 'durable_knowledge'. */
 function natureOf(kind: KnowledgeEntryKind): string {
   return knowledgeKindLabel(kind)
+}
+
+async function readConfirmedSourceOccurrences(
+  siteId: string,
+  refs: Array<{ key: string; reportId: string | null; captureIds: string[] }>,
+): Promise<Map<string, ConfirmedSourceOccurrence[]>> {
+  const out = new Map<string, ConfirmedSourceOccurrence[]>()
+  const captureIds = [...new Set(refs.flatMap((r) => r.captureIds))]
+  const db = createAdminClient()
+
+  const captureToReport = new Map<string, string>()
+  if (captureIds.length > 0) {
+    const { data: captures } = await db.from('visit_capture').select('id, report_id').in('id', captureIds)
+    for (const c of (captures ?? []) as Array<{ id: string; report_id: string | null }>) {
+      if (c.report_id) captureToReport.set(c.id, c.report_id)
+    }
+  }
+
+  const reportsByItem = new Map<string, Set<string>>()
+  const allReportIds = new Set<string>()
+  for (const ref of refs) {
+    const ids = new Set<string>()
+    if (ref.reportId) ids.add(ref.reportId)
+    for (const captureId of ref.captureIds) {
+      const reportId = captureToReport.get(captureId)
+      if (reportId) ids.add(reportId)
+    }
+    reportsByItem.set(ref.key, ids)
+    for (const id of ids) allReportIds.add(id)
+  }
+
+  const reportIds = [...allReportIds]
+  if (reportIds.length === 0) return out
+
+  const { data: reports } = await db
+    .from('site_reports')
+    .select('id, origin, started_at, ended_at, created_at')
+    .eq('site_id', siteId)
+    .in('id', reportIds)
+  const reportRows = (reports ?? []) as Array<{
+    id: string
+    origin: string | null
+    started_at: string | null
+    ended_at: string | null
+    created_at: string | null
+  }>
+  const reportById = new Map(reportRows.map((r) => [r.id, r]))
+  const importDates = await readImportDocumentDates(reportRows.filter((r) => r.origin === 'import').map((r) => r.id))
+
+  const occurrenceForReport = (reportId: string): ConfirmedSourceOccurrence | null => {
+    const report = reportById.get(reportId)
+    if (!report) return null
+    const type = reportProvenanceType(report.origin)
+    const rawDate = type === 'pv'
+      ? importDates.get(report.id) ?? null
+      : report.started_at ?? report.ended_at ?? report.created_at
+    const dateLabel = rawDate ? formatDateShort(rawDate) : null
+    const prefix = type === 'pv' ? 'PV' : type === 'visite' ? 'Visite' : 'Reunion'
+    return {
+      reportId,
+      label: dateLabel ? `${prefix} du ${dateLabel}` : prefix,
+      dateLabel,
+      href: desktopSourceHref(type, { siteId, reportId }),
+    }
+  }
+
+  for (const ref of refs) {
+    const list = [...(reportsByItem.get(ref.key) ?? [])]
+      .map(occurrenceForReport)
+      .filter((o): o is ConfirmedSourceOccurrence => Boolean(o))
+      .sort((a, b) => (a.dateLabel ?? '').localeCompare(b.dateLabel ?? '') || a.reportId.localeCompare(b.reportId))
+    out.set(ref.key, list)
+  }
+  return out
+}
+
+function formatDateShort(value: string): string {
+  const [date] = value.split('T')
+  const [year, month, day] = date.split('-').map((n) => Number(n))
+  if (!year || !month || !day) return value
+  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(Date.UTC(year, month - 1, day)))
 }
 
 /** La visite d'origine et ses preuves. Une provenance absente reste absente :

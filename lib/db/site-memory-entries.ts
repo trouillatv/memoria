@@ -238,6 +238,7 @@ export interface Watchpoint {
   title: string
   body: string | null
   sourceReportId: string | null
+  sourceCaptureIds: string[]
   confirmedAt: string
 }
 
@@ -245,7 +246,7 @@ export interface Watchpoint {
 export async function listWatchpoints(siteId: string): Promise<Watchpoint[]> {
   const { data } = await createAdminClient()
     .from('site_watchpoints')
-    .select('id, title, body, report_id, confirmed_at')
+    .select('id, title, body, report_id, source_capture_ids, confirmed_at')
     .eq('site_id', siteId)
     .eq('status', 'active')
     .is('deleted_at', null)
@@ -255,6 +256,7 @@ export async function listWatchpoints(siteId: string): Promise<Watchpoint[]> {
     title: r.title as string,
     body: (r.body as string) ?? null,
     sourceReportId: (r.report_id as string) ?? null,
+    sourceCaptureIds: (r.source_capture_ids as string[]) ?? [],
     confirmedAt: r.confirmed_at as string,
   }))
 }
