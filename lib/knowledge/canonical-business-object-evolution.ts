@@ -326,10 +326,10 @@ async function loadCboReducedStatesUncached(
 
   // 3. Résolution des membres → site_action vivant → report → document (id + date métier).
   //    Un membre sans site_action = DANGLING → absent de cette map → ignoré (jamais inventé).
-  const actionInfo = new Map<string, { reportId: string | null }>()
-  for (const a of await fetchAllChunks<{ id: string; report_id: string | null }>(
-    [...allMemberIds], (c) => sb.from('site_actions').select('id, report_id').in('id', c),
-  )) actionInfo.set(a.id, { reportId: a.report_id })
+  const actionInfo = new Map<string, { reportId: string | null; supersededBy: string | null }>()
+  for (const a of await fetchAllChunks<{ id: string; report_id: string | null; superseded_by: string | null }>(
+    [...allMemberIds], (c) => sb.from('site_actions').select('id, report_id, superseded_by').in('id', c),
+  )) actionInfo.set(a.id, { reportId: a.report_id, supersededBy: a.superseded_by })
   const reportIds = [...new Set([...actionInfo.values()].map((a) => a.reportId).filter((x): x is string => !!x))]
   const reportDoc = new Map<string, string>()
   for (const r of await fetchAllChunks<{ id: string; source_document_id: string | null }>(
@@ -349,6 +349,11 @@ async function loadCboReducedStatesUncached(
     const docId = reportDoc.get(reportId)
     return !!docId && deletedMemberDocIds.has(docId)
   }
+  // P0-PV4-AUDIT Axe A (2026-09-21) : un membre technique DOUBLON (fn_apply_action_cbo_merge,
+  // superseded_by posé automatiquement) n'est pas un signal métier — son cancelled ne doit jamais
+  // faire compter le CBO comme résolu. Distinct du geste humain « Écarter » (fn_cancel_action),
+  // qui laisse superseded_by null et reste inchangé (native_cancelled = resolving conservé).
+  const isMemberSuperseded = (memberId: string): boolean => !!actionInfo.get(memberId)?.supersededBy
   // date métier + document source d'un membre (undefined si dangling ou chaîne incomplète).
   const memberBusiness = (memberId: string): { docId: string; date: string } | null => {
     const a = actionInfo.get(memberId); if (!a?.reportId) return null
@@ -404,7 +409,7 @@ async function loadCboReducedStatesUncached(
   // 6. Réduction par CBO — assemblage PUR (assembleCboEvents) puis reduceCboLifecycle.
   for (const cbo of cbos) {
     const memberIds = memberIdsByCbo.get(cbo.id) ?? []
-    const eligibleMemberIds = memberIds.filter((memberId) => !isMemberSourceDeleted(memberId))
+    const eligibleMemberIds = memberIds.filter((memberId) => !isMemberSourceDeleted(memberId) && !isMemberSuperseded(memberId))
     const members: CboMemberProvenance[] = eligibleMemberIds.map((memberId) => {
       const biz = memberBusiness(memberId)
       return { memberId, docId: biz?.docId ?? null, date: biz?.date ?? null }
