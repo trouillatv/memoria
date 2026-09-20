@@ -70,7 +70,7 @@ export default async function SitePointsPage({ params, searchParams }: PageProps
         siteId={id}
         lastPvDate={list.lastPvDate}
         chantierNeedsYouCount={chantierNeedsYouCount}
-        defaultTab={tab === 'delta' ? 'delta' : undefined}
+        defaultTab={tab === 'subject' || tab === 'all' || tab === 'delta' ? tab : undefined}
         defaultPilotageTypeFilter={ptype}
         defaultPilotageDeadlineFilter={pdeadline}
       />

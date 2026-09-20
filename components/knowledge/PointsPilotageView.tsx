@@ -279,6 +279,34 @@ function ChantierNeedsYouCard({ siteId, count }: { siteId: string; count: number
   )
 }
 
+function EmptyPointReviewCard({ siteId }: { siteId: string }) {
+  return (
+    <div className="rounded-lg border border-dashed px-4 py-3 text-[13px]">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-medium text-foreground">Points à revoir : 0</p>
+        <p className="text-[12.5px] text-muted-foreground">Aucun Point ne nécessite de décision immédiate.</p>
+      </div>
+      <p className="mt-2 text-muted-foreground">
+        Continuer avec{' '}
+        <Link
+          href={`/sites/${siteId}/points?tab=subject`}
+          className="font-medium text-foreground hover:underline"
+        >
+          Voir les sujets
+        </Link>
+        {' '}ou{' '}
+        <Link
+          href={`/sites/${siteId}/points?tab=all`}
+          className="font-medium text-foreground hover:underline"
+        >
+          Voir tous les Points
+        </Link>
+        .
+      </p>
+    </div>
+  )
+}
+
 type PilotageTypeFilter = 'all' | 'action' | 'reserve' | 'deadline'
 type PilotageDeadlineFilter = 'all' | 'late' | 'upcoming' | 'none'
 
@@ -481,10 +509,8 @@ export function PointsPilotageView({
     return (
       <div className="space-y-4">
         {tabs}
-        <p className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-muted-foreground">
-          Aucun Point à revoir : rien de réouvert, aucune question MemorIA en attente, rien qui traîne ni n’a changé récemment.
-        </p>
         <ChantierNeedsYouCard siteId={siteId} count={chantierNeedsYouCount} />
+        <EmptyPointReviewCard siteId={siteId} />
       </div>
     )
   }
@@ -494,6 +520,7 @@ export function PointsPilotageView({
       <div className="space-y-4">
         {tabs}
         {filterBar}
+        <ChantierNeedsYouCard siteId={siteId} count={chantierNeedsYouCount} />
         <div className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-muted-foreground">
           <p>Aucun Point ne correspond à ces filtres.</p>
           <button
@@ -504,7 +531,6 @@ export function PointsPilotageView({
             Réinitialiser les filtres
           </button>
         </div>
-        <ChantierNeedsYouCard siteId={siteId} count={chantierNeedsYouCount} />
       </div>
     )
   }
@@ -563,6 +589,7 @@ export function PointsPilotageView({
     <div className="space-y-4">
       {tabs}
       {filterBar}
+      <ChantierNeedsYouCard siteId={siteId} count={chantierNeedsYouCount} />
 
       <div className="rounded-xl border p-4">
         <p className="text-[14.5px] font-medium text-foreground">
@@ -590,8 +617,6 @@ export function PointsPilotageView({
           Commencer ma revue — {visibleToReview.length}
         </button>
       </div>
-
-      <ChantierNeedsYouCard siteId={siteId} count={chantierNeedsYouCount} />
 
       <div className="space-y-2">
         <p className="text-[12.5px] font-medium text-muted-foreground">À revoir maintenant</p>
