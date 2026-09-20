@@ -15,6 +15,7 @@ import { runHistoricalMemoryBuildPipeline } from '@/lib/subjects/memory-build-pi
 import { resolveSiteDocumentCompletionsByProposal } from '@/lib/knowledge/document-completion-resolver'
 import { runTrackedPointLiveWriterForHistoricalRun } from '@/lib/db/tracked-point-live-writer-historical-adapter'
 import { isSourceDocumentDeleted } from '@/lib/documents/historical-source-eligibility'
+import { resyncOrphanedTrackedPointsForSite } from '@/lib/db/tracked-point-subject-resync'
 
 export type HistoricalImportPostProcessingOutcome =
   | 'completed'
@@ -114,6 +115,35 @@ async function catchUpOrphanedHistoricalOccurrences(
         err instanceof Error ? err.message : String(err),
       )
     }
+  }
+}
+
+/**
+ * Axe B (P0 — resync Point → Sujet après réconciliation tardive) — un
+ * tracked_point.canonical_subject_id n'est écrit qu'à la création du Point
+ * (migration 401) ; si l'identité canonique de son thread est résolue APRÈS
+ * coup (import ultérieur, rattrapage historique), le Point reste Sans Sujet
+ * indéfiniment sans ce correctif. Best-effort, additif, idempotent (scope
+ * canonical_subject_id IS NULL) : ne devine jamais une identité ambiguë ou
+ * non résolue, ne touche jamais un Point sous override humain actif (RPC
+ * fn_resync_orphaned_tracked_points, migration 421).
+ */
+async function resyncOrphanedTrackedPoints(siteId: string): Promise<void> {
+  try {
+    const rows = await resyncOrphanedTrackedPointsForSite(siteId)
+    const resyncedCount = rows.filter((r) => r.verdict === 'resynced').length
+    if (resyncedCount > 0) {
+      console.log(
+        `[historical-import-post-processing] resync orphelins Point→Sujet: site=${siteId} ` +
+          `rattachés=${resyncedCount}/${rows.length}`,
+      )
+    }
+  } catch (err) {
+    console.error(
+      '[historical-import-post-processing] resync orphelins Point→Sujet failed:',
+      siteId,
+      err instanceof Error ? err.message : String(err),
+    )
   }
 }
 
@@ -236,6 +266,7 @@ export async function runHistoricalImportPostProcessing(
 
       const orphanedRunIds = corpusResult.runIdsWithNewIdentity.filter((id) => id !== runId)
       await catchUpOrphanedHistoricalOccurrences(sb, siteId, orphanedRunIds)
+      await resyncOrphanedTrackedPoints(siteId)
 
       await projectCanonicalSubjectSafely({
         siteId,
