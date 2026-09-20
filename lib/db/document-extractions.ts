@@ -664,6 +664,24 @@ export interface ProposalMaterializationReport {
   autoAccepted: number
   rejectedByGuard: number
   materialized: number
+  /**
+   * Propositions `person` sans `linkedCompanyName` résolvable : par conception
+   * (F3-2, cf. materialize-historical-run.ts et historical-participant-eligibility.ts),
+   * ces propositions ne créent jamais de contact et restent en permanence à
+   * review_status='accepted'/'edited' — elles ne doivent jamais compter dans le
+   * dénominateur « doit être matérialisé ».
+   */
+  exemptFromMaterialization: number
+}
+
+/** Reflète EXACTEMENT la condition de skip `if (!linkedCompanyName) continue` du
+ *  pipeline de matérialisation (materialize-historical-run.ts) — ne jamais dupliquer
+ *  cette règle ailleurs sans passer par cette fonction. */
+export function isPersonExemptFromMaterialization(row: {
+  proposal_family: string
+  source_payload: { linkedCompanyName?: string | null } | null
+}): boolean {
+  return row.proposal_family === 'person' && !row.source_payload?.linkedCompanyName
 }
 
 /**
@@ -679,16 +697,23 @@ export async function getProposalMaterializationReport(
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('document_extraction_proposal')
-    .select('review_status')
+    .select('review_status, proposal_family, source_payload')
     .eq('extraction_run_id', runId)
   if (error) throw new Error(error.message)
 
-  const rows = (data ?? []) as Array<{ review_status: DocumentProposalReviewStatus }>
+  const rows = (data ?? []) as Array<{
+    review_status: DocumentProposalReviewStatus
+    proposal_family: string
+    source_payload: { linkedCompanyName?: string | null } | null
+  }>
   return {
     totalExtracted: rows.length,
     autoAccepted: rows.filter((r) => r.review_status !== 'pending').length,
     rejectedByGuard: rows.filter((r) => r.review_status === 'rejected').length,
     materialized: rows.filter((r) => r.review_status === 'materialized').length,
+    exemptFromMaterialization: rows.filter(
+      (r) => r.review_status !== 'pending' && isPersonExemptFromMaterialization(r),
+    ).length,
   }
 }
 

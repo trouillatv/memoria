@@ -323,7 +323,7 @@ export async function materializeHistoricalRun(
         } else {
           const { data: newContact } = await admin
             .from('company_contacts')
-            .insert({ company_id: companyId, full_name: personName, function: personFunction, email, phone })
+            .insert({ organization_id: orgId, company_id: companyId, full_name: personName, function: personFunction, email, phone })
             .select('id')
             .single()
           if (!newContact) continue

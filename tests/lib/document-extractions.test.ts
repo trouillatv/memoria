@@ -176,6 +176,8 @@ import {
   linkProposalEvidence,
   reviewProposal,
   recordMaterialization,
+  getProposalMaterializationReport,
+  isPersonExemptFromMaterialization,
 } from '@/lib/db/document-extractions'
 
 const ORG_A = 'org-aaaaaaaa'
@@ -468,5 +470,92 @@ describe('scénario complet PV historique', () => {
     await recordMaterialization({ organization_id: ORG_A, proposal_id: pAction, target_entity_type: 'site_action', target_entity_id: ENTITY_ID })
     await recordMaterialization({ organization_id: ORG_A, proposal_id: pAction, target_entity_type: 'site_action', target_entity_id: ENTITY_ID })
     expect(store.materializations.size).toBe(1)
+  })
+})
+
+// ── 9. Garde de complétude — exemption des personnes sans lien entreprise ───
+//
+// P0 PV4 48/51 — une proposition `person` SANS linkedCompanyName résolvable
+// n'est, par conception (F3-2), jamais matérialisée : elle reste indéfiniment
+// à review_status='accepted'/'edited', gérée par la seule projection
+// participants (historical-participant-eligibility.ts). Le dénominateur du
+// bilan de complétude doit l'exclure — sans jamais exempter une personne dont
+// le lien existe mais ne se résout pas (vrai trou de matérialisation).
+
+describe('isPersonExemptFromMaterialization', () => {
+  it('exempte une personne sans linkedCompanyName', () => {
+    expect(isPersonExemptFromMaterialization({ proposal_family: 'person', source_payload: null })).toBe(true)
+    expect(isPersonExemptFromMaterialization({ proposal_family: 'person', source_payload: { linkedCompanyName: null } })).toBe(true)
+  })
+
+  it('n’exempte pas une personne avec linkedCompanyName — même non résolu', () => {
+    expect(isPersonExemptFromMaterialization({ proposal_family: 'person', source_payload: { linkedCompanyName: 'Acme' } })).toBe(false)
+  })
+
+  it('n’exempte jamais une autre famille', () => {
+    expect(isPersonExemptFromMaterialization({ proposal_family: 'company', source_payload: null })).toBe(false)
+    expect(isPersonExemptFromMaterialization({ proposal_family: 'knowledge_fact', source_payload: null })).toBe(false)
+  })
+})
+
+describe('getProposalMaterializationReport — dénominateur avec exemption', () => {
+  it('famille réellement matérialisable manquante → le dénominateur la compte (garde doit bloquer)', async () => {
+    const runId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+    const [pAction] = await insertExtractionProposals(runId, [
+      { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'action', label: 'Reprendre le joint' },
+    ])
+    await reviewProposal(pAction, { action: 'accept' })
+    // jamais matérialisée dans ce test → doit rester dans le dénominateur
+
+    const report = await getProposalMaterializationReport(runId)
+    expect(report.exemptFromMaterialization).toBe(0)
+    const acceptedForMaterialization = report.autoAccepted - report.rejectedByGuard - report.exemptFromMaterialization
+    expect(acceptedForMaterialization).toBe(1)
+    expect(report.materialized).toBeLessThan(acceptedForMaterialization) // garde bloque, à raison
+  })
+
+  it('personne sans lien entreprise, intentionnellement hors matérialisation → ne bloque pas la garde', async () => {
+    const runId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+    const [pCompany, pPerson] = await insertExtractionProposals(runId, [
+      { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'company', label: 'Entreprise X' },
+      { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'person', label: 'Jean Dupont', source_payload: { linkedCompanyName: null } },
+    ])
+    await reviewProposal(pCompany, { action: 'accept' })
+    await reviewProposal(pPerson, { action: 'accept' })
+    // Simule la matérialisation réelle de la company (le person reste accepted à vie — F3-2).
+    await recordMaterialization({ organization_id: ORG_A, proposal_id: pCompany, target_entity_type: 'site_intervenants', target_entity_id: 'si-1' })
+
+    const report = await getProposalMaterializationReport(runId)
+    expect(report.exemptFromMaterialization).toBe(1)
+    const acceptedForMaterialization = report.autoAccepted - report.rejectedByGuard - report.exemptFromMaterialization
+    expect(report.materialized).toBeGreaterThanOrEqual(acceptedForMaterialization) // garde NE bloque PAS
+  })
+
+  it('familles mixtes → dénominateur correct (exempt soustrait, reste réel conservé)', async () => {
+    const runId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+    const [pKf, pCompany, pPersonExempt, pPersonUnresolved] = await insertExtractionProposals(runId, [
+      { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'knowledge_fact', label: 'Fait' },
+      { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'company', label: 'Entreprise Y' },
+      { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'person', label: 'Sans lien', source_payload: { linkedCompanyName: null } },
+      { organization_id: ORG_A, document_id: DOC_ID, proposal_family: 'person', label: 'Lien non résolu', source_payload: { linkedCompanyName: 'Entreprise Fantôme' } },
+    ])
+    await reviewProposal(pKf, { action: 'accept' })
+    await reviewProposal(pCompany, { action: 'accept' })
+    await reviewProposal(pPersonExempt, { action: 'accept' })
+    await reviewProposal(pPersonUnresolved, { action: 'accept' })
+    await recordMaterialization({ organization_id: ORG_A, proposal_id: pKf, target_entity_type: 'site_knowledge_entries', target_entity_id: 'ske-1' })
+    await recordMaterialization({ organization_id: ORG_A, proposal_id: pCompany, target_entity_type: 'site_intervenants', target_entity_id: 'si-2' })
+    // pPersonExempt reste accepted (F3-2, jamais matérialisé) ; pPersonUnresolved reste
+    // accepted aussi (lien non résolu = vrai trou), MAIS n'est PAS exempté.
+
+    const report = await getProposalMaterializationReport(runId)
+    expect(report.totalExtracted).toBe(4)
+    expect(report.autoAccepted).toBe(4)
+    expect(report.rejectedByGuard).toBe(0)
+    expect(report.exemptFromMaterialization).toBe(1) // seulement pPersonExempt
+    const acceptedForMaterialization = report.autoAccepted - report.rejectedByGuard - report.exemptFromMaterialization
+    expect(acceptedForMaterialization).toBe(3) // kf + company + person-lien-non-résolu
+    expect(report.materialized).toBe(2)
+    expect(report.materialized).toBeLessThan(acceptedForMaterialization) // le vrai trou (lien non résolu) reste visible
   })
 })

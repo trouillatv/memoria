@@ -164,7 +164,10 @@ export async function loadHistoricalMemoryUpdateStatus(
   if (await isSourceDocumentDeleted(db, typedReport.source_document_id)) return null
 
   const materializationReport = await getProposalMaterializationReport(runId)
-  const acceptedForMaterialization = materializationReport.autoAccepted - materializationReport.rejectedByGuard
+  const acceptedForMaterialization =
+    materializationReport.autoAccepted -
+    materializationReport.rejectedByGuard -
+    materializationReport.exemptFromMaterialization
   return deriveHistoricalMemoryUpdateStatus(typedReport, {
     acceptedForMaterialization,
     materialized: materializationReport.materialized,

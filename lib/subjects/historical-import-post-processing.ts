@@ -170,7 +170,10 @@ export async function runHistoricalImportPostProcessing(
   // (geste séparé, non idempotent au bon niveau ici) : il bloque et rend l'état
   // observable pour un dry-run/rattrapage explicite.
   const materializationReport = await getProposalMaterializationReport(runId)
-  const acceptedNotRejected = materializationReport.autoAccepted - materializationReport.rejectedByGuard
+  const acceptedNotRejected =
+    materializationReport.autoAccepted -
+    materializationReport.rejectedByGuard -
+    materializationReport.exemptFromMaterialization
   if (acceptedNotRejected > 0 && materializationReport.materialized < acceptedNotRejected) {
     const reason =
       `Matérialisation historique incomplète: ${materializationReport.materialized}/` +

@@ -91,7 +91,7 @@ describe('BATCH-0 — runHistoricalImportBatch', () => {
     mocks.acceptAllPendingForRun.mockResolvedValue({ ok: true, count: 2 })
     mocks.pinAllSnapshotsForRun.mockResolvedValue(undefined)
     mocks.getProposalMaterializationReport.mockResolvedValue({
-      totalExtracted: 0, autoAccepted: 0, rejectedByGuard: 0, materialized: 0,
+      totalExtracted: 0, autoAccepted: 0, rejectedByGuard: 0, materialized: 0, exemptFromMaterialization: 0,
     })
     mocks.getPhotoMaterializationReport.mockResolvedValue({
       detected: 0, nativeRetained: 0, snapshotFallbackRetained: 0, integratedToVisit: 0,
