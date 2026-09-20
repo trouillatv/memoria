@@ -30,6 +30,7 @@ import { LifelineEventBadge } from '@/components/knowledge/LifelineEventBadge'
 import { cn } from '@/lib/utils'
 import { confirmSuggestedLink, rejectSuggestedLink, deleteCanonicalLinkAction } from './link-actions'
 import CreateLinkForm from './CreateLinkForm'
+import { SubjectCurationControls } from './SubjectCurationControls'
 
 export const dynamic = 'force-dynamic'
 
@@ -1568,7 +1569,6 @@ export default async function CanonicalSubjectLifePage({ params, searchParams }:
   // contredire ("aucune information disponible" à côté d'états connus).
   const narrativeResult = cboSummary ? null : await buildSubjectNarrative(life, intel, user.id).catch(() => null)
 
-  const realOccurrences = life.occurrences.filter((o) => !o.isGap)
   const confirmedLinks = life.links.filter((l) => l.status === 'confirmed')
 
   // Résumé déterministe — dérivé de la provenance sans requête supplémentaire
@@ -1658,6 +1658,12 @@ export default async function CanonicalSubjectLifePage({ params, searchParams }:
               {confirmedLinks.length > 0 && ` · ${confirmedLinks.length} lien${confirmedLinks.length > 1 ? 's' : ''} confirmé${confirmedLinks.length > 1 ? 's' : ''}`}
             </p>
           )}
+          <SubjectCurationControls
+            siteId={siteId}
+            subjectId={canonicalSubjectId}
+            label={life.label}
+            candidates={pickerItems}
+          />
         </section>
 
         {/* Formulations regroupées (winner) */}

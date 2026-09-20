@@ -460,6 +460,7 @@ export function PointFicheView({
   subjectCuration?: {
     subjects: SubjectPickerItem[]
     isManual: boolean
+    curationKind: 'target_subject' | 'detached' | 'created_subject' | null
   }
   subjectHref?: string
   /** La fiche entreprise (`/sites/[id]/entreprise/[companyId]`) n'existe qu'en
@@ -702,6 +703,7 @@ export function PointFicheView({
                 currentSubjectLabel={p.ownerCanonicalSubjectLabel}
                 subjects={subjectCuration.subjects}
                 isManual={subjectCuration.isManual}
+                curationKind={subjectCuration.curationKind}
               />
             </section>
           )}

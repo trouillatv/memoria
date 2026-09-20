@@ -41,6 +41,7 @@ export default async function PointFichePage({
     getTrackedPointSubjectCurationState(point.id).catch(() => ({
       isManual: false,
       overrideId: null,
+      curationKind: null,
       previousCanonicalSubjectId: null,
       targetCanonicalSubjectId: null,
     })),
@@ -81,7 +82,11 @@ export default async function PointFichePage({
         responsibleCandidates={responsibleCandidates}
         companies={companies}
         subjectMiniContext={subjectMiniContext}
-        subjectCuration={{ subjects: subjectPickerItems, isManual: subjectCurationState.isManual }}
+        subjectCuration={{
+          subjects: subjectPickerItems,
+          isManual: subjectCurationState.isManual,
+          curationKind: subjectCurationState.curationKind,
+        }}
         subjectHref={point.ownerCanonicalSubjectId ? `/sites/${id}/historique/sujets/${point.ownerCanonicalSubjectId}` : undefined}
       />
     </div>
