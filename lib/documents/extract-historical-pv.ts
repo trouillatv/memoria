@@ -70,12 +70,15 @@ function log(event: string, documentId: string, extra?: Record<string, unknown>)
 
 // Classification des images extraites (P0-Photo-C).
 // Déterministe : s'appuie uniquement sur les champs déjà dans CaptionResult, sans nouvel appel Vision.
-type ImageClass = 'decorative' | 'document_context' | 'evidence' | 'uncertain'
+export type ImageClass = 'decorative' | 'document_context' | 'evidence' | 'uncertain'
 
 // Mots-clés dans visual_description indiquant un plan/carte/schéma (document_context).
 const DOC_CONTEXT_KEYWORDS = ['plan', 'carte', 'schéma', 'schema', 'coupe', "vue d'ensemble", 'réseau', 'réseaux', 'tracé']
 
-function classifyImage(
+// Exportée pour être réutilisée telle quelle par le backfill photo-only
+// (scripts/backfill-extraction-run-photos.ts) — même règle de classification,
+// zéro duplication de logique.
+export function classifyImage(
   captionResult: CaptionResult | null,
   normalizedBbox: [number, number, number, number],
 ): { imageClass: ImageClass; bboxCoverage: number } {
