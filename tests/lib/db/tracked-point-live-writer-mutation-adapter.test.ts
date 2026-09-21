@@ -16,6 +16,8 @@ import { randomUUID } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   reconcileTrackedPointAfterCanonicalMutation,
+  reconcileTrackedPointMutationBestEffort,
+  replayPendingTrackedPointReconcileFailures,
 } from '@/lib/db/tracked-point-live-writer-mutation-adapter'
 
 const TAG = `__test_p6_mutation_adapter_${Math.floor(Date.now() / 1000)}__`
@@ -196,6 +198,7 @@ afterAll(async () => {
   if (cboIds.length > 0) {
     await db.from('canonical_business_object_member').delete().in('canonical_business_object_id', cboIds)
   }
+  await db.from('tracked_point_reconcile_failure').delete().eq('site_id', siteId)
   await db.from('canonical_business_object').delete().eq('site_id', siteId)
   await db.from('tracked_point_pending_trace').delete().eq('site_id', siteId)
   await db.from('canonical_subject').delete().eq('site_id', siteId)
@@ -346,5 +349,75 @@ describe('reconcileTrackedPointAfterCanonicalMutation — 0 sibling sur le threa
       write_pattern: 'CREATE_POINT_WITH_MEMBERSHIP_AND_CBO_LINK',
       source_kind: 'canonical_mutation',
     })
+  })
+})
+
+// P0-A (suite REVIEW Vincent 2026-09-21) — "best-effort" ne persistait rien en cas d'échec
+// (scénario (c) confirmé par l'audit). Ces tests protègent le filet de second niveau
+// (tracked_point_reconcile_failure, migration 426) plutôt que d'engineerer artificiellement un
+// refus RPC : la mécanique réelle à garantir est persistance/résolution/seuil de rejeu.
+describe('tracked_point_reconcile_failure — filet de second niveau', () => {
+  async function insertFailure(entityId: string, cboId: string, lastAttemptAt: string) {
+    const db = createAdminClient()
+    const { error } = await db.from('tracked_point_reconcile_failure').insert({
+      site_id: siteId,
+      entity_type: 'site_action',
+      entity_id: entityId,
+      canonical_business_object_id: cboId,
+      error: 'refus RPC simulé pour le test',
+      last_attempt_at: lastAttemptAt,
+    })
+    if (error) throw error
+  }
+
+  async function getFailure(entityId: string) {
+    const db = createAdminClient()
+    const { data } = await db
+      .from('tracked_point_reconcile_failure')
+      .select('resolved_at, attempt_count')
+      .eq('entity_id', entityId)
+      .maybeSingle()
+    return data as { resolved_at: string | null; attempt_count: number } | null
+  }
+
+  it('rejeu d\'une entité sans provenance PV (skipped_no_thread) → résolue, jamais une boucle infinie', async () => {
+    const entityId = randomUUID()
+    const cboId = await makeCbo('site_action', entityId)
+    const old = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    await insertFailure(entityId, cboId, old)
+
+    const outcome = await replayPendingTrackedPointReconcileFailures(50, 15 * 60 * 1000)
+
+    expect(outcome.found).toBeGreaterThanOrEqual(1)
+    expect(outcome.resolved).toBeGreaterThanOrEqual(1)
+    const row = await getFailure(entityId)
+    expect(row?.resolved_at).not.toBeNull()
+  })
+
+  it('une tentative trop récente (< seuil) n\'est pas rejouée — jamais concurrent avec un best-effort en vol', async () => {
+    const entityId = randomUUID()
+    const cboId = await makeCbo('site_action', entityId)
+    const recent = new Date().toISOString()
+    await insertFailure(entityId, cboId, recent)
+
+    await replayPendingTrackedPointReconcileFailures(50, 15 * 60 * 1000)
+
+    const row = await getFailure(entityId)
+    expect(row?.resolved_at).toBeNull()
+  })
+
+  it('reconcileTrackedPointMutationBestEffort en succès ne laisse aucune trace d\'échec résiduelle', async () => {
+    const entityId = randomUUID()
+    const cboId = await makeCbo('site_action', entityId)
+
+    await reconcileTrackedPointMutationBestEffort({
+      siteId,
+      entityType: 'site_action',
+      entityId,
+      canonicalBusinessObjectId: cboId,
+    })
+
+    const row = await getFailure(entityId)
+    expect(row).toBeNull()
   })
 })

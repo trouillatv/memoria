@@ -92,12 +92,67 @@ export async function reconcileTrackedPointAfterCanonicalMutation(params: {
   return { kind: 'reconciled', threadId, ...result }
 }
 
+// P0-A (suite REVIEW Vincent 2026-09-21) — "best-effort" ne doit jamais faire échouer la
+// mutation canonique qui l'a déclenchée, mais un échec (refus RPC ponctuel ou exception) ne
+// doit pas non plus disparaître sans trace : sans ça on recrée exactement la famille de
+// défaut que P0-A corrige (thread jamais revisité). Une ligne par (entity_type, entity_id,
+// canonical_business_object_id) — la DERNIÈRE tentative, jamais un historique complet.
+async function upsertReconcileFailure(params: {
+  siteId: string
+  entityType: CanonicalBusinessObjectEntityType
+  entityId: string
+  canonicalBusinessObjectId: string
+  error: string
+}): Promise<void> {
+  const db = createAdminClient()
+  const { data: existing } = await db
+    .from('tracked_point_reconcile_failure')
+    .select('id, attempt_count')
+    .eq('entity_type', params.entityType)
+    .eq('entity_id', params.entityId)
+    .eq('canonical_business_object_id', params.canonicalBusinessObjectId)
+    .maybeSingle()
+
+  const nowIso = new Date().toISOString()
+  const { error } = await db.from('tracked_point_reconcile_failure').upsert(
+    {
+      site_id: params.siteId,
+      entity_type: params.entityType,
+      entity_id: params.entityId,
+      canonical_business_object_id: params.canonicalBusinessObjectId,
+      error: params.error,
+      attempt_count: (existing?.attempt_count ?? 0) + 1,
+      last_attempt_at: nowIso,
+      resolved_at: null,
+    },
+    { onConflict: 'entity_type,entity_id,canonical_business_object_id' },
+  )
+  if (error) logError(`persistance échec reconcile impossible entity=${params.entityId}`, error)
+}
+
+async function resolveReconcileFailureIfAny(params: {
+  entityType: CanonicalBusinessObjectEntityType
+  entityId: string
+  canonicalBusinessObjectId: string
+}): Promise<void> {
+  const db = createAdminClient()
+  await db
+    .from('tracked_point_reconcile_failure')
+    .update({ resolved_at: new Date().toISOString() })
+    .eq('entity_type', params.entityType)
+    .eq('entity_id', params.entityId)
+    .eq('canonical_business_object_id', params.canonicalBusinessObjectId)
+    .is('resolved_at', null)
+}
+
 /**
  * Enveloppe best-effort à invoquer depuis les points d'appel de
  * canonical-business-object-attach.ts, immédiatement après un rattachement CBO effectif
  * (attached_existing/created_new — jamais sur skipped, aucun membership n'a changé). Même
  * doctrine que produceSignalBestEffort : une panne ne doit jamais faire échouer la mutation
- * canonique qui l'a déclenchée.
+ * canonique qui l'a déclenchée. Contrairement à produceSignalBestEffort, l'échec est ici
+ * persisté (tracked_point_reconcile_failure) pour être rejoué par
+ * /api/cron/sweep-stuck-tracked-point-reconciliation — cf. réponse à la review du 2026-09-21.
  */
 export async function reconcileTrackedPointMutationBestEffort(params: {
   siteId: string
@@ -106,8 +161,74 @@ export async function reconcileTrackedPointMutationBestEffort(params: {
   canonicalBusinessObjectId: string
 }): Promise<void> {
   try {
-    await reconcileTrackedPointAfterCanonicalMutation(params)
+    const result = await reconcileTrackedPointAfterCanonicalMutation(params)
+    if (result.kind === 'reconciled' && result.refusals > 0) {
+      await upsertReconcileFailure({ ...params, error: `${result.refusals} refus RPC sur ${result.unitsProcessed} unité(s)` })
+    } else if (result.kind === 'reconciled') {
+      await resolveReconcileFailureIfAny(params)
+    }
   } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
     logError(`réévaluation non bloquante entity=${params.entityId} type=${params.entityType}`, e)
+    await upsertReconcileFailure({ ...params, error: message })
   }
+}
+
+/**
+ * Rejeu périodique (/api/cron/sweep-stuck-tracked-point-reconciliation) des mutations dont la
+ * réévaluation Live Writer a échoué au moins une fois. Idempotent (reconcileTrackedPointUnit
+ * recalcule toujours le plan+fingerprint live, cf. critère #3/#4 P0-A) : rejouer une mutation
+ * déjà résolue entre-temps par un autre chemin est un NOOP, jamais un doublon.
+ */
+export async function replayPendingTrackedPointReconcileFailures(
+  limit: number,
+  olderThanMs: number,
+): Promise<{ found: number; resolved: number; stillFailing: number }> {
+  const db = createAdminClient()
+  const threshold = new Date(Date.now() - olderThanMs).toISOString()
+  const { data, error } = await db
+    .from('tracked_point_reconcile_failure')
+    .select('site_id, entity_type, entity_id, canonical_business_object_id')
+    .is('resolved_at', null)
+    .lte('last_attempt_at', threshold)
+    .order('last_attempt_at', { ascending: true })
+    .limit(limit)
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<{
+    site_id: string
+    entity_type: CanonicalBusinessObjectEntityType
+    entity_id: string
+    canonical_business_object_id: string
+  }>
+
+  let resolved = 0
+  let stillFailing = 0
+  for (const row of rows) {
+    const params = {
+      siteId: row.site_id,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      canonicalBusinessObjectId: row.canonical_business_object_id,
+    }
+    try {
+      const result = await reconcileTrackedPointAfterCanonicalMutation(params)
+      if (result.kind === 'skipped_no_thread' || (result.kind === 'reconciled' && result.refusals === 0)) {
+        // skipped_no_thread : plus rien à rejouer (aucune erreur, l'entité n'est simplement pas
+        // issue d'un PV) — même traitement que resolved, jamais une boucle de rejeu infinie.
+        await resolveReconcileFailureIfAny(params)
+        resolved++
+      } else {
+        await upsertReconcileFailure({ ...params, error: `${result.refusals} refus RPC sur ${result.unitsProcessed} unité(s)` })
+        stillFailing++
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      logError(`rejeu échec reconcile entity=${row.entity_id}`, e)
+      await upsertReconcileFailure({ ...params, error: message })
+      stillFailing++
+    }
+  }
+
+  return { found: rows.length, resolved, stillFailing }
 }
