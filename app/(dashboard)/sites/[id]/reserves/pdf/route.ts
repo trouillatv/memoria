@@ -3,7 +3,8 @@
 // actions correctives, documents associés. À la volée, pas de storage.
 
 import { NextResponse } from 'next/server'
-import { renderToBuffer } from '@react-pdf/renderer'
+import { Readable } from 'node:stream'
+import { renderToStream } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { tenantCtx, tenantOwns } from '@/lib/db/tenant'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
@@ -75,9 +76,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const dateLabel = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'Pacific/Noumea' })
 
-  let pdfBuffer: Buffer
+  // Photos avant/après par réserve : même mécanisme d'exposition à la limite
+  // de 4,5 Mo bufferisée par Vercel que le CR de visite La Foa (13,19 Mo).
+  // renderToStream évite ce plafond (Vincent, 2026-09-21).
+  let nodeStream: NodeJS.ReadableStream
   try {
-    pdfBuffer = await renderToBuffer(
+    nodeStream = await renderToStream(
       ReservesPdf({ siteName: identity.name, clientName: identity.clientName ?? null, dateLabel, reserves: items }),
     )
   } catch (e) {
@@ -85,8 +89,10 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     console.error('[reserves-pdf] render failed:', e)
     return NextResponse.json({ error: `Erreur génération PDF: ${msg}` }, { status: 500 })
   }
+  nodeStream.on('error', (e) => console.error('[reserves-pdf] PDF stream error:', e))
+  const webStream = Readable.toWeb(nodeStream as Readable) as unknown as ReadableStream
 
-  return new NextResponse(new Uint8Array(pdfBuffer), {
+  return new NextResponse(webStream, {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',

@@ -10,7 +10,8 @@
 //   défaut          → PDF propre (sortie officielle)
 //   ?format=docx    → DOCX éditable (option secondaire ; alias historique ?becib=1)
 import { NextResponse } from 'next/server'
-import { renderToBuffer } from '@react-pdf/renderer'
+import { Readable } from 'node:stream'
+import { renderToStream } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { loadMeetingInput } from '@/lib/documents/load-meeting-input'
 import { mapMeetingToCrBecib } from '@/lib/documents/meeting-to-cr-becib'
@@ -51,8 +52,15 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
         },
       })
     }
-    const pdfBuffer = await renderToBuffer(CrBecibPdf({ cr }))
-    return new NextResponse(new Uint8Array(pdfBuffer), {
+    // Un PV embarque des photos réelles (embedPhotos: true) et peut dépasser la
+    // limite dure de 4,5 Mo qu'impose Vercel au corps d'une réponse de fonction
+    // BUFFERISÉE — même panne que le CR de visite La Foa (13,19 Mo). renderToStream
+    // évite ce plafond en laissant Vercel transmettre les octets au fur et à
+    // mesure de leur production (Vincent, 2026-09-21).
+    const nodeStream = await renderToStream(CrBecibPdf({ cr }))
+    nodeStream.on('error', (e) => console.error('[pv] PDF stream error:', e))
+    const webStream = Readable.toWeb(nodeStream as Readable) as unknown as ReadableStream
+    return new NextResponse(webStream, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

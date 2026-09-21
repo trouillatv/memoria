@@ -14,7 +14,8 @@
 //     mensuel, anonymisation totale par construction (pas de noms d'agent).
 //   - Audit : on incrémente access_count via recordShareAccess (best-effort).
 //     Un téléchargement PDF compte comme un accès au même titre que la vue HTML.
-//   - Aucun storage : PDF généré on-demand via renderToBuffer.
+//   - Aucun storage pour le chemin live : PDF généré on-demand via renderToStream
+//     (évite la limite de 4,5 Mo bufferisée par Vercel, cf. La Foa 2026-09-21).
 //
 // Slice E.2 — Dispatch :
 //   - shareToken.intervention_id NOT NULL → ProofDossierPdf (Phase 5)
@@ -22,8 +23,9 @@
 //   La CHECK chk_token_kind garantit le XOR au niveau DB.
 
 import { NextResponse } from 'next/server'
+import { Readable } from 'node:stream'
 import QRCode from 'qrcode'
-import { renderToBuffer } from '@react-pdf/renderer'
+import { renderToStream } from '@react-pdf/renderer'
 import { getProofDetail } from '@/lib/db/proofs'
 import { getContractMonthlyReport } from '@/lib/db/monthly-report'
 import {
@@ -179,9 +181,12 @@ async function renderDossierProofPdf(input: {
     )
   }
 
-  let pdfBuffer: Buffer
+  // Le plafond MAX_PHOTOS_IN_PDF (50) ne protège pas contre le dépassement des
+  // 4,5 Mo bufferisés de Vercel : le témoin La Foa a produit 13,19 Mo avec
+  // seulement 46 photos. renderToStream évite ce plafond (Vincent, 2026-09-21).
+  let nodeStream: NodeJS.ReadableStream
   try {
-    pdfBuffer = await renderToBuffer(
+    nodeStream = await renderToStream(
       ProofDossierPdf({
         proof,
         qrDataUrl: input.qrDataUrl,
@@ -201,11 +206,13 @@ async function renderDossierProofPdf(input: {
       { status: 500 },
     )
   }
+  nodeStream.on('error', (e) => console.error('[public-pdf] PDF stream error (dossier):', e))
+  const webStream = Readable.toWeb(nodeStream as Readable) as unknown as ReadableStream
 
   const safeStub = proof.id.slice(0, 8)
   const filename = `dossier-preuves-${safeStub}.pdf`
 
-  return new NextResponse(new Uint8Array(pdfBuffer), {
+  return new NextResponse(webStream, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${filename}"`,
@@ -238,9 +245,9 @@ async function renderMonthlyReportPdf(input: {
     )
   }
 
-  let pdfBuffer: Buffer
+  let nodeStream: NodeJS.ReadableStream
   try {
-    pdfBuffer = await renderToBuffer(
+    nodeStream = await renderToStream(
       MonthlyReportPdf({
         data: reportData,
         selectedPhotoIds: shareToken.selected_photo_ids ?? [],
@@ -261,11 +268,13 @@ async function renderMonthlyReportPdf(input: {
       { status: 500 },
     )
   }
+  nodeStream.on('error', (e) => console.error('[public-pdf] PDF stream error (monthly report):', e))
+  const webStream = Readable.toWeb(nodeStream as Readable) as unknown as ReadableStream
 
   const stub = shareToken.contract_id.slice(0, 8)
   const filename = `rapport-mensuel-${stub}-${shareToken.report_month}.pdf`
 
-  return new NextResponse(new Uint8Array(pdfBuffer), {
+  return new NextResponse(webStream, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${filename}"`,

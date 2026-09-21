@@ -8,12 +8,14 @@
 //     de son include_identities. Sinon, on prend la valeur de ?includeIdentities
 //     du query string (override admin direct, audit log côté server action seulement).
 //   - Anonymisation par défaut (includeIdentities=false).
-//   - PDF généré on-demand via @react-pdf/renderer.renderToBuffer. Le rendu est
-//     suffisamment rapide pour un download synchrone ; aucun storage long-terme.
+//   - PDF généré on-demand via @react-pdf/renderer.renderToStream (évite la
+//     limite de 4,5 Mo bufferisée par Vercel, cf. La Foa 2026-09-21) ; aucun
+//     storage long-terme sur ce chemin live.
 
 import { NextResponse } from 'next/server'
+import { Readable } from 'node:stream'
 import QRCode from 'qrcode'
-import { renderToBuffer } from '@react-pdf/renderer'
+import { renderToStream } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getProofDetail } from '@/lib/db/proofs'
 import { getShareTokenById } from '@/lib/db/proof-share'
@@ -114,9 +116,12 @@ export async function GET(req: Request, ctx: RouteCtx) {
   }
 
   // 6. Render le PDF.
-  let pdfBuffer: Buffer
+  // Le plafond MAX_PHOTOS_IN_PDF (50) ne protège pas contre le dépassement des
+  // 4,5 Mo bufferisés de Vercel : le témoin La Foa a produit 13,19 Mo avec
+  // seulement 46 photos. renderToStream évite ce plafond (Vincent, 2026-09-21).
+  let nodeStream: NodeJS.ReadableStream
   try {
-    pdfBuffer = await renderToBuffer(
+    nodeStream = await renderToStream(
       ProofDossierPdf({
         proof,
         qrDataUrl,
@@ -133,13 +138,14 @@ export async function GET(req: Request, ctx: RouteCtx) {
     console.error('[dossier route] PDF render failed:', e)
     return NextResponse.json({ error: `Erreur génération PDF: ${msg}` }, { status: 500 })
   }
+  nodeStream.on('error', (e) => console.error('[dossier route] PDF stream error:', e))
+  const webStream = Readable.toWeb(nodeStream as Readable) as unknown as ReadableStream
 
   // 7. Response avec headers PDF.
   const safeStub = id.slice(0, 8)
   const filename = `dossier-preuves-${safeStub}.pdf`
 
-  // Convertir le Buffer Node en Uint8Array pour satisfaire BodyInit.
-  return new NextResponse(new Uint8Array(pdfBuffer), {
+  return new NextResponse(webStream, {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="${filename}"`,
