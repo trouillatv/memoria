@@ -50,6 +50,8 @@ function makeAction(overrides: Partial<SiteActionRow> = {}): SiteActionRow {
     body: null,
     corps_etat: null,
     assigned_to: null,
+    assigned_contact_id: null,
+    assigned_company_id: null,
     status: 'open',
     kind: 'one_shot',
     created_at: '2026-08-20T08:00:00.000Z',

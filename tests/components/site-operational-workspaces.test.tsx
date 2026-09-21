@@ -287,6 +287,8 @@ function actionFixture(overrides: Partial<SiteActionRow> = {}): SiteActionRow {
     body: null,
     corps_etat: 'Nettoyage général',
     assigned_to: 'Entreprise Martin',
+    assigned_contact_id: null,
+    assigned_company_id: null,
     status: 'open',
     kind: 'one_shot',
     created_at: '2026-07-13T08:00:00.000Z',

@@ -24,7 +24,9 @@ import { logUsageEvent } from '@/lib/db/usage-events'
 import { listOpenSiteActions, listSiteActionsBySite, listSiteActionsByReport } from '@/lib/db/site-actions'
 import { getSiteReserves } from '@/lib/db/site-reserve'
 import { listSiteASavoirActive } from '@/lib/db/sites'
-import { listSiteSubjectsToWatch } from '@/lib/db/subjects'
+import { loadSiteTrackedPointList } from '@/lib/knowledge/tracked-point-list'
+import { loadMemoriaNeedsYouSummary, type MemoriaNeedsYouSummary } from '@/lib/knowledge/tracked-point-needs-you-summary'
+import type { PointComputedCurrentState } from '@/lib/knowledge/tracked-point-lifecycle-reducer'
 import {
   getSiteAnomalies,
   getSiteCurrentState,
@@ -252,7 +254,7 @@ export interface SiteBriefChange {
 export interface SiteBriefFollowedPoint {
   id: string
   name: string
-  state: string
+  state: PointComputedCurrentState
   cause: string | null
   lastEvolution: string | null
   openQuestion: string | null
@@ -279,6 +281,20 @@ export interface SiteBrief {
   changeSinceLastReport: SiteBriefChange | null
   // Points suivis (dossiers vivants) qui appellent l'attention — pour la réunion.
   followedPoints: SiteBriefFollowedPoint[]
+  /** Total AVANT troncature de `followedPoints` (P0-1 Correction 2 : compteur
+   *  exhaustif + aperçu borné, jamais l'inverse). */
+  followedPointsTotal: number
+  /** Actions ouvertes sans responsable ni entreprise assignés (P0-1 Transfo 2). */
+  unassignedActionsCount: number
+  /** Total des réserves ouvertes AVANT troncature de `openReserves` (P0-1
+   *  Correction 3 : le compteur affiché mentait car lu après `.slice(0, 6)`). */
+  openReservesTotal: number
+  /** Échéances actives dont la date est dépassée (P0-1 Transfo 2/Correction 4).
+   *  Pas de notion de « proche » : aucune définition fiable n'existe au niveau site. */
+  deadlinesOverdueCount: number
+  /** MemorIA a besoin de toi (P0-1 Transfo 4) — composition telle quelle du
+   *  read-model existant, jamais une extension du moteur needs-you. */
+  memoriaNeedsYou: MemoriaNeedsYouSummary | null
   phase: VisitPreparationPhase
   phaseLabel: string
   minuteSummary: string[]
@@ -379,7 +395,8 @@ export async function getSiteBriefAction(
     photos,
     meetings,
     reserves,
-    watched,
+    trackedPointList,
+    memoriaNeedsYou,
     preparationReports,
     sitePhase,
     dossierPhase,
@@ -403,7 +420,8 @@ export async function getSiteBriefAction(
     getSiteRecentPhotos(siteId, 12).catch(() => []),
     listReportsBySite(siteId).catch(() => []),
     getSiteReserves(siteId).catch(() => []),
-    listSiteSubjectsToWatch(siteId, 5).catch(() => []),
+    loadSiteTrackedPointList(siteId, auth.userId).catch(() => null),
+    loadMemoriaNeedsYouSummary(siteId).catch(() => null),
     (async () => {
       const { data } = await db
         .from('site_reports')
@@ -530,6 +548,13 @@ export async function getSiteBriefAction(
     status: deadline.status,
     report_id: deadline.report_id,
   }))
+  // P0-1 Transfo 2/Correction 4 — échéances actives dépassées, sur la collection
+  // COMPLÈTE (`deadlineRows`, déjà filtrée to_plan/planned par le helper DB),
+  // avant toute troncature d'affichage. Pas de notion de « proche » ajoutée.
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const deadlinesOverdueCount = deadlineRows.filter(
+    (d) => d.due_date && d.due_date < todayIso,
+  ).length
   const decisionItems = decisionRows.slice(0, 8).map((decision) => ({
     id: decision.id,
     titre: decision.titre,
@@ -540,10 +565,23 @@ export async function getSiteBriefAction(
   }))
 
   const openAnomalies = anomalies.filter((a) => a.status === 'open')
-  const followedPoints: SiteBriefFollowedPoint[] = watched.map((w) => ({
-    id: w.id, name: w.name, state: w.state, cause: w.cause,
-    lastEvolution: w.lastEvolution, openQuestion: w.openQuestion,
-  }))
+  // P0-1 Transfo 1 — SEUL signal déterministe autorisé : reviewReasons non vide,
+  // déjà calculé par le moteur Points (aucun nouveau score, aucun seuil inventé).
+  // Ordre conservé tel quel (sortPointsForSubjectDisplay, jamais re-trié).
+  const followedPointsAll: SiteBriefFollowedPoint[] = (trackedPointList?.points ?? [])
+    .filter((p) => p.reviewReasons.length > 0)
+    .map((p) => ({
+      id: p.id,
+      name: p.label,
+      state: p.derivedState,
+      cause: p.reviewReasons[0] ?? null,
+      lastEvolution: p.latestMeaningfulEventAt,
+      // Aucune notion fiable de « question ouverte » par Point dans le nouveau
+      // modèle — le besoin réel est déjà porté séparément par memoriaNeedsYou.
+      openQuestion: null,
+    }))
+  const followedPointsTotal = followedPointsAll.length
+  const followedPoints = followedPointsAll.slice(0, 5)
 
   const situation: SiteBriefSituation = {
     openActions: openActionRows.length,
@@ -561,6 +599,12 @@ export async function getSiteBriefAction(
     dueDate: a.due_date,
     createdAt: a.created_at,
   }))
+
+  // P0-1 Transfo 2 — actions ouvertes sans responsable ni entreprise assignés.
+  // Calculé sur `openActionRows`, déjà chargé (aucune requête supplémentaire).
+  const unassignedActionsCount = openActionRows.filter(
+    (a) => !a.assigned_contact_id && !a.assigned_company_id,
+  ).length
 
   // « À ne pas oublier » — actions ouvertes EN RETARD (échéance passée) ou qui
   // TRAÎNENT (ouvertes depuis ≥ 14 j). Hiérarchise ce qui mérite l'attention.
@@ -618,9 +662,12 @@ export async function getSiteBriefAction(
     .slice(0, 4)
     .map((r) => ({ id: r.id, title: r.title, createdAt: r.created_at }))
 
-  // Réserves non levées (points à lever restant dus).
-  const openReserves: SiteBriefReserve[] = reserves
-    .filter((r) => r.status === 'open')
+  // Réserves non levées (points à lever restant dus). P0-1 Correction 3 : le
+  // compteur exposé doit porter sur le TOTAL, calculé AVANT la troncature à 6
+  // (l'ancien code lisait `openReserves.length` après le `.slice`, mentait).
+  const openReservesAll = reserves.filter((r) => r.status === 'open')
+  const openReservesTotal = openReservesAll.length
+  const openReserves: SiteBriefReserve[] = openReservesAll
     .slice(0, 6)
     .map((r) => ({
       id: r.id,
@@ -706,7 +753,7 @@ export async function getSiteBriefAction(
   const blockedItems = [
     ...openReserves.map((item) => item.label),
     ...followedPoints
-      .filter((item) => item.state === 'bloqué' || item.state === 'en_attente')
+      .filter((item) => item.state === 'conflict' || item.state === 'reopened')
       .map((item) => item.name),
   ].slice(0, 5)
 
@@ -719,7 +766,7 @@ export async function getSiteBriefAction(
       kind: 'deadline' as const, text: item.title, sourceId: item.id, sourceHref: `/sites/${siteId}/planning`,
     })),
     watchpoints: followedPoints.slice(0, 3).map((item) => ({
-      kind: 'watchpoint' as const, text: item.openQuestion ?? item.name, sourceId: item.id, sourceHref: `/sites/${siteId}?person=${item.id}`,
+      kind: 'watchpoint' as const, text: item.cause ?? item.name, sourceId: item.id, sourceHref: `/sites/${siteId}/point/${item.id}`,
     })),
     openActivities: preparationActivities.filter((item) => item.status === 'in_progress').slice(0, 2).map((item) => ({
       kind: 'open_activity' as const, text: `${item.kind === 'visit' ? 'Visite' : 'Réunion'} en cours : ${item.title}`, sourceId: item.id, sourceHref: item.href,
@@ -780,7 +827,7 @@ export async function getSiteBriefAction(
       kind: 'reserve', text: `Vérifier la réserve « ${openReserves[0].label} »`, sourceId: openReserves[0].id, sourceHref: `/sites/${siteId}/reserves`,
     } : null,
     watchpoint: followedPoints[0] ? {
-      kind: 'watchpoint', text: followedPoints[0].openQuestion ?? followedPoints[0].name, sourceId: followedPoints[0].id, sourceHref: `/sites/${siteId}/chronologie`,
+      kind: 'watchpoint', text: followedPoints[0].cause ?? followedPoints[0].name, sourceId: followedPoints[0].id, sourceHref: `/sites/${siteId}/chronologie`,
     } : null,
     decision: decisionItems[0] ? {
       kind: 'decision', text: decisionItems[0].titre, sourceId: decisionItems[0].id, sourceHref: decisionItems[0].reportId ? `/sites/${siteId}/visites/${decisionItems[0].reportId}` : `/sites/${siteId}/chronologie`,
@@ -931,9 +978,14 @@ export async function getSiteBriefAction(
       recentPhotosCount: photos.length,
       meetings: briefMeetings,
       openReserves,
+      openReservesTotal,
       lastReport,
       changeSinceLastReport,
       followedPoints,
+      followedPointsTotal,
+      unassignedActionsCount,
+      deadlinesOverdueCount,
+      memoriaNeedsYou,
       phase,
       phaseLabel: phaseLabel[phase],
       minuteSummary: buildVisitPreparationSummary({

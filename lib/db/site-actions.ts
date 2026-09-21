@@ -192,6 +192,10 @@ export interface SiteActionRow {
   body: string | null
   corps_etat: string | null
   assigned_to: string | null
+  /** Responsable structurel personne (mig 220). null = pas de contact assigné. */
+  assigned_contact_id: string | null
+  /** Responsable structurel entreprise (mig 245). null = pas d'entreprise assignée. */
+  assigned_company_id: string | null
   status: SiteActionStatus
   kind: 'one_shot' | 'deadline' | 'recurring_until_done'
   created_at: string
@@ -292,6 +296,8 @@ export async function listOpenSiteActions(opts?: {
       body: a.body,
       corps_etat: a.corps_etat,
       assigned_to: a.assigned_to,
+      assigned_contact_id: a.assigned_contact_id ?? null,
+      assigned_company_id: a.assigned_company_id ?? null,
       status: a.status,
       kind: a.kind,
       created_at: a.created_at,
@@ -351,6 +357,8 @@ export async function listOpenSiteActionsByReports(reportIds: string[]): Promise
       body: a.body,
       corps_etat: a.corps_etat,
       assigned_to: a.assigned_to,
+      assigned_contact_id: a.assigned_contact_id ?? null,
+      assigned_company_id: a.assigned_company_id ?? null,
       status: a.status,
       kind: a.kind,
       created_at: a.created_at,

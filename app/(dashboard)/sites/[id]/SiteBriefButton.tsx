@@ -41,6 +41,7 @@ import { VISIT_INTENTS, type VisitIntent } from '@/lib/field/visit-intents'
 import { selectNarrativeHighlights } from '@/lib/knowledge/visit-preparation'
 import type { LiveDebrief, LiveDebriefItem, LiveDebriefObjectItem, LiveDebriefInformationalItem, DebriefRegisterItem, DebriefRegister, ToHandleRank, ToHandlePriority } from '@/lib/knowledge/live-debrief'
 import { LiveDebriefVuButton } from './LiveDebriefVuButton'
+import { MemoriaNeedsYouBlock } from '@/components/site/MemoriaNeedsYouBlock'
 import { completeDeadlineAction, rescheduleDeadlineAction } from './views/planning/deadline-actions'
 import { closeActionAction, updateActionDetailsAction } from '@/app/(dashboard)/actions/actions'
 import { liftReserveAction } from './reserves/actions'
@@ -91,7 +92,7 @@ const MOTIVE_SHORT: Record<VisitIntent, string> = {
 }
 
 const STATE_FR: Record<string, string> = {
-  bloqué: 'Bloqué', en_attente: 'En attente', actif: 'Actif', résolu: 'Résolu', dormant: 'En sommeil',
+  open: 'Ouvert', resolved: 'Résolu', reopened: 'Rouvert', conflict: 'Contradiction', unknown: 'Indéterminé',
 }
 
 function formatDate(iso: string | null): string | null {
@@ -523,14 +524,14 @@ function FactLines({ items, empty = 'Rien à signaler.', defaultDotClass = 'bg-e
 //    changé depuis la dernière réunion + réserves + actions (qui doit quoi) en tête.
 type Tier = { label: string; dot: string; keys: string[] }
 const TIERS_VISIT: Tier[] = [
-  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['followedPoints', 'vigilance', 'anomalies', 'reserves', 'actions', 'openActivityItems'] },
+  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['followedPoints', 'memoriaNeedsYou', 'vigilance', 'anomalies', 'reserves', 'actions', 'openActivityItems'] },
   { label: 'Ce qui a changé',                dot: 'bg-amber-500',   keys: ['change'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
   { label: 'Historique',                     dot: 'bg-slate-400',   keys: ['recentDone', 'missions', 'meetings', 'photos'] },
 ]
 const TIERS_MEETING: Tier[] = [
-  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['followedPoints', 'change', 'reserves', 'actions', 'openActivityItems'] },
+  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['followedPoints', 'memoriaNeedsYou', 'change', 'reserves', 'actions', 'openActivityItems'] },
   { label: 'Points de vigilance',            dot: 'bg-amber-500',   keys: ['vigilance', 'anomalies'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
@@ -1349,9 +1350,14 @@ function BriefBody({
     recentPhotosCount,
     meetings,
     openReserves,
+    openReservesTotal,
     lastReport,
     changeSinceLastReport,
     followedPoints,
+    followedPointsTotal,
+    unassignedActionsCount,
+    deadlinesOverdueCount,
+    memoriaNeedsYou,
     phaseLabel,
     minuteSummary,
     urgentItems,
@@ -1381,6 +1387,7 @@ function BriefBody({
 
   const hasAnyDetail =
     followedPoints.length > 0 ||
+    (memoriaNeedsYou?.totalCount ?? 0) > 0 ||
     changeSinceLastReport != null ||
     vigilance.length > 0 ||
     openReserves.length > 0 ||
@@ -1400,7 +1407,7 @@ function BriefBody({
   const sections: Record<string, React.ReactNode> = {
     followedPoints: followedPoints.length === 0 ? null : (
       <section className="space-y-2">
-        <SectionTitle icon={<Layers className="h-3.5 w-3.5 text-violet-600" />} count={followedPoints.length}>
+        <SectionTitle icon={<Layers className="h-3.5 w-3.5 text-violet-600" />} count={followedPointsTotal}>
           Points suivis à aborder
         </SectionTitle>
         <ul className="space-y-1.5">
@@ -1418,7 +1425,21 @@ function BriefBody({
             </li>
           ))}
         </ul>
+        {followedPointsTotal > followedPoints.length && (
+          <a
+            href={variant === 'desktop' ? `/sites/${siteId}/points` : `/m/site/${siteId}/points`}
+            className="text-xs font-medium text-violet-700 hover:underline"
+          >
+            Voir les {followedPointsTotal - followedPoints.length} autre{followedPointsTotal - followedPoints.length > 1 ? 's' : ''}
+          </a>
+        )}
       </section>
+    ),
+    memoriaNeedsYou: !memoriaNeedsYou || memoriaNeedsYou.totalCount === 0 ? null : (
+      <MemoriaNeedsYouBlock
+        summary={memoriaNeedsYou}
+        seeAllHref={variant === 'desktop' ? `/sites/${siteId}/besoin-de-toi` : `/m/site/${siteId}/besoin-de-toi`}
+      />
     ),
     change: !changeSinceLastReport ? null : (
       <section className="space-y-2.5 rounded-xl border bg-muted/30 p-3">
@@ -1499,7 +1520,7 @@ function BriefBody({
     ),
     reserves: openReserves.length === 0 ? null : (
       <section className="space-y-2">
-        <SectionTitle icon={<Flag className="h-3.5 w-3.5 text-rose-600" />} count={openReserves.length}>
+        <SectionTitle icon={<Flag className="h-3.5 w-3.5 text-rose-600" />} count={openReservesTotal}>
           Réserves non levées
         </SectionTitle>
         <ul className="space-y-1.5">
@@ -1513,6 +1534,11 @@ function BriefBody({
             </li>
           ))}
         </ul>
+        {openReservesTotal > openReserves.length && (
+          <a href={`/sites/${siteId}/reserves`} className="text-xs font-medium text-rose-700 hover:underline">
+            Voir les {openReservesTotal - openReserves.length} autre{openReservesTotal - openReserves.length > 1 ? 's' : ''}
+          </a>
+        )}
       </section>
     ),
     actions: openActions.length === 0 ? null : (
@@ -1520,6 +1546,13 @@ function BriefBody({
         <SectionTitle icon={<ListTodo className="h-3.5 w-3.5" />} count={situation.openActions}>
           Actions à suivre
         </SectionTitle>
+        {(unassignedActionsCount > 0 || deadlinesOverdueCount > 0) && (
+          <p className="text-[11px] text-muted-foreground">
+            {unassignedActionsCount > 0 && `${unassignedActionsCount} sans responsable`}
+            {unassignedActionsCount > 0 && deadlinesOverdueCount > 0 && ' · '}
+            {deadlinesOverdueCount > 0 && `${deadlinesOverdueCount} échéance${deadlinesOverdueCount > 1 ? 's' : ''} dépassée${deadlinesOverdueCount > 1 ? 's' : ''}`}
+          </p>
+        )}
         <ul className="space-y-1.5">
           {openActions.map((a) => {
             const due = formatDate(a.dueDate)
