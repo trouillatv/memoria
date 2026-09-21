@@ -43,7 +43,7 @@ const FAMILY_TITLE: Record<string, string> = {
 }
 
 type Filter = 'all' | 'pending' | 'accepted' | 'edited' | 'rejected' | 'materialized'
-type FamilyFilter = 'all' | 'knowledge_fact' | 'action' | 'observation' | 'deadline' | 'reservation' | 'decision' | 'person' | 'company' | 'photos'
+type FamilyFilter = 'all' | 'weak' | 'knowledge_fact' | 'action' | 'observation' | 'deadline' | 'reservation' | 'decision' | 'person' | 'company' | 'photos'
 
 function getRelevanceScore(proposal: import('@/types/db').DbDocumentExtractionProposal): 'strong' | 'medium' | 'weak' {
   const payload = proposal.source_payload as { relevanceScore?: string } | null
@@ -62,7 +62,8 @@ const FILTER_LABELS: { key: Filter; label: string; field: keyof ReviewSummary }[
 ]
 
 const FAMILY_FILTER_LABELS: { key: FamilyFilter; label: string }[] = [
-  { key: 'all', label: 'Propositions' },
+  { key: 'all', label: 'Toutes' },
+  { key: 'weak', label: 'Faible' },
   { key: 'knowledge_fact', label: 'Mémoire' },
   { key: 'action', label: 'Action' },
   { key: 'observation', label: 'Observation' },
@@ -75,12 +76,12 @@ const FAMILY_FILTER_LABELS: { key: FamilyFilter; label: string }[] = [
 ]
 
 const FAMILY_TO_URL: Partial<Record<FamilyFilter, string>> = {
-  knowledge_fact: 'memory', action: 'action', observation: 'observation',
+  weak: 'weak', knowledge_fact: 'memory', action: 'action', observation: 'observation',
   deadline: 'deadline', reservation: 'reservation', decision: 'decision',
   person: 'person', company: 'company', photos: 'photos',
 }
 const URL_TO_FAMILY: Record<string, FamilyFilter> = {
-  memory: 'knowledge_fact', action: 'action', observation: 'observation',
+  weak: 'weak', memory: 'knowledge_fact', action: 'action', observation: 'observation',
   deadline: 'deadline', reservation: 'reservation', decision: 'decision',
   person: 'person', company: 'company', photos: 'photos',
 }
@@ -442,7 +443,6 @@ export function ExtractionReviewClient({
   }
   function setFilter(f: Filter) { setFilterState(f); pushUrl(f, familyFilter) }
   function setFamilyFilter(f: FamilyFilter) { setFamilyFilterState(f); pushUrl(filter, f) }
-  const [showWeak, setShowWeak] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [acceptAllMsg, setAcceptAllMsg] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
@@ -622,30 +622,25 @@ export function ExtractionReviewClient({
   const companyCount = proposals.filter((p) => p.proposal.proposal_family === 'company').length
   const snapshotCount = visiblePhotos.length
 
-  // Compteurs par famille scindés fort/faible, pour que les pastilles reflètent
-  // le même univers que les sections (qui filtrent les propositions faibles selon
-  // `showWeak`). Sans cela, une pastille « Mémoire 14 » côtoie une section « (13) ».
-  const { familyStrong, familyWeak } = useMemo(() => {
-    const strong = new Map<string, number>()
-    const weak = new Map<string, number>()
+  // Compteur exact par famille (toutes confiances confondues) — « Faible » est un
+  // filtre à part, transversal aux familles, pas une variante masquée de chacune.
+  const familyCounts = useMemo(() => {
+    const counts = new Map<string, number>()
     for (const p of proposals) {
       const fam = p.proposal.proposal_family
-      if (getRelevanceScore(p.proposal) === 'weak') weak.set(fam, (weak.get(fam) ?? 0) + 1)
-      else strong.set(fam, (strong.get(fam) ?? 0) + 1)
+      counts.set(fam, (counts.get(fam) ?? 0) + 1)
     }
-    return { familyStrong: strong, familyWeak: weak }
+    return counts
   }, [proposals])
 
-  // Nombre visible d'une famille selon l'état showWeak (identique à ce que la
-  // section correspondante affichera) + nombre de faibles masqués le cas échéant.
-  const visibleFamilyCount = (key: string) =>
-    (familyStrong.get(key) ?? 0) + (showWeak ? (familyWeak.get(key) ?? 0) : 0)
-  const hiddenWeakCount = (key: string) => (showWeak ? 0 : (familyWeak.get(key) ?? 0))
-
+  // Filtre type/confiance — un seul actif à la fois, exclusif du filtre statut.
   const filtered = proposals
     .filter((p) => filter === 'all' || p.proposal.review_status === filter)
-    .filter((p) => familyFilter === 'all' || p.proposal.proposal_family === familyFilter)
-    .filter((p) => showWeak || getRelevanceScore(p.proposal) !== 'weak')
+    .filter((p) => {
+      if (familyFilter === 'all') return true
+      if (familyFilter === 'weak') return getRelevanceScore(p.proposal) === 'weak'
+      return p.proposal.proposal_family === familyFilter
+    })
 
   // Regroupement par famille
   const grouped = new Map<string, DocumentExtractionProposalWithEvidence[]>()
@@ -713,6 +708,8 @@ export function ExtractionReviewClient({
           <button
             key={key}
             type="button"
+            data-testid={`status-filter-${key}`}
+            aria-pressed={filter === key}
             onClick={() => setFilter(key)}
             className={`px-3 py-1.5 rounded-full text-sm border transition-colors ${
               filter === key
@@ -723,38 +720,29 @@ export function ExtractionReviewClient({
             {label} {summary[field] > 0 && <span className="ml-1 opacity-70">({summary[field]})</span>}
           </button>
         ))}
-        {weakCount > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowWeak((v) => !v)}
-            className="ml-auto px-3 py-1.5 rounded-full text-xs border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-muted-foreground hover:text-foreground transition-colors"
-          >
-            {showWeak ? `Masquer les ${weakCount} faibles` : `Voir les ${weakCount} faibles`}
-          </button>
-        )}
       </div>
 
-      {/* Filtres famille — scroll horizontal sur mobile, wrap sur desktop */}
+      {/* Filtres type/confiance — exclusifs entre eux, combinables avec le filtre statut
+          ci-dessus. Scroll horizontal sur mobile, wrap sur desktop. */}
       <div className="flex gap-1.5 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-wrap">
         {FAMILY_FILTER_LABELS
           .filter(({ key }) => {
             if (key === 'all') return true
+            if (key === 'weak') return weakCount > 0
             if (key === 'photos') return visiblePhotos.length > 0
-            // Pastille visible tant qu'il reste au moins une proposition de cette
-            // famille (fort ou faible) — sinon elle disparaîtrait selon showWeak.
-            return (familyStrong.get(key) ?? 0) + (familyWeak.get(key) ?? 0) > 0
+            return (familyCounts.get(key) ?? 0) > 0
           })
           .map(({ key, label }) => {
-            const count = key === 'all' ? (showWeak ? proposals.length : proposals.length - weakCount)
+            const count = key === 'all' ? proposals.length
+              : key === 'weak' ? weakCount
               : key === 'photos' ? visiblePhotos.length
-              : visibleFamilyCount(key)
-            const hiddenWeak = key === 'all' ? (showWeak ? 0 : weakCount)
-              : key === 'photos' ? 0
-              : hiddenWeakCount(key)
+              : (familyCounts.get(key) ?? 0)
             return (
               <button
                 key={key}
                 type="button"
+                data-testid={`family-filter-${key}`}
+                aria-pressed={familyFilter === key}
                 onClick={() => setFamilyFilter(key)}
                 className={`shrink-0 px-3 py-1.5 rounded-full text-sm border transition-colors ${
                   familyFilter === key
@@ -763,14 +751,6 @@ export function ExtractionReviewClient({
                 }`}
               >
                 {label} <span className="opacity-70">{count}</span>
-                {hiddenWeak > 0 && (
-                  <span
-                    className="ml-0.5 opacity-40"
-                    title={`${hiddenWeak} proposition${hiddenWeak > 1 ? 's' : ''} faible${hiddenWeak > 1 ? 's' : ''} masquée${hiddenWeak > 1 ? 's' : ''}`}
-                  >
-                    +{hiddenWeak}
-                  </span>
-                )}
               </button>
             )
           })}
