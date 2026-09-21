@@ -44,6 +44,7 @@
 // automatique.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadActiveDocumentMetadataByIds } from '@/lib/db/documents'
 import { loadTrackedPointReadModel, type PointReadModelEntry } from './tracked-point-read-model'
 import {
   classifyTraceIdentityCandidate,
@@ -385,15 +386,14 @@ export async function loadTraceIdentityQueue(siteId: string): Promise<TraceIdent
   }
 
   const documentIds = [...new Set((rawProposals ?? []).map((p) => p.document_id).filter((id): id is string => !!id))]
-  const { data: rawDocuments, error: docErr } = await db
-    .from('documents')
-    .select('id, filename, document_type, effective_date')
-    .in('id', documentIds.length > 0 ? documentIds : [NIL_UUID])
-  if (docErr) throw docErr
-  const documentsById = new Map((rawDocuments ?? []).map((d) => [d.id, d]))
+  const documentsById = await loadActiveDocumentMetadataByIds(db, documentIds)
 
   const proposalsByThreadId = new Map<string, TraceIdentitySourceProposal[]>()
   for (const p of rawProposals ?? []) {
+    // Un document soft-supprimé ne doit plus fournir le libellé/l'extrait
+    // affichés sur la carte source (mandat Vincent P0 Needs-you 2026-09-22) ;
+    // une autre proposition active du même thread prend le relais si elle existe.
+    if (p.document_id && !documentsById.has(p.document_id)) continue
     const doc = p.document_id ? documentsById.get(p.document_id) : undefined
     const list = proposalsByThreadId.get(p.subject_thread_id) ?? []
     list.push({

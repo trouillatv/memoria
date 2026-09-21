@@ -11,6 +11,7 @@
 // sur le graphe des paires EN ATTENTE — jamais un nombre codé en dur (ex. "94").
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadActiveDocumentMetadataByIds } from '@/lib/db/documents'
 import { loadTrackedPointConsolidationData, type TrackedPointConsolidationPointDetail } from '@/lib/db/tracked-point-consolidation'
 import {
   loadTrackedPointReadModel,
@@ -267,19 +268,19 @@ async function loadPointProofsByPointId(
   for (const row of [...threadProposals, ...explicitProposals]) proposalById.set(row.id, row)
 
   const docIds = [...new Set([...proposalById.values()].map((p) => p.document_id))]
-  const { data: docRows, error: docErr } = await db
-    .from('documents')
-    .select('id, filename, document_type, effective_date')
-    .in('id', docIds.length > 0 ? docIds : [NIL_UUID])
-  if (docErr) throw docErr
-  const docById = new Map((docRows ?? []).map((d) => [d.id, d]))
+  const docById = await loadActiveDocumentMetadataByIds(db, docIds)
 
   for (const pointId of pointIds) {
     const members = membersByPoint.get(pointId) ?? []
     const eligibleProposalIds = selectEligibleProposalIds(members, proposalsByThread)
+    // Une preuve dont le document source a été soft-supprimé n'est plus une preuve active :
+    // exclue de la liste (jamais affichée avec des métadonnées blanchies). La paire de Points
+    // elle-même reste intacte — seule la liste de preuves est amputée (mandat Vincent
+    // P0 Needs-you 2026-09-22).
     const allProofs: PointProofView[] = [...eligibleProposalIds]
       .map((id) => proposalById.get(id))
       .filter((p): p is ProofProposalRow => p !== undefined)
+      .filter((p) => docById.has(p.document_id))
       .map((p) => {
         const doc = docById.get(p.document_id)
         const excerpt = p.source_excerpt?.trim() || null

@@ -29,6 +29,8 @@ let adminUserId: string
 let docId: string
 let runId: string
 const pendingTraceIds: string[] = []
+const extraDocumentIds: string[] = []
+const extraRunIds: string[] = []
 
 async function makePendingTrace(threadId: string, kind = 'TRACKABILITY_UNDETERMINED', targetSiteId: string = siteId) {
   const db = createAdminClient()
@@ -59,6 +61,39 @@ async function resolveEvidence(pendingId: string, proposalIds: string[]) {
   if (error) throw error
 }
 
+// makeSoftDeletedDocumentProposal (mandat Vincent P0 Needs-you, 2026-09-22) : crée un document +
+// run DÉDIÉS (jamais le docId/runId partagés du fichier, pour ne jamais soft-supprimer un document
+// dont dépendent les autres tests) puis une proposition dessus, avant de marquer le document
+// deleted_at — reproduit le witness Dumbéa Mall (document remplacé, ancien soft-supprimé).
+async function makeSoftDeletedDocumentProposal(threadId: string, label = `${TAG} deleted-doc proposal`) {
+  const db = createAdminClient()
+  const { data: doc, error: docErr } = await db.from('documents').insert({
+    organization_id: orgId, document_type: 'historical_visit_report', storage_path: `${TAG}/deleted-${randomUUID()}.pdf`, filename: 'deleted.pdf',
+  }).select('id').single()
+  if (docErr) throw docErr
+  const deletedDocId = (doc as { id: string }).id
+  extraDocumentIds.push(deletedDocId)
+
+  const { data: run, error: runErr } = await db.from('document_extraction_run').insert({
+    organization_id: orgId, document_id: deletedDocId, extractor_key: 'test',
+  }).select('id').single()
+  if (runErr) throw runErr
+  const deletedRunId = (run as { id: string }).id
+  extraRunIds.push(deletedRunId)
+
+  const { data, error } = await db.from('document_extraction_proposal').insert({
+    organization_id: orgId, extraction_run_id: deletedRunId, document_id: deletedDocId,
+    proposal_family: 'observation', label, subject_thread_id: threadId,
+  }).select('id').single()
+  if (error) throw error
+  const id = (data as { id: string }).id
+
+  const { error: delErr } = await db.from('documents').update({ deleted_at: new Date().toISOString() }).eq('id', deletedDocId)
+  if (delErr) throw delErr
+
+  return id
+}
+
 beforeAll(async () => {
   const db = createAdminClient()
 
@@ -85,6 +120,9 @@ afterAll(async () => {
   await db.from('tracked_point').delete().in('site_id', [siteId, otherSiteId])
   await db.from('tracked_point_pending_trace').delete().in('site_id', [siteId, otherSiteId])
   await db.from('document_extraction_proposal').delete().eq('document_id', docId)
+  if (extraDocumentIds.length > 0) await db.from('document_extraction_proposal').delete().in('document_id', extraDocumentIds)
+  if (extraRunIds.length > 0) await db.from('document_extraction_run').delete().in('id', extraRunIds)
+  if (extraDocumentIds.length > 0) await db.from('documents').delete().in('id', extraDocumentIds)
   await db.from('document_extraction_run').delete().eq('id', runId)
   await db.from('documents').delete().eq('id', docId)
   await db.from('sites').delete().in('id', [siteId, otherSiteId])
@@ -221,6 +259,36 @@ describe('loadPendingTrackabilityQueue — read-model de file (6E.3B.2)', () => 
 
     const after = await loadPendingTrackabilityQueue(siteId)
     expect(after.entries.some((e) => e.pendingTraceId === pendingId)).toBe(false)
+  })
+
+  // Mandat Vincent P0 Needs-you (2026-09-22), témoin Dumbéa Mall : une fois la portée de preuve
+  // résolue, si l'unique proposition retenue est portée par un document soft-supprimé, elle n'est
+  // plus une preuve active — actionable retombe à false et l'id disparaît de evidenceProposalIds.
+  it('bascule actionable=false et retire l\'id de evidenceProposalIds quand l\'unique preuve résolue vient d\'un document soft-supprimé', async () => {
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+    const deletedProposalId = await makeSoftDeletedDocumentProposal(threadId)
+    await resolveEvidence(pendingId, [deletedProposalId])
+
+    const queue = await loadPendingTrackabilityQueue(siteId)
+    const entry = queue.entries.find((e) => e.pendingTraceId === pendingId)
+    expect(entry).toBeDefined()
+    expect(entry?.actionable).toBe(false)
+    expect(entry?.evidenceProposalIds).toEqual([])
+  })
+
+  it('garde actionable=true et ne retire que l\'id soft-supprimé quand une autre preuve résolue reste active', async () => {
+    const threadId = randomUUID()
+    const pendingId = await makePendingTrace(threadId)
+    const activeProposalId = await makeProposal(threadId)
+    const deletedProposalId = await makeSoftDeletedDocumentProposal(threadId)
+    await resolveEvidence(pendingId, [activeProposalId, deletedProposalId])
+
+    const queue = await loadPendingTrackabilityQueue(siteId)
+    const entry = queue.entries.find((e) => e.pendingTraceId === pendingId)
+    expect(entry).toBeDefined()
+    expect(entry?.actionable).toBe(true)
+    expect(entry?.evidenceProposalIds).toEqual([activeProposalId])
   })
 })
 

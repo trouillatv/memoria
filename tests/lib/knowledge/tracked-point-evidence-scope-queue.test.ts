@@ -107,4 +107,24 @@ describe('buildEvidenceScopeQueue', () => {
     expect(queue.excludedAlreadyTracked).toEqual([])
     expect(queue.totalEntries).toBe(1)
   })
+
+  // Mandat Vincent P0 Needs-you (2026-09-22) : le filtrage document-actif se fait en amont, dans
+  // loadEvidenceScopeQueue (jamais dans buildEvidenceScopeQueue, qui reste pur) — quand toutes les
+  // propositions d'un thread ont déjà été retirées avant l'appel, la trace n'a plus d'option
+  // active et bascule dans excludedNoActiveEvidence, jamais silencieusement absente de la file.
+  it('exclut une trace dont le thread n\'a plus aucune proposition (document soft-supprimé en amont) dans excludedNoActiveEvidence', () => {
+    const t1 = trace('t1')
+    const t2 = trace('t2')
+    const proposals = new Map([
+      [t1.sourceThreadId, []],
+      [t2.sourceThreadId, [proposal('p2')]],
+    ])
+
+    const queue = buildEvidenceScopeQueue('site-1', [t1, t2], proposals, new Map(), new Map(), new Set())
+
+    expect(queue.entries).toHaveLength(1)
+    expect(queue.entries[0].pendingTraceId).toBe('t2')
+    expect(queue.excludedNoActiveEvidence).toEqual(['t1'])
+    expect(queue.totalEntries).toBe(1)
+  })
 })

@@ -37,6 +37,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { pendingTraceVisibleFilter } from '@/lib/db/tracked-point-pending-resolution'
+import { loadActiveDocumentMetadataByIds } from '@/lib/db/documents'
 
 type Db = ReturnType<typeof createAdminClient>
 type SubjectRow = { id: string; merged_into: string | null }
@@ -109,6 +110,11 @@ export type EvidenceScopeQueue = {
   // RESOLUTION_WITHOUT_KNOWN_PROBLEM) : une preuve à préciser sur un thread déjà tracké n'a plus
   // de décision à prendre, jamais perdue en silence (ids conservés ici, jamais retirés sans trace).
   excludedAlreadyTracked: string[]
+  // Mandat Vincent P0 Needs-you (2026-09-22) : trace dont TOUTES les
+  // propositions étaient portées par des documents soft-supprimés — plus
+  // aucune option active à choisir, jamais perdue en silence (même doctrine
+  // que excludedAlreadyTracked, ids conservés).
+  excludedNoActiveEvidence: string[]
 }
 
 function normalizeExcerptForDedup(s: string | null): string {
@@ -162,6 +168,7 @@ export function buildEvidenceScopeQueue(
 ): EvidenceScopeQueue {
   const entries: EvidenceScopeQueueEntry[] = []
   const excludedAlreadyTracked: string[] = []
+  const excludedNoActiveEvidence: string[] = []
 
   for (const trace of traces) {
     if (alreadyTrackedThreadIds.has(trace.sourceThreadId)) {
@@ -170,6 +177,10 @@ export function buildEvidenceScopeQueue(
     }
 
     const proposals = dedupeProposals(proposalsByThreadId.get(trace.sourceThreadId) ?? [])
+    if (proposals.length === 0) {
+      excludedNoActiveEvidence.push(trace.id)
+      continue
+    }
     const subjectId = subjectIdByThreadId.get(trace.sourceThreadId) ?? null
     entries.push({
       pendingTraceId: trace.id,
@@ -185,7 +196,7 @@ export function buildEvidenceScopeQueue(
     })
   }
 
-  return { siteId, entries, totalEntries: entries.length, excludedAlreadyTracked }
+  return { siteId, entries, totalEntries: entries.length, excludedAlreadyTracked, excludedNoActiveEvidence }
 }
 
 const NIL_UUID = '00000000-0000-0000-0000-000000000000'
@@ -220,15 +231,14 @@ export async function loadEvidenceScopeQueue(siteId: string): Promise<EvidenceSc
   if (propErr) throw propErr
 
   const documentIds = [...new Set((rawProposals ?? []).map((p) => p.document_id).filter((id): id is string => !!id))]
-  const { data: rawDocuments, error: docErr } = await db
-    .from('documents')
-    .select('id, filename, document_type, effective_date')
-    .in('id', documentIds.length > 0 ? documentIds : [NIL_UUID])
-  if (docErr) throw docErr
-  const documentsById = new Map((rawDocuments ?? []).map((d) => [d.id, d]))
+  const documentsById = await loadActiveDocumentMetadataByIds(db, documentIds)
 
   const proposalsByThreadId = new Map<string, EvidenceScopeCandidateProposal[]>()
   for (const p of rawProposals ?? []) {
+    // Un document soft-supprimé (deleted_at) n'a plus sa place comme option
+    // active : la proposition qu'il porte est écartée ici, jamais gardée avec
+    // des métadonnées blanchies (mandat Vincent P0 Needs-you 2026-09-22).
+    if (p.document_id && !documentsById.has(p.document_id)) continue
     const doc = p.document_id ? documentsById.get(p.document_id) : undefined
     const list = proposalsByThreadId.get(p.subject_thread_id) ?? []
     const sourceExcerpt = p.source_excerpt?.trim() || null

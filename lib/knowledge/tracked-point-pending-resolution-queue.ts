@@ -32,6 +32,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { pendingTraceVisibleFilter } from '@/lib/db/tracked-point-pending-resolution'
+import { loadActiveDocumentMetadataByIds } from '@/lib/db/documents'
 import { loadTrackedPointReadModel, type PointReadModelEntry } from './tracked-point-read-model'
 
 export type PendingResolutionTargetingMode =
@@ -254,15 +255,27 @@ export async function loadPendingResolutionQueue(siteId: string): Promise<Pendin
   if (propErr) throw propErr
 
   const documentIds = [...new Set((rawProposals ?? []).map((p) => p.document_id).filter((id): id is string => !!id))]
-  const { data: rawDocuments, error: docErr } = await db
-    .from('documents')
-    .select('id, filename, document_type, effective_date')
-    .in('id', documentIds.length > 0 ? documentIds : [NIL_UUID])
-  if (docErr) throw docErr
-  const documentsById = new Map((rawDocuments ?? []).map((d) => [d.id, d]))
+  const documentsById = await loadActiveDocumentMetadataByIds(db, documentIds)
+
+  // Une preuve déjà résolue (tracked_point_pending_trace_evidence) référençant un document
+  // depuis soft-supprimé ne doit plus rendre la trace actionable — ni rester listée dans
+  // evidenceProposalIds — même si la ligne de résolution existe encore en base (mandat Vincent
+  // P0 Needs-you 2026-09-22).
+  const documentIdByProposalId = new Map<string, string | null>(
+    (rawProposals ?? []).map((p) => [p.id, p.document_id]),
+  )
+  const evidenceProposalIdsByTraceActive = new Map<string, string[]>()
+  for (const [traceId, ids] of evidenceProposalIdsByTrace) {
+    const activeIds = ids.filter((id) => {
+      const docId = documentIdByProposalId.get(id)
+      return !docId || documentsById.has(docId)
+    })
+    evidenceProposalIdsByTraceActive.set(traceId, activeIds)
+  }
 
   const sourceProposalsByThread = new Map<string, PendingResolutionSourceProposal[]>()
   for (const p of rawProposals ?? []) {
+    if (p.document_id && !documentsById.has(p.document_id)) continue
     const doc = p.document_id ? documentsById.get(p.document_id) : undefined
     const list = sourceProposalsByThread.get(p.subject_thread_id) ?? []
     list.push({
@@ -361,7 +374,7 @@ export async function loadPendingResolutionQueue(siteId: string): Promise<Pendin
   return buildPendingResolutionQueue(
     siteId,
     traces,
-    evidenceProposalIdsByTrace,
+    evidenceProposalIdsByTraceActive,
     sourceProposalsByThread,
     knownTargetsByThread,
     sameSubjectPointIdsByThread,

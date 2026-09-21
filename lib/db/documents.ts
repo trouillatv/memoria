@@ -526,6 +526,34 @@ export async function softDeleteDocument(id: string): Promise<void> {
   }
 }
 
+export type ActiveDocumentMetadata = {
+  id: string
+  filename: string
+  document_type: string
+  effective_date: string | null
+}
+
+/**
+ * Résout par lot les documents ENCORE ACTIFS (deleted_at IS NULL) parmi une
+ * liste d'ids. Un id de document soft-supprimé est absent de la Map retournée
+ * — jamais présent avec des métadonnées vides — pour que les cinq files
+ * Needs-you puissent écarter la preuve correspondante plutôt que de se
+ * contenter d'un affichage blanchi (mandat Vincent P0 Needs-you 2026-09-22).
+ */
+export async function loadActiveDocumentMetadataByIds(
+  db: ReturnType<typeof createAdminClient>,
+  documentIds: string[],
+): Promise<Map<string, ActiveDocumentMetadata>> {
+  if (documentIds.length === 0) return new Map()
+  const { data, error } = await db
+    .from('documents')
+    .select('id, filename, document_type, effective_date')
+    .in('id', documentIds)
+    .is('deleted_at', null)
+  if (error) throw error
+  return new Map((data ?? []).map((d) => [d.id, d as ActiveDocumentMetadata]))
+}
+
 /**
  * Pose le texte extrait + la source d'extraction (pipeline analyzeDocument,
  * phase 2). Déterministe : aucune génération LLM. Appelé une seule fois par
