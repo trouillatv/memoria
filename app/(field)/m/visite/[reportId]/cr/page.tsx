@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import {
   ArrowLeft, Eye, ClipboardList, ListTodo, Gavel, Camera, FileText,
-  ChevronRight, Star, Monitor, Check, MapPin, Download, CheckCircle2, ArrowRight, Home, Pencil, Sparkles,
+  ChevronRight, Star, Monitor, Check, MapPin, CheckCircle2, ArrowRight, Home, Pencil, Sparkles,
 } from 'lucide-react'
 import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -16,6 +16,7 @@ import { CrMapSnapshotTrigger } from './CrMapSnapshotTrigger'
 import { getCrMapBaseLayerStatus } from '@/lib/pdf/cr-map-snapshot'
 import { MemoriaRetained } from './MemoriaRetained'
 import { CrDocumentSections, type CrPhotoCandidate } from './CrDocumentSections'
+import { CrPdfDownloadButton } from './CrPdfDownloadButton'
 import { CrConcretisation } from './CrConcretisation'
 import { CrAnalyseOrigine } from './CrAnalyseOrigine'
 import { WatchlistBilan } from './WatchlistBilan'
@@ -481,13 +482,7 @@ export default async function VisitCrPreviewPage({
           >
             <Eye className="h-4 w-4" /> Voir le PDF
           </a>
-          <a
-            href={pdfDownloadHref}
-            download
-            className="flex items-center justify-center gap-1.5 rounded-xl bg-foreground px-4 py-2.5 text-sm font-semibold text-background active:brightness-95"
-          >
-            <Download className="h-4 w-4" /> Télécharger
-          </a>
+          <CrPdfDownloadButton href={pdfDownloadHref} />
         </div>
         <p className="mt-1.5 text-[12px] leading-snug text-muted-foreground">
           Pour enregistrer le fichier sur votre téléphone, utilisez{' '}

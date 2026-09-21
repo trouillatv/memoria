@@ -6,7 +6,8 @@
 // Auth : rôles terrain (chef_equipe / admin / manager) + scope organisation.
 
 import { NextResponse } from 'next/server'
-import { renderToBuffer } from '@react-pdf/renderer'
+import { Readable } from 'node:stream'
+import { renderToStream } from '@react-pdf/renderer'
 import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getVisit, buildVisitCrDoc } from '@/lib/db/visits'
 import { loadOrRunVisitDebrief } from '@/lib/visits/debrief-analysis'
@@ -111,9 +112,16 @@ export async function GET(req: Request, ctx: RouteCtx) {
     ? await resolveCrMapSnapshotForPdf(reportId).catch(() => null)
     : null
 
-  let pdfBuffer: Buffer
+  // Un CR à forte volumétrie de photos (46 à 78 sur le terrain, cf. La Foa
+  // 13,19 Mo) dépasse largement la limite dure de 4,5 Mo qu'impose Vercel au
+  // corps d'une réponse de fonction BUFFERISÉE. `renderToStream` (le renderer
+  // écrit déjà en flux en interne ; `renderToBuffer` ne faisait qu'accumuler
+  // ce flux en mémoire avant de répondre) évite ce plafond en laissant Vercel
+  // transmettre les octets au fur et à mesure de leur production, sans jamais
+  // matérialiser le PDF entier en mémoire de fonction (Vincent, 2026-09-21).
+  let nodeStream: NodeJS.ReadableStream
   try {
-    pdfBuffer = await renderToBuffer(
+    nodeStream = await renderToStream(
       VisitCrPdf({
         doc,
         summary,
@@ -128,6 +136,8 @@ export async function GET(req: Request, ctx: RouteCtx) {
     console.error('[visit-cr-pdf] PDF render failed:', e)
     return NextResponse.json({ error: `Erreur génération PDF: ${msg}` }, { status: 500 })
   }
+  nodeStream.on('error', (e) => console.error('[visit-cr-pdf] PDF stream error:', e))
+  const webStream = Readable.toWeb(nodeStream as Readable) as unknown as ReadableStream
 
   const slug = doc.siteName
     .toLowerCase()
@@ -172,7 +182,7 @@ export async function GET(req: Request, ctx: RouteCtx) {
   const download = new URL(req.url).searchParams.has('download')
   const disposition = download ? 'attachment' : 'inline'
 
-  return new NextResponse(new Uint8Array(pdfBuffer), {
+  return new NextResponse(webStream, {
     status: 200,
     headers: {
       'Content-Type': 'application/pdf',
