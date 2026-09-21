@@ -139,7 +139,14 @@ const styles = StyleSheet.create({
   photoGrid: { flexDirection: 'column' },
   photoRow: { flexDirection: 'row' },
   photoCell: { width: PHOTO_CELL_W, marginRight: PHOTO_CELL_GAP, marginBottom: 8, position: 'relative' },
-  photo: { width: 235, height: 150, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
+  // Doctrine Vincent (fix crop CR, 2026-09-21) : une photo de preuve n'est
+  // JAMAIS recadrée automatiquement — `contain` (ratio natif conservé) dans un
+  // cadre MAX 235×320 (largeur inchangée, hauteur relevée 150→320 pour qu'un
+  // portrait reste réellement lisible au lieu d'être écrasé par un plafond bas).
+  // objectPosition ancré en haut-gauche : le NumberBadge (top/left de la
+  // CELLULE, pas de l'image) reste collé au coin visible de la photo même
+  // quand `contain` la rend plus étroite que la cellule (portrait).
+  photo: { width: 235, height: 320, objectFit: 'contain', objectPositionX: 0, objectPositionY: 0, borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
   photoCap: { fontSize: 9, marginTop: 3 },
   photoCapStrong: { fontFamily: 'Helvetica-Bold' },
   mediaNote: { fontSize: 9, color: COLORS.muted, marginTop: 2 },
@@ -158,7 +165,8 @@ const styles = StyleSheet.create({
   evoLabel: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: COLORS.slate, marginBottom: 3 },
   evoRow: { flexDirection: 'row' },
   evoCell: { width: 120, marginRight: 8 },
-  evoPhoto: { width: 120, height: 80, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
+  // `contain` : jamais de crop (pas de NumberBadge ici → centrage par défaut OK).
+  evoPhoto: { width: 120, height: 80, objectFit: 'contain', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
   evoDate: { fontSize: 7.5, color: COLORS.muted, marginTop: 2, textAlign: 'center' },
 
   // Reportage photographique (Tier 2, P0 mémoire/reportage 2026-08-17) : compact,
@@ -167,7 +175,9 @@ const styles = StyleSheet.create({
   reportageGrid: { flexDirection: 'column' },
   reportageRow: { flexDirection: 'row' },
   reportageCell: { width: REPORTAGE_CELL_W, marginRight: REPORTAGE_CELL_GAP, marginBottom: 8, position: 'relative' },
-  reportagePhoto: { width: 120, height: 80, objectFit: 'cover', borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
+  // `contain` : galerie compacte conservée, mais image entière visible (jamais
+  // de crop) ; ancré haut-gauche pour garder le NumberBadge collé à la photo.
+  reportagePhoto: { width: 120, height: 80, objectFit: 'contain', objectPositionX: 0, objectPositionY: 0, borderWidth: 0.5, borderColor: COLORS.border, borderRadius: 3 },
   reportageCap: { fontSize: 7.5, color: COLORS.muted, marginTop: 2 },
   reportageDate: { fontSize: 7, color: COLORS.faint, marginTop: 1 },
 

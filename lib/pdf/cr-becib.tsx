@@ -468,9 +468,12 @@ export function CrBecibPdf({ cr }: { cr: CrBecib }) {
             ) : null}
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {cr.photos.map((p, i) => (
+                // Doctrine Vincent (fix crop CR, 2026-09-21) : jamais de crop auto —
+                // `contain` (ratio natif) dans un cadre MAX 150×200 (hauteur relevée
+                // 100→200 pour qu'un portrait reste réellement lisible).
                 <View key={i} style={{ width: 150 }} wrap={false}>
                   {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
-                  <Image src={p.url} style={{ width: 150, height: 100, objectFit: 'cover', borderWidth: 0.5, borderColor: C.border }} />
+                  <Image src={p.url} style={{ width: 150, height: 200, objectFit: 'contain', borderWidth: 0.5, borderColor: C.border }} />
                   <Text style={{ fontSize: 6.5, color: C.faint, textAlign: 'center', fontFamily: 'Helvetica-Bold', marginTop: 1 }}>{p.legende}</Text>
                 </View>
               ))}
