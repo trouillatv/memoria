@@ -36,6 +36,8 @@ function point(overrides: Partial<PointReadModelEntry>): PointReadModelEntry {
     awaitingDecision: false,
     hasDocumentaryDivergence: false,
     hasConflict: false,
+    firstDocumentaryMentionAt: null,
+    lastDocumentaryMentionAt: null,
     ...overrides,
   }
 }

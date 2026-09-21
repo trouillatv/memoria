@@ -69,6 +69,8 @@ function pointDetail(id: string, overrides: Partial<PointReadModelEntry> = {}): 
     awaitingDecision: false,
     hasDocumentaryDivergence: false,
     hasConflict: false,
+    firstDocumentaryMentionAt: null,
+    lastDocumentaryMentionAt: null,
     ...overrides,
   }
 }

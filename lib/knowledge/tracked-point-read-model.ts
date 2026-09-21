@@ -100,6 +100,13 @@ export type PointReadModelEntry = {
   awaitingDecision: boolean
   hasDocumentaryDivergence: boolean
   hasConflict: boolean
+  // Mention documentaire (GO Vincent 2026-09-22, séparation occurrence/état) : dérivée de
+  // TOUTE la provenance éligible (toutes familles, tous document_status), jamais seulement
+  // du sous-ensemble filtré dans `docs`/`trajectory`. Ne participe JAMAIS au reducer — une
+  // mention n'est pas un PointLifecycleEvent et ne doit jamais pouvoir faire basculer
+  // derivedState vers 'open'/'reopened'.
+  firstDocumentaryMentionAt: string | null
+  lastDocumentaryMentionAt: string | null
 }
 
 export type SubjectPointReadModel = {
@@ -169,6 +176,10 @@ export function projectTrackedPoint(
   decisions: PointLifecycleEvent[] = [],
   docs: PointLifecycleEvent[] = [],
   canonicalPointId: string = point.id,
+  documentaryMentionRange: { firstDocumentaryMentionAt: string | null; lastDocumentaryMentionAt: string | null } = {
+    firstDocumentaryMentionAt: null,
+    lastDocumentaryMentionAt: null,
+  },
 ): PointReadModelEntry {
   const reduced = reduceTrackedPointLifecycle(decisions, docs, cboMembers)
   const latestMeaningfulEventAt =
@@ -202,6 +213,8 @@ export function projectTrackedPoint(
     awaitingDecision: reduced.markers.includes('awaiting_decision'),
     hasDocumentaryDivergence: reduced.documentaryDivergences.length > 0,
     hasConflict: reduced.conflicts.length > 0,
+    firstDocumentaryMentionAt: documentaryMentionRange.firstDocumentaryMentionAt,
+    lastDocumentaryMentionAt: documentaryMentionRange.lastDocumentaryMentionAt,
   }
 }
 
@@ -358,7 +371,13 @@ export type PointEvidenceLookups = {
 export function assemblePointEvidence(
   memberPointIds: string[],
   lookups: PointEvidenceLookups,
-): { cboMembers: PointCboMember[]; hardMemberThreadIds: string[]; docs: PointLifecycleEvent[] } {
+): {
+  cboMembers: PointCboMember[]
+  hardMemberThreadIds: string[]
+  docs: PointLifecycleEvent[]
+  firstDocumentaryMentionAt: string | null
+  lastDocumentaryMentionAt: string | null
+} {
   const cboIds = [...new Set(memberPointIds.flatMap((id) => lookups.cboIdsByPoint.get(id) ?? []))]
   const cboMembers: PointCboMember[] = cboIds
     .map((cboId) => {
@@ -381,8 +400,22 @@ export function assemblePointEvidence(
       date: lookups.docDate.get(p.document_id) ?? null,
     }))
   const docs = assemblePointDocumentaryEvents(provenance)
+  const { firstDocumentaryMentionAt, lastDocumentaryMentionAt } = deriveDocumentaryMentionRange(provenance)
 
-  return { cboMembers, hardMemberThreadIds, docs }
+  return { cboMembers, hardMemberThreadIds, docs, firstDocumentaryMentionAt, lastDocumentaryMentionAt }
+}
+
+// deriveDocumentaryMentionRange (GO Vincent 2026-09-22) : pure, dérivée de TOUTE la provenance
+// éligible d'un Point, indépendamment de proposalFamily/documentStatus — une mention documentaire
+// n'exprime qu'une présence, jamais un état. N'appelle jamais assemblePointDocumentaryEvents :
+// les deux notions restent des dérivations parallèles et indépendantes de la même `provenance`,
+// jamais l'une composée à partir de l'autre.
+export function deriveDocumentaryMentionRange(
+  provenance: PointDocProposalProvenance[],
+): { firstDocumentaryMentionAt: string | null; lastDocumentaryMentionAt: string | null } {
+  const dates = provenance.map((p) => p.date).filter((d): d is string => d !== null).sort()
+  if (dates.length === 0) return { firstDocumentaryMentionAt: null, lastDocumentaryMentionAt: null }
+  return { firstDocumentaryMentionAt: dates[0], lastDocumentaryMentionAt: dates[dates.length - 1] }
 }
 
 export async function fetchAllChunks<T>(
@@ -580,16 +613,28 @@ export async function loadTrackedPointReadModel(siteId: string): Promise<Tracked
 
   for (const point of points) {
     if (point.status === 'merged') {
-      const { cboMembers, hardMemberThreadIds, docs } = assemblePointEvidence([point.id], evidenceLookups)
+      const { cboMembers, hardMemberThreadIds, docs, firstDocumentaryMentionAt, lastDocumentaryMentionAt } =
+        assemblePointEvidence([point.id], evidenceLookups)
       const canonicalPointId = resolveCanonicalPointId(point.id, pointsById)
-      mergedPoints.push(projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, canonicalPointId))
+      mergedPoints.push(
+        projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, canonicalPointId, {
+          firstDocumentaryMentionAt,
+          lastDocumentaryMentionAt,
+        }),
+      )
       continue
     }
 
     const component = mergeComponents.get(point.id)
     const memberPointIds = component ? component.memberPointIds : [point.id]
-    const { cboMembers, hardMemberThreadIds, docs } = assemblePointEvidence(memberPointIds, evidenceLookups)
-    readModelPoints.push(projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, point.id))
+    const { cboMembers, hardMemberThreadIds, docs, firstDocumentaryMentionAt, lastDocumentaryMentionAt } =
+      assemblePointEvidence(memberPointIds, evidenceLookups)
+    readModelPoints.push(
+      projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, point.id, {
+        firstDocumentaryMentionAt,
+        lastDocumentaryMentionAt,
+      }),
+    )
   }
 
   const bySubject = new Map<string, SubjectPointReadModel>()

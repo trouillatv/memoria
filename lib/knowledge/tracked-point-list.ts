@@ -86,6 +86,12 @@ export interface PointListEntry {
   // (changé au dernier PV, Points qui traînent) sans nouveau moteur ni recalcul.
   isLingering: boolean
   isChangedSinceLastPv: boolean
+  // Mention documentaire (GO Vincent 2026-09-22, séparation occurrence/état) : dérivée de TOUTE
+  // la provenance éligible (tracked-point-read-model.ts, deriveDocumentaryMentionRange), jamais
+  // seulement des propositions ayant produit un événement d'état. Une mention n'implique jamais
+  // 'open'/'reopened' — reste strictement indépendante de derivedState/isChangedSinceLastPv.
+  firstDocumentaryMentionAt: string | null
+  lastDocumentaryMentionAt: string | null
   // Compteurs d'affichage « si disponible » (mandat ajustement Pilotage) — dérivés à coût nul
   // de la trajectoire déjà chargée par tracked-point-read-model.ts (même bornage que
   // mentionsCount/openedAt de tracked-point-detail.ts, jamais une 2e heuristique).
@@ -548,6 +554,8 @@ export async function loadSiteTrackedPointList(siteId: string, userId: string): 
       }),
       isLingering: Boolean(lingering),
       isChangedSinceLastPv: Boolean(lastPvDate && p.latestMeaningfulEventAt === lastPvDate),
+      firstDocumentaryMentionAt: p.firstDocumentaryMentionAt,
+      lastDocumentaryMentionAt: p.lastDocumentaryMentionAt,
       mentionsCount: pvDocumentIdsByPoint.get(p.id)?.size ?? 0,
       openedAt: p.trajectory[0]?.effectiveAt ?? null,
       passagesSinceEvent: p.latestMeaningfulEventAt ? countPassagesSince(pvDates, p.latestMeaningfulEventAt) : null,

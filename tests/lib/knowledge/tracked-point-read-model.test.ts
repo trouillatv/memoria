@@ -5,6 +5,7 @@ import {
   projectPendingIdentityCandidates,
   selectEligibleProposalIds,
   assemblePointDocumentaryEvents,
+  deriveDocumentaryMentionRange,
   sortPointsForSubjectDisplay,
   type TrackedPointRow,
   type PendingIdentityCandidateRow,
@@ -371,6 +372,7 @@ describe('tracked-point-read-model — sortPointsForSubjectDisplay (6F.1, tri d�
     latestMeaningfulEventAt: null, trajectory: [], stateBasis: [], markers: [], documentaryDivergences: [],
     conflicts: [], toConfirm: false, closedByDecision: false, awaitingDecision: false,
     hasDocumentaryDivergence: false, hasConflict: false,
+    firstDocumentaryMentionAt: null, lastDocumentaryMentionAt: null,
     ...overrides,
   })
 
@@ -409,5 +411,61 @@ describe('tracked-point-read-model — sortPointsForSubjectDisplay (6F.1, tri d�
     const input = [a, b]
     sortPointsForSubjectDisplay(input)
     expect(input).toEqual([a, b])
+  })
+})
+
+// GO Vincent 2026-09-22 — séparation occurrence/état : deriveDocumentaryMentionRange est une
+// dérivation PURE et indépendante de assemblePointDocumentaryEvents/reduceNative. Elle ne doit
+// jamais dépendre de proposalFamily ni de documentStatus.
+describe('tracked-point-read-model — deriveDocumentaryMentionRange (GO Vincent 2026-09-22, mention documentaire)', () => {
+  const prov = (overrides: Partial<PointDocProposalProvenance> = {}): PointDocProposalProvenance => ({
+    proposalId: 'prop-1',
+    proposalFamily: 'action',
+    documentStatus: 'open',
+    date: '2026-01-01',
+    ...overrides,
+  })
+
+  it('provenance vide → première/dernière mention nulles', () => {
+    expect(deriveDocumentaryMentionRange([])).toEqual({
+      firstDocumentaryMentionAt: null,
+      lastDocumentaryMentionAt: null,
+    })
+  })
+
+  it('une seule mention → première = dernière', () => {
+    const result = deriveDocumentaryMentionRange([prov({ date: '2026-03-01' })])
+    expect(result).toEqual({ firstDocumentaryMentionAt: '2026-03-01', lastDocumentaryMentionAt: '2026-03-01' })
+  })
+
+  it('plusieurs mentions non triées → min/max corrects, indépendamment de l’ordre d’entrée', () => {
+    const result = deriveDocumentaryMentionRange([
+      prov({ proposalId: 'p2', date: '2026-06-01' }),
+      prov({ proposalId: 'p1', date: '2026-01-15' }),
+      prov({ proposalId: 'p3', date: '2026-03-10' }),
+    ])
+    expect(result).toEqual({ firstDocumentaryMentionAt: '2026-01-15', lastDocumentaryMentionAt: '2026-06-01' })
+  })
+
+  it('document_status=NULL compte quand même comme une mention (indépendant de l’état)', () => {
+    const result = deriveDocumentaryMentionRange([
+      prov({ proposalId: 'p1', date: '2026-01-01', documentStatus: null }),
+      prov({ proposalId: 'p2', date: '2026-02-01', documentStatus: null }),
+    ])
+    expect(result).toEqual({ firstDocumentaryMentionAt: '2026-01-01', lastDocumentaryMentionAt: '2026-02-01' })
+  })
+
+  it('dates nulles ignorées, ne cassent pas le calcul du min/max', () => {
+    const result = deriveDocumentaryMentionRange([
+      prov({ proposalId: 'p1', date: null }),
+      prov({ proposalId: 'p2', date: '2026-05-01' }),
+      prov({ proposalId: 'p3', date: null }),
+    ])
+    expect(result).toEqual({ firstDocumentaryMentionAt: '2026-05-01', lastDocumentaryMentionAt: '2026-05-01' })
+  })
+
+  it('toutes les dates nulles → première/dernière mention nulles', () => {
+    const result = deriveDocumentaryMentionRange([prov({ date: null }), prov({ proposalId: 'p2', date: null })])
+    expect(result).toEqual({ firstDocumentaryMentionAt: null, lastDocumentaryMentionAt: null })
   })
 })

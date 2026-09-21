@@ -7,14 +7,18 @@
 // telle visite » — une vue de consultation orientée Points et actions, pas un tableau d'états.
 //
 // AUCUN nouveau moteur : la catégorisation ci-dessous compose uniquement des signaux déjà gelés
-// et déjà exposés par `loadSiteTrackedPointList` (isChangedSinceLastPv, isLingering, openedAt,
-// derivedState, daysSinceLastEvent) — même convention que PointsPilotageView.tsx qui catégorise
-// déjà `toReview` par useMemo sans passer par un fichier séparé. Partition mutuellement exclusive
-// des Points changés au dernier PV (nouveau > réouvert > résolu > modifié, ordre business) ;
+// et déjà exposés par `loadSiteTrackedPointList` (isChangedSinceLastPv, isLingering,
+// firstDocumentaryMentionAt, lastDocumentaryMentionAt, derivedState, daysSinceLastEvent) — même
+// convention que PointsPilotageView.tsx qui catégorise déjà `toReview` par useMemo sans passer
+// par un fichier séparé. Partition TOTALE et mutuellement exclusive (GO Vincent 2026-09-22,
+// séparation occurrence/état) : changement d'état (réouvert > résolu > modifié) prime toujours
+// sur la mention documentaire (première mention > mentionné sans évolution > non mentionné).
 // « Sans évolution prolongée » est un axe indépendant (lingering), peut chevaucher marginalement.
 // Vocabulaire délibérément factuel (recette Vincent 2026-09-14, 3e passe) : « bloqué »
 // suggérerait un obstacle identifié que MemorIA ne connaît pas — seule la durée sans
-// évolution malgré plusieurs passages est une donnée réelle.
+// évolution malgré plusieurs passages est une donnée réelle. « Nouveau »/« Nouveau Point » est
+// interdit (Vincent 2026-09-22) : une mention prouve une présence documentaire, jamais la
+// nouveauté métier de l'objet réel sous-jacent — d'où « Première mention » et non « Nouveau ».
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -31,14 +35,23 @@ function pointHref(pointHrefPrefix: string, p: PointListEntry): string {
   return `${pointHrefPrefix}/${p.id}?from=delta`
 }
 
-type DeltaCategory = 'new' | 'reopened' | 'resolved' | 'modified'
+// Catégorisation (GO Vincent 2026-09-22, séparation occurrence/état) : partition TOTALE et
+// mutuellement exclusive. Un changement d'état (réouvert/résolu/modifié) prime toujours sur la
+// mention — une Première mention n'est retenue que pour un Point dont l'état n'a PAS changé au
+// dernier PV. `firstDocumentaryMentionAt`/`lastDocumentaryMentionAt` sont dérivées de TOUTE la
+// provenance documentaire (tracked-point-read-model.ts) et n'expriment jamais un état : ne
+// jamais utiliser cette catégorisation pour inférer 'open'/'reopened'.
+type DeltaCategory = 'firstMention' | 'reopened' | 'resolved' | 'modified' | 'mentionedUnchanged' | 'notMentioned'
 
-function categorize(p: PointListEntry): DeltaCategory | null {
-  if (!p.isChangedSinceLastPv) return null
-  if (p.openedAt && p.openedAt === p.latestMeaningfulEventAt) return 'new'
-  if (p.derivedState === 'reopened') return 'reopened'
-  if (p.derivedState === 'resolved') return 'resolved'
-  return 'modified'
+function categorize(p: PointListEntry, lastPvDate: string | null): DeltaCategory {
+  if (p.isChangedSinceLastPv) {
+    if (p.derivedState === 'reopened') return 'reopened'
+    if (p.derivedState === 'resolved') return 'resolved'
+    return 'modified'
+  }
+  if (lastPvDate && p.firstDocumentaryMentionAt === lastPvDate) return 'firstMention'
+  if (lastPvDate && p.lastDocumentaryMentionAt === lastPvDate) return 'mentionedUnchanged'
+  return 'notMentioned'
 }
 
 function DeltaRow({
@@ -163,31 +176,60 @@ export function PointsDeltaView({
   pointHrefPrefix: string
   lastPvDate: string | null
 }) {
-  const { nouveaux, reouverts, resolus, modifies, toujoursBloques, changedTotal, unchangedCount } = useMemo(() => {
-    const nouveaux: PointListEntry[] = []
+  const {
+    premieresMentions,
+    reouverts,
+    resolus,
+    modifies,
+    mentionnesSansEvolution,
+    nonMentionnesCount,
+    toujoursBloques,
+    changedTotal,
+  } = useMemo(() => {
+    const premieresMentions: PointListEntry[] = []
     const reouverts: PointListEntry[] = []
     const resolus: PointListEntry[] = []
     const modifies: PointListEntry[] = []
-    let changedTotal = 0
+    const mentionnesSansEvolution: PointListEntry[] = []
+    let nonMentionnesCount = 0
     for (const p of points) {
-      const cat = categorize(p)
-      if (!cat) continue
-      changedTotal += 1
-      if (cat === 'new') nouveaux.push(p)
-      else if (cat === 'reopened') reouverts.push(p)
-      else if (cat === 'resolved') resolus.push(p)
-      else modifies.push(p)
+      switch (categorize(p, lastPvDate)) {
+        case 'reopened':
+          reouverts.push(p)
+          break
+        case 'resolved':
+          resolus.push(p)
+          break
+        case 'modified':
+          modifies.push(p)
+          break
+        case 'firstMention':
+          premieresMentions.push(p)
+          break
+        case 'mentionedUnchanged':
+          mentionnesSansEvolution.push(p)
+          break
+        case 'notMentioned':
+          nonMentionnesCount += 1
+          break
+      }
     }
+    const changedTotal = reouverts.length + resolus.length + modifies.length + premieresMentions.length
     const toujoursBloques = points
       .filter((p) => p.isLingering)
       .slice()
       .sort((a, b) => (b.daysSinceLastEvent ?? 0) - (a.daysSinceLastEvent ?? 0))
-    // « Sans évolution notable » = ni changé au dernier PV, ni dans la sélection lingering
-    // (les deux axes sont indépendants et peuvent marginalement se chevaucher — on ne
-    // soustrait ici que les Points lingering qui ne sont pas déjà comptés dans changedTotal).
-    const unchangedCount = points.length - changedTotal - toujoursBloques.filter((p) => categorize(p) === null).length
-    return { nouveaux, reouverts, resolus, modifies, toujoursBloques, changedTotal, unchangedCount }
-  }, [points])
+    return {
+      premieresMentions,
+      reouverts,
+      resolus,
+      modifies,
+      mentionnesSansEvolution,
+      nonMentionnesCount,
+      toujoursBloques,
+      changedTotal,
+    }
+  }, [points, lastPvDate])
 
   if (points.length === 0) {
     return (
@@ -206,18 +248,20 @@ export function PointsDeltaView({
           {lastPvDate ? `Points — depuis le dernier PV du ${frDate(lastPvDate)}` : 'Points — depuis le dernier PV'}
         </p>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
-          {nouveaux.length} nouveau{nouveaux.length !== 1 ? 'x' : ''} · {resolus.length} résolu{resolus.length !== 1 ? 's' : ''} ·{' '}
+          {premieresMentions.length} première{premieresMentions.length !== 1 ? 's' : ''} mention
+          {premieresMentions.length !== 1 ? 's' : ''} · {resolus.length} résolu{resolus.length !== 1 ? 's' : ''} ·{' '}
           {reouverts.length} réouvert{reouverts.length !== 1 ? 's' : ''} · {modifies.length} modifié{modifies.length !== 1 ? 's' : ''}
         </p>
         <p className="text-[12.5px] text-muted-foreground">
-          {unchangedCount} Point{unchangedCount !== 1 ? 's' : ''} sans évolution notable
+          {mentionnesSansEvolution.length} mentionné{mentionnesSansEvolution.length !== 1 ? 's' : ''} sans évolution ·{' '}
+          {nonMentionnesCount} non mentionné{nonMentionnesCount !== 1 ? 's' : ''}
           {toujoursBloques.length > 0 ? `, dont ${toujoursBloques.length} sans évolution prolongée` : ''}
         </p>
       </div>
 
       {!hasAnyDelta ? (
         <p className="rounded-lg border border-dashed px-4 py-6 text-center text-[13px] text-muted-foreground">
-          Rien de nouveau depuis le dernier PV : aucun Point nouveau, résolu, réouvert ou sans évolution prolongée.
+          Rien de nouveau depuis le dernier PV : aucune première mention, aucun Point résolu, réouvert ou sans évolution prolongée.
         </p>
       ) : (
         <>
@@ -230,10 +274,10 @@ export function PointsDeltaView({
             detailFor={(p) => p.reviewReasons[0]}
           />
           <DeltaSection
-            title="Nouveaux"
+            title="Première mention"
             icon={<Sparkles className="h-3.5 w-3.5" />}
             accentCls="text-indigo-700 dark:text-indigo-300"
-            points={nouveaux}
+            points={premieresMentions}
             pointHrefPrefix={pointHrefPrefix}
           />
           <DeltaSection

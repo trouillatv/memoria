@@ -124,8 +124,14 @@ export function buildSubjectPointMiniContext(
     const memberPointIds = crossSubjectMergeDetected
       ? [point.id]
       : (mergeComponents!.get(point.id)?.memberPointIds ?? [point.id])
-    const { cboMembers, hardMemberThreadIds, docs } = assemblePointEvidence(memberPointIds, evidenceLookups)
-    entries.push(projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, point.id))
+    const { cboMembers, hardMemberThreadIds, docs, firstDocumentaryMentionAt, lastDocumentaryMentionAt } =
+      assemblePointEvidence(memberPointIds, evidenceLookups)
+    entries.push(
+      projectTrackedPoint(point, cboMembers, hardMemberThreadIds, [], docs, point.id, {
+        firstDocumentaryMentionAt,
+        lastDocumentaryMentionAt,
+      }),
+    )
   }
 
   const tally = deriveSubjectPointReadModel(canonicalSubjectId, entries)

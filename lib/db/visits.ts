@@ -327,7 +327,11 @@ export async function listSitePvDates(siteId: string, limit = 200): Promise<stri
 
   const dates = new Set<string>()
   for (const r of (reportsRes.data ?? []) as { started_at: string | null }[]) {
-    if (r.started_at) dates.add(r.started_at)
+    // `started_at` est un timestamptz : le réduire à la date civile Nouméa (pas `.slice(0,10)`
+    // qui donnerait la date calendaire UTC — décalée de la vraie journée métier autour de minuit
+    // Nouméa, cf. lib/time/local-date.ts) pour rester comparable à `documents.effective_date`
+    // (déjà une date civile pure) dans le même Set.
+    if (r.started_at) dates.add(localDateOf(new Date(r.started_at)))
   }
 
   const docIds = (linksRes.data ?? []).map((l) => (l as { document_id: string }).document_id)
