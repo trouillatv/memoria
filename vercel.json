@@ -56,6 +56,22 @@
     {
       "path": "/api/cron/sweep-stuck-tracked-point-reconciliation",
       "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/cron/sweep-stuck-subject-thread-reconciliation",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/sweep-stuck-subject-thread-reconciliation",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/sweep-stuck-subject-thread-reconciliation",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/sweep-stuck-subject-thread-reconciliation",
+      "schedule": "0 23 * * *"
     }
   ]
 }

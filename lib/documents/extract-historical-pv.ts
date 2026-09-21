@@ -11,7 +11,12 @@ import {
   insertExtractionEvidence,
   linkProposalEvidence,
 } from '@/lib/db/document-extractions'
-import { mapDocumentStatus, reconcileSubjectThreads } from './subject-reconciliation'
+import {
+  mapDocumentStatus,
+  reconcileSubjectThreads,
+  upsertSubjectThreadReconcileFailure,
+  resolveSubjectThreadReconcileFailureIfAny,
+} from './subject-reconciliation'
 import { normalizeDocumentVerdict } from './verdict-normalization'
 import { resolveOrphansSemantically } from './semantic-subject-resolution'
 import { buildExtractionSiteContext } from '@/lib/db/extraction-context'
@@ -566,12 +571,22 @@ export async function extractHistoricalPv(
         const { matched, created, orphans: o } = await reconcileSubjectThreads(runId, siteIdForReconciliation)
         orphans = o
         log('subject_threads_reconciled', documentId, { runId, matched, created, orphans: o.length })
+        // P0-B1 : un run réévalué avec succès efface une éventuelle panne persistée
+        // au passage précédent (best-effort, ne doit jamais faire échouer l'extraction).
+        await resolveSubjectThreadReconcileFailureIfAny(runId).catch(() => {})
       } catch (reconcileErr) {
-        // Non bloquant : l'extraction est terminée même si la réconciliation échoue
-        log('subject_threads_reconciliation_failed', documentId, {
-          runId,
-          error: reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr),
-        })
+        // Non bloquant : l'extraction est terminée même si la réconciliation échoue.
+        // P0-B1 (mandat Vincent, suite audit P0-B) : contrairement à avant, l'échec est
+        // aussi PERSISTÉ (pas seulement journalisé) pour être rejoué par
+        // /api/cron/sweep-stuck-subject-thread-reconciliation — sinon le run reste
+        // ready_for_review avec des subject_thread_id NULL sans trace durable ni rejeu.
+        const message = reconcileErr instanceof Error ? reconcileErr.message : String(reconcileErr)
+        log('subject_threads_reconciliation_failed', documentId, { runId, error: message })
+        await upsertSubjectThreadReconcileFailure({
+          extractionRunId: runId,
+          siteId: siteIdForReconciliation,
+          error: message,
+        }).catch(() => {})
       }
 
       // Étape 12b : résolution sémantique shadow (LLM, uniquement sur les orphelins)

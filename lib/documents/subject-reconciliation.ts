@@ -468,6 +468,111 @@ export async function reconcileSubjectThreads(
 }
 
 /**
+ * P0-B1 (mandat Vincent, 2026-09-21, suite audit P0-B) — persiste la DERNIÈRE tentative
+ * échouée de reconcileSubjectThreads pour un run, pour qu'un échec de l'étape 12
+ * (extract-historical-pv.ts) ne disparaisse plus dans un simple console.error : le run
+ * restait ready_for_review et les propositions concernées gardaient subject_thread_id = NULL
+ * indéfiniment, invisibles au resolver CBO. Une ligne par extraction_run_id (upsert), jamais
+ * un historique complet — même doctrine que tracked_point_reconcile_failure (migration 426).
+ */
+export async function upsertSubjectThreadReconcileFailure(params: {
+  extractionRunId: string
+  siteId: string
+  error: string
+}): Promise<void> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  const { data: existing } = await supabase
+    .from('subject_thread_reconcile_failure')
+    .select('id, attempt_count')
+    .eq('extraction_run_id', params.extractionRunId)
+    .maybeSingle()
+
+  const nowIso = new Date().toISOString()
+  const { error } = await supabase.from('subject_thread_reconcile_failure').upsert(
+    {
+      extraction_run_id: params.extractionRunId,
+      site_id: params.siteId,
+      error: params.error,
+      attempt_count: (existing?.attempt_count ?? 0) + 1,
+      last_attempt_at: nowIso,
+      resolved_at: null,
+    },
+    { onConflict: 'extraction_run_id' },
+  )
+  if (error) {
+    console.error(
+      JSON.stringify({
+        service: 'subjectThreadReconcileFailure',
+        event: 'persist_failed',
+        extractionRunId: params.extractionRunId,
+        error: error.message,
+        ts: new Date().toISOString(),
+      }),
+    )
+  }
+}
+
+/**
+ * Marque comme résolue une éventuelle panne persistée pour ce run — appelé après un succès
+ * de reconcileSubjectThreads (première tentative ou rejeu). No-op si aucune panne n'existait.
+ */
+export async function resolveSubjectThreadReconcileFailureIfAny(extractionRunId: string): Promise<void> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  await supabase
+    .from('subject_thread_reconcile_failure')
+    .update({ resolved_at: new Date().toISOString() })
+    .eq('extraction_run_id', extractionRunId)
+    .is('resolved_at', null)
+}
+
+/**
+ * Rejeu périodique (/api/cron/sweep-stuck-subject-thread-reconciliation) des runs dont
+ * reconcileSubjectThreads a échoué au moins une fois. Idempotent : reconcileSubjectThreads
+ * ne traite déjà que les propositions avec subject_thread_id IS NULL — rejouer un run déjà
+ * réconcilié entre-temps par un autre chemin ne réattribue rien.
+ */
+export async function replayPendingSubjectThreadReconcileFailures(
+  limit: number,
+  olderThanMs: number,
+): Promise<{ found: number; resolved: number; stillFailing: number }> {
+  const { createAdminClient } = await import('@/lib/supabase/admin')
+  const supabase = createAdminClient()
+  const threshold = new Date(Date.now() - olderThanMs).toISOString()
+  const { data, error } = await supabase
+    .from('subject_thread_reconcile_failure')
+    .select('extraction_run_id, site_id')
+    .is('resolved_at', null)
+    .lte('last_attempt_at', threshold)
+    .order('last_attempt_at', { ascending: true })
+    .limit(limit)
+  if (error) throw error
+
+  const rows = (data ?? []) as Array<{ extraction_run_id: string; site_id: string }>
+
+  let resolved = 0
+  let stillFailing = 0
+  for (const row of rows) {
+    try {
+      await reconcileSubjectThreads(row.extraction_run_id, row.site_id)
+      await resolveSubjectThreadReconcileFailureIfAny(row.extraction_run_id)
+      resolved++
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      await upsertSubjectThreadReconcileFailure({
+        extractionRunId: row.extraction_run_id,
+        siteId: row.site_id,
+        error: message,
+      })
+      stillFailing++
+    }
+  }
+
+  return { found: rows.length, resolved, stillFailing }
+}
+
+/**
  * Mappe le texte libre statusAtDocumentDate → enum document_status normalisé.
  * Ne s'applique pas aux intervenants (person / company) dont le statut est la présence.
  *
