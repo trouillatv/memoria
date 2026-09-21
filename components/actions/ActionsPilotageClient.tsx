@@ -474,7 +474,7 @@ export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates,
                     <Badge label={st.label} color={st.color} />
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                    <span>{s.activeCboCount} objet{s.activeCboCount > 1 ? 's' : ''} actif{s.activeCboCount > 1 ? 's' : ''} / {s.totalCboCount}</span>
+                    <span>{s.activeCboCount} Action{s.activeCboCount > 1 ? 's' : ''} active{s.activeCboCount > 1 ? 's' : ''} / {s.totalCboCount}</span>
                     {s.pvCount > 0 && <span>· {s.pvCount} PV</span>}
                     {s.lastMeaningfulChangeAt && <span>· dernière évolution {frDate(s.lastMeaningfulChangeAt)}</span>}
                   </div>
@@ -486,7 +486,7 @@ export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates,
               <div className="border-t px-3 py-2.5 space-y-3">
                 {/* N2 — CBO durables (transactionnels) */}
                 <div>
-                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Objets métier à piloter</p>
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Actions à piloter</p>
                   <ul className="space-y-1.5">
                     {s.cbos.map((c) => (
                       <CboRow key={c.cboId} cbo={c} siteId={siteId}

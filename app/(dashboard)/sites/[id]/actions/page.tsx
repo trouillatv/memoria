@@ -98,22 +98,22 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
           <ListTodo className="h-5 w-5" /> Sujets à piloter
         </h1>
 
-        {/* KPI durable : sujets + objets métier (jamais « N actions ») + repère temporel. */}
+        {/* KPI durable : sujets + Actions (vocabulaire normal user, jamais « objet métier ») + repère temporel. */}
         <div className="flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
             <span className="text-lg font-bold leading-none">{k.subjectsWithActions}</span> sujets
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1 text-sm font-medium text-orange-700 dark:bg-orange-950/40 dark:text-orange-300">
-            <span className="text-lg font-bold leading-none">{k.activeCbo}</span> objets actifs
+            <span className="text-lg font-bold leading-none">{k.activeCbo}</span> Action{k.activeCbo > 1 ? 's' : ''}
           </span>
           {k.completedCbo > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-              <span className="text-lg font-bold leading-none">{k.completedCbo}</span> objets terminés
+              <span className="text-lg font-bold leading-none">{k.completedCbo}</span> Action{k.completedCbo > 1 ? 's' : ''} terminée{k.completedCbo > 1 ? 's' : ''}
             </span>
           )}
           {k.toQualifyCbo > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-sm font-medium text-muted-foreground">
-              <span className="text-lg font-bold leading-none">{k.toQualifyCbo}</span> à qualifier
+              <span className="text-lg font-bold leading-none">{k.toQualifyCbo}</span> Action{k.toQualifyCbo > 1 ? 's' : ''} à qualifier
             </span>
           )}
           {lateCount > 0 && (
@@ -133,21 +133,14 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
             Aucune échéance urgente · {k.subjectsWithActions} sujet{k.subjectsWithActions > 1 ? 's' : ''} à piloter.
           </p>
         )}
-
-        {/* Information documentaire SECONDAIRE, jamais une charge opérationnelle. */}
-        {k.historicalFormulations > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {k.historicalFormulations} formulation{k.historicalFormulations > 1 ? 's' : ''} documentaire{k.historicalFormulations > 1 ? 's' : ''} détectée{k.historicalFormulations > 1 ? 's' : ''} dans les PV · regroupée{k.historicalFormulations > 1 ? 's' : ''} en {k.totalCbo} objet{k.totalCbo > 1 ? 's' : ''} métier
-          </p>
-        )}
       </header>
 
       {/* Aide discrète */}
       <div className="flex items-start gap-2 rounded-xl border border-dashed px-4 py-3 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
-          Chaque sujet regroupe ses objets métier durables (à piloter) ; l&apos;historique documentaire
-          (formulations issues des PV) reste consultable, replié, comme preuve.
+          Chaque sujet regroupe ses Actions à piloter ; l&apos;historique des PV reste consultable,
+          replié, comme preuve.
         </span>
       </div>
 
