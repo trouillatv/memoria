@@ -13,6 +13,7 @@
 import React from 'react'
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
 import type { VisitCrDoc } from '@/lib/db/visits'
+import type { CrPhotoSize } from '@/lib/db/visit-captures'
 import type { VisitSummary, SummarySection, SummaryItem, HistoricalIntervenant } from '@/lib/knowledge/visit-summary'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 import { formatEvidenceNumberLabel, formatClusterMarkerLabel, groupByProximity } from '@/lib/visits/geo'
@@ -47,15 +48,76 @@ const MAP_H = 200
 // à la ligne dans ce moteur de rendu). On chunke donc explicitement les
 // lignes plutôt que de compter sur flexWrap.
 const PHOTO_CELL_W = 235
+const PHOTO_CELL_H = 320
 const PHOTO_CELL_GAP = 12
 const REPORTAGE_CELL_W = 120
+const REPORTAGE_CELL_H = 80
 const REPORTAGE_CELL_GAP = 8
 const PHOTO_PER_ROW = Math.floor(MAP_W / (PHOTO_CELL_W + PHOTO_CELL_GAP))
 const REPORTAGE_PER_ROW = Math.floor(MAP_W / (REPORTAGE_CELL_W + REPORTAGE_CELL_GAP))
 
-function chunkRows<T>(items: T[], perRow: number): T[][] {
-  const rows: T[][] = []
-  for (let i = 0; i < items.length; i += perRow) rows.push(items.slice(i, i + perRow))
+// Taille visuelle explicite (mig 424, Vincent 2026-09-21) — troisième
+// propriété, INDÉPENDANTE de `included_in_cr` et `cr_tier`. Gabarits partagés
+// par Photos clés ET Reportage : S/M/L/XL pilotent UNIQUEMENT la largeur
+// relative, jamais le recadrage (`contain` reste la seule règle, cf. styles
+// `photo`/`reportagePhoto` plus bas). Écarts arrondis pour tenir sur MAP_W.
+const SIZE_GAP = 10
+const SIZE_SPEC: Record<'S' | 'M' | 'L' | 'XL', { width: number; height: number; perRow: number }> = {
+  S: { width: 165, height: 220, perRow: 3 },
+  M: { width: 252, height: 340, perRow: 2 },
+  L: { width: 412, height: 460, perRow: 1 }, // ~80 % de MAP_W, seule sur sa ligne
+  XL: { width: MAP_W, height: 560, perRow: 1 }, // largeur utile complète
+}
+
+interface PhotoRowSpec {
+  width: number
+  height: number
+  gap: number
+}
+
+/**
+ * Moteur de composition UNIQUE (Vincent, point 5) : appelé une fois pour les
+ * Photos clés, une fois pour le Reportage — jamais fusionné en un seul flux.
+ * Parcourt la liste dans son ORDRE D'ORIGINE (point 8, jamais de tri) et ne
+ * regroupe que des éléments CONSÉCUTIFS de même classe de taille (Auto de la
+ * catégorie appelante, ou un S/M/L/XL explicite). Dès qu'un élément d'une
+ * classe différente survient — ou que la ligne courante atteint sa capacité —
+ * la ligne se ferme et une nouvelle commence : un peu de blanc plutôt qu'un
+ * réordonnancement silencieux des preuves. `size: null` (Auto) reproduit
+ * EXACTEMENT le chunking historique de l'appelant (point 6) : sur une liste
+ * sans aucune taille explicite, la sortie est identique à l'ancien
+ * `chunkRows(items, auto.perRow)`.
+ */
+export function composePhotoRows<T extends { size: CrPhotoSize }>(
+  items: T[],
+  auto: PhotoRowSpec & { perRow: number },
+): Array<{ items: T[]; spec: PhotoRowSpec }> {
+  const specFor = (size: CrPhotoSize): PhotoRowSpec & { perRow: number } =>
+    size ? { ...SIZE_SPEC[size], gap: SIZE_GAP } : auto
+  const classFor = (size: CrPhotoSize): string => size ?? 'auto'
+
+  const rows: Array<{ items: T[]; spec: PhotoRowSpec }> = []
+  let current: T[] = []
+  let currentClass: string | null = null
+  let currentSpec: PhotoRowSpec & { perRow: number } = auto
+
+  const flush = () => {
+    if (current.length) rows.push({ items: current, spec: currentSpec })
+    current = []
+  }
+
+  for (const item of items) {
+    const cls = classFor(item.size)
+    const spec = specFor(item.size)
+    if (currentClass !== null && cls !== currentClass) flush()
+    if (current.length === 0) {
+      currentClass = cls
+      currentSpec = spec
+    }
+    current.push(item)
+    if (current.length >= currentSpec.perRow) flush()
+  }
+  flush()
   return rows
 }
 
@@ -882,12 +944,17 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
               sub={doc.photoCount > doc.photoItems.length ? `${doc.photoItems.length} sur ${doc.photoCount}` : `${doc.photoItems.length}`}
             />
             <View style={styles.photoGrid}>
-              {chunkRows(doc.photoItems, PHOTO_PER_ROW).map((row, ri) => (
+              {composePhotoRows(doc.photoItems, {
+                width: PHOTO_CELL_W,
+                height: PHOTO_CELL_H,
+                perRow: PHOTO_PER_ROW,
+                gap: PHOTO_CELL_GAP,
+              }).map((row, ri) => (
                 <View key={ri} style={styles.photoRow}>
-                  {row.map((p, i) => (
-                    <View key={i} style={styles.photoCell} wrap={false}>
+                  {row.items.map((p, i) => (
+                    <View key={i} style={[styles.photoCell, { width: row.spec.width, marginRight: row.spec.gap }]} wrap={false}>
                       {/* eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image */}
-                      <Image src={p.url} style={styles.photo} />
+                      <Image src={p.url} style={[styles.photo, { width: row.spec.width, height: row.spec.height }]} />
                       <NumberBadge n={p.evidenceNumber} />
                       <Text style={styles.photoCap}>
                         <Text style={styles.photoCapStrong}>Photo {p.evidenceNumber}</Text>
@@ -917,17 +984,26 @@ export function VisitCrPdf({ doc, summary, exportDate, mapImage, crDocument, his
               sub={`${doc.reportagePhotos.length}`}
             />
             <View style={styles.reportageGrid}>
-              {chunkRows(doc.reportagePhotos, REPORTAGE_PER_ROW).map((row, ri) => (
+              {composePhotoRows(doc.reportagePhotos, {
+                width: REPORTAGE_CELL_W,
+                height: REPORTAGE_CELL_H,
+                perRow: REPORTAGE_PER_ROW,
+                gap: REPORTAGE_CELL_GAP,
+              }).map((row, ri) => (
                 <View key={ri} style={styles.reportageRow}>
-                  {row.map((p, i) => (
-                    <View key={i} style={p.kind === 'video' ? styles.videoCard : styles.reportageCell} wrap={false}>
+                  {row.items.map((p, i) => (
+                    <View
+                      key={i}
+                      style={[p.kind === 'video' ? styles.videoCard : styles.reportageCell, { width: row.spec.width, marginRight: row.spec.gap }]}
+                      wrap={false}
+                    >
                       {p.kind === 'video' ? (
                         <View style={styles.videoIconBox}>
                           <View style={styles.videoPlayTriangle} />
                         </View>
                       ) : (
                         // eslint-disable-next-line jsx-a11y/alt-text -- @react-pdf Image
-                        <Image src={p.url as string} style={styles.reportagePhoto} />
+                        <Image src={p.url as string} style={[styles.reportagePhoto, { width: row.spec.width, height: row.spec.height }]} />
                       )}
                       <NumberBadge n={p.evidenceNumber} />
                       {p.kind === 'video' ? (

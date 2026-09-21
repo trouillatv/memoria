@@ -16,7 +16,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { filterEligibleBySourceDocument } from '@/lib/documents/historical-source-eligibility'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { getOpenDossierIdForSite } from '@/lib/db/dossiers'
-import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow, type CaptureCrTier, type DebriefCapturedNote } from '@/lib/db/visit-captures'
+import { listVisitCaptures, getVisitCapturePreviewUrls, listSiteViewpointRows, type VisitCaptureKind, type CaptureTriageIntent, type VisitCaptureRow, type CaptureCrTier, type CrPhotoSize, type DebriefCapturedNote } from '@/lib/db/visit-captures'
 import { groupViewpointChains, sampleSerie } from '@/lib/visits/viewpoints'
 import { listDecisionsBySite } from '@/lib/db/site-decisions'
 import { buildSiteMemorySignals, buildSuggestedQuestions, detectRecurringTopics, detectOverdueActions, type MemorySignal, type SuggestedQuestion } from '@/lib/db/site-memory-signals'
@@ -2180,7 +2180,11 @@ export interface VisitCrDoc {
    *  partagée avec `positions` et `reportagePhotos` : la même capture porte
    *  toujours le même numéro, carte et reportage confondus. Jamais recalculé
    *  localement (pas de `i + 1` de secours) — vient de `evidenceNumberById`. */
-  photoItems: Array<{ id: string | null; url: string; caption: string | null; evidenceNumber: number }>
+  /** `size` (mig 424, Vincent 2026-09-21) — taille visuelle explicite choisie
+   *  pour CETTE photo, INDÉPENDANTE de son évidenceNumber/légende. `null` =
+   *  Auto, le composeur (lib/pdf/visit-cr.tsx) reproduit alors le rendu
+   *  historique de la catégorie Photos clés. */
+  photoItems: Array<{ id: string | null; url: string; caption: string | null; evidenceNumber: number; size: CrPhotoSize }>
   /** Reportage (Tier 2, P0 mémoire/reportage 2026-08-17, étendu vidéo Lot 4
    *  2026-08-24) : le complément des Photos clés — rien n'est perdu. `isMemoire`
    *  distingue une décision humaine explicite (`memoire`) d'une capture jamais
@@ -2197,6 +2201,8 @@ export interface VisitCrDoc {
     kind: 'photo' | 'video'
     evidenceNumber: number
     capturedAtLabel: string
+    /** `size` (mig 424) — voir `photoItems` ci-dessus, même sémantique. */
+    size: CrPhotoSize
   }>
   /** Combien de photos au-delà de CR_REPORTAGE_PHOTO_CAP ont été omises du PDF
    *  (jamais silencieusement) — pour « +N autres photos disponibles dans MemorIA ». */
@@ -2546,8 +2552,9 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
       url: previews[c.id]?.url,
       caption: c.body?.trim() || null,
       evidenceNumber: evidenceNumberById.get(c.id) ?? 0,
+      size: c.cr_photo_size,
     }))
-    .filter((p): p is { id: string; url: string; caption: string | null; evidenceNumber: number } => !!p.url)
+    .filter((p): p is { id: string; url: string; caption: string | null; evidenceNumber: number; size: CrPhotoSize } => !!p.url)
 
   // Reportage photographique (Tier 2) : complément des Photos clés — priorité
   // memoire (décision explicite) puis null (jamais qualifiée), jamais tronqué.
@@ -2575,6 +2582,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
       kind: c.kind as 'photo' | 'video',
       evidenceNumber: evidenceNumberById.get(c.id) ?? 0,
       capturedAtLabel: capturedAtFormatter.format(new Date(c.captured_at ?? c.created_at)),
+      size: c.cr_photo_size,
     }))
     .filter((p) => p.kind === 'video' || !!p.url)
 
@@ -2690,7 +2698,7 @@ export async function buildVisitCrDoc(reportId: string, userId: string | null = 
     reserves: ctx.capturedReserves,
     actions: ctx.capturedActions,
     photos: isImportedVisit ? importedPhotoItems.map((p) => p.url) : photos,
-    photoItems: isImportedVisit ? importedPhotoItems.map((p) => ({ id: null, ...p })) : photoItems,
+    photoItems: isImportedVisit ? importedPhotoItems.map((p) => ({ id: null, size: null, ...p })) : photoItems,
     reportagePhotos,
     reportagePhotosOverflow,
     evolutions,

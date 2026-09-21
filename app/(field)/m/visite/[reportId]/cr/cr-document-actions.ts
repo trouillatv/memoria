@@ -19,7 +19,13 @@ import { getCurrentUserWithProfile, userBelongsToOrg } from '@/lib/db/users'
 import { getVisit } from '@/lib/db/visits'
 import { updateReportDocumentSections } from '@/lib/db/report-documents'
 import { getVisitCrDocument, finalizeVisitCr, reopenVisitCr } from '@/lib/db/visit-cr-documents'
-import { setCaptureIncludedInCr, setCaptureCrTier, type CaptureCrTier } from '@/lib/db/visit-captures'
+import {
+  setCaptureIncludedInCr,
+  setCaptureCrTier,
+  setCaptureCrPhotoSize,
+  type CaptureCrTier,
+  type CrPhotoSize,
+} from '@/lib/db/visit-captures'
 import { restoreSectionProposal } from '@/lib/visits/cr-visite-policy'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
 
@@ -156,6 +162,29 @@ export async function setCapturePhotoTierAction(
 
   try {
     await setCaptureCrTier(captureId, tier)
+  } catch {
+    return { ok: false, error: 'Mise à jour impossible' }
+  }
+  return { ok: true }
+}
+
+/**
+ * Taille visuelle explicite dans le CR (Vincent, 2026-09-21) : troisième
+ * propriété, INDÉPENDANTE de `included_in_cr` (présence) et `cr_tier`
+ * (catégorie Photo clé/Reportage) — elle ne modifie ni ne remplace ces deux
+ * décisions. `size: null` = Auto (le composeur du PDF reproduit le rendu
+ * historique de la catégorie).
+ */
+export async function setCapturePhotoSizeAction(
+  reportId: string,
+  captureId: string,
+  size: CrPhotoSize,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const opened = await openDraft(reportId)
+  if (!opened.ok) return opened
+
+  try {
+    await setCaptureCrPhotoSize(captureId, size)
   } catch {
     return { ok: false, error: 'Mise à jour impossible' }
   }

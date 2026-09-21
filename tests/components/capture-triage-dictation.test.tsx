@@ -73,6 +73,7 @@ function makeCapture(overrides: Partial<VisitCaptureRow>): VisitCaptureRow {
     annotated_original_id: null,
     included_in_cr: true,
     cr_tier: null,
+    cr_photo_size: null,
     created_at: '2026-08-20T08:00:00.000Z',
     ...overrides,
   }

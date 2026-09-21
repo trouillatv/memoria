@@ -27,7 +27,7 @@
 import { useState } from 'react'
 import { Pencil, RotateCcw, Check, X, Loader2, Lock, Plus, Circle, Star, Video } from 'lucide-react'
 import type { ReportDocumentSection, ReportDocumentStatus } from '@/types/db'
-import type { CaptureTriageIntent } from '@/lib/db/visit-captures'
+import type { CaptureTriageIntent, CrPhotoSize } from '@/lib/db/visit-captures'
 import {
   saveCrSectionAction,
   restoreCrSectionAction,
@@ -35,6 +35,7 @@ import {
   reopenCrAction,
   setCaptureIncludedInCrAction,
   setCapturePhotoTierAction,
+  setCapturePhotoSizeAction,
   type PersistedCrDocument,
 } from './cr-document-actions'
 import { updateVisitPhotoCaptionAction } from '@/app/(dashboard)/sites/[id]/visites/[visitId]/photo-actions'
@@ -57,6 +58,11 @@ export type ConcretisationSummary = Record<string, { created: number; pending: n
  * pas de vignette : elle s'affiche comme une carte de preuve statique, jamais
  * jouée dans cet écran ni dans le PDF. Elle ne peut jamais devenir « clé » —
  * `tier` reste toujours `'reportage'` pour une vidéo (résolu côté page).
+ *
+ * `photoSize` (mig 424, 2026-09-21) — taille visuelle explicite dans le CR,
+ * troisième propriété INDÉPENDANTE de `includedInCr` et `tier`, qu'elle ne
+ * modifie jamais. Valeur BRUTE stockée (pas de résolution côté page) : `null`
+ * = Auto, affiché explicitement comme tel, jamais un état vide.
  */
 export interface CrPhotoCandidate {
   id: string
@@ -65,6 +71,7 @@ export interface CrPhotoCandidate {
   includedInCr: boolean
   triageIntent: CaptureTriageIntent
   tier: 'key' | 'reportage'
+  photoSize: CrPhotoSize
   kind: 'photo' | 'video'
 }
 
@@ -253,6 +260,21 @@ const NEXT_STATUS_VIDEO: Record<PhotoStatus, PhotoStatus> = { out: 'reportage', 
 const nextStatusFor = (photo: CrPhotoCandidate, current: PhotoStatus): PhotoStatus =>
   (photo.kind === 'video' ? NEXT_STATUS_VIDEO : NEXT_STATUS)[current]
 
+/** Taille visuelle dans le CR (mig 424, Vincent 2026-09-21) — Auto reproduit le
+ *  rendu historique de la catégorie (Photo clé/Reportage) ; c'est le CHOIX par
+ *  défaut, jamais un état vide. Les 4 tailles n'agissent que sur la largeur
+ *  relative dans le composeur : jamais de recadrage (contain toujours). */
+const SIZE_OPTIONS: { value: CrPhotoSize; label: string }[] = [
+  { value: null, label: 'Auto' },
+  { value: 'S', label: 'S' },
+  { value: 'M', label: 'M' },
+  { value: 'L', label: 'L' },
+  { value: 'XL', label: 'XL' },
+]
+const SIZE_LABEL: Record<'S' | 'M' | 'L' | 'XL', string> = {
+  S: 'Petite', M: 'Moyenne', L: 'Grande', XL: 'Pleine largeur',
+}
+
 function PhotoSelectionSection({
   reportId,
   initialPhotos,
@@ -268,6 +290,10 @@ function PhotoSelectionSection({
   const [tier, setTier] = useState<Record<string, 'key' | 'reportage'>>(() =>
     Object.fromEntries(initialPhotos.map((p) => [p.id, p.tier])),
   )
+  const [photoSize, setPhotoSize] = useState<Record<string, CrPhotoSize>>(() =>
+    Object.fromEntries(initialPhotos.map((p) => [p.id, p.photoSize])),
+  )
+  const [savingSize, setSavingSize] = useState(false)
   const [captions, setCaptions] = useState<Record<string, string | null>>(() =>
     Object.fromEntries(initialPhotos.map((p) => [p.id, p.caption])),
   )
@@ -334,6 +360,25 @@ function PhotoSelectionSection({
       setIncluded((prev) => ({ ...prev, [photo.id]: prevIncluded }))
       setTier((prev) => ({ ...prev, [photo.id]: prevTier }))
       setError(failed.error ?? 'Mise à jour impossible')
+    }
+  }
+
+  /** Taille visuelle (Vincent, 2026-09-21) — INDÉPENDANTE du statut Hors CR/
+   *  Reportage/Clé : changer la taille d'UNE photo ne touche jamais les autres,
+   *  ni son inclusion, ni sa catégorie. `null` = Auto (repli sur le rendu
+   *  historique de la catégorie, décidé par le composeur du PDF). */
+  const chooseSize = async (photoId: string, size: CrPhotoSize) => {
+    if (!editable || savingSize) return
+    const prev = photoSize[photoId] ?? null
+    if (prev === size) return
+    setPhotoSize((p) => ({ ...p, [photoId]: size }))
+    setSavingSize(true)
+    setError(null)
+    const res = await setCapturePhotoSizeAction(reportId, photoId, size)
+    setSavingSize(false)
+    if (!res.ok) {
+      setPhotoSize((p) => ({ ...p, [photoId]: prev }))
+      setError(res.error)
     }
   }
 
@@ -445,6 +490,14 @@ function PhotoSelectionSection({
                     {badge}
                   </span>
                 )}
+                {photoSize[photo.id] && (
+                  <span
+                    className="pointer-events-none absolute left-1 top-1 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                    title={`Taille : ${SIZE_LABEL[photoSize[photo.id]!]}`}
+                  >
+                    {photoSize[photo.id]}
+                  </span>
+                )}
                 {editable ? (
                   <button
                     type="button"
@@ -512,6 +565,33 @@ function PhotoSelectionSection({
             )}
           </div>
           <div className="shrink-0 px-4 py-4" onClick={(e) => e.stopPropagation()}>
+            {editable && viewing.kind === 'photo' && (
+              <div className="mb-3">
+                <p className="mb-1.5 text-[11px] font-medium text-white/60">
+                  Taille dans le document — Auto reprend l’affichage habituel de la catégorie
+                </p>
+                <div className="flex items-center gap-1.5">
+                  {SIZE_OPTIONS.map((opt) => {
+                    const current = (photoSize[viewing.id] ?? null) === opt.value
+                    return (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => chooseSize(viewing.id, opt.value)}
+                        disabled={savingSize}
+                        aria-pressed={current}
+                        title={opt.value ? SIZE_LABEL[opt.value] : 'Automatique'}
+                        className={`inline-flex min-w-[2.5rem] items-center justify-center rounded-lg px-2 py-1.5 text-[12px] font-semibold disabled:opacity-50 ${
+                          current ? 'bg-white text-black' : 'bg-white/10 text-white/70'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             {editable && editingCaption ? (
               <div className="space-y-2">
                 <textarea

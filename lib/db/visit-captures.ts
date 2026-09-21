@@ -52,6 +52,13 @@ export type CaptureDateSource = 'file' | 'visit' | 'today' | 'chosen'
  *  de `selectCrPhotos` (lib/db/visits.ts) continue de décider seul. */
 export type CaptureCrTier = 'key' | 'reportage' | null
 
+/** Taille visuelle explicite dans le CR (mig 424, Vincent 2026-09-21) : un
+ *  choix HUMAIN optionnel de largeur relative, INDÉPENDANT de `included_in_cr`
+ *  (présence) et `cr_tier` (catégorie Photo clé/Reportage), qu'il ne modifie
+ *  jamais. NULL = Auto — comportement historique exact de la catégorie,
+ *  décidé par le composeur (lib/pdf/visit-cr.tsx), pas ici. */
+export type CrPhotoSize = 'S' | 'M' | 'L' | 'XL' | null
+
 export interface VisitCaptureRow {
   id: string
   report_id: string
@@ -111,6 +118,9 @@ export interface VisitCaptureRow {
   /** Statut éditorial explicite Photo clé/Reportage (mig 340) — NULL tant que
    *  personne n'a tranché, auquel cas `selectCrPhotos` décide seule. */
   cr_tier: CaptureCrTier
+  /** Taille visuelle explicite dans le CR (mig 424) — NULL = Auto, le composeur
+   *  du PDF reproduit alors le rendu historique de la catégorie. */
+  cr_photo_size: CrPhotoSize
   created_at: string
 }
 
@@ -249,7 +259,7 @@ export async function listVisitCaptures(reportId: string): Promise<VisitCaptureR
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, cr_photo_size, created_at')
     .eq('report_id', reportId)
     .is('hidden_at', null) // masque un original ARCHIVÉ (remplacé par sa version annotée, mig 185)
     .order('captured_at', { ascending: true, nullsFirst: true })
@@ -263,7 +273,7 @@ export async function listVisitCapturesBySubject(subjectId: string): Promise<Vis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, cr_photo_size, created_at')
     .eq('subject_id', subjectId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -279,7 +289,7 @@ export async function listVisitCapturesByTrackedPoint(trackedPointId: string): P
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, cr_photo_size, created_at')
     .eq('tracked_point_id', trackedPointId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -296,7 +306,7 @@ export async function listVisitCapturesByTrackedPointIds(trackedPointIds: string
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, cr_photo_size, created_at')
     .in('tracked_point_id', trackedPointIds)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -312,7 +322,7 @@ export async function listVisitCapturesBySite(siteId: string, limit = 300): Prom
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, cr_photo_size, created_at')
     .eq('site_id', siteId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -330,7 +340,7 @@ export async function listVisitCapturesByDossier(dossierId: string, limit = 300)
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, cr_photo_size, created_at')
     .eq('dossier_id', dossierId)
     .neq('status', 'discarded')
     .order('created_at', { ascending: false })
@@ -429,7 +439,7 @@ export async function listSiteViewpointRows(siteId: string): Promise<VisitCaptur
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, cr_photo_size, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -447,7 +457,7 @@ export async function listSitePhotoCaptures(siteId: string, limit = 500): Promis
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('visit_capture')
-    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, created_at')
+    .select('id, report_id, site_id, kind, status, body, transcript_status, attachment_id, subject_id, tracked_point_id, triage_intent, suite_status, starred, client_uuid, lat, lng, gps_accuracy_m, altitude_m, altitude_accuracy_m, corrected_lat, corrected_lng, captured_at, is_viewpoint, viewpoint_of, annotated_original_id, included_in_cr, cr_tier, cr_photo_size, created_at')
     .eq('site_id', siteId)
     .eq('kind', 'photo')
     .neq('status', 'discarded')
@@ -777,6 +787,21 @@ export async function setCaptureCrTier(captureId: string, tier: CaptureCrTier): 
   const { error } = await supabase
     .from('visit_capture')
     .update({ cr_tier: tier, updated_at: new Date().toISOString() })
+    .eq('id', captureId)
+  if (error) throw error
+}
+
+/**
+ * Taille visuelle explicite dans le CR (mig 424) : un choix HUMAIN optionnel,
+ * INDÉPENDANT de `included_in_cr` et `cr_tier`, qu'il ne modifie jamais. `null`
+ * = retour à Auto (le composeur du PDF reproduit le rendu historique de la
+ * catégorie). Ne touche ni triage_intent ni starred.
+ */
+export async function setCaptureCrPhotoSize(captureId: string, size: CrPhotoSize): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('visit_capture')
+    .update({ cr_photo_size: size, updated_at: new Date().toISOString() })
     .eq('id', captureId)
   if (error) throw error
 }

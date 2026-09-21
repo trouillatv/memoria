@@ -46,6 +46,7 @@ function cap(over: Partial<VisitCaptureRow> = {}): VisitCaptureRow {
     annotated_original_id: null,
     included_in_cr: true,
     cr_tier: null,
+    cr_photo_size: null,
     created_at: ts,
     ...over,
   }

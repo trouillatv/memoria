@@ -108,6 +108,7 @@ export default async function VisitCrPreviewPage({
       includedInCr: c.included_in_cr,
       triageIntent: c.triage_intent,
       tier: keyIds.has(c.id) ? ('key' as const) : ('reportage' as const),
+      photoSize: c.cr_photo_size,
       kind: c.kind as 'photo' | 'video',
     }))
     .filter((p): p is CrPhotoCandidate => !!p.url)
