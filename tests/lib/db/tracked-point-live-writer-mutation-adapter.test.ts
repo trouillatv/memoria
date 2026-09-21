@@ -420,4 +420,50 @@ describe('tracked_point_reconcile_failure — filet de second niveau', () => {
     const row = await getFailure(entityId)
     expect(row).toBeNull()
   })
+
+  // Review Vincent du 2026-09-21 : NEEDS_HUMAN (comme IGNORED_NOT_TRACKABLE) est un succès
+  // TECHNIQUE du moteur (ok:true, cf. lib/db/tracked-point-live-writer.ts) — jamais un refus RPC.
+  // tracked_point_reconcile_failure ne doit représenter QUE des pannes d'exécution (exception,
+  // erreur RPC), jamais une décision métier. Témoin direct : une panne déjà persistée sur cette
+  // mutation doit être levée dès que le moteur atteint NEEDS_HUMAN, pas laissée ouverte.
+  it('CBO dégradé en NEEDS_HUMAN (cible merged, Témoin 6) → succès technique : une panne déjà persistée est résolue, jamais rejouée au sweep suivant', async () => {
+    const db = createAdminClient()
+    const label = `${TAG} needs human merged`
+    const mergedInto = await makePoint({ label: `${label} into` })
+    const target = await makePoint({ label: `${label} target` })
+    await db.from('tracked_point').update({ status: 'merged', merged_into_id: mergedInto }).eq('id', target)
+
+    const { docId, runId } = await makeDocAndRun()
+    const threadId = randomUUID()
+    const proposalId = await makeProposal(runId, docId, threadId, { label })
+
+    const entityId = randomUUID()
+    await makeMaterialization(proposalId, 'site_action', entityId)
+    const cboId = await makeCbo('site_action', entityId, { label, tracked_point_id: target })
+
+    // Simule une panne technique antérieure sur cette même mutation (ex. timeout RPC au 1er essai).
+    const old = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    await insertFailure(entityId, cboId, old)
+
+    await reconcileTrackedPointMutationBestEffort({
+      siteId,
+      entityType: 'site_action',
+      entityId,
+      canonicalBusinessObjectId: cboId,
+    })
+
+    const events = await getReconcileEvents(cboId)
+    expect(events[events.length - 1]).toMatchObject({ verdict: 'NEEDS_HUMAN', write_pattern: 'CREATE_PENDING_TRACE' })
+
+    const resolved = await getFailure(entityId)
+    expect(resolved?.resolved_at).not.toBeNull()
+
+    // Le prochain sweep ne doit plus la sélectionner (resolved_at non nul) : aucun second rejeu.
+    const attemptCountAfterResolve = resolved?.attempt_count
+    await replayPendingTrackedPointReconcileFailures(50, 0)
+    const untouched = await getFailure(entityId)
+    expect(untouched?.attempt_count).toBe(attemptCountAfterResolve)
+
+    await db.from('tracked_point').update({ status: 'active', merged_into_id: null }).eq('id', target)
+  })
 })
