@@ -42,6 +42,7 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/intervenants-scope.test.ts',
   'tests/lib/intervention-templates-generation.test.ts',
   'tests/lib/intervention-templates.test.ts',
+  'tests/lib/list-site-pv-dates.test.ts',
   'tests/lib/missions.test.ts',
   'tests/lib/monthly-report-share.test.ts',
   'tests/lib/monthly-report.test.ts',
