@@ -32,7 +32,11 @@ import {
   type FoundingUnitsInput,
   type PropRow,
 } from '@/lib/knowledge/tracked-point-founding'
-import { reconcileTrackedPointUnit, type ReconcileVerdict } from '@/lib/db/tracked-point-live-writer'
+import {
+  reconcileTrackedPointUnit,
+  type ReconcileVerdict,
+  type TrackedPointReconcileSourceKind,
+} from '@/lib/db/tracked-point-live-writer'
 import type { PlanUnitContext } from '@/lib/knowledge/tracked-point-write-plan'
 import type { TrackedPointCandidate } from '@/lib/knowledge/tracked-point-membership-candidates'
 import { getDeletedDocumentIds, isExtractionRunSourceDeleted } from '@/lib/documents/historical-source-eligibility'
@@ -129,6 +133,14 @@ async function loadRunFoundingInput(db: Db, siteId: string, runId: string): Prom
     .eq('extraction_run_id', runId)
     .not('subject_thread_id', 'is', null)
   const threadIds = [...new Set((runProps ?? []).map((r) => r.subject_thread_id as string))]
+  return loadThreadsFoundingInput(db, siteId, threadIds)
+}
+
+// Extrait de loadRunFoundingInput (P0-A, mandat Vincent) — même corps générique, scopé à un
+// ensemble de threads déjà résolu par l'appelant (run d'import ICI, thread(s) impacté(s) par
+// une mutation CBO pour tracked-point-live-writer-mutation-adapter.ts). Réutilise TEL QUEL le
+// moteur existant (buildFoundingUnits) : aucune nouvelle logique de décision (critère #1).
+export async function loadThreadsFoundingInput(db: Db, siteId: string, threadIds: string[]): Promise<RunFoundingInput | null> {
   if (threadIds.length === 0) return null
 
   const { data: stiRows } = await db
@@ -410,6 +422,47 @@ export type HistoricalLiveWriterRunResult = {
   refusals: number
 }
 
+// Extrait de runTrackedPointLiveWriterForHistoricalRun (P0-A, mandat Vincent) — boucle de
+// réconciliation générique, indépendante de la provenance (source_kind/sourceRefId fournis par
+// l'appelant). Réutilisée telle quelle par tracked-point-live-writer-mutation-adapter.ts pour
+// rejouer les threads impactés par une mutation canonique (attachToCanonicalBusinessObject) —
+// même moteur, aucune nouvelle logique de décision (critère #1).
+export async function reconcileFoundingUnits(
+  db: Db,
+  siteId: string,
+  loaded: RunFoundingInput,
+  sourceKind: TrackedPointReconcileSourceKind,
+  sourceRefId: string,
+): Promise<HistoricalLiveWriterRunResult> {
+  const { units, cboLabelById, cboSubjectRootById, threadSubjectRootById, resolver } = loaded
+
+  const needsSitePoints = units.some(isTrackableEligible)
+  const sitePoints = needsSitePoints ? await loadSitePointCandidates(db, siteId, resolver) : []
+
+  const verdictCounts: Partial<Record<ReconcileVerdict, number>> = {}
+  let refusals = 0
+
+  for (const unit of units) {
+    const ctx = await buildUnitContext(unit, cboLabelById, cboSubjectRootById, threadSubjectRootById, resolver)
+    const result = await reconcileTrackedPointUnit({
+      siteId,
+      unit,
+      ctx,
+      sourceKind,
+      sourceRefId,
+      sitePoints: isTrackableEligible(unit) ? sitePoints : undefined,
+    })
+    if (result.ok) {
+      verdictCounts[result.verdict] = (verdictCounts[result.verdict] ?? 0) + 1
+    } else {
+      refusals += 1
+      console.error('[tracked-point-live-writer-historical-adapter] reconcile refused:', result.error)
+    }
+  }
+
+  return { unitsProcessed: units.length, verdictCounts, refusals }
+}
+
 /**
  * Point d'entrée unique câblé par le hook de post-traitement de l'import historique
  * (lib/subjects/historical-import-post-processing.ts). Retourne `null` si le run n'a pas de
@@ -441,31 +494,6 @@ export async function runTrackedPointLiveWriterForHistoricalRun(params: {
 
   const loaded = await loadRunFoundingInput(db, siteId, runId)
   if (!loaded) return { unitsProcessed: 0, verdictCounts: {}, refusals: 0 }
-  const { units, cboLabelById, cboSubjectRootById, threadSubjectRootById, resolver } = loaded
 
-  const needsSitePoints = units.some(isTrackableEligible)
-  const sitePoints = needsSitePoints ? await loadSitePointCandidates(db, siteId, resolver) : []
-
-  const verdictCounts: Partial<Record<ReconcileVerdict, number>> = {}
-  let refusals = 0
-
-  for (const unit of units) {
-    const ctx = await buildUnitContext(unit, cboLabelById, cboSubjectRootById, threadSubjectRootById, resolver)
-    const result = await reconcileTrackedPointUnit({
-      siteId,
-      unit,
-      ctx,
-      sourceKind: 'historical_pdf',
-      sourceRefId: documentId,
-      sitePoints: isTrackableEligible(unit) ? sitePoints : undefined,
-    })
-    if (result.ok) {
-      verdictCounts[result.verdict] = (verdictCounts[result.verdict] ?? 0) + 1
-    } else {
-      refusals += 1
-      console.error('[tracked-point-live-writer-historical-adapter] reconcile refused:', result.error)
-    }
-  }
-
-  return { unitsProcessed: units.length, verdictCounts, refusals }
+  return reconcileFoundingUnits(db, siteId, loaded, 'historical_pdf', documentId)
 }

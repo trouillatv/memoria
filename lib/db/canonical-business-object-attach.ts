@@ -46,6 +46,7 @@ import {
 import { resolveOrCreateSingleObjectSubject } from '@/lib/db/canonical-subject-source-reconcile'
 import { produceObjectStateOccurrenceSignal } from '@/lib/db/object-state-occurrence-signal'
 import { isSourceDocumentDeleted } from '@/lib/documents/historical-source-eligibility'
+import { reconcileTrackedPointMutationBestEffort } from '@/lib/db/tracked-point-live-writer-mutation-adapter'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -97,6 +98,27 @@ async function produceSignalBestEffort(entityType: CanonicalBusinessObjectEntity
   } catch (e) {
     logError(`production signal d'occurrence non bloquante entity=${entityId} type=${entityType}`, e)
   }
+}
+
+/**
+ * P0-A (mandat Vincent) — après un rattachement CBO EFFECTIF (attached_existing/created_new,
+ * jamais sur skipped : aucun membership n'a alors changé), remonte le(s) thread(s) réellement
+ * impacté(s) dans le périmètre de réconciliation du Live Writer (critère #2). Best-effort,
+ * même doctrine que produceSignalBestEffort.
+ */
+async function reconcileTrackedPointBestEffort(
+  siteId: string,
+  entityType: CanonicalBusinessObjectEntityType,
+  entityId: string,
+  outcome: AttachOutcome,
+): Promise<void> {
+  if (outcome.kind === 'skipped') return
+  await reconcileTrackedPointMutationBestEffort({
+    siteId,
+    entityType,
+    entityId,
+    canonicalBusinessObjectId: outcome.canonicalBusinessObjectId,
+  })
 }
 
 /**
@@ -423,8 +445,9 @@ export async function resolveSubjectAndAttachCanonicalBusinessObject(params: {
     const sb = createAdminClient()
     await sb.from(TARGET_TABLE[entityType]).update({ canonical_subject_id: canonicalSubjectId }).eq('id', entityId)
 
-    await attachToCanonicalBusinessObject({ siteId, canonicalSubjectId, entityType, entityId, label, date })
+    const outcome = await attachToCanonicalBusinessObject({ siteId, canonicalSubjectId, entityType, entityId, label, date })
     await produceSignalBestEffort(entityType, entityId)
+    await reconcileTrackedPointBestEffort(siteId, entityType, entityId, outcome)
   } catch (e) {
     logError(`résolution sujet+CBO non bloquante entity=${entityId} type=${entityType}`, e)
   }
@@ -487,7 +510,7 @@ export async function attachHistoricalEntityToCanonicalBusinessObject(params: {
       .eq('id', entityId)
       .is('canonical_subject_id', null)
 
-    await attachToCanonicalBusinessObject({
+    const outcome = await attachToCanonicalBusinessObject({
       siteId,
       canonicalSubjectId: identity.canonical_subject_id,
       entityType,
@@ -496,6 +519,7 @@ export async function attachHistoricalEntityToCanonicalBusinessObject(params: {
       date,
     })
     await produceSignalBestEffort(entityType, entityId)
+    await reconcileTrackedPointBestEffort(siteId, entityType, entityId, outcome)
   } catch (e) {
     logError(`rattachement historique non bloquant entity=${entityId} type=${entityType}`, e)
   }
@@ -545,7 +569,7 @@ export async function attachHistoricalReportEntitiesToCanonicalBusinessObjects(p
 
     for (const row of (actions ?? []) as Array<{ id: string; title: string; due_date: string | null; canonical_subject_id: string | null }>) {
       if (!row.canonical_subject_id) continue
-      await attachToCanonicalBusinessObject({
+      const outcome = await attachToCanonicalBusinessObject({
         siteId,
         canonicalSubjectId: row.canonical_subject_id,
         entityType: 'site_action',
@@ -554,11 +578,12 @@ export async function attachHistoricalReportEntitiesToCanonicalBusinessObjects(p
         date: row.due_date,
       })
       await produceSignalBestEffort('site_action', row.id)
+      await reconcileTrackedPointBestEffort(siteId, 'site_action', row.id, outcome)
     }
 
     for (const row of (deadlines ?? []) as Array<{ id: string; title: string; due_date: string | null; canonical_subject_id: string | null }>) {
       if (!row.canonical_subject_id) continue
-      await attachToCanonicalBusinessObject({
+      const outcome = await attachToCanonicalBusinessObject({
         siteId,
         canonicalSubjectId: row.canonical_subject_id,
         entityType: 'site_deadline',
@@ -567,11 +592,12 @@ export async function attachHistoricalReportEntitiesToCanonicalBusinessObjects(p
         date: row.due_date,
       })
       await produceSignalBestEffort('site_deadline', row.id)
+      await reconcileTrackedPointBestEffort(siteId, 'site_deadline', row.id, outcome)
     }
 
     for (const row of (reserves ?? []) as Array<{ id: string; label: string; issued_on: string | null; canonical_subject_id: string | null }>) {
       if (row.canonical_subject_id) {
-        await attachToCanonicalBusinessObject({
+        const outcome = await attachToCanonicalBusinessObject({
           siteId,
           canonicalSubjectId: row.canonical_subject_id,
           entityType: 'site_reserve',
@@ -580,6 +606,7 @@ export async function attachHistoricalReportEntitiesToCanonicalBusinessObjects(p
           date: row.issued_on,
         })
         await produceSignalBestEffort('site_reserve', row.id)
+        await reconcileTrackedPointBestEffort(siteId, 'site_reserve', row.id, outcome)
       } else {
         await attachHistoricalEntityToCanonicalBusinessObject({
           siteId,

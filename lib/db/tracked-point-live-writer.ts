@@ -34,6 +34,12 @@ import { trackedPointIdentityJudge } from '@/lib/ai/tracked-point-identity-judge
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// P0-A (mandat Vincent, root cause "mutation canonique tardive non signalée") : 'canonical_mutation'
+// couvre la réévaluation d'un thread déclenchée par une mutation CBO (attachToCanonicalBusinessObject),
+// distincte de 'historical_pdf' (run d'import) — même moteur, même RPC, seule la provenance diffère
+// (migration 425 élargit le CHECK source_kind de tracked_point_reconcile_event en conséquence).
+export type TrackedPointReconcileSourceKind = 'historical_pdf' | 'field_visit' | 'meeting' | 'canonical_mutation'
+
 export type ReconcileVerdict = 'AUTO_CREATED' | 'AUTO_LINKED' | 'NEEDS_HUMAN' | 'IGNORED_NOT_TRACKABLE'
 
 export type ReconcileWritePattern =
@@ -114,7 +120,7 @@ export async function reconcileTrackedPointUnit(params: {
   siteId: string
   unit: FoundingUnit
   ctx?: PlanUnitContext
-  sourceKind: 'historical_pdf' | 'field_visit' | 'meeting'
+  sourceKind: TrackedPointReconcileSourceKind
   sourceRefId: string
   // D1 (Round 2, Vincent) : candidats de Points actifs du site déjà chargés par l'appelant,
   // utilisés UNIQUEMENT pour détecter une concurrence cross-thread avant l'auto-création
