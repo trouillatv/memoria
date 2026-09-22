@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { User } from 'lucide-react'
@@ -74,7 +75,9 @@ export default async function FieldLayout({ children }: { children: React.ReactN
       <ThemeSync theme={user.theme_preference} />
       {/* Instrumentation : ouverture des surfaces terrain (/m…) — savoir si le
           pilote vit côté chef. Niveau route/feature, pas de surveillance. */}
-      <PageViewLogger />
+      <Suspense fallback={null}>
+        <PageViewLogger />
+      </Suspense>
       <SyncToastBridge />
       <FieldSyncDrainer userId={user.id} />
     </div>

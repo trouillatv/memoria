@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
@@ -69,7 +70,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Vincent 2026-05-21 — bouton feedback flottant desktop seulement
           (le composant lui-même se masque avec hidden md:inline-flex). */}
       <FeedbackButton />
-      <PageViewLogger />
+      <Suspense fallback={null}>
+        <PageViewLogger />
+      </Suspense>
       {/* Réapplique le thème persisté de l'user au login (cross-device). */}
       <ThemeSync theme={user.theme_preference} />
     </div>

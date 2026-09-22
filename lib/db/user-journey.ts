@@ -23,10 +23,13 @@
 //     pathname porte réellement.
 //   - Les onglets desktop sans route dédiée (Visites, Chronologie, Planning,
 //     Documents, Intervenants, Explorer — cf. SiteTabsNav.tsx) naviguent par
-//     ?tab=…, or logPageViewAction stocke le pathname SANS query string : ces
-//     bascules d'onglet sont historiquement indiscernables de l'Aperçu.
-//     Limite connue, non contournable sans changer la collecte (hors périmètre
-//     de ce lot).
+//     ?tab=…. FIX_REQUIRED Thread C (GO Vincent 2026-09-22) : PageViewLogger/
+//     logPageViewAction capturent désormais tab/plantab (whitelist de vues,
+//     jamais toute la query string — cf. page-view-action.ts) et
+//     parseSiteOrMobileRoute les exploite pour résoudre le VRAI onglet sur
+//     la racine /sites/<id> à partir de MAINTENANT. Forward-only assumé : les
+//     événements historiques déjà collectés sans ce champ restent résolus en
+//     « Aujourd'hui » (Aperçu), aucune reconstruction rétroactive.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NAV } from '@/components/layout/nav-items'
@@ -175,9 +178,22 @@ const ENTITY_TYPE_LABEL_FR: Record<EntityType, string> = {
   contact: 'Intervenant', subject_thread: 'Sujet', visit_capture: 'Observation',
 }
 
+// Onglets desktop de /sites/[id] atteignables UNIQUEMENT par ?tab=… (pas de
+// pathSuffix dédié dans SiteTabsNav.tsx) — seules valeurs que le paramètre
+// whitelisté `tab` peut légitimement prendre sur la racine du chantier. À
+// tenir manuellement synchronisé avec SiteTabsNav.tsx si de nouveaux onglets
+// perdent/gagnent leur route dédiée (même logique de table manuelle que
+// VIEW_LABEL_FR ci-dessus).
+const SITE_QUERY_TAB_VIEWS = new Set([
+  'visites', 'chronologie', 'planning', 'documents-preuves', 'intervenants', 'explorer',
+])
+
 // Ordre = du plus spécifique au plus générique (un motif générique matché en
 // premier empêcherait jamais d'atteindre les motifs détaillés placés après).
-function parseSiteOrMobileRoute(clean: string): ParsedSiteRoute | null {
+// `navTab` (optionnel) = valeur whitelistée du paramètre ?tab=… capturée par
+// logPageViewAction pour les événements FUTURS uniquement (undefined pour les
+// événements historiques déjà collectés sans ce champ).
+export function parseSiteOrMobileRoute(clean: string, navTab?: string | null): ParsedSiteRoute | null {
   let m: RegExpMatchArray | null
 
   // Mobile — fiches d'entité du chantier
@@ -246,10 +262,13 @@ function parseSiteOrMobileRoute(clean: string): ParsedSiteRoute | null {
       return { siteId: m[1]!, viewKey: v, entityType: null, entityId: null, subKey: null }
   }
 
-  // Desktop — racine du chantier (englobe aussi les onglets ?tab=…, dont la
-  // query string a déjà été retirée par le tracking : cf. limite documentée en tête de fichier).
-  if ((m = clean.match(/^\/sites\/([^/]+)$/)))
-    return { siteId: m[1]!, viewKey: 'apercu', entityType: null, entityId: null, subKey: null }
+  // Desktop — racine du chantier, y compris les onglets ?tab=… : si `navTab`
+  // est whitelisté et connu (événement FUTUR capturé par le fix Thread C),
+  // on résout le vrai onglet ; sinon repli sur l'Aperçu (événements historiques).
+  if ((m = clean.match(/^\/sites\/([^/]+)$/))) {
+    const viewKey = navTab && SITE_QUERY_TAB_VIEWS.has(navTab) ? navTab : 'apercu'
+    return { siteId: m[1]!, viewKey, entityType: null, entityId: null, subKey: null }
+  }
 
   return null
 }
@@ -410,7 +429,8 @@ export async function getUserJourney(
       const route = String(l.metadata?.route ?? '')
       if (!route) continue
       const clean = route.split('?')[0] ?? route
-      const parsed = parseSiteOrMobileRoute(clean)
+      const navTab = typeof l.metadata?.tab === 'string' ? l.metadata.tab : null
+      const parsed = parseSiteOrMobileRoute(clean, navTab)
       if (parsed) {
         if (parsed.siteId) pathSiteIds.add(parsed.siteId)
         if (parsed.entityType && parsed.entityId) {
