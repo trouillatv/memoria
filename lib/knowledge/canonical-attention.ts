@@ -197,8 +197,8 @@ export function narrateTrajectory(
   switch (transition) {
     case 'réouvert':      return `Réouvert · résolu précédemment, à refaire depuis le PV${since}`
     case 'aggravé':       return 'Aggravé au dernier PV'
-    case 'nouveau':
-    case 'réapparu':      return `Apparu au PV${since}`
+    case 'nouveau':       return `Apparu au PV${since}`
+    case 'réapparu':      return `Réapparu au PV${since}`
     case 'non_mentionné': return 'Non mentionné dans le dernier PV · état précédent conservé'
     // Continuité réelle (mention sans nouvel événement d'état) : « toujours ouvert » LÉGITIME ici.
     case 'maintenu':      return isOpen ? 'Toujours ouvert lors de la dernière visite' : null

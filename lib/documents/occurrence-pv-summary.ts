@@ -16,7 +16,6 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPvDelta } from './pv-comparison'
-import { buildSiteSubjectCells } from './site-occurrence-timeline'
 
 export interface PvSubjectRef {
   canonicalSubjectId: string
@@ -50,15 +49,9 @@ export async function buildOccurrencePvSummary(
   fromRunId: string,
   toRunId: string,
 ): Promise<OccurrencePvSummary> {
-  const [delta, view] = await Promise.all([
-    getPvDelta(fromRunId, toRunId).catch(() => null),
-    buildSiteSubjectCells(siteId).catch(() => null),
-  ])
+  const delta = await getPvDelta(fromRunId, toRunId).catch(() => null)
   const s = emptyOccurrencePvSummary()
   if (!delta) return s
-
-  const toIdx = view ? view.runs.findIndex((r) => r.id === toRunId) : -1
-  const cellsByCs = new Map((view?.rows ?? []).map((r) => [r.canonicalSubjectId, r.cells]))
 
   // Population : exclure les acteurs (#228) ; label canonique.
   const csIds = [...new Set(delta.items.map((i) => i.subjectThreadId))]
@@ -79,13 +72,8 @@ export async function buildOccurrencePvSummary(
     switch (it.transition) {
       case 'réouvert': s.réouvert.push(ref); break
       case 'aggravé':  s.aggravé.push(ref); break
-      case 'nouveau': {
-        // Raffinement nouveau vs réapparu depuis l'axe de PRÉSENCE (comme #230).
-        const cells = cellsByCs.get(it.subjectThreadId) ?? []
-        const firstReal = cells.findIndex((c) => c && !c.isGap)
-        ;(firstReal >= 0 && toIdx >= 0 && firstReal < toIdx ? s.réapparu : s.nouveau).push(ref)
-        break
-      }
+      case 'nouveau':      s.nouveau.push(ref); break
+      case 'réapparu':     s.réapparu.push(ref); break
       case 'levé':
       case 'réalisé':      s.résolu.push(ref); break
       case 'progressé':    s.progressé.push(ref); break

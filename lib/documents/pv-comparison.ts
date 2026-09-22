@@ -24,6 +24,7 @@ type ProposalRow = {
 
 export type DeltaTransition =
   | 'nouveau'       // sujet présent dans `to`, absent de `from`
+  | 'réapparu'      // sujet présent dans `to` après un trou documentaire (non résolu) dans `from`
   | 'non_mentionné' // sujet présent dans `from`, absent de `to`
   | 'maintenu'      // statut identique
   | 'réalisé'       // planned/in_progress → done (famille action/forecast)

@@ -195,6 +195,7 @@ export function buildDocumentPresenceCells(
  * en préservant la distinction présence / événement d'état / gap.
  *   - gap (absent)                       → 'non_mentionné' ;
  *   - première apparition documentaire   → 'nouveau' ;
+ *   - réapparition après trou documentaire (non résolu) → 'réapparu', distinct de 'nouveau' ;
  *   - présent SANS occurrence d'état     → 'maintenu' (mentionné, aucun nouvel événement d'état) ;
  *   - occurrence d'état                  → la transition observée (réalisé/réouvert/…), 'maintenu' si null.
  * `isFirstAppearance` : cette cellule est la 1re présence documentaire du sujet (relatif au delta).
@@ -202,12 +203,12 @@ export function buildDocumentPresenceCells(
 export function cellDeltaTransition(
   cell: OccTimelineCell,
   isFirstAppearance: boolean,
-): 'nouveau' | 'non_mentionné' | 'maintenu' | 'réalisé' | 'levé' | 'réouvert' | 'aggravé' | 'progressé' | 'annulé' | 'changé' {
+): 'nouveau' | 'réapparu' | 'non_mentionné' | 'maintenu' | 'réalisé' | 'levé' | 'réouvert' | 'aggravé' | 'progressé' | 'annulé' | 'changé' {
   if (cell.isGap) return 'non_mentionné'
   if (isFirstAppearance) return 'nouveau'
   if (cell.observedTriState === null) return 'maintenu' // présent, aucun événement d'état
   const t = cell.transition
-  if (t === null || t === 'réapparu') return t === 'réapparu' ? 'nouveau' : 'maintenu'
+  if (t === null) return 'maintenu'
   return t
 }
 

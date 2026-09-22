@@ -251,13 +251,14 @@ export function ChronologyWorkspace({
 // ── Lot 4C.1 — Depuis le dernier PV ─────────────────────────────────────────
 
 type DeltaTransitionKey =
-  | 'réalisé' | 'levé' | 'nouveau' | 'aggravé' | 'réouvert'
+  | 'réalisé' | 'levé' | 'nouveau' | 'réapparu' | 'aggravé' | 'réouvert'
   | 'progressé' | 'annulé' | 'maintenu' | 'non_mentionné' | 'changé'
 
 const TRANSITION_CONFIG: Record<DeltaTransitionKey, { label: string; icon: string; color: string }> = {
   réalisé:       { label: 'Réalisés',                  icon: '✓', color: 'text-emerald-700 dark:text-emerald-400' },
   levé:          { label: 'Levés / résolus',            icon: '✓', color: 'text-emerald-700 dark:text-emerald-400' },
   nouveau:       { label: 'Nouveaux',                   icon: '+', color: 'text-blue-700 dark:text-blue-400' },
+  réapparu:      { label: 'Réapparus',                  icon: '↺', color: 'text-blue-700 dark:text-blue-400' },
   aggravé:       { label: 'Aggravés',                   icon: '!', color: 'text-red-700 dark:text-red-400' },
   réouvert:      { label: 'Réouverts',                  icon: '↩', color: 'text-red-600 dark:text-red-400' },
   progressé:     { label: 'En progression',             icon: '↑', color: 'text-blue-600 dark:text-blue-400' },
@@ -268,7 +269,7 @@ const TRANSITION_CONFIG: Record<DeltaTransitionKey, { label: string; icon: strin
 }
 
 const DISPLAY_ORDER: DeltaTransitionKey[] = [
-  'réalisé', 'levé', 'nouveau', 'aggravé', 'réouvert', 'progressé', 'annulé', 'non_mentionné', 'changé', 'maintenu',
+  'réalisé', 'levé', 'nouveau', 'réapparu', 'aggravé', 'réouvert', 'progressé', 'annulé', 'non_mentionné', 'changé', 'maintenu',
 ]
 
 function SincePvSection({
