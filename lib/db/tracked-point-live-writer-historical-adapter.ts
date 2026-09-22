@@ -269,7 +269,10 @@ export async function loadThreadsFoundingInput(db: Db, siteId: string, threadIds
 // par n'importe quel autre thread du site) — chargé UNIQUEMENT si au moins une unité du run est
 // éligible à l'auto-création trackable_condition (cf. runTrackedPointLiveWriterForHistoricalRun).
 
-async function loadSitePointCandidates(db: Db, siteId: string, resolver: SubjectResolver): Promise<TrackedPointCandidate[]> {
+// Export de visibilité uniquement (aucun changement de logique) — nécessaire à
+// _pv6-13-refresh-guarded.ts pour simuler crossThreadConcurrentPointIds en lecture pure
+// (dry-run zéro écriture DB), sans dupliquer cette logique dans le script.
+export async function loadSitePointCandidates(db: Db, siteId: string, resolver: SubjectResolver): Promise<TrackedPointCandidate[]> {
   const { data: pointRows } = await db
     .from('tracked_point')
     .select('id, label, canonical_subject_id')
@@ -386,7 +389,9 @@ async function loadSitePointCandidates(db: Db, siteId: string, resolver: Subject
 //    le sujet propre du thread (cf. tracked-point-write-plan.ts:planPointForUnit, buildWritePlan
 //    de _p6d1a lignes 414-436). Doit être calculé APRÈS buildFoundingUnits, jamais par thread. ──
 
-async function buildUnitContext(
+// Export de visibilité uniquement (aucun changement de logique) — cf. loadSitePointCandidates
+// ci-dessus, même justification.
+export async function buildUnitContext(
   u: FoundingUnit,
   cboLabelById: Map<string, string>,
   cboSubjectRootById: Map<string, string | null>,
@@ -412,7 +417,9 @@ async function buildUnitContext(
   return {}
 }
 
-function isTrackableEligible(u: FoundingUnit): boolean {
+// Export de visibilité uniquement (aucun changement de logique) — cf. loadSitePointCandidates
+// ci-dessus, même justification.
+export function isTrackableEligible(u: FoundingUnit): boolean {
   return u.outcomeV2.kind === 'PROVISIONAL' || u.outcomeV2.kind === 'PROVISIONAL_TRACKABLE'
 }
 
