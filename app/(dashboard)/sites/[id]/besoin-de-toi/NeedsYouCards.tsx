@@ -659,6 +659,11 @@ function IdentityFreeResolutionCard({
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<SitePointOption | null>(null)
   const [confirmingCreate, setConfirmingCreate] = useState(false)
+  // GO Vincent 2026-09-23 (clôture UX PV6) : 0 candidat ne signifie pas "nouveau Point
+  // obligatoire" — l'humain doit pouvoir dire que l'information ne mérite finalement aucun
+  // suivi. Réutilise dismissPendingTraceAction tel quel (déjà utilisé par ConfirmTrackabilityCard
+  // et AssignResolutionCard) : marque la pending_trace 'dismissed', ne touche à aucun Point.
+  const [confirmingDismiss, setConfirmingDismiss] = useState(false)
 
   const searchResults = query.trim().length > 0 ? sitePoints.filter((p) => p.label.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8) : []
 
@@ -737,6 +742,23 @@ function IdentityFreeResolutionCard({
             </button>
           </div>
         </div>
+      ) : confirmingDismiss ? (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/30 px-2.5 py-2">
+          <p className="text-[12px] text-foreground/80">Cette question sera écartée. Aucun Point ne sera créé ou modifié.</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={btnSecondary}
+              disabled={pending}
+              onClick={() => runAction(() => import('../tracked-point-pending-trace-actions').then((m) => m.dismissPendingTraceAction({ siteId, pendingTraceId })))}
+            >
+              Confirmer
+            </button>
+            <button type="button" className={btnSecondary} disabled={pending} onClick={() => setConfirmingDismiss(false)}>
+              Annuler
+            </button>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-wrap gap-2 pt-1">
           <button
@@ -758,6 +780,9 @@ function IdentityFreeResolutionCard({
           </button>
           <button type="button" className={btnSecondary} disabled={pending} onClick={() => setConfirmingCreate(true)}>
             C&apos;est une situation nouvelle, créer un suivi
+          </button>
+          <button type="button" className={btnSecondary} disabled={pending} onClick={() => setConfirmingDismiss(true)}>
+            Cette information ne nécessite pas de suivi
           </button>
         </div>
       )}
@@ -1040,7 +1065,24 @@ function ClarifyEvidenceCard({
   const explanation = isTrackability
     ? 'MemorIA a identifié cette situation mais doit savoir quelle preuve justifie de continuer à la suivre.'
     : 'MemorIA a identifié une résolution possible mais doit savoir quelle preuve la confirme.'
-  const subQuestion = isTrackability ? 'Quelles preuves confirment cette situation ?' : 'Quelles preuves confirment cette résolution ?'
+  // GO Vincent 2026-09-23 (clôture UX PV6) : une seule preuve proposée ne laisse aucun choix
+  // réel — la checkbox donne l'illusion d'une sélection. Question binaire directe à la place,
+  // jamais de sélection factice.
+  const isSingleProposal = entry.proposals.length === 1
+  const subQuestion = isSingleProposal
+    ? isTrackability
+      ? 'Cette preuve confirme-t-elle cette situation ?'
+      : 'Cette preuve confirme-t-elle cette résolution ?'
+    : isTrackability
+      ? 'Quelles preuves confirment cette situation ?'
+      : 'Quelles preuves confirment cette résolution ?'
+
+  // Rejet d'une preuve ≠ résolution/suppression du Point : réutilise dismissPendingTraceAction
+  // tel quel (même primitive que ConfirmTrackabilityCard/AssignResolutionCard/
+  // IdentityFreeResolutionCard) — la pending_trace passe 'dismissed', le Point n'est jamais
+  // touché. Le nouveau workflow "continuer/ne plus suivre/revenir plus tard" reste hors
+  // périmètre (HARD STOP explicite Vincent), ce bouton n'écarte que cette demande de validation.
+  const dismiss = () => runAction(() => import('../tracked-point-pending-trace-actions').then((m) => m.dismissPendingTraceAction({ siteId, pendingTraceId: entry.pendingTraceId })))
 
   return (
     <CardShell category="clarify_evidence" title={title}>
@@ -1052,6 +1094,15 @@ function ClarifyEvidenceCard({
           const dateLine = provenanceLine(p.documentEffectiveDate, p.sourcePage, p.createdAt)
           const quote = p.hasVerbatimExcerpt && p.sourceExcerpt ? p.sourceExcerpt : null
           const text = quote ?? p.label ?? p.documentFilename ?? 'Document'
+          if (isSingleProposal) {
+            return (
+              <div key={p.proposalId} className="rounded-lg border bg-background px-2.5 py-2 text-[12px]">
+                <span className="block truncate">{quote ? `« ${text} »` : text}</span>
+                {(p.documentFilename || dateLine) && <span className="mt-0.5 block text-[11px] text-muted-foreground">{[p.documentFilename, dateLine].filter(Boolean).join(' · ')}</span>}
+                <DocumentSourceLink documentId={p.documentId} documentType={p.documentType} siteId={siteId} />
+              </div>
+            )
+          }
           return (
             <label key={p.proposalId} className="flex items-start gap-2 rounded-lg border bg-background px-2.5 py-2 text-[12px]">
               <input type="checkbox" className="mt-0.5" checked={selectedIds.has(p.proposalId)} onChange={() => toggle(p.proposalId)} />
@@ -1064,26 +1115,54 @@ function ClarifyEvidenceCard({
           )
         })}
       </div>
-      {selectedIds.size > 0 && <ImpactPreview items={clarifyEvidenceImpact(selectedIds.size)} />}
+      {!isSingleProposal && selectedIds.size > 0 && <ImpactPreview items={clarifyEvidenceImpact(selectedIds.size)} />}
       <ErrorLine error={error} />
-      <div className="flex flex-wrap gap-2 pt-1">
-        <button
-          type="button"
-          className={btnPrimary}
-          disabled={pending || selectedIds.size === 0}
-          onClick={() =>
-            runAction(
-              () =>
-                import('../tracked-point-evidence-scope-actions').then((m) =>
-                  m.resolvePendingEvidenceScopeAction({ siteId, pendingTraceId: entry.pendingTraceId, proposalIds: [...selectedIds] }),
-                ),
-              entry.subjectLabel,
-            )
-          }
-        >
-          Confirmer les preuves sélectionnées
-        </button>
-      </div>
+      {isSingleProposal ? (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            className={btnPrimary}
+            disabled={pending}
+            onClick={() =>
+              runAction(
+                () =>
+                  import('../tracked-point-evidence-scope-actions').then((m) =>
+                    m.resolvePendingEvidenceScopeAction({ siteId, pendingTraceId: entry.pendingTraceId, proposalIds: [entry.proposals[0].proposalId] }),
+                  ),
+                entry.subjectLabel,
+              )
+            }
+          >
+            Confirmer cette preuve
+          </button>
+          <button type="button" className={btnSecondary} disabled={pending} onClick={dismiss}>
+            Cette preuve ne convient pas
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            className={btnPrimary}
+            disabled={pending || selectedIds.size === 0}
+            onClick={() =>
+              runAction(
+                () =>
+                  import('../tracked-point-evidence-scope-actions').then((m) =>
+                    m.resolvePendingEvidenceScopeAction({ siteId, pendingTraceId: entry.pendingTraceId, proposalIds: [...selectedIds] }),
+                  ),
+                entry.subjectLabel,
+              )
+            }
+          >
+            Confirmer les preuves sélectionnées
+          </button>
+          <button type="button" className={btnSecondary} disabled={pending} onClick={dismiss}>
+            Aucune de ces preuves ne convient
+          </button>
+        </div>
+      )}
+      <p className="text-[11px] text-muted-foreground/80">Le Point reste inchangé. Seule cette demande de validation est écartée.</p>
     </CardShell>
   )
 }
