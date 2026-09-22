@@ -52,24 +52,36 @@ export type IdentityNeighborhoodRule = WidenedNeighborhoodRule | 'signature_anch
 const IDENTIFIER_TOKEN_RE = /^[a-z]+[0-9]+$/
 
 /**
- * Un token d'ancre partagé ne justifie d'élargir le voisinage que s'il est réellement
- * discriminant — sinon un seul mot générique commun (ex. "cta", présent dans deux labels qui
- * ne parlent que du même TYPE d'équipement, jamais de la même occurrence) suffirait à faire
- * entrer un témoin confidemment DISTINCT dans le pool ambigu (garde anti-overmerge du mandat).
- * Même seuil de longueur que `strongContainmentMatch` (1 token significatif ≥ 7 chars), avec
- * une exception pour les identifiants alphanumériques (r7, pt00392) qui restent discriminants
- * même courts.
+ * Un ensemble de tokens d'ancre partagés ne justifie d'élargir le voisinage que s'il est
+ * réellement discriminant — sinon un seul mot commun (générique OU isolé, ex. "parking",
+ * "supprimer", "couloir") suffirait à faire entrer un témoin confidemment DISTINCT dans le
+ * pool ambigu (garde anti-overmerge du mandat). Un identifiant alphanumérique (r7, pt00392)
+ * reste à lui seul discriminant, quelle que soit sa longueur. À défaut, il faut au moins DEUX
+ * tokens partagés non génériques : un seul token isolé — même long — n'est jamais suffisant.
  */
-function isSignificantAnchorToken(token: string): boolean {
-  if (IDENTIFIER_TOKEN_RE.test(token)) return true
-  return token.length >= 7 && !GENERIC_TOKENS.has(token)
+function hasSufficientDiscriminantOverlap(sharedTokens: string[]): boolean {
+  if (sharedTokens.some((t) => IDENTIFIER_TOKEN_RE.test(t))) return true
+  const significant = sharedTokens.filter((t) => !GENERIC_TOKENS.has(t))
+  return significant.length >= 2
 }
 
 /**
- * Élargit encore le voisinage au-delà du lexical : si `resolveWidenedNeighborhood` ne trouve
- * rien, un chevauchement d'ancre de signature suffit à faire ENTRER le candidat dans le pool —
- * jamais à décider seul (la décision reste au rail déterministe de signature ou au juge, plus
- * bas) — À CONDITION que le token partagé soit significatif (cf. isSignificantAnchorToken).
+ * Élargit encore le voisinage au-delà du lexical.
+ *
+ * Gate 1 (`resolveNeighborhoodRule`, moteur étroit) ne fait qu'un scope de recherche — partager
+ * un `canonical_subject_id` (large, ex. "SSI"), être `orphan` (candidat sans sujet propre), ou
+ * matcher par label de sujet (`related_subject`) ne qualifie jamais à lui seul un Point précis
+ * comme candidat : chacun de ces trois rails doit encore présenter son propre chevauchement
+ * d'ancre discriminant (cf. `hasSufficientDiscriminantOverlap`), sinon un seul Point ancien
+ * partageant le sujet (ou orphelin, ou au libellé de sujet proche) devient candidat pour toutes
+ * les questions non apparentées du même sujet (bug nommé du mandat — ex. "Réunion SSI avec ARES"
+ * candidat de 9/13 traces PV6 non liées, atteint en production via le rail `orphan` : le thread
+ * historique PV6 n'a pas de `canonical_subject_id` résolu au moment de la reconciliation).
+ *
+ * Si Gate 1 (élargi ou étroit) ne trouve rien, un chevauchement d'ancre de signature suffit à
+ * faire ENTRER le candidat dans le pool — jamais à décider seul (la décision reste au rail
+ * déterministe de signature ou au juge, plus bas) — à condition que ce chevauchement soit lui
+ * aussi discriminant (même garde `hasSufficientDiscriminantOverlap`).
  */
 export function resolveIdentityNeighborhood(
   candidate: CandidateThreadInput,
@@ -77,10 +89,18 @@ export function resolveIdentityNeighborhood(
   candidateSig: ConditionSignature,
   pointSig: ConditionSignature,
 ): IdentityNeighborhoodRule | null {
-  const widened = resolveWidenedNeighborhood(candidate, point)
-  if (widened) return widened
   const sharedAnchorTokens = [...tokenSet(candidateSig.anchor)].filter((t) => tokenSet(pointSig.anchor).has(t))
-  if (sharedAnchorTokens.some(isSignificantAnchorToken)) return 'signature_anchor_match'
+  const gate1Rule = resolveNeighborhoodRule(candidate, point)
+  if (gate1Rule) {
+    return hasSufficientDiscriminantOverlap(sharedAnchorTokens) ? gate1Rule : null
+  }
+  const memberLabels = [point.label, ...point.memberLabels]
+  const candidateNorm = normalizeLabel(stripCategoryFormatting(candidate.label))
+  const exactHit = candidateNorm.length > 0 && memberLabels.some((l) => normalizeLabel(stripCategoryFormatting(l)) === candidateNorm)
+  if (exactHit) return 'widened_label_match'
+  const containmentHit = memberLabels.some((l) => strongContainmentMatch(candidate.label, l))
+  if (containmentHit) return 'widened_label_match'
+  if (hasSufficientDiscriminantOverlap(sharedAnchorTokens)) return 'signature_anchor_match'
   return null
 }
 

@@ -113,6 +113,127 @@ describe('Étalon CTA négatif — garde anti-overmerge sous le rail élargi', (
   })
 })
 
+describe('Faux positifs PV6 Dumbéa Mall — Gate 1 (same_subject/orphan/related_subject) seul ne suffit plus (mandat post-PV6)', () => {
+  // Forme réelle de production pour l'import historique PV6 : le thread candidat n'a PAS de
+  // canonical_subject_id résolu au moment de la reconciliation (subject_thread_identity vide
+  // pour ces 4 traces nommées) → CandidateThreadInput.subjectId = null → Gate 1 tranche 'orphan',
+  // jamais 'same_subject'. Les 4 témoins ci-dessous reproduisent donc subjectId: null, pas un
+  // sujet partagé fictif.
+  it('haut-parleur accueil ≠ TGBT : un seul token partagé insuffisant, reste DISTINCT_POINT (rail orphan)', async () => {
+    const tgbtPoint = point({
+      pointId: '790e3490-d3a7-4ace-bc24-fcdd88cfc0d3',
+      label: 'Supprimer tout stockage des locaux techniques (notamment local TGBT)',
+      ownerSubjectId: 'subj-tgbt',
+      ownerSubjectLabel: 'Stockage locaux techniques',
+      memberLabels: [],
+    })
+    const hpAccueilThread = candidate({
+      threadId: 'bbd0929b-524c-4dcf-b25d-e7758dba53c9',
+      label: 'CAPSE vérifie suppression HP accueil',
+      subjectId: null,
+      subjectLabel: null,
+    })
+    const r = await evaluateWidenedMembershipCandidate(hpAccueilThread, tgbtPoint)
+    expect(r.decision).toBe('DISTINCT_POINT')
+    expect(r.neighborhoodRule).toBeNull()
+  })
+
+  it('test haut-parleurs parking ≠ zone fumeur : un seul token partagé insuffisant, reste DISTINCT_POINT (rail orphan)', async () => {
+    const zoneFumeurPoint = point({
+      pointId: '70c16433-0840-47d7-959f-a6d86e9bf604',
+      label: 'Identifier la zone fumeur sur le parking / parvis',
+      ownerSubjectId: 'subj-parking',
+      ownerSubjectLabel: 'Aménagement parking',
+      memberLabels: [],
+    })
+    const hpParkingThread = candidate({
+      threadId: 'eacd0e1a-c82c-40af-b0be-b615164a748b',
+      label: "Tester HP evacuation parking",
+      subjectId: null,
+      subjectLabel: null,
+    })
+    const r = await evaluateWidenedMembershipCandidate(hpParkingThread, zoneFumeurPoint)
+    expect(r.decision).toBe('DISTINCT_POINT')
+    expect(r.neighborhoodRule).toBeNull()
+  })
+
+  it('DAI couloir frais ≠ porte CF R+1 : un seul token partagé ("couloir") insuffisant, reste DISTINCT_POINT (rail orphan)', async () => {
+    const porteCfPoint = point({
+      pointId: '3482a8e3-7e19-42c2-8833-3a189e7a87f4',
+      label: "Vérifier l'intégrité de la porte CF du couloir de circulation R+1 (penne supprimée)",
+      ownerSubjectId: 'subj-ssi',
+      ownerSubjectLabel: 'Fonctionnalités et utilisation du SSI (Sécurité Incendie)',
+      memberLabels: [],
+    })
+    const daiCouloirThread = candidate({
+      threadId: '08573d31-0d2f-4a11-9663-0ebfa61e738a',
+      label: 'Ares propose une solution technique pour la DAI du couloir frais',
+      subjectId: null,
+      subjectLabel: null,
+    })
+    const r = await evaluateWidenedMembershipCandidate(daiCouloirThread, porteCfPoint)
+    expect(r.decision).toBe('DISTINCT_POINT')
+    expect(r.neighborhoodRule).toBeNull()
+  })
+
+  it('dossier identité SSI ne doit plus candidater sur "Réunion SSI avec ARES" (rail orphan, sujet large non discriminant)', async () => {
+    const reunionSsiPoint = point({
+      pointId: 'ab88019c-58e7-4831-ac05-dc1863491698',
+      label: "Réunion SSI avec ARES pour faire un point sur l'ensemble des sujets restants",
+      ownerSubjectId: 'subj-ssi',
+      ownerSubjectLabel: 'Fonctionnalités et utilisation du SSI (Sécurité Incendie)',
+      memberLabels: [],
+    })
+    const dossierIdentiteThread = candidate({
+      threadId: 'df3a4f9a-a554-4b62-9517-b96629396f4a',
+      label: 'Mettre à jour dossier identité SSI',
+      subjectId: null,
+      subjectLabel: null,
+    })
+    const r = await evaluateWidenedMembershipCandidate(dossierIdentiteThread, reunionSsiPoint)
+    expect(r.decision).toBe('DISTINCT_POINT')
+    expect(r.neighborhoodRule).toBeNull()
+  })
+
+  it('rappel : le rail same_subject seul (sujet partagé explicite) reste aussi insuffisant sans chevauchement discriminant', async () => {
+    const tgbtPoint = point({
+      pointId: '790e3490-d3a7-4ace-bc24-fcdd88cfc0d3',
+      label: 'Supprimer tout stockage des locaux techniques (notamment local TGBT)',
+      ownerSubjectId: 'subj-tgbt',
+      ownerSubjectLabel: 'Stockage locaux techniques',
+      memberLabels: [],
+    })
+    const hpAccueilThread = candidate({
+      threadId: 'bbd0929b-524c-4dcf-b25d-e7758dba53c9',
+      label: 'CAPSE vérifie suppression HP accueil',
+      subjectId: 'subj-tgbt',
+      subjectLabel: 'Stockage locaux techniques',
+    })
+    const r = await evaluateWidenedMembershipCandidate(hpAccueilThread, tgbtPoint)
+    expect(r.decision).toBe('DISTINCT_POINT')
+    expect(r.neighborhoodRule).toBeNull()
+  })
+
+  it('recall préservé : deux traces orphan partageant un identifiant discriminant (r7) entrent bien dans le pool', async () => {
+    const r7Point = point({
+      pointId: 'point-r7-orphan',
+      label: 'Surveillance des fissures du Regard R7 jusqu\'au prochain CR',
+      ownerSubjectId: 'subj-r7',
+      ownerSubjectLabel: 'Assainissement Regard R7',
+      memberLabels: [],
+    })
+    const r7OrphanThread = candidate({
+      threadId: 'thread-r7-orphan',
+      label: "Point sur l'état du Regard R7 lors de la visite",
+      subjectId: null,
+      subjectLabel: null,
+    })
+    const r = await evaluateWidenedMembershipCandidate(r7OrphanThread, r7Point)
+    expect(r.decision).not.toBe('DISTINCT_POINT')
+    expect(r.neighborhoodRule).toBe('orphan')
+  })
+})
+
 describe('Chemin UNCERTAIN → NeedsYou — jamais de fusion silencieuse', () => {
   it('juge qui décline (retourne null) → UNCERTAIN, pas un défaut SAME/DISTINCT', async () => {
     const p = point({ label: 'Surveillance des fissures du Regard R7', ownerSubjectId: 's1', memberLabels: [] })
