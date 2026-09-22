@@ -163,9 +163,35 @@ function buildFromChain(tableName: string) {
   }
 }
 
+// Simule la fonction PL/pgSQL `promote_canonical_extraction_run` (migration 428)
+// contre le même store.runs en mémoire — mêmes règles : un seul is_canonical
+// par document_id, transfert atomique, no-op si déjà canonique.
+function rpcPromoteCanonicalExtractionRun(args: { p_document_id: string; p_run_id: string }) {
+  const run = store.runs.get(args.p_run_id)
+  if (!run || run.document_id !== args.p_document_id) {
+    return { data: false, error: null }
+  }
+  if (run.is_canonical === true) {
+    return { data: true, error: null }
+  }
+  for (const [id, row] of store.runs) {
+    if (row.document_id === args.p_document_id && row.is_canonical === true) {
+      store.runs.set(id, { ...row, is_canonical: false })
+    }
+  }
+  store.runs.set(args.p_run_id, { ...run, is_canonical: true })
+  return { data: true, error: null }
+}
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => buildFromChain(table),
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'promote_canonical_extraction_run') {
+        return Promise.resolve(rpcPromoteCanonicalExtractionRun(args as { p_document_id: string; p_run_id: string }))
+      }
+      return Promise.resolve({ data: null, error: { message: `rpc inconnu: ${fn}` } })
+    },
   }),
 }))
 
@@ -178,6 +204,8 @@ import {
   recordMaterialization,
   getProposalMaterializationReport,
   isPersonExemptFromMaterialization,
+  promoteCanonicalExtractionRun,
+  READY_STATUSES,
 } from '@/lib/db/document-extractions'
 
 const ORG_A = 'org-aaaaaaaa'
@@ -557,5 +585,71 @@ describe('getProposalMaterializationReport — dénominateur avec exemption', ()
     expect(acceptedForMaterialization).toBe(3) // kf + company + person-lien-non-résolu
     expect(report.materialized).toBe(2)
     expect(report.materialized).toBeLessThan(acceptedForMaterialization) // le vrai trou (lien non résolu) reste visible
+  })
+})
+
+// ── 10. P0 Unicité des runs historiques — transfert atomique du canonique ────
+//
+// Un run brut n'acquiert pas l'autorité parce qu'il a terminé en premier : seul
+// le run que l'humain finalise réellement (materialize_historical_visit réussi)
+// devient is_canonical=true, par transfert atomique depuis l'ancien canonique
+// (migration 428, RPC promote_canonical_extraction_run). Aucune suppression,
+// aucun statut "superseded".
+
+describe('READY_STATUSES', () => {
+  it('couvre exactement les 3 statuts exploitables sans recréer de run', () => {
+    expect(READY_STATUSES.has('ready_for_review')).toBe(true)
+    expect(READY_STATUSES.has('partially_materialized')).toBe(true)
+    expect(READY_STATUSES.has('materialized')).toBe(true)
+    expect(READY_STATUSES.has('pending')).toBe(false)
+    expect(READY_STATUSES.has('processing')).toBe(false)
+    expect(READY_STATUSES.has('failed')).toBe(false)
+  })
+})
+
+describe('promoteCanonicalExtractionRun', () => {
+  it('transfère is_canonical de l\'ancien run vers le run finalisé', async () => {
+    const oldRunId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+    store.runs.set(oldRunId, { ...store.runs.get(oldRunId), is_canonical: true })
+    const newRunId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+    store.runs.set(newRunId, { ...store.runs.get(newRunId), is_canonical: false })
+
+    const result = await promoteCanonicalExtractionRun(DOC_ID, newRunId)
+
+    expect(result).toBe(true)
+    expect((store.runs.get(oldRunId) as { is_canonical: boolean }).is_canonical).toBe(false)
+    expect((store.runs.get(newRunId) as { is_canonical: boolean }).is_canonical).toBe(true)
+    // Aucune suppression : l'ancien run reste consultable dans le store.
+    expect(store.runs.has(oldRunId)).toBe(true)
+  })
+
+  it('idempotent — un run déjà canonique reste canonique (no-op)', async () => {
+    const runId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+    store.runs.set(runId, { ...store.runs.get(runId), is_canonical: true })
+
+    const result = await promoteCanonicalExtractionRun(DOC_ID, runId)
+
+    expect(result).toBe(true)
+    expect((store.runs.get(runId) as { is_canonical: boolean }).is_canonical).toBe(true)
+  })
+
+  it('un run non revu ne vole jamais le canonique — seul l\'appel explicite promeut', async () => {
+    const oldRunId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+    store.runs.set(oldRunId, { ...store.runs.get(oldRunId), is_canonical: true })
+    // Un deuxième run existe (ex. via Réanalyser) mais n'est jamais finalisé —
+    // promoteCanonicalExtractionRun n'est jamais appelé pour lui.
+    await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+
+    expect((store.runs.get(oldRunId) as { is_canonical: boolean }).is_canonical).toBe(true)
+  })
+
+  it('run appartenant à un autre document → false, aucun état modifié', async () => {
+    const runId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'pv_btp_v1' })
+    store.runs.set(runId, { ...store.runs.get(runId), is_canonical: false })
+
+    const result = await promoteCanonicalExtractionRun('doc-autre', runId)
+
+    expect(result).toBe(false)
+    expect((store.runs.get(runId) as { is_canonical: boolean }).is_canonical).toBe(false)
   })
 })

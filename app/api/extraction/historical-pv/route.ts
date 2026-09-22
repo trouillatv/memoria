@@ -10,10 +10,15 @@ export const maxDuration = 300
  *   - utilisateur manager/admin (cookies) — appelé depuis le client (page document)
  *   - secret interne CRON_SECRET (x-internal-trigger) — appelé depuis after() dans les server actions
  *
- * Body : { documentId: string, siteId?: string | null }
+ * Body : { documentId: string, siteId?: string | null, force?: boolean }
  *
  * Répond immédiatement avec { ok: true, runId } dès que le run est créé.
  * L'extraction tourne en arrière-plan via after() — le client poll le statut.
+ *
+ * P0 Unicité des runs historiques : pour un document donné, un run déjà
+ * exploitable (ready_for_review / partially_materialized / materialized)
+ * est réutilisé au lieu d'en recréer un — sauf `force: true`, qui matérialise
+ * l'intention explicite « Réanalyser ».
  */
 export async function POST(req: Request) {
   let documentId = ''
@@ -24,6 +29,7 @@ export async function POST(req: Request) {
     const body = await req.json()
     documentId = body.documentId ?? ''
     siteId = body.siteId ?? null
+    const force = body.force === true
 
     const secret = process.env.CRON_SECRET
     const trigger = req.headers.get('x-internal-trigger')
@@ -47,12 +53,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'documentId manquant' }, { status: 400 })
     }
 
-    const { getLatestExtractionRunForDocument, createExtractionRun } = await import('@/lib/db/document-extractions')
+    const { getLatestExtractionRunForDocument, createExtractionRun, READY_STATUSES } = await import('@/lib/db/document-extractions')
 
-    // Garde : ne pas lancer deux extractions en parallèle sur le même document.
+    // Garde : ne pas lancer deux extractions en parallèle sur le même document —
+    // même intention `force`, une extraction déjà en vol ne peut pas être doublée.
     const existing = await getLatestExtractionRunForDocument(documentId)
     if (existing && (existing.status === 'pending' || existing.status === 'processing')) {
       return NextResponse.json({ ok: false, error: 'Analyse déjà en cours.', runId: existing.id }, { status: 409 })
+    }
+
+    // P0 Unicité des runs historiques : un run déjà exploitable existe — le
+    // réutiliser au lieu d'en recréer un, sauf intention explicite de
+    // « Réanalyser » (force: true).
+    if (existing && !force && READY_STATUSES.has(existing.status)) {
+      return NextResponse.json({ ok: true, runId: existing.id, reused: true })
     }
 
     // Charger le document pour obtenir organization_id et valider le type.

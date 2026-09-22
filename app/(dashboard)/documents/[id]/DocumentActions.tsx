@@ -8,6 +8,11 @@ import { AiCostHint } from '../AiCostHint'
 
 const IN_FLIGHT_STATUSES = ['pending', 'extracting', 'ocr', 'chunking']
 
+// Miroir client de READY_STATUSES (lib/db/document-extractions.ts) — un run
+// dans l'un de ces statuts est déjà exploitable : « Analyser ce PV » devient
+// « Réanalyser » (force: true) plutôt que de créer silencieusement un doublon.
+const REUSABLE_RUN_STATUSES = new Set(['ready_for_review', 'partially_materialized', 'materialized'])
+
 const EXTRACTION_STAGES = [
   { key: 'downloading',     label: 'Téléchargement',      pct: 10 },
   { key: 'extracting_text', label: 'Extraction du texte', pct: 25 },
@@ -44,6 +49,7 @@ export function DocumentActions({
   costSampleCount,
   extractionInProgress = false,
   latestRunId,
+  latestRunStatus,
 }: {
   documentId: string
   documentType: string
@@ -52,6 +58,7 @@ export function DocumentActions({
   costSampleCount?: number
   extractionInProgress?: boolean
   latestRunId?: string | null
+  latestRunStatus?: string | null
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -144,7 +151,7 @@ export function DocumentActions({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function onAnalyzePv() {
+  async function onAnalyzePv(force = false) {
     setMsg(null)
     setExtracting(true)
     setPct(5)
@@ -155,13 +162,19 @@ export function DocumentActions({
       const r = await fetch('/api/extraction/historical-pv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId }),
+        body: JSON.stringify({ documentId, force }),
       })
       clearStageTimers()
       stopCrawl()
-      const data = await r.json() as { ok?: boolean; error?: string; runId?: string }
+      const data = await r.json() as { ok?: boolean; error?: string; runId?: string; reused?: boolean }
 
-      if (r.ok && data.ok && data.runId) {
+      if (r.ok && data.ok && data.reused) {
+        // Run déjà exploitable réutilisé — rien à attendre, pas de nouveau run créé.
+        setExtracting(false)
+        setPct(100)
+        setMsg({ ok: true, text: 'Analyse déjà disponible pour ce document.' })
+        router.refresh()
+      } else if (r.ok && data.ok && data.runId) {
         // Extraction lancée en arrière-plan — poll jusqu'à la fin.
         startPolling(data.runId)
       } else if (r.ok && data.ok) {
@@ -222,6 +235,7 @@ export function DocumentActions({
   const analysisInFlight = IN_FLIGHT_STATUSES.includes(analysisStatus)
   const isHistoricalPv = documentType === 'historical_visit_report'
   const currentInfo = stageInfo(stage)
+  const hasReusableRun = !!latestRunStatus && REUSABLE_RUN_STATUSES.has(latestRunStatus)
 
   return (
     <div className="space-y-3">
@@ -230,10 +244,11 @@ export function DocumentActions({
           <Button
             type="button"
             variant="outline"
-            onClick={onAnalyzePv}
+            onClick={() => onAnalyzePv(hasReusableRun)}
             disabled={pending || extracting}
+            title={hasReusableRun ? 'Relance une nouvelle extraction — la précédente reste consultable' : undefined}
           >
-            {extracting ? '…' : 'Analyser ce PV'}
+            {extracting ? '…' : hasReusableRun ? 'Réanalyser' : 'Analyser ce PV'}
           </Button>
         ) : (
           <span className="inline-flex items-center gap-1.5">

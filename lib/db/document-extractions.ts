@@ -476,6 +476,34 @@ export async function getLatestExtractionRunForDocument(
   return (data as DbDocumentExtractionRun | null)
 }
 
+// P0 Unicite des runs historiques — un run dans l'un de ces statuts est
+// exploitable : une extraction standard ne doit pas en recreer un autre pour
+// le meme document. Seule une intention explicite de "Reanalyser" le peut.
+export const READY_STATUSES: ReadonlySet<string> = new Set<DocumentExtractionRunStatus>([
+  'ready_for_review',
+  'partially_materialized',
+  'materialized',
+])
+
+/**
+ * Transfert atomique du statut is_canonical vers le run reellement finalise
+ * par l'humain (RPC `promote_canonical_extraction_run`, migration 428).
+ * Ne supprime rien, ne cree aucun statut "superseded" ; l'ancien run reste
+ * consultable, seul son drapeau is_canonical est desactive.
+ */
+export async function promoteCanonicalExtractionRun(
+  documentId: string,
+  runId: string,
+): Promise<boolean> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('promote_canonical_extraction_run', {
+    p_document_id: documentId,
+    p_run_id: runId,
+  })
+  if (error) throw new Error(error.message)
+  return Boolean(data)
+}
+
 export async function listOrphanEvidenceForRun(
   runId: string,
 ): Promise<DbDocumentExtractionEvidence[]> {

@@ -25,6 +25,7 @@ import {
   pinAllSnapshotsForRun,
   getProposalMaterializationReport,
   getPhotoMaterializationReport,
+  READY_STATUSES,
   type ProposalMaterializationReport,
   type PhotoMaterializationReport,
 } from '@/lib/db/document-extractions'
@@ -79,7 +80,7 @@ export interface HistoricalBatchOptions {
   postProcessingBackoffMs?: number
 }
 
-export const READY_STATUSES = new Set(['ready_for_review', 'partially_materialized', 'materialized'])
+export { READY_STATUSES }
 
 /**
  * Traite une liste de documents DANS L'ORDRE fourni par l'appelant (chronologique).

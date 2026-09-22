@@ -38,6 +38,7 @@ vi.mock('@/lib/db/document-extractions', () => ({
   pinAllSnapshotsForRun: mocks.pinAllSnapshotsForRun,
   getProposalMaterializationReport: mocks.getProposalMaterializationReport,
   getPhotoMaterializationReport: mocks.getPhotoMaterializationReport,
+  READY_STATUSES: new Set(['ready_for_review', 'partially_materialized', 'materialized']),
 }))
 
 vi.mock('@/lib/documents/extract-historical-pv', () => ({

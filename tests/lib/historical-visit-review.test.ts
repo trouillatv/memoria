@@ -16,6 +16,7 @@ import type { DbDocumentExtractionProposal } from '../../types/db'
 const mocks = vi.hoisted(() => ({
   maybeSingle: vi.fn(),
   from: vi.fn(),
+  rpc: vi.fn(),
   in: vi.fn(),
   select: vi.fn(),
   eq: vi.fn(),
@@ -36,6 +37,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: mocks.from,
+    rpc: mocks.rpc,
   }),
 }))
 
@@ -522,6 +524,7 @@ describe('Section 5 — createHistoricalVisitAction (GO point 11)', () => {
     mocks.getUserRoleById.mockResolvedValue('admin')
     mocks.detectNonVisitSignal.mockReturnValue({ detected: false })
     mocks.materializeHistoricalVisit.mockResolvedValue('report-1')
+    mocks.rpc.mockResolvedValue({ data: true, error: null })
   })
 
   function buildForm() {
@@ -574,5 +577,36 @@ describe('Section 5 — createHistoricalVisitAction (GO point 11)', () => {
       expect.objectContaining({ organization_id: 'org-1', name: "Clim'Expair" }),
     )
     expect(mocks.siteIntervenantsInsert).toHaveBeenCalledTimes(1)
+  })
+
+  it('21. run finalisé — transfert atomique du canonique appelé après matérialisation', async () => {
+    mocks.from.mockImplementation(buildHistoricalVisitAdminMock({
+      site: { organization_id: 'org-1', name: 'BELLA NAPOLI', normalized_name: 'bella napoli' },
+      companyProposals: [],
+    }))
+
+    const result = await createHistoricalVisitAction(buildForm())
+
+    expect(result.ok).toBe(true)
+    // P0 Unicité des runs historiques : la finalisation humaine réelle (RPC de
+    // matérialisation réussi) déclenche le transfert atomique is_canonical vers
+    // ce run — cf. migration 428 / promoteCanonicalExtractionRun.
+    expect(mocks.rpc).toHaveBeenCalledWith('promote_canonical_extraction_run', {
+      p_document_id: 'doc-1',
+      p_run_id: 'run-1',
+    })
+  })
+
+  it('22. transfert du canonique best-effort — un RPC en échec n\'empêche pas la visite créée', async () => {
+    mocks.from.mockImplementation(buildHistoricalVisitAdminMock({
+      site: { organization_id: 'org-1', name: 'BELLA NAPOLI', normalized_name: 'bella napoli' },
+      companyProposals: [],
+    }))
+    mocks.rpc.mockRejectedValue(new Error('boom'))
+
+    const result = await createHistoricalVisitAction(buildForm())
+
+    expect(result.ok).toBe(true)
+    expect(result.siteReportId).toBe('report-1')
   })
 })

@@ -179,6 +179,7 @@ export default async function DocumentViewerPage({
             costSampleCount={docAvgCost.count}
             extractionInProgress={extractionInProgress}
             latestRunId={latestRun?.id ?? null}
+            latestRunStatus={latestRun?.status ?? null}
           />
         )}
       </header>
