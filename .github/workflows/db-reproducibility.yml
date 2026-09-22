@@ -38,6 +38,41 @@ jobs:
       - name: Reset DB — re-apply every migration from scratch
         run: supabase db reset
 
+      # Incident migration 429 : le schéma se reconstruisait sans erreur alors
+      # que materialize_historical_visit() avait silencieusement perdu trois
+      # contrats (cf. migration 430). "Toutes les migrations s'appliquent" ne
+      # suffit pas à prouver "les contrats critiques sont toujours vrais" — on
+      # rejoue donc UN test de comportement réel contre la base fraîchement
+      # reconstruite. Volontairement minimal : un seul fichier, pas toute la
+      # suite tests/lib/db.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Capture les identifiants de la stack Supabase locale
+        run: supabase status -o env >> "$GITHUB_ENV"
+
+      - name: Seed minimal — une organisation (précondition du test de contrat)
+        run: psql "$DB_URL" -c "insert into organizations (name) values ('CI contract test org');"
+
+      - name: Seed minimal — un user admin (précondition du test de contrat)
+        run: npm run db:bootstrap-admin
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.API_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SERVICE_ROLE_KEY }}
+          INITIAL_ADMIN_EMAIL: ci-contract-test@memoria.local
+          INITIAL_ADMIN_PASSWORD: ci-contract-test-pwd
+
+      - name: Contrat materialize_historical_visit (report_id, échéances, photos, promotion canonique)
+        run: npx vitest run --project integration tests/lib/db/materialize-historical-visit-contract.test.ts
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ env.API_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ env.ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ env.SERVICE_ROLE_KEY }}
+
       - name: Stop
         if: always()
         run: supabase stop --no-backup
