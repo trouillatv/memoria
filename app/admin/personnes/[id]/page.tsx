@@ -38,6 +38,10 @@ function fmtClock(iso: string): string {
     hour: '2-digit', minute: '2-digit', timeZone: 'Pacific/Noumea',
   })
 }
+function fmtExample(iso: string): string {
+  const d = new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Pacific/Noumea' })
+  return `${d} ${fmtClock(iso)}`
+}
 
 export default async function PersonneUsagePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -92,12 +96,18 @@ export default async function PersonneUsagePage({ params }: { params: Promise<{ 
                   <AlertTriangle className="h-4 w-4" /> Points de friction
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-1.5 text-sm text-amber-900">
-                {journey.frictions.map((f, i) => (
-                  <p key={i}>
-                    <strong>{f.label}</strong> ouverte {f.repeats}× en moins de {f.windowMinutes} min
-                    <span className="text-amber-700"> — navigation en boucle, écran probablement peu clair.</span>
-                  </p>
+              <CardContent className="space-y-3 text-sm text-amber-900">
+                {journey.frictions.map((f) => (
+                  <div key={f.key}>
+                    <p>
+                      <strong>{f.label}</strong> — {f.totalOccurrences} aller{f.totalOccurrences > 1 ? 's' : ''}-retour{f.totalOccurrences > 1 ? 's' : ''} détecté{f.totalOccurrences > 1 ? 's' : ''}
+                      {' '}· {f.sessionCount} session{f.sessionCount > 1 ? 's' : ''}
+                      <span className="text-amber-700"> — navigation en boucle en moins de {f.windowMinutes} min, écran probablement peu clair.</span>
+                    </p>
+                    {f.examples.length > 0 && (
+                      <p className="text-xs text-amber-700">Exemples : {f.examples.map(fmtExample).join(', ')}</p>
+                    )}
+                  </div>
                 ))}
                 <p className="pt-1 text-xs text-amber-700">
                   Indice à confirmer en observant l&apos;écran concerné, pas un constat sur la personne.
@@ -184,6 +194,12 @@ function SessionBlock({ session }: { session: JourneySession }) {
               : e.device === 'desktop'
                 ? <Monitor className="h-3 w-3 text-muted-foreground/40" />
                 : null}
+            {e.rawRoute && (
+              <details className="ml-auto shrink-0">
+                <summary className="cursor-pointer text-xs text-muted-foreground/60 hover:text-muted-foreground">détails</summary>
+                <span className="ml-1 font-mono text-[11px] text-muted-foreground/70">{e.rawRoute}</span>
+              </details>
+            )}
           </li>
         ))}
       </ol>

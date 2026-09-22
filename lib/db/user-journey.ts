@@ -10,6 +10,23 @@
 //
 // Réutilise activity_logs (entity_type='page', action='view', metadata.route)
 // alimenté par logPageViewAction. Aucune migration.
+//
+// Résolution des routes /sites/* et /m/* (GO Thread C, 2026-09-22) :
+//   - Parse structurel du pathname (surface/siteId/viewKey/entityType/entityId),
+//     puis résolution BATCHÉE des identifiants uniques (une requête par table,
+//     jamais une par événement — une session peut compter ~100 événements).
+//   - Le libellé résolu (nom de chantier, titre d'action…) est celui ACTUEL en
+//     base : il peut différer de celui affiché au moment de la visite. Assumé.
+//   - Si l'objet n'est plus résolvable (supprimé, id historique orphelin) :
+//     libellé de repli « <Type> introuvable · <id court>… », la ligne n'est
+//     jamais supprimée. Aucun contexte n'est inventé au-delà de ce que le
+//     pathname porte réellement.
+//   - Les onglets desktop sans route dédiée (Visites, Chronologie, Planning,
+//     Documents, Intervenants, Explorer — cf. SiteTabsNav.tsx) naviguent par
+//     ?tab=…, or logPageViewAction stocke le pathname SANS query string : ces
+//     bascules d'onglet sont historiquement indiscernables de l'Aperçu.
+//     Limite connue, non contournable sans changer la collecte (hors périmètre
+//     de ce lot).
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NAV } from '@/components/layout/nav-items'
@@ -18,9 +35,10 @@ import type { UserRole } from '@/types/db'
 export interface JourneyEvent {
   at: string                    // ISO
   kind: 'page' | 'action'
-  label: string                 // libellé lisible
+  label: string                 // libellé lisible (contexte métier résolu)
   isReturn: boolean             // page déjà vue plus tôt dans la même session
   device: string | null
+  rawRoute: string | null       // route brute (détail secondaire, jamais affiché en premier)
 }
 
 export interface JourneySession {
@@ -36,9 +54,11 @@ export interface HeatmapEntry {
 }
 
 export interface FrictionSignal {
-  sessionStartAt: string
-  label: string
-  repeats: number
+  key: string              // identité stable de regroupement (frictionType|siteId|vue) — interne, pas affichée
+  label: string             // contexte métier résolu (chantier · vue/objet)
+  totalOccurrences: number  // somme des répétitions détectées, tous groupes confondus — ne perd pas le compte réel
+  sessionCount: number      // nombre de sessions distinctes où le motif est apparu
+  examples: string[]        // jusqu'à 3 horodatages représentatifs (ISO)
   windowMinutes: number
 }
 
@@ -52,19 +72,10 @@ export interface UserJourney {
   frictions: FrictionSignal[]
 }
 
-// ── Nommage des routes ────────────────────────────────────────────────────
+// ── Nommage des routes hors module chantier (inchangé) ────────────────────
 
 // Détail (routes dynamiques /xxx/<id>/…) → libellé lisible. Ordre = priorité.
 const ROUTE_PATTERNS: Array<[RegExp, string]> = [
-  [/^\/sites\/[^/]+\/subjects/, 'Sujets'],
-  [/^\/sites\/[^/]+\/obligations/, 'Obligations'],
-  [/^\/sites\/[^/]+\/preuves/, 'Dossier de preuve'],
-  [/^\/sites\/[^/]+\/livraisons/, 'Livraisons'],
-  [/^\/sites\/[^/]+\/reserves/, 'Points à lever'],
-  [/^\/sites\/[^/]+\/journal/, 'Journal'],
-  [/^\/sites\/[^/]+\/scopes/, 'Sous-périmètres'],
-  [/^\/sites\/[^/]+\/qr/, 'QR chantier'],
-  [/^\/sites\/[^/]+$/, 'Site (fiche)'],
   [/^\/meetings\/[^/]+\/pv\/validation/, 'Validation PV'],
   [/^\/meetings\/[^/]+\/briefing/, 'Briefing réunion'],
   [/^\/meetings\/[^/]+$/, 'Réunion (fiche)'],
@@ -93,9 +104,10 @@ for (const n of NAV) {
 }
 TOP_LABEL.set('account', 'Mon compte')
 TOP_LABEL.set('comprendre', 'Guides')
+TOP_LABEL.set('sites', 'Chantiers')
+TOP_LABEL.set('m', 'Chantiers')
 
-function labelForRoute(route: string): string {
-  const clean = route.split('?')[0] ?? route
+function legacyLabelForRoute(clean: string): string {
   const exact = EXACT_LABEL.get(clean)
   if (exact) return exact
   for (const [re, label] of ROUTE_PATTERNS) if (re.test(clean)) return label
@@ -128,6 +140,216 @@ function labelForAction(entityType: string, action: string): string {
   if (action === 'updated') return `A modifié ${what}`
   if (action === 'deleted') return `A retiré ${what}`
   return `${action} · ${what}`
+}
+
+// ── Parse structurel des routes chantier (/sites/* desktop, /m/* mobile) ──
+
+type EntityType =
+  | 'tracked_point' | 'canonical_subject' | 'site_action' | 'site_report'
+  | 'site_reserve' | 'site_decision' | 'document' | 'company' | 'contact'
+  | 'subject_thread' | 'visit_capture'
+
+interface ParsedSiteRoute {
+  siteId: string | null       // connu depuis le chemin ; null pour /m/visite/* (dérivé ensuite via site_report.site_id)
+  viewKey: string | null
+  entityType: EntityType | null
+  entityId: string | null
+  subKey: string | null       // sous-page d'une visite mobile (cr/comprehension/recap/pdf)
+}
+
+const VIEW_LABEL_FR: Record<string, string> = {
+  apercu: "Aujourd'hui", points: 'Points', visites: 'Visites', chronologie: 'Chronologie',
+  historique: 'Suivi', planning: 'Planning', reserves: 'Réserves', actions: 'Actions',
+  'documents-preuves': 'Documents', intervenants: 'Intervenants', memoire: 'Mémoire', explorer: 'Explorer',
+  sujets: 'Sujets', subjects: 'Sujets', carte: 'Carte', terrain: 'Terrain', photos: 'Photos',
+  reunions: 'Réunions', frise: 'Frise', documents: 'Documents', patrimoine: 'Patrimoine',
+  evolution: 'Évolution', 'besoin-de-toi': 'Besoin de toi', prepare: 'Préparation',
+  obligations: 'Obligations', preuves: 'Dossier de preuve', livraisons: 'Livraisons', journal: 'Journal',
+  scopes: 'Sous-périmètres', qr: 'QR chantier', ao: "Appel d'offres", chronicle: 'Chronique',
+  recit: 'Récit', reprise: 'Reprise', roulements: 'Roulements',
+}
+
+const ENTITY_TYPE_LABEL_FR: Record<EntityType, string> = {
+  tracked_point: 'Point', canonical_subject: 'Sujet', site_action: 'Action', site_report: 'Visite',
+  site_reserve: 'Réserve', site_decision: 'Décision', document: 'Document', company: 'Entreprise',
+  contact: 'Intervenant', subject_thread: 'Sujet', visit_capture: 'Observation',
+}
+
+// Ordre = du plus spécifique au plus générique (un motif générique matché en
+// premier empêcherait jamais d'atteindre les motifs détaillés placés après).
+function parseSiteOrMobileRoute(clean: string): ParsedSiteRoute | null {
+  let m: RegExpMatchArray | null
+
+  // Mobile — fiches d'entité du chantier
+  if ((m = clean.match(/^\/m\/site\/([^/]+)\/point\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'tracked_point', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/m\/site\/([^/]+)\/action\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'site_action', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/m\/site\/([^/]+)\/sujets\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'canonical_subject', entityId: m[2]!, subKey: null }
+  // Mobile — onglets du chantier (route réelle par segment, jamais par query)
+  if ((m = clean.match(/^\/m\/site\/([^/]+)\/([a-z-]+)/)))
+    return { siteId: m[1]!, viewKey: m[2]!, entityType: null, entityId: null, subKey: null }
+  if ((m = clean.match(/^\/m\/site\/([^/]+)$/)))
+    return { siteId: m[1]!, viewKey: 'apercu', entityType: null, entityId: null, subKey: null }
+
+  // Mobile — visite (pas de siteId dans le chemin : dérivé via site_reports.site_id)
+  if ((m = clean.match(/^\/m\/visite\/([^/]+)\/cr/)))
+    return { siteId: null, viewKey: null, entityType: 'site_report', entityId: m[1]!, subKey: 'cr' }
+  if ((m = clean.match(/^\/m\/visite\/([^/]+)\/comprehension/)))
+    return { siteId: null, viewKey: null, entityType: 'site_report', entityId: m[1]!, subKey: 'comprehension' }
+  if ((m = clean.match(/^\/m\/visite\/([^/]+)\/recap/)))
+    return { siteId: null, viewKey: null, entityType: 'site_report', entityId: m[1]!, subKey: 'recap' }
+  if ((m = clean.match(/^\/m\/visite\/([^/]+)\/pdf/)))
+    return { siteId: null, viewKey: null, entityType: 'site_report', entityId: m[1]!, subKey: 'pdf' }
+  if ((m = clean.match(/^\/m\/visite\/([^/]+)$/)))
+    return { siteId: null, viewKey: null, entityType: 'site_report', entityId: m[1]!, subKey: null }
+
+  // Desktop — fiches d'entité du chantier (plus spécifique que les vues liste)
+  if ((m = clean.match(/^\/sites\/([^/]+)\/action\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'site_action', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/point\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'tracked_point', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/reunion\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'site_report', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/reserve\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'site_reserve', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/decision\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'site_decision', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/observation\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'visit_capture', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/document\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'document', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/entreprise\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'company', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/intervenant\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'contact', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/historique\/sujets\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'canonical_subject', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/historique\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'subject_thread', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/subjects\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'canonical_subject', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/visites\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: null, entityType: 'site_report', entityId: m[2]!, subKey: null }
+  if ((m = clean.match(/^\/sites\/([^/]+)\/roulements\/([^/]+)/)))
+    return { siteId: m[1]!, viewKey: 'roulements', entityType: null, entityId: null, subKey: null }
+
+  // Desktop — vues liste à route dédiée
+  const LIST_VIEWS = [
+    'points', 'reserves', 'actions', 'memoire', 'historique', 'subjects',
+    'obligations', 'preuves', 'livraisons', 'journal', 'scopes', 'qr',
+    'ao', 'carte', 'chronicle', 'documents', 'photos', 'recit', 'reprise', 'roulements', 'reunions',
+  ]
+  for (const v of LIST_VIEWS) {
+    if ((m = clean.match(new RegExp(`^/sites/([^/]+)/${v}(?:/|$)`))))
+      return { siteId: m[1]!, viewKey: v, entityType: null, entityId: null, subKey: null }
+  }
+
+  // Desktop — racine du chantier (englobe aussi les onglets ?tab=…, dont la
+  // query string a déjà été retirée par le tracking : cf. limite documentée en tête de fichier).
+  if ((m = clean.match(/^\/sites\/([^/]+)$/)))
+    return { siteId: m[1]!, viewKey: 'apercu', entityType: null, entityId: null, subKey: null }
+
+  return null
+}
+
+function shortId(id: string): string {
+  return id.length > 8 ? `${id.slice(0, 8)}…` : id
+}
+
+function fmtDateFr(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Pacific/Noumea' })
+}
+
+const SUBKEY_LABEL_FR: Record<string, string> = {
+  cr: 'Compte rendu',
+  comprehension: 'Compréhension',
+  recap: 'Récap',
+  pdf: 'Export PDF',
+}
+
+// ── Résolution batchée (une requête par table, jamais par événement) ──────
+
+interface EntityRow {
+  label: string | null
+  siteId: string | null   // pour dériver le chantier quand il n'est pas dans le chemin (site_report)
+}
+
+async function resolveEntityLabels(
+  supabase: ReturnType<typeof createAdminClient>,
+  idsByType: Map<EntityType, Set<string>>,
+): Promise<Map<EntityType, Map<string, EntityRow>>> {
+  const out = new Map<EntityType, Map<string, EntityRow>>()
+  const chunk = <T,>(arr: T[], size = 200): T[][] => {
+    const chunks: T[][] = []
+    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size))
+    return chunks
+  }
+
+  async function run(type: EntityType, table: string, cols: string, mapRow: (r: Record<string, unknown>) => EntityRow) {
+    const ids = Array.from(idsByType.get(type) ?? [])
+    if (!ids.length) return
+    const byId = new Map<string, EntityRow>()
+    for (const c of chunk(ids)) {
+      const { data } = await supabase.from(table).select(cols).in('id', c)
+      for (const row of (data ?? []) as unknown as Array<Record<string, unknown>>) {
+        byId.set(String(row.id), mapRow(row))
+      }
+    }
+    out.set(type, byId)
+  }
+
+  await Promise.all([
+    run('tracked_point', 'tracked_point', 'id, label, site_id', (r) => ({ label: r.label as string | null, siteId: r.site_id as string | null })),
+    run('canonical_subject', 'canonical_subject', 'id, label, site_id', (r) => ({ label: r.label as string | null, siteId: r.site_id as string | null })),
+    run('site_action', 'site_actions', 'id, title, site_id', (r) => ({ label: r.title as string | null, siteId: r.site_id as string | null })),
+    run('site_report', 'site_reports', 'id, title, started_at, created_at, site_id', (r) => ({
+      label: (r.title as string | null) ?? `Visite du ${fmtDateFr((r.started_at as string | null) ?? (r.created_at as string))}`,
+      siteId: r.site_id as string | null,
+    })),
+    run('site_reserve', 'site_reserve', 'id, label, site_id', (r) => ({ label: r.label as string | null, siteId: r.site_id as string | null })),
+    run('site_decision', 'site_decisions', 'id, titre, site_id', (r) => ({ label: r.titre as string | null, siteId: r.site_id as string | null })),
+    run('document', 'documents', 'id, filename, site_id', (r) => ({ label: r.filename as string | null, siteId: r.site_id as string | null })),
+    run('company', 'companies', 'id, name, short_name', (r) => ({ label: (r.name as string | null) ?? (r.short_name as string | null), siteId: null })),
+    run('contact', 'company_contacts', 'id, full_name', (r) => ({ label: r.full_name as string | null, siteId: null })),
+    run('visit_capture', 'visit_capture', 'id, body, site_id', (r) => {
+      const body = (r.body as string | null)?.trim() ?? null
+      return { label: body ? (body.length > 60 ? `${body.slice(0, 60)}…` : body) : null, siteId: r.site_id as string | null }
+    }),
+  ])
+
+  // subject_thread : pas de libellé propre → autorité = canonical_subject.label via subject_thread_identity
+  const threadIds = Array.from(idsByType.get('subject_thread') ?? [])
+  if (threadIds.length) {
+    const byThread = new Map<string, EntityRow>()
+    const csIds = new Map<string, string>() // thread_id -> canonical_subject_id
+    for (const c of chunk(threadIds)) {
+      const { data } = await supabase.from('subject_thread_identity').select('subject_thread_id, canonical_subject_id').in('subject_thread_id', c)
+      for (const row of data ?? []) if (row.canonical_subject_id) csIds.set(row.subject_thread_id, row.canonical_subject_id)
+    }
+    const uniqueCs = Array.from(new Set(csIds.values()))
+    const csLabel = new Map<string, EntityRow>()
+    for (const c of chunk(uniqueCs)) {
+      const { data } = await supabase.from('canonical_subject').select('id, label, site_id').in('id', c)
+      for (const row of data ?? []) csLabel.set(row.id, { label: row.label, siteId: row.site_id })
+    }
+    for (const [threadId, csId] of csIds) {
+      const resolved = csLabel.get(csId)
+      if (resolved) byThread.set(threadId, resolved)
+    }
+    out.set('subject_thread', byThread)
+  }
+
+  return out
+}
+
+interface PendingEvent {
+  ts: number
+  at: string
+  device: string | null
+  parsed: ParsedSiteRoute
+  rawRoute: string
 }
 
 // ── Constantes de calcul ──────────────────────────────────────────────────
@@ -175,38 +397,121 @@ export async function getUserJourney(
 
   const logs = (data ?? []) as RawLog[]
 
-  // 1) Événements normalisés (pages + actions ; on ignore le bruit interne).
-  const events: Array<JourneyEvent & { ts: number }> = []
+  // 1) Première passe : événements normalisés. Les pages /sites|/m sont mises
+  //    de côté (pending) le temps de la résolution batchée ; les autres routes
+  //    et les actions sont étiquetées immédiatement (aucune donnée à joindre).
+  const events: Array<{ ts: number; at: string; kind: 'page' | 'action'; label: string | null; device: string | null; rawRoute: string | null; pending: PendingEvent | null }> = []
+  const idsByType = new Map<EntityType, Set<string>>()
+  const pathSiteIds = new Set<string>()
+
   for (const l of logs) {
     const ts = new Date(l.created_at).getTime()
     if (l.entity_type === 'page' && l.action === 'view') {
       const route = String(l.metadata?.route ?? '')
       if (!route) continue
-      events.push({
-        ts,
-        at: l.created_at,
-        kind: 'page',
-        label: labelForRoute(route),
-        isReturn: false,
-        device: (l.metadata?.device as string) ?? null,
-      })
+      const clean = route.split('?')[0] ?? route
+      const parsed = parseSiteOrMobileRoute(clean)
+      if (parsed) {
+        if (parsed.siteId) pathSiteIds.add(parsed.siteId)
+        if (parsed.entityType && parsed.entityId) {
+          const set = idsByType.get(parsed.entityType) ?? new Set<string>()
+          set.add(parsed.entityId)
+          idsByType.set(parsed.entityType, set)
+        }
+        events.push({
+          ts, at: l.created_at, kind: 'page', label: null,
+          device: (l.metadata?.device as string) ?? null,
+          rawRoute: clean,
+          pending: { ts, at: l.created_at, device: (l.metadata?.device as string) ?? null, parsed, rawRoute: clean },
+        })
+      } else {
+        events.push({
+          ts, at: l.created_at, kind: 'page', label: legacyLabelForRoute(clean),
+          device: (l.metadata?.device as string) ?? null, rawRoute: clean, pending: null,
+        })
+      }
     } else if (['created', 'opened', 'updated', 'deleted'].includes(l.action)) {
       events.push({
-        ts,
-        at: l.created_at,
-        kind: 'action',
-        label: labelForAction(l.entity_type, l.action),
-        isReturn: false,
-        device: null,
+        ts, at: l.created_at, kind: 'action', label: labelForAction(l.entity_type, l.action),
+        device: null, rawRoute: null, pending: null,
       })
     }
   }
 
-  // 2) Sessions (coupure au-delà de SESSION_GAP_MIN).
-  const sessions: JourneySession[] = []
-  let current: Array<JourneyEvent & { ts: number }> = []
-  const gapMs = SESSION_GAP_MIN * 60 * 1000
+  // 2) Résolution batchée : entités uniques, puis chantiers (chemin + dérivés
+  //    des entités résolues, ex. site_report.site_id pour les visites mobiles).
+  const resolved = await resolveEntityLabels(supabase, idsByType)
   for (const e of events) {
+    if (!e.pending) continue
+    const row = e.pending.parsed.entityType && e.pending.parsed.entityId
+      ? resolved.get(e.pending.parsed.entityType)?.get(e.pending.parsed.entityId)
+      : undefined
+    if (row?.siteId) pathSiteIds.add(row.siteId)
+  }
+  const siteNameById = new Map<string, string>()
+  if (pathSiteIds.size) {
+    const ids = Array.from(pathSiteIds)
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data: siteRows } = await supabase.from('sites').select('id, name').in('id', ids.slice(i, i + 200))
+      for (const s of siteRows ?? []) siteNameById.set(s.id, s.name)
+    }
+  }
+
+  // 3) Deuxième passe : synthèse du libellé final pour les événements en attente.
+  const groupKeys = new Map<number, string>() // index dans `events` -> clé de friction (pour l'étape 5)
+  // Libellé à afficher pour la friction (peut différer du libellé d'affichage
+  // de l'événement : un groupe de friction sur une fiche d'entité couvre TOUTES
+  // les instances de ce type sur ce chantier, jamais une instance précise — le
+  // libellé affiché doit rester générique pour ne pas laisser croire qu'on a
+  // rouvert 59 fois LE MÊME Point alors que ce sont 59 fiches Point distinctes.
+  const groupLabels = new Map<number, string>()
+  events.forEach((e, i) => {
+    if (!e.pending) return
+    const p = e.pending.parsed
+    const entityRow = p.entityType && p.entityId ? resolved.get(p.entityType)?.get(p.entityId) : undefined
+    const effectiveSiteId = p.siteId ?? entityRow?.siteId ?? null
+    const siteName = effectiveSiteId ? (siteNameById.get(effectiveSiteId) ?? 'Chantier introuvable') : null
+
+    let detail: string | null = null
+    let frictionDetail: string | null = null
+    if (p.entityType) {
+      const typeWord = ENTITY_TYPE_LABEL_FR[p.entityType]
+      if (entityRow?.label) {
+        detail = p.entityType === 'site_report' ? entityRow.label : `${typeWord} : ${entityRow.label}`
+      } else {
+        detail = `${typeWord} introuvable · ${shortId(p.entityId!)}`
+      }
+      if (p.subKey) detail = `${detail} · ${SUBKEY_LABEL_FR[p.subKey] ?? p.subKey}`
+      frictionDetail = `${typeWord} (fiche)`
+    } else if (p.viewKey) {
+      detail = VIEW_LABEL_FR[p.viewKey] ?? p.viewKey
+      frictionDetail = detail
+    }
+
+    e.label = [siteName, detail].filter(Boolean).join(' · ') || e.rawRoute!
+    groupLabels.set(i, [siteName, frictionDetail].filter(Boolean).join(' · ') || e.label)
+
+    // Clé de friction (P1) : type de motif + chantier + vue/type d'objet — jamais
+    // l'id précis d'une instance, pour capter « on boucle sur les fiches Point de
+    // ce chantier », pas « on rouvre le même Point ».
+    groupKeys.set(i, `repeat_view|${effectiveSiteId ?? 'none'}|${p.viewKey ?? p.entityType ?? 'none'}`)
+  })
+  // Routes hors module chantier : la clé de friction reste le libellé lui-même
+  // (pas d'ambiguïté cross-chantier possible sur ces routes).
+  events.forEach((e, i) => {
+    if (e.kind === 'page' && !groupKeys.has(i)) {
+      groupKeys.set(i, `repeat_view|legacy|${e.label}`)
+      groupLabels.set(i, e.label ?? e.rawRoute ?? '')
+    }
+  })
+
+  const finalEvents = events.map((e) => ({ ts: e.ts, at: e.at, kind: e.kind, label: e.label!, device: e.device, rawRoute: e.rawRoute }))
+
+  // 4) Sessions (coupure au-delà de SESSION_GAP_MIN).
+  const sessions: JourneySession[] = []
+  let current: typeof finalEvents = []
+  const gapMs = SESSION_GAP_MIN * 60 * 1000
+  for (const e of finalEvents) {
     const prev = current[current.length - 1]
     if (prev && e.ts - prev.ts > gapMs) {
       sessions.push(finalizeSession(current))
@@ -216,7 +521,7 @@ export async function getUserJourney(
   }
   if (current.length) sessions.push(finalizeSession(current))
 
-  // 3) Heatmap (pages les plus ouvertes, par section top-niveau).
+  // 5) Heatmap (pages les plus ouvertes, par section top-niveau) — inchangé.
   const pageEvents = logs.filter((l) => l.entity_type === 'page' && l.action === 'view')
   const counts = new Map<string, number>()
   for (const l of pageEvents) {
@@ -230,7 +535,7 @@ export async function getUserJourney(
     .map(([label, count]) => ({ label, count, pct: totalPages ? Math.round((count / totalPages) * 100) : 0 }))
     .sort((a, b) => b.count - a.count)
 
-  // 4) Menus cœur jamais ouverts (sur la période).
+  // 6) Menus cœur jamais ouverts (sur la période) — inchangé.
   const visitedSegs = new Set(
     pageEvents
       .map((l) => String(l.metadata?.route ?? '').split('/')[1] ?? '')
@@ -244,33 +549,43 @@ export async function getUserJourney(
     neverOpened.push(m.label)
   }
 
-  // 5) Friction : même page ≥ FRICTION_REPEATS fois dans une fenêtre glissante.
-  const frictions: FrictionSignal[] = []
-  for (const s of sessions) {
-    const byLabel = new Map<string, number[]>()
+  // 7) Friction : même motif (clé structurée) ≥ FRICTION_REPEATS fois dans une
+  //    fenêtre glissante, PAR SESSION, puis agrégée par clé sur toute la période
+  //    (un compteur total + N sessions distinctes, jamais N lignes quasi-identiques).
+  const byKey = new Map<string, { label: string; totalOccurrences: number; sessions: Set<string>; examples: string[] }>()
+  for (const s of sessions.slice().reverse()) { // ordre chronologique pour les exemples
+    const byLabelTimes = new Map<string, { key: string; label: string; times: number[] }>()
     for (const e of s.events) {
       if (e.kind !== 'page') continue
-      const arr = byLabel.get(e.label) ?? []
-      arr.push(new Date(e.at).getTime())
-      byLabel.set(e.label, arr)
+      const meta = frictionMetaForEvent(groupKeys, groupLabels, finalEvents, e)
+      const g = byLabelTimes.get(meta.key) ?? { key: meta.key, label: meta.label, times: [] }
+      g.times.push(new Date(e.at).getTime())
+      byLabelTimes.set(meta.key, g)
     }
-    for (const [label, times] of byLabel) {
-      const best = maxInWindow(times, FRICTION_WINDOW_MIN * 60 * 1000)
+    for (const g of byLabelTimes.values()) {
+      const best = maxInWindow(g.times, FRICTION_WINDOW_MIN * 60 * 1000)
       if (best >= FRICTION_REPEATS) {
-        frictions.push({
-          sessionStartAt: s.startAt,
-          label,
-          repeats: best,
-          windowMinutes: FRICTION_WINDOW_MIN,
-        })
+        const acc = byKey.get(g.key) ?? { label: g.label, totalOccurrences: 0, sessions: new Set<string>(), examples: [] }
+        acc.totalOccurrences += best
+        acc.sessions.add(s.startAt)
+        if (acc.examples.length < 3) acc.examples.push(s.startAt)
+        byKey.set(g.key, acc)
       }
     }
   }
+  const frictions: FrictionSignal[] = Array.from(byKey.entries()).map(([key, v]) => ({
+    key,
+    label: v.label,
+    totalOccurrences: v.totalOccurrences,
+    sessionCount: v.sessions.size,
+    examples: v.examples,
+    windowMinutes: FRICTION_WINDOW_MIN,
+  })).sort((a, b) => b.totalOccurrences - a.totalOccurrences)
 
   return {
-    totalEvents: events.length,
-    firstAt: events[0]?.at ?? null,
-    lastAt: events[events.length - 1]?.at ?? null,
+    totalEvents: finalEvents.length,
+    firstAt: finalEvents[0]?.at ?? null,
+    lastAt: finalEvents[finalEvents.length - 1]?.at ?? null,
     sessions: sessions.reverse(), // plus récente d'abord
     heatmapUsed,
     neverOpened,
@@ -278,13 +593,29 @@ export async function getUserJourney(
   }
 }
 
+// Retrouve la clé + le libellé de friction d'un événement de session déjà
+// finalisé (par horodatage + libellé, stable car un événement source
+// n'apparaît qu'une fois). Le libellé de friction peut différer du libellé
+// d'affichage (cf. groupLabels ci-dessus).
+function frictionMetaForEvent(
+  groupKeys: Map<number, string>,
+  groupLabels: Map<number, string>,
+  finalEvents: Array<{ at: string; label: string }>,
+  e: { at: string; label: string },
+): { key: string; label: string } {
+  const i = finalEvents.findIndex((f) => f.at === e.at && f.label === e.label)
+  const key = i >= 0 ? groupKeys.get(i) : undefined
+  if (key) return { key, label: groupLabels.get(i) ?? e.label }
+  return { key: `repeat_view|legacy|${e.label}`, label: e.label }
+}
+
 // Marque les retours (page déjà vue dans la session) et fige les bornes.
-function finalizeSession(evts: Array<JourneyEvent & { ts: number }>): JourneySession {
+function finalizeSession(evts: Array<{ at: string; kind: 'page' | 'action'; label: string; device: string | null; rawRoute: string | null }>): JourneySession {
   const seen = new Set<string>()
   const events: JourneyEvent[] = evts.map((e) => {
     const isReturn = e.kind === 'page' && seen.has(e.label)
     if (e.kind === 'page') seen.add(e.label)
-    return { at: e.at, kind: e.kind, label: e.label, isReturn, device: e.device }
+    return { at: e.at, kind: e.kind, label: e.label, isReturn, device: e.device, rawRoute: e.rawRoute }
   })
   return {
     startAt: evts[0]!.at,
@@ -295,10 +626,11 @@ function finalizeSession(evts: Array<JourneyEvent & { ts: number }>): JourneySes
 
 // Nombre max d'occurrences dans une fenêtre glissante (timestamps triés asc).
 function maxInWindow(times: number[], windowMs: number): number {
+  const sorted = times.slice().sort((a, b) => a - b)
   let best = 0
   let lo = 0
-  for (let hi = 0; hi < times.length; hi++) {
-    while (times[hi]! - times[lo]! > windowMs) lo++
+  for (let hi = 0; hi < sorted.length; hi++) {
+    while (sorted[hi]! - sorted[lo]! > windowMs) lo++
     best = Math.max(best, hi - lo + 1)
   }
   return best
