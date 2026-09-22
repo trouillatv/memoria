@@ -22,3 +22,15 @@ export const IMPACT_LABEL: Record<DecisionImpact, string> = {
   securite: 'Sécurité',
   autre: 'Autre',
 }
+
+// PERTINENCE TERRAIN (mig 431) — tri-état, jamais un booléen : NULL en base =
+// legacy_unknown (décision antérieure à ce champ, jamais classifiée), traité
+// comme 'a_verifier' par le Plan de visite tant qu'un humain ne l'a pas
+// classifiée explicitement (doctrine anti-masquage, cf. site-memory-signals.ts).
+export const DECISION_PERTINENCE_TERRAIN = ['a_verifier', 'memoire_seule'] as const
+export type DecisionPertinenceTerrain = (typeof DECISION_PERTINENCE_TERRAIN)[number]
+
+export const PERTINENCE_TERRAIN_LABEL: Record<DecisionPertinenceTerrain, string> = {
+  a_verifier: 'À vérifier sur le terrain',
+  memoire_seule: 'Décision de mémoire uniquement',
+}

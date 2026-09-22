@@ -62,6 +62,14 @@ export async function detectOverdueActions(siteId: string, asOf = todayIso()): P
     .lte('due_date', asOf)
     .eq('due_date_status', 'explicit')
     .order('due_date', { ascending: true })
+  // Invariant supersession (Plan de visite, Lot A) : `superseded_by` n'est PAS
+  // re-filtré ici — `.eq('status', 'open')` ci-dessus l'est déjà. Le seul écrivain
+  // de superseded_by sur site_actions est la fusion technique de doublons CBO
+  // (mig 413, fn_apply_action_cbo_merge), qui pose TOUJOURS status='cancelled' en
+  // même temps ; une réouverture humaine (fn_reopen_action) restaure status='open'
+  // SANS effacer superseded_by (colonne = historique, jamais l'état courant — mig
+  // 413). Un filtre `superseded_by is null` ici masquerait donc pour toujours une
+  // action légitimement réouverte : régression exclue par doctrine anti-masquage.
   const rows = data ?? []
   if (rows.length === 0) return null
   return {
@@ -90,11 +98,17 @@ export async function detectOverdueActions(siteId: string, asOf = todayIso()): P
 export async function detectUnappliedDecisions(siteId: string, asOf = todayIso(), staleDays = 30): Promise<MemorySignal | null> {
   const { data } = await createAdminClient()
     .from('site_decisions')
-    .select('id, titre, sujet, statut, echeance, date_decision')
+    .select('id, titre, sujet, statut, echeance, date_decision, superseded_by, pertinence_terrain')
     .eq('site_id', siteId)
     .eq('statut', 'actee')
+    .is('superseded_by', null) // remplacée par une décision plus récente (mig 319) → jamais dans le Plan
     .order('date_decision', { ascending: true })
   const rows = (data ?? []).filter((d) => {
+    // Pertinence terrain (mig 431, tri-état) : 'memoire_seule' = décision actée
+    // jamais destinée à être recontrôlée physiquement → exclue. NULL (legacy_unknown,
+    // jamais classifiée) et 'a_verifier' restent éligibles — aucune décision
+    // existante n'est masquée tant qu'un humain ne l'a pas classifiée lui-même.
+    if (d.pertinence_terrain === 'memoire_seule') return false
     const ech = d.echeance as string | null
     if (ech) return ech <= asOf // échéance d'application dépassée
     const dd = d.date_decision as string | null

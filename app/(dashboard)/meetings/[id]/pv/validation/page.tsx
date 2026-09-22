@@ -15,7 +15,7 @@ import {
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { listSiteActionsByReport } from '@/lib/db/site-actions'
-import { listDecisionsByReport } from '@/lib/db/site-decisions'
+import { listDecisionsByReport, listDecisionsBySite } from '@/lib/db/site-decisions'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listSiteIntervenants, getRoleActorMap, listSiteContacts, listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
 import { listCompanyNamesByIds } from '@/lib/db/companies'
@@ -100,6 +100,15 @@ export default async function PvValidationPage({ params, searchParams }: {
 
   // DÉCISIONS (mig 136) prises dans ce CR — mémoire durable, gérées dans leur bloc.
   const decisions = await listDecisionsByReport(id)
+
+  // Candidates au sélecteur « remplace… » (Plan de visite, Lot A) : décisions du
+  // SITE (pas juste ce CR — une décision se remplace souvent d'un CR à l'autre),
+  // non déjà remplacées, hors cycle de vie clos (caduque/contredite).
+  const supersedeCandidates = report.site_id
+    ? (await listDecisionsBySite(report.site_id))
+        .filter((d) => !d.supersededBy && d.statut !== 'caduque' && d.statut !== 'contredite')
+        .map((d) => ({ id: d.id, label: d.titre }))
+    : []
 
   // Noms des sujets existants du site → étiquette « existant » vs « nouveau » dans
   // la proposition pré-cochée de rattachement des décisions (alimentation du graphe).
@@ -334,7 +343,7 @@ export default async function PvValidationPage({ params, searchParams }: {
       {/* Décisions — « on a décidé que… » : mémoire durable du site, projetée dans
           les Points administratifs du CR (spine), gérée ici (pas d'écran parallèle). */}
       <div className="border-t pt-5">
-        <PvDecisionsBlock reportId={id} siteId={report.site_id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} existingSubjectNames={existingSubjectNames} personLinkByContact={personLinkByContact} />
+        <PvDecisionsBlock reportId={id} siteId={report.site_id} decisions={decisions} contacts={contactOptions} actions={actionRows.map((a) => ({ id: a.id, label: a.title }))} existingSubjectNames={existingSubjectNames} existingDecisions={supersedeCandidates} personLinkByContact={personLinkByContact} />
       </div>
 
       {/* Ajouts STRUCTURÉS en séance (anomalie / prévision) — objets typés mémorisés. */}

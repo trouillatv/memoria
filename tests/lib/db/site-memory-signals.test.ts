@@ -29,6 +29,8 @@ function applyFilter(rows: Row[], method: string, args: unknown[]): Row[] {
       return rows.filter((r) => (r[col] as string) >= (rest[0] as string))
     case 'in':
       return rows.filter((r) => (rest[0] as unknown[]).includes(r[col]))
+    case 'is':
+      return rows.filter((r) => r[col] === rest[0])
     default:
       return rows
   }
@@ -62,6 +64,10 @@ vi.mock('@/lib/supabase/admin', () => ({
           rows = applyFilter(rows, 'in', [col, val])
           return query
         },
+        is(col: string, val: unknown) {
+          rows = applyFilter(rows, 'is', [col, val])
+          return query
+        },
         order(col: string, opts?: { ascending?: boolean }) {
           rows = [...rows].sort((a, b) => {
             const av = a[col] as string
@@ -80,13 +86,13 @@ vi.mock('@/lib/supabase/admin', () => ({
   }),
 }))
 
-import { detectActorCongestion, detectOverdueActions } from '@/lib/db/site-memory-signals'
+import { detectActorCongestion, detectOverdueActions, detectUnappliedDecisions } from '@/lib/db/site-memory-signals'
 
 const SITE_ID = 'site-1'
 const TODAY = '2026-08-15'
 
 beforeEach(() => {
-  rowsByTable = { site_actions: [] }
+  rowsByTable = { site_actions: [], site_decisions: [] }
 })
 
 describe('detectOverdueActions', () => {
@@ -123,6 +129,72 @@ describe('detectOverdueActions', () => {
 
     expect(signal!.title).toBe('1 action en retard')
     expect(signal!.items.map((i) => i.id)).toEqual(['a-explicit'])
+  })
+
+  it('action réouverte après fusion technique (status=open, superseded_by resté non-null) reste comptée — pas de masquage silencieux (mig 413)', async () => {
+    rowsByTable.site_actions = [
+      { id: 'a-reopened', title: 'Action réouverte', assigned_to: 'Entreprise Z', due_date: '2026-08-01', due_date_status: 'explicit', status: 'open', created_at: '2026-07-01', site_id: SITE_ID, superseded_by: 'a-old-durable' },
+    ]
+
+    const signal = await detectOverdueActions(SITE_ID, TODAY)
+
+    expect(signal).not.toBeNull()
+    expect(signal!.items.map((i) => i.id)).toEqual(['a-reopened'])
+  })
+})
+
+describe('detectUnappliedDecisions', () => {
+  const acteeStale = (over: Row) => ({
+    id: 'd-1', titre: 'Décision test', sujet: null, statut: 'actee', echeance: null,
+    date_decision: '2026-06-01', // > 30 j avant TODAY (2026-08-15)
+    superseded_by: null, pertinence_terrain: null, site_id: SITE_ID, ...over,
+  })
+
+  it('décision remplacée (superseded_by non-null) → absente du Plan (mig 319)', async () => {
+    rowsByTable.site_decisions = [acteeStale({ id: 'd-remplacee', superseded_by: 'd-nouvelle' })]
+
+    const signal = await detectUnappliedDecisions(SITE_ID, TODAY)
+
+    expect(signal).toBeNull()
+  })
+
+  it("décision de mémoire uniquement (pertinence_terrain='memoire_seule') → absente du Plan (mig 431)", async () => {
+    rowsByTable.site_decisions = [acteeStale({ id: 'd-memoire', pertinence_terrain: 'memoire_seule' })]
+
+    const signal = await detectUnappliedDecisions(SITE_ID, TODAY)
+
+    expect(signal).toBeNull()
+  })
+
+  it("décision à vérifier sur le terrain (pertinence_terrain='a_verifier') → présente", async () => {
+    rowsByTable.site_decisions = [acteeStale({ id: 'd-a-verifier', pertinence_terrain: 'a_verifier' })]
+
+    const signal = await detectUnappliedDecisions(SITE_ID, TODAY)
+
+    expect(signal).not.toBeNull()
+    expect(signal!.items.map((i) => i.id)).toEqual(['d-a-verifier'])
+  })
+
+  it('décision existante jamais classifiée (pertinence_terrain=NULL, legacy_unknown) → reste présente, comportement inchangé (non-régression anti-masquage)', async () => {
+    rowsByTable.site_decisions = [acteeStale({ id: 'd-legacy', pertinence_terrain: null })]
+
+    const signal = await detectUnappliedDecisions(SITE_ID, TODAY)
+
+    expect(signal).not.toBeNull()
+    expect(signal!.items.map((i) => i.id)).toEqual(['d-legacy'])
+  })
+
+  it('mix remplacée + mémoire + à vérifier + legacy → seules à vérifier et legacy restent', async () => {
+    rowsByTable.site_decisions = [
+      acteeStale({ id: 'd-remplacee', superseded_by: 'd-nouvelle' }),
+      acteeStale({ id: 'd-memoire', pertinence_terrain: 'memoire_seule' }),
+      acteeStale({ id: 'd-a-verifier', pertinence_terrain: 'a_verifier' }),
+      acteeStale({ id: 'd-legacy', pertinence_terrain: null }),
+    ]
+
+    const signal = await detectUnappliedDecisions(SITE_ID, TODAY)
+
+    expect(signal!.items.map((i) => i.id).sort()).toEqual(['d-a-verifier', 'd-legacy'])
   })
 })
 

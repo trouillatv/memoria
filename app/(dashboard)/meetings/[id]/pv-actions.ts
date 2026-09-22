@@ -20,7 +20,7 @@ import { addReportPhoto, deleteReportPhoto } from '@/lib/db/report-photos'
 import { addReportAddedPoint, deleteReportAddedPoint } from '@/lib/db/report-added-points'
 import {
   createSiteDecision, updateSiteDecision, deleteSiteDecision,
-  type DecisionStatut, type DecisionImpact,
+  type DecisionStatut, type DecisionImpact, type DecisionPertinenceTerrain,
 } from '@/lib/db/site-decisions'
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
 import { findOrCreateSubjectByName, attachToSubject } from '@/lib/db/subjects'
@@ -593,6 +593,10 @@ export async function addDecisionAction(
   input: {
     titre: string; description?: string; sujet?: string
     decisionnaireRole?: string; decisionnaireContactId?: string; impact?: DecisionImpact | ''; echeance?: string
+    /** Choix humain explicite au moment d'acter la décision (mig 431, Plan de visite Lot A). */
+    pertinenceTerrain?: DecisionPertinenceTerrain | null
+    /** Id d'une décision EXISTANTE que celle-ci remplace (mig 319, Plan de visite Lot A). */
+    supersedesId?: string | null
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await requireManagerOrAdmin()
@@ -613,6 +617,8 @@ export async function addDecisionAction(
       echeance: input.echeance,
       dateDecision: report.created_at ? report.created_at.slice(0, 10) : null, // date du CR
       createdBy: user.id,
+      pertinenceTerrain: input.pertinenceTerrain ?? null,
+      supersedesId: input.supersedesId ?? null,
     })
     await recordCorrections({ reportId, siteId: report.site_id, actorId: user.id, events: [{ entity: 'decision', category: 'decision', op: 'added', after: titre, sourceType: 'human' }] })
     revalidatePath(`/meetings/${reportId}/pv/validation`)
@@ -631,6 +637,10 @@ export async function editDecisionAction(
     decisionnaireRole?: string; decisionnaireContactId?: string | null; actionId?: string | null
     impact?: DecisionImpact | ''; echeance?: string
     statut?: DecisionStatut; confiance?: 'sûr' | 'à confirmer'
+    /** Choix humain explicite (mig 431, Plan de visite Lot A). */
+    pertinenceTerrain?: DecisionPertinenceTerrain | null
+    /** Id d'une décision EXISTANTE que celle-ci remplace (mig 319, Plan de visite Lot A). */
+    supersedesId?: string | null
     timeToCorrectMs?: number | null // temps passé côté client (mig 140)
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -649,6 +659,8 @@ export async function editDecisionAction(
       statut: patch.statut,
       impact: patch.impact === '' ? null : patch.impact,
       confiance: patch.confiance,
+      pertinenceTerrain: patch.pertinenceTerrain,
+      supersedesId: patch.supersedesId,
     })
     // Capture passive : on logue le ou les champs réellement présents dans le patch.
     const field = patch.statut ? 'statut' : patch.actionId !== undefined ? 'action_liee' : patch.decisionnaireContactId !== undefined ? 'decisionnaire' : 'contenu'

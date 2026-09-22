@@ -10,7 +10,16 @@ import Link from 'next/link'
 import { Gavel, Pencil, Check, X, Trash2, Plus, Loader2, Link2 } from 'lucide-react'
 import { addDecisionAction, editDecisionAction, deleteDecisionAction, attachDecisionToSubjectAction, attachDecisionSubjectsAction } from '../../pv-actions'
 import { ACTION_CODES } from '@/lib/db/action-codes'
-import { DECISION_STATUTS, DECISION_IMPACTS, STATUT_LABEL, IMPACT_LABEL, type DecisionImpact } from '@/lib/db/decision-constants'
+import {
+  DECISION_STATUTS,
+  DECISION_IMPACTS,
+  DECISION_PERTINENCE_TERRAIN,
+  STATUT_LABEL,
+  IMPACT_LABEL,
+  PERTINENCE_TERRAIN_LABEL,
+  type DecisionImpact,
+  type DecisionPertinenceTerrain,
+} from '@/lib/db/decision-constants'
 import { subjectDedupKey, looksLikeAction } from '@/lib/db/subject-doctrine'
 import type { SiteDecision } from '@/lib/db/site-decisions'
 
@@ -110,7 +119,7 @@ function ddmmyyyy(iso: string | null): string | null {
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`
 }
 
-function Row({ reportId, siteId, d, contacts, actions, personLinkByContact }: { reportId: string; siteId: string | null; d: SiteDecision; contacts: DecisionOption[]; actions: DecisionOption[]; personLinkByContact: Record<string, string> }) {
+function Row({ reportId, siteId, d, contacts, actions, existingDecisions, personLinkByContact }: { reportId: string; siteId: string | null; d: SiteDecision; contacts: DecisionOption[]; actions: DecisionOption[]; existingDecisions: DecisionOption[]; personLinkByContact: Record<string, string> }) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -123,7 +132,12 @@ function Row({ reportId, siteId, d, contacts, actions, personLinkByContact }: { 
   const [actionId, setActionId] = useState(d.actionId ?? '')
   const [impact, setImpact] = useState<DecisionImpact | ''>(d.impact ?? '')
   const [ech, setEch] = useState(d.echeance ?? '')
+  const [pertinenceTerrain, setPertinenceTerrain] = useState<DecisionPertinenceTerrain | ''>(d.pertinenceTerrain ?? '')
+  const [supersedesId, setSupersedesId] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // « Remplace… » : une décision ne peut pas se remplacer elle-même, et une décision
+  // déjà remplacée n'est plus un objectif valide (elle a déjà été superseded une fois).
+  const supersedeCandidates = existingDecisions.filter((c) => c.id !== d.id)
   const [pending, startTransition] = useTransition()
   const editStartRef = useRef<number>(0) // chrono d'édition → temps de correction (mig 140)
   const contactLabel = d.decisionnaireContactId ? contacts.find((c) => c.id === d.decisionnaireContactId)?.label : null
@@ -202,13 +216,29 @@ function Row({ reportId, siteId, d, contacts, actions, personLinkByContact }: { 
               </select>
             )}
           </div>
+          {/* Plan de visite (Lot A) : pertinence terrain + remplacement explicite —
+              jamais inféré, jamais backfillé (cf. site-memory-signals.ts). */}
+          <div className="flex flex-wrap gap-2">
+            <select value={pertinenceTerrain} onChange={(e) => setPertinenceTerrain(e.target.value as DecisionPertinenceTerrain | '')} title="Pertinence terrain"
+              className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+              <option value="">Pertinence terrain…</option>
+              {DECISION_PERTINENCE_TERRAIN.map((p) => <option key={p} value={p}>{PERTINENCE_TERRAIN_LABEL[p]}</option>)}
+            </select>
+            {supersedeCandidates.length > 0 && (
+              <select value={supersedesId} onChange={(e) => setSupersedesId(e.target.value)} title="Cette décision remplace…"
+                className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+                <option value="">Remplace une décision antérieure…</option>
+                {supersedeCandidates.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+              </select>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button type="button" disabled={pending || !titre.trim()}
-              onClick={() => run(() => editDecisionAction(reportId, d.id, { titre, description: desc, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || null, actionId: actionId || null, impact: impact || '', echeance: ech, timeToCorrectMs: editStartRef.current ? Date.now() - editStartRef.current : null }), () => setEditing(false))}
+              onClick={() => run(() => editDecisionAction(reportId, d.id, { titre, description: desc, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || null, actionId: actionId || null, impact: impact || '', echeance: ech, pertinenceTerrain: pertinenceTerrain || null, supersedesId: supersedesId || null, timeToCorrectMs: editStartRef.current ? Date.now() - editStartRef.current : null }), () => setEditing(false))}
               className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Enregistrer
             </button>
-            <button type="button" disabled={pending} onClick={() => { setTitre(d.titre); setDesc(d.description ?? ''); setSujet(d.sujet ?? ''); setRole(d.decisionnaireRole ?? ''); setContactId(d.decisionnaireContactId ?? ''); setActionId(d.actionId ?? ''); setImpact(d.impact ?? ''); setEch(d.echeance ?? ''); setEditing(false); setError(null) }}
+            <button type="button" disabled={pending} onClick={() => { setTitre(d.titre); setDesc(d.description ?? ''); setSujet(d.sujet ?? ''); setRole(d.decisionnaireRole ?? ''); setContactId(d.decisionnaireContactId ?? ''); setActionId(d.actionId ?? ''); setImpact(d.impact ?? ''); setEch(d.echeance ?? ''); setPertinenceTerrain(d.pertinenceTerrain ?? ''); setSupersedesId(''); setEditing(false); setError(null) }}
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /> Annuler</button>
           </div>
         </div>
@@ -272,7 +302,7 @@ function Row({ reportId, siteId, d, contacts, actions, personLinkByContact }: { 
   )
 }
 
-function AddDecision({ reportId, contacts }: { reportId: string; contacts: DecisionOption[] }) {
+function AddDecision({ reportId, contacts, existingDecisions }: { reportId: string; contacts: DecisionOption[]; existingDecisions: DecisionOption[] }) {
   const router = useRouter()
   const [titre, setTitre] = useState('')
   const [sujet, setSujet] = useState('')
@@ -280,6 +310,8 @@ function AddDecision({ reportId, contacts }: { reportId: string; contacts: Decis
   const [contactId, setContactId] = useState('')
   const [impact, setImpact] = useState<DecisionImpact | ''>('')
   const [ech, setEch] = useState('')
+  const [pertinenceTerrain, setPertinenceTerrain] = useState<DecisionPertinenceTerrain | ''>('')
+  const [supersedesId, setSupersedesId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -287,8 +319,8 @@ function AddDecision({ reportId, contacts }: { reportId: string; contacts: Decis
     setError(null)
     startTransition(async () => {
       try {
-        const r = await addDecisionAction(reportId, { titre, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || undefined, impact, echeance: ech })
-        if (r.ok) { setTitre(''); setSujet(''); setRole(''); setContactId(''); setImpact(''); setEch(''); router.refresh() }
+        const r = await addDecisionAction(reportId, { titre, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || undefined, impact, echeance: ech, pertinenceTerrain: pertinenceTerrain || null, supersedesId: supersedesId || null })
+        if (r.ok) { setTitre(''); setSujet(''); setRole(''); setContactId(''); setImpact(''); setEch(''); setPertinenceTerrain(''); setSupersedesId(''); router.refresh() }
         else setError(r.error)
       } catch (e) { setError(e instanceof Error ? e.message : 'Erreur serveur.') }
     })
@@ -325,13 +357,33 @@ function AddDecision({ reportId, contacts }: { reportId: string; contacts: Decis
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Décision
         </button>
       </div>
+      {/* Plan de visite (Lot A) : pertinence terrain + remplacement explicite —
+          jamais inféré, jamais backfillé (cf. site-memory-signals.ts). */}
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={pertinenceTerrain} onChange={(e) => setPertinenceTerrain(e.target.value as DecisionPertinenceTerrain | '')} title="Pertinence terrain"
+          className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+          <option value="">Pertinence terrain…</option>
+          {DECISION_PERTINENCE_TERRAIN.map((p) => <option key={p} value={p}>{PERTINENCE_TERRAIN_LABEL[p]}</option>)}
+        </select>
+        {existingDecisions.length > 0 && (
+          <select value={supersedesId} onChange={(e) => setSupersedesId(e.target.value)} title="Cette décision remplace…"
+            className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
+            <option value="">Remplace une décision antérieure…</option>
+            {existingDecisions.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+        )}
+      </div>
       {error && <p className="text-xs text-rose-600">{error}</p>}
     </div>
   )
 }
 
-export function PvDecisionsBlock({ reportId, siteId = null, decisions, contacts = [], actions = [], existingSubjectNames = [], personLinkByContact = {} }: {
+export function PvDecisionsBlock({ reportId, siteId = null, decisions, contacts = [], actions = [], existingSubjectNames = [], existingDecisions = [], personLinkByContact = {} }: {
   reportId: string; siteId?: string | null; decisions: SiteDecision[]; contacts?: DecisionOption[]; actions?: DecisionOption[]; existingSubjectNames?: string[]
+  /** Décisions du SITE non encore remplacées, candidates au sélecteur « remplace… »
+   *  (Plan de visite, Lot A). Portée site (pas juste ce CR) : une décision se
+   *  remplace souvent d'un CR à l'autre. */
+  existingDecisions?: DecisionOption[]
   /** contactId → id du lien de casting actif : le décisionnaire n'est cliquable
    *  (ouvre sa fiche) que s'il est présent ici. Absent = nom inerte. */
   personLinkByContact?: Record<string, string>
@@ -343,9 +395,9 @@ export function PvDecisionsBlock({ reportId, siteId = null, decisions, contacts 
       </h2>
       <SubjectProposals reportId={reportId} decisions={decisions} existingNames={existingSubjectNames} />
       {decisions.length > 0 && (
-        <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} siteId={siteId} d={d} contacts={contacts} actions={actions} personLinkByContact={personLinkByContact} />)}</ul>
+        <ul className="space-y-1">{decisions.map((d) => <Row key={d.id} reportId={reportId} siteId={siteId} d={d} contacts={contacts} actions={actions} existingDecisions={existingDecisions} personLinkByContact={personLinkByContact} />)}</ul>
       )}
-      <AddDecision reportId={reportId} contacts={contacts} />
+      <AddDecision reportId={reportId} contacts={contacts} existingDecisions={existingDecisions} />
     </section>
   )
 }

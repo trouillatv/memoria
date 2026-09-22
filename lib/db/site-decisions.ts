@@ -3,10 +3,24 @@
 // dans le spine (PointExamine type 'decision' → Points administratifs).
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
-import { DECISION_STATUTS, DECISION_IMPACTS, type DecisionStatut, type DecisionImpact } from './decision-constants'
+import {
+  DECISION_STATUTS,
+  DECISION_IMPACTS,
+  DECISION_PERTINENCE_TERRAIN,
+  type DecisionStatut,
+  type DecisionImpact,
+  type DecisionPertinenceTerrain,
+} from './decision-constants'
 import type { PointExamine } from './points-examines'
 
-export { DECISION_STATUTS, DECISION_IMPACTS, type DecisionStatut, type DecisionImpact }
+export {
+  DECISION_STATUTS,
+  DECISION_IMPACTS,
+  DECISION_PERTINENCE_TERRAIN,
+  type DecisionStatut,
+  type DecisionImpact,
+  type DecisionPertinenceTerrain,
+}
 
 export interface SiteDecision {
   id: string
@@ -26,6 +40,10 @@ export interface SiteDecision {
   impact: DecisionImpact | null
   confiance: 'sûr' | 'à confirmer'
   source: 'meeting' | 'transcript' | 'human'
+  /** Décision qui REMPLACE celle-ci (mig 319). NULL = jamais remplacée. */
+  supersededBy: string | null
+  /** NULL = legacy_unknown (jamais classifiée, cf. decision-constants.ts). */
+  pertinenceTerrain: DecisionPertinenceTerrain | null
 }
 
 function rowToDecision(r: Record<string, unknown>): SiteDecision {
@@ -47,11 +65,15 @@ function rowToDecision(r: Record<string, unknown>): SiteDecision {
     impact: (DECISION_IMPACTS as readonly string[]).includes(r.impact as string) ? (r.impact as DecisionImpact) : null,
     confiance: (r.confiance as string) === 'à confirmer' ? 'à confirmer' : 'sûr',
     source: (['meeting', 'transcript', 'human'].includes(r.source as string) ? r.source : 'human') as SiteDecision['source'],
+    supersededBy: (r.superseded_by as string | null) ?? null,
+    pertinenceTerrain: (DECISION_PERTINENCE_TERRAIN as readonly string[]).includes(r.pertinence_terrain as string)
+      ? (r.pertinence_terrain as DecisionPertinenceTerrain)
+      : null,
   }
 }
 
 const SELECT =
-  'id, site_id, report_id, titre, description, sujet, decisionnaire_role, decisionnaire_org, decisionnaire_contact_id, action_id, subject_id, date_decision, echeance, statut, impact, confiance, source'
+  'id, site_id, report_id, titre, description, sujet, decisionnaire_role, decisionnaire_org, decisionnaire_contact_id, action_id, subject_id, date_decision, echeance, statut, impact, confiance, source, superseded_by, pertinence_terrain'
 
 /** Décisions PRISES dans ce CR (report_id), les plus récentes d'abord. */
 export async function listDecisionsByReport(reportId: string): Promise<SiteDecision[]> {
@@ -101,6 +123,10 @@ export interface CreateDecisionInput {
   confiance?: 'sûr' | 'à confirmer'
   source?: 'meeting' | 'transcript' | 'human'
   createdBy?: string | null
+  /** Choix humain explicite au moment d'acter la décision (mig 431). NULL/absent = legacy_unknown. */
+  pertinenceTerrain?: DecisionPertinenceTerrain | null
+  /** Id d'une décision EXISTANTE que celle-ci remplace (mig 319). Marque l'ancienne `superseded_by`. */
+  supersedesId?: string | null
 }
 
 export async function createSiteDecision(input: CreateDecisionInput): Promise<string> {
@@ -120,6 +146,7 @@ export async function createSiteDecision(input: CreateDecisionInput): Promise<st
     confiance: input.confiance ?? 'sûr',     // MVP : ajout manuel = sûr
     source: input.source ?? 'human',         // MVP : ajout manuel = human
     created_by: input.createdBy ?? null,
+    pertinence_terrain: input.pertinenceTerrain ?? null,
   }
   // date_decision : on OMET le champ si absent → laisse le défaut DB (current_date),
   // plutôt que d'envoyer null (qui violerait le not-null).
@@ -135,7 +162,9 @@ export async function createSiteDecision(input: CreateDecisionInput): Promise<st
   // `createKnowledgeEntry` et `createWatchpoint` l'avaient, pas les décisions.
   // Une décision confirmée n'apparaissait donc pas avant l'expiration du TTL.
   invalidateSiteProjection(input.siteId)
-  return data.id as string
+  const newId = data.id as string
+  if (input.supersedesId) await markDecisionSuperseded(input.siteId, input.supersedesId, newId)
+  return newId
 }
 
 export interface UpdateDecisionPatch {
@@ -149,6 +178,9 @@ export interface UpdateDecisionPatch {
   statut?: DecisionStatut
   impact?: DecisionImpact | null
   confiance?: 'sûr' | 'à confirmer'
+  pertinenceTerrain?: DecisionPertinenceTerrain | null
+  /** Id d'une décision EXISTANTE que celle-ci remplace (mig 319). Marque l'ancienne `superseded_by`. */
+  supersedesId?: string | null
 }
 
 /** Édition scopée au site (garde-fou : on ne modifie que les décisions de son org). */
@@ -164,8 +196,24 @@ export async function updateSiteDecision(siteId: string, id: string, patch: Upda
   if (patch.statut !== undefined) row.statut = patch.statut
   if (patch.impact !== undefined) row.impact = patch.impact
   if (patch.confiance !== undefined) row.confiance = patch.confiance
+  if (patch.pertinenceTerrain !== undefined) row.pertinence_terrain = patch.pertinenceTerrain
   const { error } = await createAdminClient().from('site_decisions').update(row).eq('id', id).eq('site_id', siteId)
   if (error) throw new Error(error.message)
+  if (patch.supersedesId) await markDecisionSuperseded(siteId, patch.supersedesId, id)
+}
+
+/** Chaîne `ancienne → remplacée par → nouvelle` (mig 319). Jamais automatique :
+ *  seul un choix humain explicite au moment de créer/éditer une décision
+ *  appelle cette fonction (cf. PvDecisionsBlock « remplace la décision… »). */
+export async function markDecisionSuperseded(siteId: string, oldDecisionId: string, newDecisionId: string): Promise<void> {
+  if (oldDecisionId === newDecisionId) return
+  const { error } = await createAdminClient()
+    .from('site_decisions')
+    .update({ superseded_by: newDecisionId, superseded_at: new Date().toISOString() })
+    .eq('id', oldDecisionId)
+    .eq('site_id', siteId) // garde IDOR : on ne remplace qu'une décision de son propre site
+  if (error) throw new Error(error.message)
+  invalidateSiteProjection(siteId)
 }
 
 export async function deleteSiteDecision(siteId: string, id: string): Promise<void> {
