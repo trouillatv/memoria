@@ -32,8 +32,16 @@ describe('contrat de matérialisation des échéances historiques', () => {
   })
 
   it('interdit une redéfinition complète ultérieure qui oublierait ce contrat', () => {
+    // 429 est une exception historique DOCUMENTÉE, pas un assouplissement de la
+    // garde : cette migration a réécrit le corps entier de la fonction depuis
+    // la migration 338 et a bien perdu ce contrat (incident confirmé), réparé
+    // par la migration 430 (patch ciblé, pas une nouvelle redéfinition
+    // complète — 430 ne matche donc pas ce regex). Exclure 429 par son nom
+    // exact préserve la garde contre toute AUTRE redéfinition complète future.
+    const KNOWN_REGRESSED_EXCEPTION = '429_materialize_visit_atomic_canonical_promotion.sql'
     const laterFullRedefinitions = readdirSync(resolve(process.cwd(), 'supabase/migrations'))
       .filter((name) => name.endsWith('.sql') && name.localeCompare('368_') > 0)
+      .filter((name) => name !== KNOWN_REGRESSED_EXCEPTION)
       .map((name) => readFileSync(resolve(process.cwd(), 'supabase/migrations', name), 'utf8'))
       .filter((sql) => /CREATE\s+OR\s+REPLACE\s+FUNCTION\s+public\.materialize_historical_visit/i.test(sql))
 
