@@ -17,7 +17,6 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
-import { promoteCanonicalExtractionRun } from '@/lib/db/document-extractions'
 import { mergeReportAnalysis } from '@/lib/db/site-reports'
 import { projectHistoricalParticipants } from '@/lib/documents/historical-participant-eligibility'
 import { detectNonVisitSignal } from '@/lib/documents/detect-document-date'
@@ -129,12 +128,10 @@ export async function materializeHistoricalRun(
     }
   }
 
-  // Finalisation humaine reelle : le RPC vient de creer (ou de retrouver via
-  // son idempotence) la visite. C'est ici, et seulement ici, que ce run
-  // devient la representation documentaire faisant autorite — transfert
-  // atomique, best-effort volontaire (jamais bloquant pour la visite deja
-  // creee).
-  await promoteCanonicalExtractionRun(documentId, runId).catch(() => {})
+  // Finalisation humaine reelle : materializeHistoricalVisit (migration 429)
+  // transfere is_canonical vers CE run dans la MEME transaction SQL que la
+  // creation (ou le rejeu idempotent) de la visite — plus d'appel best-effort
+  // separe ici, l'atomicite est garantie par le RPC lui-meme.
 
   // ── Pipeline post-RPC : knowledge_fact → site_knowledge_entries ──────────
   // Le RPC SQL exclut délibérément ces familles (trop riches pour du PL/pgSQL pur).

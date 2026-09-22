@@ -579,7 +579,7 @@ describe('Section 5 — createHistoricalVisitAction (GO point 11)', () => {
     expect(mocks.siteIntervenantsInsert).toHaveBeenCalledTimes(1)
   })
 
-  it('21. run finalisé — transfert atomique du canonique appelé après matérialisation', async () => {
+  it('21. run finalisé — plus de promotion canonique séparée : l\'atomicité est portée par materialize_historical_visit (429)', async () => {
     mocks.from.mockImplementation(buildHistoricalVisitAdminMock({
       site: { organization_id: 'org-1', name: 'BELLA NAPOLI', normalized_name: 'bella napoli' },
       companyProposals: [],
@@ -588,25 +588,30 @@ describe('Section 5 — createHistoricalVisitAction (GO point 11)', () => {
     const result = await createHistoricalVisitAction(buildForm())
 
     expect(result.ok).toBe(true)
-    // P0 Unicité des runs historiques : la finalisation humaine réelle (RPC de
-    // matérialisation réussi) déclenche le transfert atomique is_canonical vers
-    // ce run — cf. migration 428 / promoteCanonicalExtractionRun.
-    expect(mocks.rpc).toHaveBeenCalledWith('promote_canonical_extraction_run', {
-      p_document_id: 'doc-1',
-      p_run_id: 'run-1',
-    })
+    // P0 Unicité des runs historiques : le transfert is_canonical est désormais
+    // fait DANS materialize_historical_visit() (migration 429), dans la même
+    // transaction SQL que la création de la visite. Réintroduire un appel RPC
+    // séparé depuis le TS rouvrirait la fenêtre best-effort qu'on vient de
+    // fermer — ce test verrouille l'absence de cet appel.
+    expect(mocks.rpc).not.toHaveBeenCalledWith('promote_canonical_extraction_run', expect.anything())
   })
 
-  it('22. transfert du canonique best-effort — un RPC en échec n\'empêche pas la visite créée', async () => {
+  it('22. échec de la matérialisation — aucune visite créée, aucun transfert canonique tenté en dehors du RPC', async () => {
     mocks.from.mockImplementation(buildHistoricalVisitAdminMock({
       site: { organization_id: 'org-1', name: 'BELLA NAPOLI', normalized_name: 'bella napoli' },
       companyProposals: [],
     }))
-    mocks.rpc.mockRejectedValue(new Error('boom'))
+    // Simule l'échec du RPC atomique matérialisation+promotion (429), p.ex. une
+    // contrainte violée pendant le transfert is_canonical à l'intérieur de la
+    // transaction. Postgres annule TOUT (visite + transfert) : il ne peut plus
+    // exister d'état intermédiaire où la visite existe mais l'ancien run reste
+    // canonique — l'ancien run canonique reste donc canonique par construction.
+    mocks.materializeHistoricalVisit.mockRejectedValue(new Error('boom'))
 
     const result = await createHistoricalVisitAction(buildForm())
 
-    expect(result.ok).toBe(true)
-    expect(result.siteReportId).toBe('report-1')
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('boom')
+    expect(mocks.rpc).not.toHaveBeenCalledWith('promote_canonical_extraction_run', expect.anything())
   })
 })
