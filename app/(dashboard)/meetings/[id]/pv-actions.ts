@@ -19,7 +19,7 @@ import { setReportPointActions } from '@/lib/db/report-point-actions'
 import { addReportPhoto, deleteReportPhoto } from '@/lib/db/report-photos'
 import { addReportAddedPoint, deleteReportAddedPoint } from '@/lib/db/report-added-points'
 import {
-  createSiteDecision, updateSiteDecision, deleteSiteDecision,
+  createSiteDecision, updateSiteDecision, deleteSiteDecision, DECISION_PERTINENCE_TERRAIN,
   type DecisionStatut, type DecisionImpact, type DecisionPertinenceTerrain,
 } from '@/lib/db/site-decisions'
 import { findOrCreateCompanyByName } from '@/lib/db/companies'
@@ -602,6 +602,12 @@ export async function addDecisionAction(
   const user = await requireManagerOrAdmin()
   const titre = input.titre.trim()
   if (!titre) return { ok: false, error: 'Intitulé de décision vide.' }
+  // Plan de visite (Lot A, retour Vincent) : une NOUVELLE décision ne doit jamais
+  // pouvoir rester legacy_unknown — la pertinence terrain est obligatoire à la
+  // création (seule une décision historique peut rester « Non qualifié »).
+  if (!input.pertinenceTerrain || !(DECISION_PERTINENCE_TERRAIN as readonly string[]).includes(input.pertinenceTerrain)) {
+    return { ok: false, error: 'Pertinence pour le Plan de visite obligatoire (« À vérifier sur le terrain » ou « Décision de mémoire uniquement »).' }
+  }
   const report = await getSiteReport(reportId)
   if (!report?.site_id) return { ok: false, error: 'Réunion sans site — décision impossible.' }
   try {

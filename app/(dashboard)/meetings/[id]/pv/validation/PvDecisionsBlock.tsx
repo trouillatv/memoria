@@ -132,7 +132,10 @@ function Row({ reportId, siteId, d, contacts, actions, existingDecisions, person
   const [actionId, setActionId] = useState(d.actionId ?? '')
   const [impact, setImpact] = useState<DecisionImpact | ''>(d.impact ?? '')
   const [ech, setEch] = useState(d.echeance ?? '')
-  const [pertinenceTerrain, setPertinenceTerrain] = useState<DecisionPertinenceTerrain | ''>(d.pertinenceTerrain ?? '')
+  // Tri-état en édition (retour Vincent) : une décision historique sans qualification
+  // reste explicitement « Non qualifié » tant que l'humain ne choisit rien d'autre —
+  // jamais de conversion silencieuse de NULL vers un état classé.
+  const [pertinenceTerrain, setPertinenceTerrain] = useState<DecisionPertinenceTerrain | 'legacy_unknown'>(d.pertinenceTerrain ?? 'legacy_unknown')
   const [supersedesId, setSupersedesId] = useState('')
   const [error, setError] = useState<string | null>(null)
   // « Remplace… » : une décision ne peut pas se remplacer elle-même, et une décision
@@ -219,10 +222,10 @@ function Row({ reportId, siteId, d, contacts, actions, existingDecisions, person
           {/* Plan de visite (Lot A) : pertinence terrain + remplacement explicite —
               jamais inféré, jamais backfillé (cf. site-memory-signals.ts). */}
           <div className="flex flex-wrap gap-2">
-            <select value={pertinenceTerrain} onChange={(e) => setPertinenceTerrain(e.target.value as DecisionPertinenceTerrain | '')} title="Pertinence terrain"
+            <select value={pertinenceTerrain} onChange={(e) => setPertinenceTerrain(e.target.value as DecisionPertinenceTerrain | 'legacy_unknown')} title="Pertinence pour le Plan de visite"
               className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
-              <option value="">Pertinence terrain…</option>
               {DECISION_PERTINENCE_TERRAIN.map((p) => <option key={p} value={p}>{PERTINENCE_TERRAIN_LABEL[p]}</option>)}
+              <option value="legacy_unknown">Non qualifié — uniquement pour l&apos;historique</option>
             </select>
             {supersedeCandidates.length > 0 && (
               <select value={supersedesId} onChange={(e) => setSupersedesId(e.target.value)} title="Cette décision remplace…"
@@ -234,11 +237,11 @@ function Row({ reportId, siteId, d, contacts, actions, existingDecisions, person
           </div>
           <div className="flex items-center gap-2">
             <button type="button" disabled={pending || !titre.trim()}
-              onClick={() => run(() => editDecisionAction(reportId, d.id, { titre, description: desc, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || null, actionId: actionId || null, impact: impact || '', echeance: ech, pertinenceTerrain: pertinenceTerrain || null, supersedesId: supersedesId || null, timeToCorrectMs: editStartRef.current ? Date.now() - editStartRef.current : null }), () => setEditing(false))}
+              onClick={() => run(() => editDecisionAction(reportId, d.id, { titre, description: desc, sujet, decisionnaireRole: role, decisionnaireContactId: contactId || null, actionId: actionId || null, impact: impact || '', echeance: ech, pertinenceTerrain: pertinenceTerrain === 'legacy_unknown' ? null : pertinenceTerrain, supersedesId: supersedesId || null, timeToCorrectMs: editStartRef.current ? Date.now() - editStartRef.current : null }), () => setEditing(false))}
               className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
               {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Enregistrer
             </button>
-            <button type="button" disabled={pending} onClick={() => { setTitre(d.titre); setDesc(d.description ?? ''); setSujet(d.sujet ?? ''); setRole(d.decisionnaireRole ?? ''); setContactId(d.decisionnaireContactId ?? ''); setActionId(d.actionId ?? ''); setImpact(d.impact ?? ''); setEch(d.echeance ?? ''); setPertinenceTerrain(d.pertinenceTerrain ?? ''); setSupersedesId(''); setEditing(false); setError(null) }}
+            <button type="button" disabled={pending} onClick={() => { setTitre(d.titre); setDesc(d.description ?? ''); setSujet(d.sujet ?? ''); setRole(d.decisionnaireRole ?? ''); setContactId(d.decisionnaireContactId ?? ''); setActionId(d.actionId ?? ''); setImpact(d.impact ?? ''); setEch(d.echeance ?? ''); setPertinenceTerrain(d.pertinenceTerrain ?? 'legacy_unknown'); setSupersedesId(''); setEditing(false); setError(null) }}
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /> Annuler</button>
           </div>
         </div>
@@ -352,15 +355,17 @@ function AddDecision({ reportId, contacts, existingDecisions }: { reportId: stri
         </select>
         <input value={ech} onChange={(e) => setEch(e.target.value)} type="date" title="Échéance d'application (optionnelle)"
           className="rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300" />
-        <button type="button" disabled={pending || !titre.trim()} onClick={add}
+        <button type="button" disabled={pending || !titre.trim() || !pertinenceTerrain} onClick={add}
           className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />} Décision
         </button>
       </div>
-      {/* Plan de visite (Lot A) : pertinence terrain + remplacement explicite —
-          jamais inféré, jamais backfillé (cf. site-memory-signals.ts). */}
+      {/* Plan de visite (Lot A) : pertinence terrain OBLIGATOIRE à la création (retour
+          Vincent) — une nouvelle décision ne doit jamais pouvoir rester legacy_unknown ;
+          seuls les 2 choix qualifiés sont proposés ici, jamais « Non qualifié ».
+          Remplacement explicite, jamais inféré, jamais backfillé (cf. site-memory-signals.ts). */}
       <div className="flex flex-wrap items-center gap-2">
-        <select value={pertinenceTerrain} onChange={(e) => setPertinenceTerrain(e.target.value as DecisionPertinenceTerrain | '')} title="Pertinence terrain"
+        <select value={pertinenceTerrain} onChange={(e) => setPertinenceTerrain(e.target.value as DecisionPertinenceTerrain | '')} title="Pertinence pour le Plan de visite (obligatoire)" required
           className="min-w-[10rem] flex-1 rounded-md border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300">
           <option value="">Pertinence terrain…</option>
           {DECISION_PERTINENCE_TERRAIN.map((p) => <option key={p} value={p}>{PERTINENCE_TERRAIN_LABEL[p]}</option>)}
