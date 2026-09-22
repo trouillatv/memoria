@@ -212,6 +212,17 @@ describe('la visite desktop reste dans le bureau', () => {
     // Ouvrir n'a jamais voulu dire régénérer.
     expect(cr).toContain('getOrCreateVisitCrDocument')
   })
+
+  it('le panier photo du bureau transmet taille ET nature, comme en mobile', () => {
+    // Régression : `photoSize`/`kind` manquaient à la construction de
+    // `crPhotoCandidates` côté bureau. Une taille déjà choisie (S/M/L/XL)
+    // retombait donc à « Auto » à la réouverture, et une vidéo n'était pas
+    // distinguée d'une photo — un second calcul divergent du panier mobile.
+    const cr = readFileSync(join(dir, 'compte-rendu/page.tsx'), 'utf8')
+    expect(cr).toContain('photoSize: c.cr_photo_size')
+    expect(cr).toMatch(/kind: c\.kind as ['"]photo['"] \| ['"]video['"]/)
+    expect(cr).toContain('isMappableVisualCapture')
+  })
 })
 
 // ── LE MOT DIT LES DEUX GESTES ─────────────────────────────────────────────

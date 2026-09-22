@@ -40,6 +40,7 @@ import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getVisit, buildVisitCrDoc, selectCrPhotos } from '@/lib/db/visits'
 import { listVisitCaptures, getVisitCapturePreviewUrls } from '@/lib/db/visit-captures'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
+import { isMappableVisualCapture } from '@/lib/visits/geo'
 import type { CrPhotoCandidate } from '@/app/(field)/m/visite/[reportId]/cr/CrDocumentSections'
 import { NOUMEA_TZ } from '@/lib/time/local-date'
 import { MemoriaRetained } from '@/app/(field)/m/visite/[reportId]/cr/MemoriaRetained'
@@ -73,17 +74,21 @@ export default async function VisitCrDesktopPage({
   ])
   if (!doc) notFound()
 
-  // Sélection éditoriale du CR (Vincent, 2026-08-17) : même panier qu'en
-  // mobile — un seul moteur, deux surfaces.
+  // Sélection éditoriale du CR (Vincent, 2026-08-17, étendue vidéo 2026-08-24) :
+  // même panier qu'en mobile — un seul moteur, deux surfaces.
   const rawCaptures = await listVisitCaptures(visitId).catch(() => [])
-  const photoRows = rawCaptures.filter((c) => c.status !== 'discarded' && c.kind === 'photo')
-  const previewUrls = await getVisitCapturePreviewUrls(photoRows)
+  const visualRows = rawCaptures.filter((c) => c.status !== 'discarded' && isMappableVisualCapture(c.kind))
+  const previewUrls = await getVisitCapturePreviewUrls(visualRows)
   // Tier RÉSOLU (Vincent, 2026-08-18) : même calcul que buildVisitCrDoc — une
   // photo explicitement 'key'/'reportage' garde son choix, une photo non
   // tranchée hérite du poids automatique. C'est ce que l'écran affiche comme
-  // état courant du bouton de statut, jamais un second calcul divergent.
-  const keyIds = new Set(selectCrPhotos(photoRows.filter((c) => c.included_in_cr)).map((c) => c.id))
-  const crPhotoCandidates: CrPhotoCandidate[] = photoRows
+  // état courant du bouton de statut, jamais un second calcul divergent. Une
+  // vidéo n'entre jamais dans ce calcul (photo uniquement) : elle reste
+  // toujours 'reportage', jamais 'key'.
+  const keyIds = new Set(
+    selectCrPhotos(visualRows.filter((c) => c.kind === 'photo' && c.included_in_cr)).map((c) => c.id),
+  )
+  const crPhotoCandidates: CrPhotoCandidate[] = visualRows
     .map((c) => ({
       id: c.id,
       url: previewUrls[c.id]?.url,
@@ -91,6 +96,8 @@ export default async function VisitCrDesktopPage({
       includedInCr: c.included_in_cr,
       triageIntent: c.triage_intent,
       tier: keyIds.has(c.id) ? ('key' as const) : ('reportage' as const),
+      photoSize: c.cr_photo_size,
+      kind: c.kind as 'photo' | 'video',
     }))
     .filter((p): p is CrPhotoCandidate => !!p.url)
 
