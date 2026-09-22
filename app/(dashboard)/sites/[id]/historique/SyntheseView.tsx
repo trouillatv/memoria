@@ -161,7 +161,7 @@ function SujetsImportantsBloc({ items, siteId }: { items: ImportantSubject[]; si
   if (items.length === 0) {
     return (
       <section className="rounded-[18px] border bg-card p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujets importants</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujets à piloter en priorité</p>
         <p className="mt-3 text-sm text-muted-foreground">Aucun sujet structurant identifié pour ce chantier.</p>
       </section>
     )
@@ -170,7 +170,7 @@ function SujetsImportantsBloc({ items, siteId }: { items: ImportantSubject[]; si
   return (
     <section className="rounded-[18px] border bg-card p-5 shadow-sm">
       <div className="flex items-baseline justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujets importants</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujets à piloter en priorité</p>
         <span className="text-xs text-muted-foreground">{items.length}</span>
       </div>
 
@@ -225,7 +225,7 @@ function WatchlistBloc({ items, siteId, runs }: { items: WatchlistEntry[]; siteI
   if (items.length === 0) return (
     <section className="rounded-[18px] border bg-card p-5 shadow-sm">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sujets à surveiller</p>
-      <p className="mt-3 text-sm text-muted-foreground">Aucun sujet critique identifié.</p>
+      <p className="mt-3 text-sm text-muted-foreground">Aucun signal de surveillance détecté.</p>
     </section>
   )
 
