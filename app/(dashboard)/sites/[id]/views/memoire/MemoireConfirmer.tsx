@@ -15,9 +15,11 @@ import { MemoryInbox } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 import { WhyButton } from '@/components/provenance/WhyButton'
 import { PrepareSitePassationButton } from '../memory/PrepareSitePassationButton'
 import { ArchiveKnowledgeEntryButton } from './ArchiveKnowledgeEntryButton'
+import { CausalPanel } from './CausalPanel'
 import type { MemoryReview, ConfirmedItem } from '@/lib/knowledge/memory-review'
 import type { MemorySignal } from '@/lib/db/site-memory-signals'
 import type { DbTeam } from '@/types/db'
+import type { CausalThread } from '@/lib/knowledge/causal-threads-model'
 
 // Point 17A — lecture principale = « quelques connaissances durables lisibles »,
 // pas 381 cartes. On plafonne l'affichage d'emblée ; le reste vit derrière un
@@ -35,8 +37,12 @@ const ACTIVITY_THEME_LABEL: Record<string, string> = {
   test_control: 'Essais et contrôles',
 }
 
-function ConfirmedRow({ item, siteId }: { item: ConfirmedItem; siteId: string }) {
+function ConfirmedRow({ item, siteId, threads }: { item: ConfirmedItem; siteId: string; threads: CausalThread[] }) {
   const occurrenceSummary = formatOccurrenceSummary(item)
+  // « Comprendre pourquoi » — n'apparaît que si un fil causal touche RÉELLEMENT
+  // cet item (même href qu'un nœud du fil) : un bouton qui ne tient pas sa
+  // promesse est pire qu'aucun bouton (doctrine WhyButton).
+  const relatedThreads = item.href ? threads.filter((t) => t.steps.some((s) => s.node.href === item.href)) : []
   return (
     <li className="flex items-start gap-2 text-[13px] text-foreground/90">
       <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
@@ -53,6 +59,11 @@ function ConfirmedRow({ item, siteId }: { item: ConfirmedItem; siteId: string })
         )}
         {item.knowledgeEntryId && (
           <span className="mt-0.5 block"><ArchiveKnowledgeEntryButton siteId={siteId} entryId={item.knowledgeEntryId} /></span>
+        )}
+        {relatedThreads.length > 0 && (
+          <span className="mt-0.5 block">
+            <CausalPanel threads={relatedThreads} siteId={siteId} title={item.title} triggerLabel="Comprendre pourquoi" />
+          </span>
         )}
       </span>
     </li>
@@ -85,12 +96,12 @@ function formatOccurrenceSummary(item: ConfirmedItem): ReactNode {
   )
 }
 
-function CappedList({ items, siteId }: { items: ConfirmedItem[]; siteId: string }) {
+function CappedList({ items, siteId, threads }: { items: ConfirmedItem[]; siteId: string; threads: CausalThread[] }) {
   const head = items.slice(0, CAP)
   const rest = items.slice(CAP)
   return (
     <ul className="mt-1.5 space-y-1">
-      {head.map((c) => <ConfirmedRow key={c.id} item={c} siteId={siteId} />)}
+      {head.map((c) => <ConfirmedRow key={c.id} item={c} siteId={siteId} threads={threads} />)}
       {rest.length > 0 && (
         <li className="list-none">
           <details>
@@ -98,7 +109,7 @@ function CappedList({ items, siteId }: { items: ConfirmedItem[]; siteId: string 
               + {rest.length} autre{rest.length > 1 ? 's' : ''}
             </summary>
             <ul className="mt-1 space-y-1">
-              {rest.map((c) => <ConfirmedRow key={c.id} item={c} siteId={siteId} />)}
+              {rest.map((c) => <ConfirmedRow key={c.id} item={c} siteId={siteId} threads={threads} />)}
             </ul>
           </details>
         </li>
@@ -114,7 +125,7 @@ export function MemoireConfirmer({
   signals,
   subjectsCount,
   teams,
-  searchSlot,
+  threads,
 }: {
   siteId: string
   siteName: string
@@ -122,7 +133,7 @@ export function MemoireConfirmer({
   signals: MemorySignal[]
   subjectsCount: number
   teams: DbTeam[]
-  searchSlot?: ReactNode
+  threads: CausalThread[]
 }) {
   const suites = signals.reduce((n, s) => n + s.items.length, 0)
   // Point 17A — deux niveaux : mémoire DURABLE en lecture principale, faits
@@ -138,23 +149,35 @@ export function MemoireConfirmer({
 
   return (
     <div className="space-y-5">
-      {/* ── L'INBOX — le centre de la page ── */}
-      <section>
-        <div>
-          <h2 className="text-[15px] font-semibold">Propositions en attente</h2>
-          {/* Une phrase de DOCTRINE produit, pas une aide secondaire. */}
-          <p className="mb-3 text-[13px] text-foreground/75">Ce que l’IA a relevé. Le bouton dit exactement ce que votre validation produira.</p>
-        </div>
-        <MemoryInbox siteId={siteId} items={review.toReview} withFilters />
-      </section>
-
-      {/* ── La recherche, en SECOND plan ── */}
-      {searchSlot}
+      {/* ── À VALIDER — n'existe QUE s'il y a quelque chose à décider (Vincent
+           2026-09-22) : « (0) » ne doit jamais s'afficher, la section disparaît. ── */}
+      {review.toReview.length > 0 && (
+        <section>
+          <div>
+            <h2 className="text-[15px] font-semibold">À valider ({review.toReview.length})</h2>
+            {/* Une phrase de DOCTRINE produit, pas une aide secondaire. */}
+            <p className="mb-3 text-[13px] text-foreground/75">Ce que l’IA a relevé. Le bouton dit exactement ce que votre validation produira.</p>
+          </div>
+          <MemoryInbox siteId={siteId} items={review.toReview} withFilters />
+        </section>
+      )}
 
       {/* ── LES CONNAISSANCES VALIDÉES — mémoire DURABLE d'abord (point 17A) ── */}
       <section className="rounded-xl border bg-muted/30 p-4">
-        <h2 className="text-[15px] font-semibold">Connaissances validées</h2>
-        <p className="mb-3 text-[12.5px] text-muted-foreground">Ce que MemorIA sait durablement sur ce chantier.</p>
+        <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-[15px] font-semibold">Connaissances validées</h2>
+            <p className="text-[12.5px] text-muted-foreground">Ce que MemorIA sait durablement sur ce chantier.</p>
+          </div>
+          {threads.length > 0 && (
+            <CausalPanel
+              threads={threads}
+              siteId={siteId}
+              title="Liens entre connaissances"
+              triggerLabel="Explorer les liens entre connaissances"
+            />
+          )}
+        </div>
         {review.confirmed.length === 0 ? (
           <p className="text-[13px] text-muted-foreground">Rien de confirmé pour l’instant.</p>
         ) : (
@@ -162,7 +185,7 @@ export function MemoireConfirmer({
             {durableGroups.map((g) => (
               <div key={g}>
                 <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">{g}</h3>
-                <CappedList items={durable.filter((c) => c.group === g)} siteId={siteId} />
+                <CappedList items={durable.filter((c) => c.group === g)} siteId={siteId} threads={threads} />
               </div>
             ))}
             {durable.length === 0 && (
@@ -186,7 +209,7 @@ export function MemoireConfirmer({
                       <h3 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {ACTIVITY_THEME_LABEL[t] ?? 'Autres'}
                       </h3>
-                      <CappedList items={activity.filter((c) => (c.thematicCategory ?? 'autre') === t)} siteId={siteId} />
+                      <CappedList items={activity.filter((c) => (c.thematicCategory ?? 'autre') === t)} siteId={siteId} threads={threads} />
                     </div>
                   ))}
                 </div>

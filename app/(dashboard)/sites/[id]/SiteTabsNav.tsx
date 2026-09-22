@@ -32,7 +32,9 @@ export const SITE_TABS = [
   { key: 'documents-preuves', label: 'Documents' },
   // « Intervenants » (cadrage + maquette validés 2026-07-18).
   { key: 'intervenants',     label: 'Intervenants' },
-  { key: 'memoire',          label: 'Mémoire' },
+  // Route dédiée (/memoire) — simplification Mémoire (mandat Vincent 2026-09-22) :
+  // une seule vraie page, plus de sous-onglets ?tab=memoire&memtab=…
+  { key: 'memoire',          label: 'Mémoire',   pathSuffix: '/memoire' },
   // « Explorer » (cadrage 2026-07-18) : Mémoire dit ce que MemorIA sait ;
   // Explorer montre comment tout est relié.
   { key: 'explorer',         label: 'Explorer' },

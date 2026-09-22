@@ -46,8 +46,6 @@ import { IntervenantsLeaderboard } from './views/intervenants/IntervenantsLeader
 import { PersistentFicheSheet } from './views/PersistentFicheSheet'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
 import { getSiteDecisionFiche } from '@/lib/knowledge/decision-fiche'
-import { type MemoireSubTab } from './views/memoire/MemoireSubTabs'
-import { MemoireView } from './views/memoire/MemoireView'
 import { ExplorerWorkspace } from './views/explorer/ExplorerWorkspace'
 import { logUsageEvent } from '@/lib/db/usage-events'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
@@ -87,7 +85,7 @@ import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string; person?: string; action?: string; decision?: string; memtab?: string; plantab?: string }>
+  searchParams: Promise<{ tab?: string; person?: string; action?: string; decision?: string; plantab?: string }>
 }
 
 type ChantierViewKey = SiteTabKey
@@ -104,9 +102,12 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { tab: rawTab, person: personId, action: actionId, decision: decisionId, memtab: rawMemtab, plantab: rawPlantab } = await searchParams
-  const memtab: MemoireSubTab = rawMemtab === 'confirmer' ? 'confirmer' : rawMemtab === 'synthese' ? 'synthese' : 'pourquoi'
+  const { tab: rawTab, person: personId, action: actionId, decision: decisionId, plantab: rawPlantab } = await searchParams
   const tab: ChantierViewKey = resolveSiteTab(rawTab)
+  // Simplification Mémoire (mandat Vincent 2026-09-22) : une seule route
+  // canonique /sites/<id>/memoire — l'ancien point d'entrée ?tab=memoire redirige,
+  // aucune deuxième implémentation ne doit subsister.
+  if (tab === 'memoire') redirect(`/sites/${id}/memoire`)
   const plantab: PlanningSubTab = rawPlantab === 'travaux' ? 'travaux' : rawPlantab === 'agenda' ? 'agenda' : rawPlantab === 'echeances' ? 'echeances' : 'apercu'
 
   // ── ÉTAPE 1 « Réactivité perçue » ──────────────────────────────────────────
@@ -228,8 +229,6 @@ export default async function SitePage({ params, searchParams }: PageProps) {
             <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
           ) : tab === 'intervenants' ? (
             <IntervenantsView siteId={id} />
-          ) : tab === 'memoire' ? (
-            <MemoireView siteId={id} siteName={identity.name} memtab={memtab} />
           ) : tab === 'explorer' ? (
             <ExplorerView siteId={id} />
           ) : (
