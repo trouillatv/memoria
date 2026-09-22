@@ -19,11 +19,21 @@
 -- changements seulement :
 --   1. La lecture des métadonnées du run (v_org_id/v_doc_id/v_doc_filename) est
 --      déplacée AVANT le contrôle d'idempotence, pour disposer de v_doc_id dans
---      les deux branches de sortie.
+--      la branche nominale.
 --   2. Ajout du transfert atomique is_canonical (même portée que
 --      promote_canonical_extraction_run, migration 428 : au plus un run
 --      canonique par document_id, jamais de DELETE ni de statut superseded)
---      juste avant chacun des deux RETURN v_report_id.
+--      UNIQUEMENT dans la branche nominale, juste avant le RETURN v_report_id.
+--
+-- Revue Vincent (429 v1) : la branche IDEMPOTENTE ne transfère PAS is_canonical.
+-- « Idempotent » signifie qu'un rejeu ne change pas l'état final, y compris
+-- l'autorité documentaire. Si on promouvait aussi dans cette branche, rejouer
+-- materialize_historical_visit(A) après qu'un run B plus récent a été réanalysé
+-- et est devenu canonique redonnerait l'autorité à A par simple replay — alors
+-- que seule une NOUVELLE finalisation humaine doit pouvoir déplacer l'autorité.
+-- Grâce à l'atomicité de cette même migration, la branche nominale ne peut de
+-- toute façon plus échouer partiellement : un rejeu n'a donc jamais à « réparer »
+-- une promotion manquée.
 --
 -- promote_canonical_extraction_run() (428) est conservée : elle reste utile
 -- comme opération de correction ponctuelle (ex. correction du témoin historique
@@ -58,7 +68,7 @@ DECLARE
   rec          record;
 BEGIN
   -- Métadonnées du run + nom du document — déplacé avant l'idempotence pour
-  -- disposer de v_doc_id dans les deux branches de sortie (promotion canonique).
+  -- disposer de v_doc_id dans la branche nominale (promotion canonique).
   SELECT r.organization_id, r.document_id, d.filename
     INTO v_org_id, v_doc_id, v_doc_filename
     FROM public.document_extraction_run r
@@ -69,24 +79,14 @@ BEGIN
   END IF;
 
   -- IDEMPOTENCE : si la visite existe déjà pour ce run, on la retourne sans
-  -- rejouer la matérialisation — mais on s'assure quand même que CE run reste
-  -- (ou redevient) le run canonique du document. La finalisation humaine doit
-  -- toujours faire autorité, y compris en cas de rejeu idempotent.
+  -- rejouer la matérialisation. Aucune mutation is_canonical ici : un rejeu ne
+  -- doit jamais pouvoir redéplacer l'autorité documentaire (voir commentaire
+  -- de tête de fichier). L'autorité éventuellement transférée depuis ce run
+  -- vers un run réanalysé plus récent reste intacte.
   SELECT id INTO v_report_id
     FROM public.site_reports
     WHERE extraction_run_id = p_run_id;
   IF FOUND THEN
-    UPDATE public.document_extraction_run
-      SET is_canonical = false
-      WHERE document_id = v_doc_id
-        AND is_canonical = true
-        AND id <> p_run_id;
-
-    UPDATE public.document_extraction_run
-      SET is_canonical = true
-      WHERE id = p_run_id
-        AND is_canonical = false;
-
     RETURN v_report_id;
   END IF;
 
@@ -347,6 +347,8 @@ BEGIN
   -- La finalisation humaine (matérialisation réussie) fait autorité. Dans la
   -- MÊME transaction que la création de la visite : jamais d'état où la visite
   -- existe et où l'ancien run ready_for_review reste is_canonical=true.
+  -- Uniquement ici (branche nominale) : un rejeu idempotent (ci-dessus) ne
+  -- repasse jamais par ce transfert.
   UPDATE public.document_extraction_run
     SET is_canonical = false
     WHERE document_id = v_doc_id
@@ -365,5 +367,6 @@ COMMENT ON FUNCTION public.materialize_historical_visit IS
   'Crée atomiquement une visite historique importée + tous ses artefacts métier. '
   'Utilise le nom du fichier PV comme titre par défaut. '
   'Lie automatiquement le document PV à la visite via document_links. '
-  '(429 : transfert is_canonical atomique avec la matérialisation, dans les deux '
-  'branches de sortie — plus de promotion best-effort séparée en TypeScript)';
+  '(429 : transfert is_canonical atomique avec la matérialisation, uniquement dans '
+  'la branche nominale de finalisation — jamais lors d''un rejeu idempotent, et '
+  'plus de promotion best-effort séparée en TypeScript)';

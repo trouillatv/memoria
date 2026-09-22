@@ -34,6 +34,7 @@ const store = {
   evidence: new Map<string, Row>(),
   proposalEvidence: new Map<string, Row>(),  // key = "proposal_id:evidence_id:relation_type"
   materializations: new Map<string, Row>(),   // key = "proposal_id:entity_type:entity_id"
+  reports: new Map<string, string>(),         // key = extraction_run_id, value = report_id
 }
 
 let idCounter = 0
@@ -183,12 +184,41 @@ function rpcPromoteCanonicalExtractionRun(args: { p_document_id: string; p_run_i
   return { data: true, error: null }
 }
 
+// Simule le transfert is_canonical de `materialize_historical_visit` (migration
+// 429) contre le même store.runs — deux branches, mêmes règles que la fonction
+// SQL réelle : la branche IDEMPOTENTE (visite déjà créée pour ce run) ne touche
+// JAMAIS is_canonical ; seule la branche NOMINALE (nouvelle finalisation) transfère
+// l'autorité. Un rejeu ne doit jamais pouvoir redéplacer le canonique.
+function rpcMaterializeHistoricalVisit(args: { p_run_id: string }) {
+  const run = store.runs.get(args.p_run_id)
+  if (!run) return { data: null, error: { message: `Run ${args.p_run_id} introuvable` } }
+
+  const existingReportId = store.reports.get(args.p_run_id)
+  if (existingReportId) {
+    // IDEMPOTENCE — aucune mutation is_canonical.
+    return { data: existingReportId, error: null }
+  }
+
+  const reportId = nextId()
+  store.reports.set(args.p_run_id, reportId)
+  for (const [id, row] of store.runs) {
+    if (row.document_id === run.document_id && row.is_canonical === true && id !== args.p_run_id) {
+      store.runs.set(id, { ...row, is_canonical: false })
+    }
+  }
+  store.runs.set(args.p_run_id, { ...run, is_canonical: true })
+  return { data: reportId, error: null }
+}
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => buildFromChain(table),
     rpc: (fn: string, args: Record<string, unknown>) => {
       if (fn === 'promote_canonical_extraction_run') {
         return Promise.resolve(rpcPromoteCanonicalExtractionRun(args as { p_document_id: string; p_run_id: string }))
+      }
+      if (fn === 'materialize_historical_visit') {
+        return Promise.resolve(rpcMaterializeHistoricalVisit(args as { p_run_id: string }))
       }
       return Promise.resolve({ data: null, error: { message: `rpc inconnu: ${fn}` } })
     },
@@ -207,6 +237,7 @@ import {
   promoteCanonicalExtractionRun,
   READY_STATUSES,
 } from '@/lib/db/document-extractions'
+import { materializeHistoricalVisit } from '@/lib/db/historical-visit-materialization'
 
 const ORG_A = 'org-aaaaaaaa'
 const ORG_B = 'org-bbbbbbbb'
@@ -219,6 +250,7 @@ beforeEach(() => {
   store.evidence.clear()
   store.proposalEvidence.clear()
   store.materializations.clear()
+  store.reports.clear()
   idCounter = 0
 })
 
@@ -651,5 +683,58 @@ describe('promoteCanonicalExtractionRun', () => {
 
     expect(result).toBe(false)
     expect((store.runs.get(runId) as { is_canonical: boolean }).is_canonical).toBe(false)
+  })
+})
+
+// ── 11. materialize_historical_visit — atomicité canonique (migration 429) ──
+//
+// Revue Vincent sur 429 v1 : la branche IDEMPOTENTE ne doit jamais transférer
+// is_canonical. Sinon, rejouer materialize_historical_visit sur un ancien run A
+// après qu'un run B réanalysé a été finalisé et est devenu canonique redonnerait
+// l'autorité à A par simple replay — alors que seule une NOUVELLE finalisation
+// humaine peut déplacer l'autorité documentaire.
+//
+// rpcMaterializeHistoricalVisit ci-dessus modélise exactement les deux branches
+// de la migration 429 (idempotente = no-op sur is_canonical, nominale = transfert
+// atomique) contre le même store.runs — pas d'exécution SQL réelle : la preuve
+// définitive d'atomicité viendra de la recette après application de la migration.
+
+describe('materializeHistoricalVisit — atomicité canonique (migration 429)', () => {
+  it('la branche idempotente ne repromeut jamais un ancien run réanalysé', async () => {
+    const runA = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'historical_visit_report_v1' })
+    store.runs.set(runA, { ...store.runs.get(runA), is_canonical: false })
+
+    // A finalisé en premier → branche nominale → devient canonique.
+    await materializeHistoricalVisit({ runId: runA, userId: 'user-1', siteId: SITE_ID, visitDate: '2026-01-10' })
+    expect((store.runs.get(runA) as { is_canonical: boolean }).is_canonical).toBe(true)
+
+    // Réanalyser : un nouveau run B est créé pour le même document, puis finalisé
+    // → branche nominale pour B → B devient canonique, A perd l'autorité.
+    const runB = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'historical_visit_report_v1' })
+    store.runs.set(runB, { ...store.runs.get(runB), is_canonical: false })
+    await materializeHistoricalVisit({ runId: runB, userId: 'user-1', siteId: SITE_ID, visitDate: '2026-02-15' })
+
+    expect((store.runs.get(runA) as { is_canonical: boolean }).is_canonical).toBe(false)
+    expect((store.runs.get(runB) as { is_canonical: boolean }).is_canonical).toBe(true)
+
+    // Rejeu idempotent de A (retry réseau, double appel) : la visite existe déjà
+    // pour A → branche idempotente → AUCUNE mutation is_canonical.
+    await materializeHistoricalVisit({ runId: runA, userId: 'user-1', siteId: SITE_ID, visitDate: '2026-01-10' })
+
+    expect((store.runs.get(runB) as { is_canonical: boolean }).is_canonical).toBe(true)
+    expect((store.runs.get(runA) as { is_canonical: boolean }).is_canonical).toBe(false)
+  })
+
+  it('branche nominale — transfert atomique visible avec la création de la visite', async () => {
+    const oldRunId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'historical_visit_report_v1' })
+    store.runs.set(oldRunId, { ...store.runs.get(oldRunId), is_canonical: true })
+    const newRunId = await createExtractionRun({ document_id: DOC_ID, organization_id: ORG_A, extractor_key: 'historical_visit_report_v1' })
+    store.runs.set(newRunId, { ...store.runs.get(newRunId), is_canonical: false })
+
+    const reportId = await materializeHistoricalVisit({ runId: newRunId, userId: 'user-1', siteId: SITE_ID, visitDate: '2026-03-01' })
+
+    expect(reportId).toBeTruthy()
+    expect((store.runs.get(oldRunId) as { is_canonical: boolean }).is_canonical).toBe(false)
+    expect((store.runs.get(newRunId) as { is_canonical: boolean }).is_canonical).toBe(true)
   })
 })
