@@ -128,6 +128,7 @@ type ThreadReport = {
     | 'SKIPPED_TRACE_NOT_PENDING'
     | 'SKIPPED_NO_UNIT_LOADED'
     | 'HARD_STOP_VERDICT_NEW_MISMATCH'
+    | 'HARD_STOP_UNEXPECTED_NONZERO_NEW'
   guardCandidateStatuses?: string[]
   guardTraceStatus?: string | null
   old: string[]
@@ -315,6 +316,21 @@ async function main() {
     const toAdd = setDiff(newSet, oldSet)
     console.log(`  NEW post-replay (${newSet.size}): ${[...newSet].join(', ') || '(vide)'}`)
     console.log(`  KEPT (${kept.length}) / TO_DELETE (${toDelete.length}) / TO_ADD (${toAdd.length})`)
+
+    // Garde Vincent (GO exécution 2026-09-23) : le dry-run du jour donnait NEW=0 pour les 6
+    // threads. Si l'exécution réelle diverge (NEW>0), on ne tente aucun rollback de l'insert
+    // RPC déjà effectué par reconcileFoundingUnits (impossible post-hoc), mais on NE prune
+    // rien de plus et on signale explicitement le thread pour revue humaine au lieu de
+    // rapporter un succès silencieux.
+    if (newSet.size > 0) {
+      console.log(`  HARD STOP — NEW=${newSet.size} alors que le dry-run immédiat donnait 0 pour ce thread : signalé pour revue humaine. Aucun prune supplémentaire (OLD déjà vide) mais l'écriture RPC a pu déjà inséré ces candidats — à examiner avant toute autre action.`)
+      reports.push({
+        threadId, mode: 'EXECUTE', status: 'HARD_STOP_UNEXPECTED_NONZERO_NEW',
+        old: [...oldSet].sort(), new: [...newSet].sort(), kept, toDelete, toAdd,
+        judgeCalled: false, judgeCalls: [], postReconcileState: postState, staleCandidatesDeleted: 0,
+      })
+      continue
+    }
 
     // Garde de cohérence write_pattern vs NEW — HARD STOP sur ce thread si incohérent.
     const writePattern = postState?.write_pattern ?? null
