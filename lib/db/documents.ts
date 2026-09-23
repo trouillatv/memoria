@@ -230,20 +230,44 @@ export async function getCollectionOrganizationId(collectionId: string): Promise
 
 /** Cherche un document actif ayant EXACTEMENT ce contenu (SHA-256) DANS cette
  *  organisation. Le dédoublonnage ne franchit jamais une frontière d'organisation
- *  (même PDF importé par deux organisations = deux nœuds documentaires distincts). */
+ *  (même PDF importé par deux organisations = deux nœuds documentaires distincts).
+ *  document_type/effective_date sont renvoyés pour permettre à l'appelant de
+ *  décider d'un enrichissement de métadonnées (cf. updateDocumentMetadata). */
 export async function findDocumentByHashInOrg(
   contentHash: string,
   organizationId: string,
-): Promise<{ id: string; filename: string } | null> {
+): Promise<{ id: string; filename: string; document_type: string; effective_date: string | null } | null> {
   const supabase = createAdminClient()
   const { data } = await supabase
     .from('documents')
-    .select('id, filename')
+    .select('id, filename, document_type, effective_date')
     .eq('content_hash', contentHash)
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
     .maybeSingle()
-  return (data as { id: string; filename: string } | null) ?? null
+  return (
+    (data as { id: string; filename: string; document_type: string; effective_date: string | null } | null) ?? null
+  )
+}
+
+/**
+ * Enrichit les métadonnées (document_type, effective_date) d'un document
+ * DÉJÀ EXISTANT, retrouvé par dédoublonnage content_hash (P0-1 micro-fix,
+ * Vincent 2026-09-24) : le hash répond « même fichier ? », un nouvel import
+ * répond « que sait-on maintenant de ce fichier ? ». Ne touche jamais le
+ * fichier Storage ni les liens ; seuls les champs fournis sont modifiés — la
+ * décision d'appliquer (enrichissement vs conflit) est prise par l'appelant.
+ */
+export async function updateDocumentMetadata(
+  id: string,
+  patch: { document_type?: string; effective_date?: string },
+): Promise<void> {
+  const fields: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (patch.document_type !== undefined) fields.document_type = patch.document_type
+  if (patch.effective_date !== undefined) fields.effective_date = patch.effective_date
+  const supabase = createAdminClient()
+  const { error } = await supabase.from('documents').update(fields).eq('id', id)
+  if (error) throw error
 }
 
 /** Compte les PV historiques déjà importés sur ce chantier pour la même date effective. */

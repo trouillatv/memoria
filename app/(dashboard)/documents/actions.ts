@@ -20,6 +20,7 @@ import {
   addDocumentLink,
   createDocumentCollection,
   updateDocumentAnalysisStatus,
+  updateDocumentMetadata,
   softDeleteDocument,
   getDocument,
   moveDocumentToCollection,
@@ -71,6 +72,54 @@ const VISIBILITY = [
 const TARGET_TYPES = [
   'contract', 'site', 'tender', 'client', 'intervention', 'team', 'tenant',
 ] as const
+
+// Types "génériques" (catch-all, non-informatifs) vs "spécifiques" (classification
+// délibérée). Cette distinction pilote l'enrichissement de métadonnées sur
+// dédoublonnage (cf. resolveMetadataEnrichment) : un import plus précis peut
+// remplacer un type générique, jamais un type spécifique déjà posé.
+const GENERIC_DOCUMENT_TYPES: readonly string[] = ['preuve', 'autre']
+
+function isGenericDocumentType(type: string | null | undefined): boolean {
+  return !type || GENERIC_DOCUMENT_TYPES.includes(type)
+}
+
+/**
+ * Dédoublonnage par content_hash (Vincent 2026-09-24) : le hash répond
+ * « même fichier ? », le nouvel import répond « que sait-on maintenant de ce
+ * fichier ? ». Décide s'il faut enrichir le document déjà connu, laisser ses
+ * métadonnées telles quelles, ou signaler un conflit — jamais un écrasement
+ * silencieux d'un type ou d'une date déjà spécifique.
+ */
+function resolveMetadataEnrichment(
+  existing: { document_type?: string | null; effective_date?: string | null },
+  incoming: { document_type: string; effective_date?: string },
+): { typeToApply?: string; dateToApply?: string; conflict: boolean } {
+  let typeToApply: string | undefined
+  let dateToApply: string | undefined
+  let conflict = false
+
+  const existingType = existing.document_type
+  if (existingType && existingType !== incoming.document_type) {
+    if (isGenericDocumentType(existingType) && !isGenericDocumentType(incoming.document_type)) {
+      typeToApply = incoming.document_type
+    } else if (!isGenericDocumentType(existingType) && !isGenericDocumentType(incoming.document_type)) {
+      conflict = true
+    }
+    // Existant spécifique, nouveau générique : on ignore silencieusement —
+    // jamais de dégradation d'une classification déjà posée.
+  }
+
+  if (incoming.effective_date) {
+    const existingDate = existing.effective_date
+    if (!existingDate) {
+      dateToApply = incoming.effective_date
+    } else if (existingDate !== incoming.effective_date) {
+      conflict = true
+    }
+  }
+
+  return { typeToApply, dateToApply, conflict }
+}
 
 const uploadSchema = z
   .object({
@@ -261,6 +310,10 @@ export interface UploadDocumentResult {
   error?: string
   /** Le doc existait déjà (même content_hash) → nœud réutilisé, lien ajouté. */
   duplicate?: boolean
+  /** Type et/ou date d'effet enrichis sur le document existant lors de ce dédoublonnage. */
+  enriched?: boolean
+  /** Le nouvel import contredit un type ou une date déjà spécifique sur le document existant : aucun écrasement, signal explicite. */
+  metadataConflict?: boolean
 }
 
 export async function uploadDocumentAction(
@@ -369,7 +422,50 @@ export async function uploadDocumentAction(
         console.error('[uploadDocumentAction] dedup addDocumentLink failed:', e)
       }
     }
-    return { ok: true, documentId: existingDoc.id, duplicate: true }
+
+    // ENRICHISSEMENT DE MÉTADONNÉES (Vincent 2026-09-24) : la déduplication
+    // ne doit pas empêcher l'enrichissement documentaire. Un import explicite
+    // (ex. document contractuel) sur un document connu sous un type générique
+    // ou sans date d'effet complète le nœud existant au lieu de laisser sa
+    // classification périmée. Jamais d'écrasement silencieux d'un type ou
+    // d'une date déjà spécifique — cf. resolveMetadataEnrichment.
+    const { typeToApply, dateToApply, conflict } = resolveMetadataEnrichment(
+      { document_type: existingDoc.document_type, effective_date: existingDoc.effective_date },
+      { document_type: input.document_type, effective_date: input.effective_date },
+    )
+    if (typeToApply || dateToApply) {
+      try {
+        await updateDocumentMetadata(existingDoc.id, {
+          ...(typeToApply ? { document_type: typeToApply } : {}),
+          ...(dateToApply ? { effective_date: dateToApply } : {}),
+        })
+        await logAuditEvent({
+          userId,
+          entityType: 'document',
+          entityId: existingDoc.id,
+          action: 'updated',
+          metadata: {
+            kind: 'metadata_enriched',
+            ...(typeToApply
+              ? { document_type_from: existingDoc.document_type, document_type_to: typeToApply }
+              : {}),
+            ...(dateToApply
+              ? { effective_date_from: existingDoc.effective_date, effective_date_to: dateToApply }
+              : {}),
+          },
+        })
+      } catch (e) {
+        console.error('[uploadDocumentAction] dedup metadata enrichment failed:', e)
+      }
+    }
+
+    return {
+      ok: true,
+      documentId: existingDoc.id,
+      duplicate: true,
+      ...(typeToApply || dateToApply ? { enriched: true } : {}),
+      ...(conflict ? { metadataConflict: true } : {}),
+    }
   }
 
   const { error: uploadErr } = await supabase.storage
