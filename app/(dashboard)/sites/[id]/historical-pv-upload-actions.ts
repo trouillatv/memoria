@@ -251,7 +251,14 @@ export async function confirmHistoricalPvImport(input: {
     }
 
     // Niveau 1 — Doublon de contenu (même PDF, même ou autre nom)
-    const { createDocument, addDocumentLink, findHistoricalPvByHashForSite, countHistoricalPvsByDateForSite } = await import('@/lib/db/documents')
+    const {
+      createDocument,
+      addDocumentLink,
+      findHistoricalPvByHashForSite,
+      countHistoricalPvsByDateForSite,
+      getCollectionOrganizationId,
+      findHashClassificationConflict,
+    } = await import('@/lib/db/documents')
     const existingByHash = await findHistoricalPvByHashForSite(actualHash, input.siteId)
     if (existingByHash) {
       return {
@@ -263,6 +270,27 @@ export async function confirmHistoricalPvImport(input: {
       }
     }
 
+    // Créer le document (avec hash pour future dédup)
+    const collectionId = await ensureSiteCollection(input.siteId)
+
+    // Conflit de classification — ce contenu exact existe déjà DANS CETTE
+    // ORGANISATION mais sous un autre document_type (ex. déjà importé comme
+    // CCTP). `findHistoricalPvByHashForSite` ne voit que les PV historiques
+    // du même site : il est aveugle à ce cas. Jamais résolu en silence par
+    // fusion ou reclassification (Vincent 2026-09-24, cas OCEF).
+    const organizationId = await getCollectionOrganizationId(collectionId)
+    if (organizationId) {
+      const conflict = await findHashClassificationConflict(actualHash, organizationId, 'historical_visit_report')
+      if (conflict) {
+        const { documentTypeLabel } = await import('@/lib/documents/labels')
+        return {
+          ok: false,
+          error: `Ce fichier existe déjà comme ${documentTypeLabel(conflict.document_type)} dans cette organisation. Il ne peut pas être importé silencieusement comme PV historique.`,
+          canRetry: false,
+        }
+      }
+    }
+
     // Niveau 2 — Doublon métier (même date, contenu différent) — avertissement non bloquant
     let dateWarning: { count: number } | undefined
     if (input.effectiveDate) {
@@ -270,8 +298,6 @@ export async function confirmHistoricalPvImport(input: {
       if (sameDate > 0) dateWarning = { count: sameDate }
     }
 
-    // Créer le document (avec hash pour future dédup)
-    const collectionId = await ensureSiteCollection(input.siteId)
     const documentId = await createDocument({
       filename: upload.originalFilename,
       collection_id: collectionId,

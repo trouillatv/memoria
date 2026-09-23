@@ -228,6 +228,17 @@ export async function getCollectionOrganizationId(collectionId: string): Promise
   return data?.organization_id ?? null
 }
 
+/** Résultat du dédoublonnage par hash — distingue explicitement 0/1/>1
+ *  correspondance. `.maybeSingle()` suppose 0 ou 1 ligne ; au-delà, Postgrest
+ *  renvoie une erreur qu'un ancien code ignorait, aboutissant à `null` (« aucun
+ *  document ») et donc à la création silencieuse d'un nouveau doublon (P0-1B,
+ *  Vincent 2026-09-24). Plus d'une ligne = anomalie à exposer, jamais à
+ *  trancher arbitrairement (pas de "prend la plus récente"). */
+export type DocumentHashLookup =
+  | { status: 'none' }
+  | { status: 'found'; id: string; filename: string; document_type: string; effective_date: string | null }
+  | { status: 'conflict'; ids: string[] }
+
 /** Cherche un document actif ayant EXACTEMENT ce contenu (SHA-256) DANS cette
  *  organisation. Le dédoublonnage ne franchit jamais une frontière d'organisation
  *  (même PDF importé par deux organisations = deux nœuds documentaires distincts).
@@ -236,18 +247,44 @@ export async function getCollectionOrganizationId(collectionId: string): Promise
 export async function findDocumentByHashInOrg(
   contentHash: string,
   organizationId: string,
-): Promise<{ id: string; filename: string; document_type: string; effective_date: string | null } | null> {
+): Promise<DocumentHashLookup> {
   const supabase = createAdminClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('documents')
     .select('id, filename, document_type, effective_date')
     .eq('content_hash', contentHash)
     .eq('organization_id', organizationId)
     .is('deleted_at', null)
-    .maybeSingle()
-  return (
-    (data as { id: string; filename: string; document_type: string; effective_date: string | null } | null) ?? null
-  )
+  if (error) throw error
+  const rows = (data ?? []) as { id: string; filename: string; document_type: string; effective_date: string | null }[]
+  if (rows.length === 0) return { status: 'none' }
+  if (rows.length > 1) return { status: 'conflict', ids: rows.map((r) => r.id) }
+  const r = rows[0]
+  return { status: 'found', id: r.id, filename: r.filename, document_type: r.document_type, effective_date: r.effective_date }
+}
+
+/** Existe-t-il déjà, dans cette organisation, un document avec ce contenu
+ *  EXACT mais classé sous un `document_type` différent de celui attendu ?
+ *  (ex. déjà importé comme `cctp`, puis le même binaire soumis comme PV
+ *  historique.) Un conflit de classification n'est jamais résolu en silence
+ *  par fusion ou changement de type — l'appelant doit le refuser explicitement
+ *  (Vincent 2026-09-24, cas OCEF). */
+export async function findHashClassificationConflict(
+  contentHash: string,
+  organizationId: string,
+  expectedType: string,
+): Promise<{ id: string; document_type: string } | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id, document_type')
+    .eq('content_hash', contentHash)
+    .eq('organization_id', organizationId)
+    .neq('document_type', expectedType)
+    .is('deleted_at', null)
+    .limit(1)
+  if (error) throw error
+  return data && data.length > 0 ? (data[0] as { id: string; document_type: string }) : null
 }
 
 /**
