@@ -146,7 +146,7 @@ describe('MobileActionView — gestes (fiche non lecture seule)', () => {
 })
 
 describe('MobileActionView — Responsable (P0-4M, même panneau partagé qu’en desktop)', () => {
-  const candidates = [{ contactId: 'c1', fullName: 'Julie Martin', fonction: 'Conductrice de travaux' }]
+  const candidates = [{ contactId: 'c1', fullName: 'Julie Martin', fonction: 'Conductrice de travaux', companyName: 'ARES', fromCasting: true, teams: [] }]
   const companies = [{ id: 'co1', name: 'ARES' }]
 
   it('sans responsable : état vide explicite + bouton "Affecter"', () => {
