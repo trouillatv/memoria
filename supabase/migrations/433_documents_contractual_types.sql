@@ -8,6 +8,11 @@
 --
 -- La contrainte CHECK sur documents.document_type est un texte (pas un enum PG),
 -- donc on la remplace intégralement — idiome déjà utilisé par 082, 123, 152, 256.
+--
+-- 'construction_schedule' (ajouté par la migration 372, gate de
+-- extract-construction-schedule.ts) était absent de la liste initiale de ce
+-- fichier : un remplacement intégral l'aurait silencieusement retiré des
+-- valeurs acceptées. Reporté ici pour rester purement additif.
 
 alter table public.documents
   drop constraint if exists documents_document_type_check;
@@ -17,6 +22,6 @@ alter table public.documents
   check (document_type in (
     'contrat','avenant','procedure','protocole','plan_acces','securite',
     'ao','memoire_technique','reference','litige','facture','preuve','autre',
-    'historical_visit_report',
+    'historical_visit_report','construction_schedule',
     'cctp','ccap','ordre_service'
   ));
