@@ -307,6 +307,17 @@ export async function updateDocumentMetadata(
   if (error) throw error
 }
 
+/** Résultat de la recherche de collision de nom de fichier — distingue
+ *  explicitement 0/1/>1 correspondance (P0-1B2 correction, Vincent
+ *  2026-09-24) : `keep_both` autorise plusieurs versions ACTIVES à partager
+ *  le même nom, donc un `.limit(1)` risquerait de choisir arbitrairement
+ *  laquelle remplacer lors d'un 3ᵉ import homonyme. `'ambiguous'` doit
+ *  toujours être traité comme un refus, jamais comme un choix implicite. */
+export type FilenameCollisionLookup =
+  | { status: 'none' }
+  | { status: 'found'; id: string; filename: string; document_type: string }
+  | { status: 'ambiguous'; ids: string[] }
+
 /** Existe-t-il déjà, dans cette collection (= « même site », une collection
  *  « Documents chantier » par site), un document ACTIF portant EXACTEMENT ce
  *  nom de fichier mais un contenu différent ? Ceci détecte un candidat à une
@@ -317,7 +328,7 @@ export async function findFilenameCollisionInCollection(
   filename: string,
   collectionId: string,
   contentHash: string,
-): Promise<{ id: string; filename: string; document_type: string } | null> {
+): Promise<FilenameCollisionLookup> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('documents')
@@ -327,9 +338,43 @@ export async function findFilenameCollisionInCollection(
     .eq('status', 'active')
     .neq('content_hash', contentHash)
     .is('deleted_at', null)
-    .limit(1)
   if (error) throw error
-  return data && data.length > 0 ? (data[0] as { id: string; filename: string; document_type: string }) : null
+  const rows = (data ?? []) as { id: string; filename: string; document_type: string }[]
+  if (rows.length === 0) return { status: 'none' }
+  if (rows.length > 1) return { status: 'ambiguous', ids: rows.map((r) => r.id) }
+  const r = rows[0]
+  return { status: 'found', id: r.id, filename: r.filename, document_type: r.document_type }
+}
+
+/** Reporte les rattachements polymorphes (`document_links`) d'une ancienne
+ *  version vers sa nouvelle version (P0-1B2 correction invariant C, Vincent
+ *  2026-09-24) : un document peut être lié à plusieurs cibles (site, contrat,
+ *  AO, client, obligation…). Sans ce report, mettre à jour une version depuis
+ *  UNE cible masque la nouvelle version pour toutes les AUTRES cibles de
+ *  l'ancienne (listDocumentsForTarget filtre déjà les `superseded`).
+ *  Idempotent (même upsert `onConflict` que addDocumentLink) — rejouable sans
+ *  créer de doublon. */
+export async function copyDocumentLinks(fromDocumentId: string, toDocumentId: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_links')
+    .select('target_type, target_id, reference_label')
+    .eq('document_id', fromDocumentId)
+  if (error) throw error
+  const rows = (data ?? []) as Array<{ target_type: DocumentTargetType; target_id: string; reference_label: string | null }>
+  if (rows.length === 0) return
+  const { error: upsertError } = await supabase
+    .from('document_links')
+    .upsert(
+      rows.map((r) => ({
+        document_id: toDocumentId,
+        target_type: r.target_type,
+        target_id: r.target_id,
+        reference_label: r.reference_label,
+      })),
+      { onConflict: 'document_id,target_type,target_id' },
+    )
+  if (upsertError) throw upsertError
 }
 
 /** Marque une version comme remplacée (P0-1B2) — l'ancienne version reste en

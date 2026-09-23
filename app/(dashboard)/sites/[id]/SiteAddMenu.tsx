@@ -149,14 +149,14 @@ function SiteDocumentDialog({
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   const [pending, startTransition] = useTransition()
-  const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData } | null>(null)
+  const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData; ambiguous: boolean } | null>(null)
 
   function runUpload(fd: FormData) {
     startTransition(async () => {
       try {
         const result = await uploadSiteDocumentAction(siteId, fd)
         if (result.versionConflict) {
-          setVersionConflict({ filename: result.existingFilename ?? '', pendingData: fd })
+          setVersionConflict({ filename: result.existingFilename ?? '', pendingData: fd, ambiguous: !!result.ambiguousVersionConflict })
           setMessage(null)
           return
         }
@@ -206,7 +206,7 @@ function SiteDocumentDialog({
           <input name="file" type="file" accept="application/pdf" required className="block w-full rounded-lg border p-2 text-sm" />
         </label>
         {versionConflict ? (
-          <VersionConflictChoice filename={versionConflict.filename} onChoose={resolveVersionConflict} onCancel={() => setVersionConflict(null)} pending={pending} />
+          <VersionConflictChoice filename={versionConflict.filename} ambiguous={versionConflict.ambiguous} onChoose={resolveVersionConflict} onCancel={() => setVersionConflict(null)} pending={pending} />
         ) : (
           <>
             {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
@@ -226,14 +226,20 @@ function SiteDocumentDialog({
 
 // Collision de nom de fichier dans la même collection (P0-1B2, Vincent
 // 2026-09-24) : jamais de devinette automatique — l'utilisateur choisit
-// explicitement entre remplacer, garder les deux, ou annuler.
+// explicitement entre remplacer, garder les deux, ou annuler. Quand
+// plusieurs versions actives partagent déjà ce nom (permis par « Conserver
+// les deux »), « Mettre à jour » est masqué : aucune ne peut être choisie
+// arbitrairement comme remplacée (P0-1B2 correction invariant D, Vincent
+// 2026-09-24).
 function VersionConflictChoice({
   filename,
+  ambiguous,
   onChoose,
   onCancel,
   pending,
 }: {
   filename: string
+  ambiguous: boolean
   onChoose: (decision: 'update' | 'keep_both') => void
   onCancel: () => void
   pending: boolean
@@ -241,15 +247,21 @@ function VersionConflictChoice({
   return (
     <div className="space-y-3 rounded-lg border bg-muted/40 p-3 text-sm">
       <p>
-        Un document nommé <span className="font-medium">{filename || 'ce fichier'}</span> existe déjà dans cette collection avec un contenu différent.
+        {ambiguous ? (
+          <>Plusieurs documents nommés <span className="font-medium">{filename || 'ce fichier'}</span> existent déjà dans cette collection : impossible de déterminer lequel remplacer. Conservez les deux, ou annulez.</>
+        ) : (
+          <>Un document nommé <span className="font-medium">{filename || 'ce fichier'}</span> existe déjà dans cette collection avec un contenu différent.</>
+        )}
       </p>
       <div className="flex flex-wrap justify-end gap-2">
         <button type="button" onClick={onCancel} disabled={pending} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60">Annuler</button>
         <button type="button" onClick={() => onChoose('keep_both')} disabled={pending} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60">Conserver les deux</button>
-        <button type="button" onClick={() => onChoose('update')} disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
-          {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-          Mettre à jour
-        </button>
+        {!ambiguous && (
+          <button type="button" onClick={() => onChoose('update')} disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Mettre à jour
+          </button>
+        )}
       </div>
     </div>
   )
@@ -268,14 +280,14 @@ function SiteContractualDocumentDialog({
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   const [pending, startTransition] = useTransition()
-  const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData; incomingFilename: string | null } | null>(null)
+  const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData; incomingFilename: string | null; ambiguous: boolean } | null>(null)
 
   function runUpload(fd: FormData, incomingFilename: string | null) {
     startTransition(async () => {
       try {
         const result = await uploadSiteContractualDocumentAction(siteId, fd)
         if (result.versionConflict) {
-          setVersionConflict({ filename: result.existingFilename ?? '', pendingData: fd, incomingFilename })
+          setVersionConflict({ filename: result.existingFilename ?? '', pendingData: fd, incomingFilename, ambiguous: !!result.ambiguousVersionConflict })
           setMessage(null)
           return
         }
@@ -337,7 +349,7 @@ function SiteContractualDocumentDialog({
           <input name="effective_date" type="date" className="block w-full rounded-lg border p-2 text-sm" />
         </label>
         {versionConflict ? (
-          <VersionConflictChoice filename={versionConflict.filename} onChoose={resolveVersionConflict} onCancel={() => setVersionConflict(null)} pending={pending} />
+          <VersionConflictChoice filename={versionConflict.filename} ambiguous={versionConflict.ambiguous} onChoose={resolveVersionConflict} onCancel={() => setVersionConflict(null)} pending={pending} />
         ) : (
           <>
             {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}

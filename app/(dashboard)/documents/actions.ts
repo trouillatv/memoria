@@ -30,6 +30,7 @@ import {
   getCollectionOrganizationId,
   findDocumentByHashInOrg,
   findFilenameCollisionInCollection,
+  copyDocumentLinks,
   markDocumentSuperseded,
 } from '@/lib/db/documents'
 import { getSiteById } from '@/lib/db/sites'
@@ -343,6 +344,11 @@ export interface UploadDocumentResult {
   versionConflict?: boolean
   /** Id du document existant en collision de nom (pour `update` : deviendra `supersedes_document_id`). */
   existingDocumentId?: string
+  /** Plusieurs versions ACTIVES partagent déjà ce nom (permis par `keep_both`) :
+   *  aucune ne peut être choisie arbitrairement comme remplacée. `update` est
+   *  impossible tant que l'ambiguïté n'est pas résolue autrement (P0-1B2
+   *  correction invariant D, Vincent 2026-09-24). */
+  ambiguousVersionConflict?: boolean
   /** Une nouvelle version a été créée et l'ancienne marquée `superseded`. */
   versioned?: boolean
 }
@@ -536,7 +542,19 @@ export async function uploadDocumentAction(
   let supersedesDocumentId: string | null = null
   if (input.version_decision !== 'keep_both') {
     const collision = await findFilenameCollisionInCollection(file.name, input.collection_id, contentHash)
-    if (collision) {
+    if (collision.status === 'ambiguous') {
+      // Plusieurs versions ACTIVES partagent déjà ce nom (permis par
+      // `keep_both`) : jamais de choix arbitraire de celle à remplacer, quel
+      // que soit `version_decision` (P0-1B2 correction invariant D, Vincent
+      // 2026-09-24). Refuse avant tout effet de bord.
+      return {
+        ok: false,
+        error: `Plusieurs documents nommés "${file.name}" existent déjà dans cette collection : impossible de déterminer lequel remplacer.`,
+        versionConflict: true,
+        ambiguousVersionConflict: true,
+      }
+    }
+    if (collision.status === 'found') {
       if (!input.version_decision) {
         return {
           ok: false,
@@ -583,21 +601,37 @@ export async function uploadDocumentAction(
     return { ok: false, error: e instanceof Error ? e.message : 'Création échouée' }
   }
 
-  // Création réussie AVANT de basculer l'ancienne version : en cas d'échec de
-  // createDocument (catché ci-dessus), l'ancienne version reste active et
-  // intacte — jamais de version courante perdue sur un échec partiel.
+  // Installation de la nouvelle version AVANT de basculer l'ancienne (P0-1B2
+  // correction invariant A, Vincent 2026-09-24) : tant que la nouvelle
+  // version n'a pas hérité de TOUS les rattachements (document_links) de
+  // l'ancienne — un document peut être lié à plusieurs cibles (site,
+  // contrat, AO…) — PLUS le lien vers la cible de cet import, l'ancienne
+  // reste active. Un échec à n'importe quelle étape de cette chaîne
+  // déclenche une compensation explicite (soft-delete de la nouvelle
+  // version) et un échec net : jamais `ok:true`/`versioned:true` sur un état
+  // partiel (invariant B), jamais deux versions "courantes" visibles, jamais
+  // l'ancienne masquée pour un document qui n'a pas hérité de ses liens
+  // (invariant C).
   if (supersedesDocumentId) {
     try {
+      await copyDocumentLinks(supersedesDocumentId, documentId)
+      if (input.target_type && input.target_id) {
+        await addDocumentLink(documentId, input.target_type, input.target_id)
+      }
       await markDocumentSuperseded(supersedesDocumentId)
     } catch (e) {
-      console.error('[uploadDocumentAction] markDocumentSuperseded failed:', e)
+      console.error('[uploadDocumentAction] version install failed, compensating:', e)
+      try {
+        await softDeleteDocument(documentId)
+      } catch (compensationError) {
+        console.error('[uploadDocumentAction] compensation soft-delete failed:', compensationError)
+      }
+      return { ok: false, error: 'Nouvelle version : installation échouée, ancienne version conservée.' }
     }
-  }
-
-  // Le document est créé : un échec de lien ou d'audit ne doit PAS faire
-  // échouer l'import (sinon throw non-catché → message masqué « Server
-  // Components render error » côté client). Best-effort, on logge et on continue.
-  if (input.target_type && input.target_id) {
+  } else if (input.target_type && input.target_id) {
+    // Import normal (non-versionné) : un échec de lien ne doit PAS faire
+    // échouer l'import (sinon throw non-catché → message masqué « Server
+    // Components render error » côté client). Best-effort, on logge et on continue.
     try {
       await addDocumentLink(documentId, input.target_type, input.target_id)
     } catch (e) {
