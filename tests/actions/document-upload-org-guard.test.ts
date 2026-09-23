@@ -270,6 +270,39 @@ describe('H — membre de la collection mais rôle contextuel insuffisant', () =
     expect(r.ok).toBe(true)
     expect(createDocumentCollection).toHaveBeenCalledTimes(1)
   })
+
+  // Symétrique (review ChatGPT sur e6e1b381) : le rôle global ne doit plus
+  // JAMAIS être un obstacle. Un chef_equipe globalement mais manager dans
+  // l'organisation ciblée doit pouvoir écrire — sinon le rôle global reste
+  // une seconde autorité cachée en plus du rôle contextuel.
+  it('upload : chef_equipe global + manager dans CAPSE → autorisé', async () => {
+    getUserRoleById.mockResolvedValue('chef_equipe')
+    orgRoles[CAPSE] = 'manager'
+
+    const fd = pdfFormData('contenu-role-global-insuffisant', {
+      collection_id: CAPSE_COLLECTION,
+    })
+    const r = await uploadDocumentAction(fd)
+
+    expect(r.ok).toBe(true)
+    expect(createDocument).toHaveBeenCalledTimes(1)
+    // Preuve que le rôle global n'est jamais consulté par cette action.
+    expect(getUserRoleById).not.toHaveBeenCalled()
+  })
+
+  it('création de collection : chef_equipe global + manager dans CAPSE → autorisé', async () => {
+    getUserRoleById.mockResolvedValue('chef_equipe')
+    orgRoles[CAPSE] = 'manager'
+
+    const collectionFd = new FormData()
+    collectionFd.set('name', 'Procédures CAPSE')
+    collectionFd.set('organization_id', CAPSE)
+    const r = await createDocumentCollectionAction(collectionFd)
+
+    expect(r.ok).toBe(true)
+    expect(createDocumentCollection).toHaveBeenCalledTimes(1)
+    expect(getUserRoleById).not.toHaveBeenCalled()
+  })
 })
 
 describe('F — parcours Guillaume : chantier AGP neuf, 0 collection AGP', () => {

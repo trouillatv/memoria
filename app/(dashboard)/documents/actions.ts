@@ -41,6 +41,22 @@ async function requireManagerOrAdmin(): Promise<string> {
   return user.id
 }
 
+/**
+ * Authentification SEULE — aucun rôle global vérifié ici. En multi-organisation,
+ * le rôle global du profil ne veut plus rien dire (`lib/auth/memberships.ts`) :
+ * l'autorisation d'écrire dépend uniquement du rôle DANS l'organisation ciblée,
+ * décidé plus loin via `requireOrganizationMembership().context.role`. Un
+ * chef_equipe globalement mais manager dans l'organisation ciblée doit pouvoir
+ * écrire ; exiger ici un rôle global manager/admin en plus le lui interdirait
+ * à tort (symétrique du bug déjà corrigé côté appartenance).
+ */
+async function requireAuthenticatedUserId(): Promise<string> {
+  const supabase = await createServerClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  return user.id
+}
+
 const MAX_PDF_BYTES = 20 * 1024 * 1024 // 20 MB
 
 const DOCUMENT_TYPES = [
@@ -88,7 +104,7 @@ export async function createDocumentCollectionAction(
 ): Promise<{ ok: boolean; collectionId?: string; error?: string }> {
   let userId: string
   try {
-    userId = await requireManagerOrAdmin()
+    userId = await requireAuthenticatedUserId()
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Forbidden' }
   }
@@ -104,9 +120,9 @@ export async function createDocumentCollectionAction(
   const orgResolution = await resolveCreationOrgId(rawOrgId)
   if (!orgResolution.ok) return { ok: false, error: orgResolution.error }
   // resolveCreationOrgId ne fait que CHOISIR l'organisation (0/1/many) ; elle
-  // ne vérifie ni l'appartenance ni le rôle. Le rôle qui compte est celui DANS
-  // cette organisation, jamais le rôle global du profil déjà vérifié par
-  // requireManagerOrAdmin() ci-dessus.
+  // ne vérifie ni l'appartenance ni le rôle. Seul le rôle DANS cette
+  // organisation fait autorité (jamais un rôle global) : cf.
+  // requireAuthenticatedUserId ci-dessus.
   const membership = await requireOrganizationMembership(orgResolution.organizationId, { id: userId })
   if (!membership.ok) {
     return { ok: false, error: membership.error }
@@ -251,7 +267,7 @@ export async function uploadDocumentAction(
 ): Promise<UploadDocumentResult> {
   let userId: string
   try {
-    userId = await requireManagerOrAdmin()
+    userId = await requireAuthenticatedUserId()
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Forbidden' }
   }
@@ -286,11 +302,13 @@ export async function uploadDocumentAction(
     return { ok: false, error: 'Collection introuvable ou sans organisation' }
   }
 
-  // GARDE SERVEUR — appartenance AVANT tout traitement lourd (hash, Storage) :
-  // un manager/admin authentifié mais non membre de l'organisation de la
-  // collection ne doit jamais faire écrire un fichier dans Storage, même si
-  // createDocument() refuse ensuite. Sans ce contrôle ici, un appel forgé
-  // laisserait un PDF orphelin dans le bucket avant le refus tardif.
+  // GARDE SERVEUR — appartenance ET rôle AVANT tout traitement lourd (hash,
+  // Storage) : un utilisateur authentifié mais non membre de l'organisation
+  // de la collection, ou membre sans le rôle manager/admin DANS cette
+  // organisation (jamais son rôle global), ne doit jamais faire écrire un
+  // fichier dans Storage, même si createDocument() refuse ensuite. Sans ce
+  // contrôle ici, un appel forgé laisserait un PDF orphelin dans le bucket
+  // avant le refus tardif.
   const membership = await requireOrganizationMembership(collectionOrgId, { id: userId })
   if (!membership.ok) {
     return { ok: false, error: membership.error }

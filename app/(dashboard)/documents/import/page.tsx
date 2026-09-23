@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { listDocumentCollections } from '@/lib/db/documents'
 import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
@@ -29,17 +30,38 @@ export default async function DocumentsImportPage({
   const supabase = await createServerClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) notFound()
-  const role = await getUserRoleById(user.id)
-  if (role !== 'admin' && role !== 'manager') notFound()
 
   const sp = await searchParams
 
+  // `sites` est déjà filtré par appartenance (listSites()) : on le résout tôt,
+  // avant la garde de droit, pour savoir si l'accès est contextualisé par un
+  // chantier précis.
+  const sites = await listSites()
+  const contextSiteForGate =
+    sp.target_type === 'site' && sp.target_id ? sites.find((s) => s.id === sp.target_id) : undefined
+
+  // Droit d'accès : un chantier contextualisé évalue le rôle DANS
+  // l'organisation DE CE CHANTIER (jamais le rôle global du profil, qui ne
+  // veut plus rien dire dès qu'on appartient à plusieurs organisations — un
+  // chef_equipe globalement mais manager sur ce chantier doit pouvoir
+  // accéder). La Bibliothèque globale (pas de chantier ciblé) n'a pas
+  // d'organisation unique à évaluer : elle garde le rôle global comme seul
+  // filtre disponible.
+  if (contextSiteForGate?.organization_id) {
+    const membership = await requireOrganizationMembership(contextSiteForGate.organization_id, { id: user.id })
+    if (!membership.ok || (membership.context.role !== 'manager' && membership.context.role !== 'admin')) {
+      notFound()
+    }
+  } else {
+    const role = await getUserRoleById(user.id)
+    if (role !== 'admin' && role !== 'manager') notFound()
+  }
+
   const docAvgCost = await getAverageCostForFeatures(['embed_chunks_document'])
 
-  const [allCollections, contracts, sites, clients, tenders, teams] = await Promise.all([
+  const [allCollections, contracts, clients, tenders, teams] = await Promise.all([
     listDocumentCollections(),
     listContracts(),
-    listSites(),
     listClients(),
     listTenders(),
     listTeams(),
@@ -61,12 +83,10 @@ export default async function DocumentsImportPage({
   }
 
   // Depuis une fiche chantier, l'organisation est déjà connue et non ambiguë —
-  // on la présélectionne sans jamais redemander à l'utilisateur. `sites` est
-  // déjà filtré par appartenance (listSites()), donc trouver le site ici
-  // garantit que l'utilisateur en est membre. Sinon (bibliothèque globale),
-  // on retombe sur le sélecteur générique (silencieux en mono-org).
-  const contextSite =
-    sp.target_type === 'site' && sp.target_id ? sites.find((s) => s.id === sp.target_id) : undefined
+  // on la présélectionne sans jamais redemander à l'utilisateur (garde de
+  // droit déjà appliquée ci-dessus sur ce même chantier). Sinon (bibliothèque
+  // globale), on retombe sur le sélecteur générique (silencieux en mono-org).
+  const contextSite = contextSiteForGate
   let orgs: OrgOption[]
   if (contextSite?.organization_id) {
     const labels = await getOrganizationLabels([contextSite.organization_id])
