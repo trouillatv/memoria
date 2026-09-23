@@ -16,6 +16,7 @@ Critère d'ajout : est-ce qu'une future session pourrait raisonnablement vouloir
 | `scripts/backfill-actor-link-dryrun.ts` + `scripts/backfill-actor-link-apply.ts` | backfill | Matching `canonical_subject` → `company_contacts`/`companies` | dryrun lecture seule, apply touche la prod |
 | `scripts/merge-petro-rollback.ts` | rollback | Restaure l'état pré-merge PETRO via snapshot | dry-run par défaut, `--apply` touche la prod |
 | `scripts/verify-pushable.mjs` (`npm run verify:pushable`) | gate CI | Typecheck de l'arbre réellement commité avant push — cf. CLAUDE.md §14 | lecture seule |
+| `scripts/recette-plan-visite-lotb-run.ts` | recette non-régression | Rejoue les 13 scénarios de la boucle Plan de visite Lot B (verdict → mutation source → sortie/réapparition au Plan N+1) sur le chantier sandbox (`is_sandbox=true`, org `demo`), sans passer par une session HTTP | écrit sur le site sandbox puis nettoie via `resetSandboxSite` + suppressions manuelles décisions/obligations ; à relancer après toute modification de `plan-visite-orchestrator.ts` ou `plan-visite-verdict.ts` |
 
 ## Témoins de tests notables
 
