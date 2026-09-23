@@ -10,6 +10,7 @@ import {
   getDocumentLinkLabels,
 } from '@/lib/db/documents'
 import { getAverageCostForFeatures } from '@/lib/db/ai-usage-rollup'
+import { getOrgsForSelector } from '@/components/ui/org-selector'
 import { NewCollectionForm } from './NewCollectionForm'
 import { CollectionLibrary, type LibGroup } from './CollectionLibrary'
 
@@ -25,6 +26,7 @@ export default async function DocumentsPage() {
   if (role !== 'admin' && role !== 'manager') notFound()
 
   const docAvgCost = await getAverageCostForFeatures(['embed_chunks_document'])
+  const orgs = await getOrgsForSelector()
 
   const collections = await listDocumentCollections()
   const [byCollection, orphans] = await Promise.all([
@@ -73,7 +75,7 @@ export default async function DocumentsPage() {
         <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
           Nouvelle collection
         </h2>
-        <NewCollectionForm />
+        <NewCollectionForm orgs={orgs} />
       </section>
 
       <section className="space-y-4">

@@ -4,9 +4,10 @@ import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { OrgSelectorClient, type OrgOption } from '@/components/ui/org-selector-client'
 import { createDocumentCollectionAction } from './actions'
 
-export function NewCollectionForm() {
+export function NewCollectionForm({ orgs = [] }: { orgs?: OrgOption[] }) {
   const router = useRouter()
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,6 +42,7 @@ export function NewCollectionForm() {
           placeholder="ex. Procédures CHT"
         />
       </div>
+      <OrgSelectorClient orgs={orgs} className="min-w-[200px]" />
       <Button type="submit" variant="outline" disabled={pending}>
         {pending ? 'Création…' : 'Créer'}
       </Button>

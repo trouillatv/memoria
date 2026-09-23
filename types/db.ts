@@ -350,6 +350,7 @@ export interface DbSite {
   access_instructions: string | null
   created_at: string
   deleted_at: string | null
+  organization_id: string | null
 }
 
 // Mémoire des lieux — Sprint 2 doctrine V5.

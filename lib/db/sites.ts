@@ -457,6 +457,7 @@ export async function listSitesGlobal(): Promise<SiteWithStats[]> {
       access_instructions: s.access_instructions,
       created_at: s.created_at,
       deleted_at: s.deleted_at,
+      organization_id: s.organization_id,
       contract_name: c?.name ?? null,
       contract_status: c?.status ?? null,
       client_display_name: cl?.name ?? null,

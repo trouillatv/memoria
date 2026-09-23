@@ -17,6 +17,7 @@ import { classifyDocument, guessDocumentType, TIER_META } from '@/lib/documents/
 import { runPool } from '@/lib/documents/batch'
 import { NewCollectionForm } from '../NewCollectionForm'
 import { AiCostHint } from '../AiCostHint'
+import type { OrgOption } from '@/components/ui/org-selector-client'
 
 type Collection = { id: string; name: string }
 type LinkOption = { id: string; label: string }
@@ -53,6 +54,7 @@ export function BatchImportForm({
   prefillTargetId,
   avgCostUsd = null,
   costSampleCount = 0,
+  orgs = [],
 }: {
   collections: Collection[]
   linkTargets: LinkTargets
@@ -60,6 +62,7 @@ export function BatchImportForm({
   prefillTargetId?: string
   avgCostUsd?: number | null
   costSampleCount?: number
+  orgs?: OrgOption[]
 }) {
   const router = useRouter()
   const [rows, setRows] = useState<Row[]>([])
@@ -161,7 +164,7 @@ export function BatchImportForm({
           Un document est toujours classé dans une collection (ex. « Contrats »,
           « Sécurité », « Procédures »). Créez-en une ici — l&apos;import s&apos;ouvre juste après.
         </p>
-        <NewCollectionForm />
+        <NewCollectionForm orgs={orgs} />
       </div>
     )
   }

@@ -13,7 +13,7 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { resolveCreationOrgId } from '@/lib/auth/creation-org'
 import {
   createDocument,
   addDocumentLink,
@@ -97,24 +97,15 @@ export async function createDocumentCollectionAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
-  const orgIds = await getOrgIdsOfUser()
-  if (orgIds.length === 0) return { ok: false, error: 'Aucune organisation active' }
-  let organizationId: string
-  if (orgIds.length === 1) {
-    organizationId = orgIds[0]
-  } else {
-    const rawOrgId = formData.get('organization_id') as string | null
-    if (!rawOrgId || !orgIds.includes(rawOrgId)) {
-      return { ok: false, error: 'Sélectionnez une organisation' }
-    }
-    organizationId = rawOrgId
-  }
+  const rawOrgId = formData.get('organization_id') as string | null
+  const orgResolution = await resolveCreationOrgId(rawOrgId)
+  if (!orgResolution.ok) return { ok: false, error: orgResolution.error }
   try {
     const collectionId = await createDocumentCollection({
       name: parsed.data.name,
       scope_type: parsed.data.scope_type ?? null,
       scope_id: parsed.data.scope_id ?? null,
-      organization_id: organizationId,
+      organization_id: orgResolution.organizationId,
     })
     return { ok: true, collectionId }
   } catch (e) {

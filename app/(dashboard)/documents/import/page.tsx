@@ -10,6 +10,9 @@ import { listTenders } from '@/lib/db/tenders'
 import { listTeams } from '@/lib/db/teams'
 import { getSiteReport } from '@/lib/db/site-reports'
 import { getAverageCostForFeatures } from '@/lib/db/ai-usage-rollup'
+import { getOrgsForSelector } from '@/components/ui/org-selector'
+import { getOrganizationLabels } from '@/lib/db/organisations'
+import type { OrgOption } from '@/components/ui/org-selector-client'
 import { BatchImportForm } from './BatchImportForm'
 
 // Import par lot (Phase 2 V1) — dépôt multi-fichiers → triage → validation
@@ -57,6 +60,23 @@ export default async function DocumentsImportPage({
     if (r) linkTargets.site_report = [{ id: r.id, label: r.title || `Réunion du ${new Date(r.created_at).toLocaleDateString('fr-FR')}` }]
   }
 
+  // Depuis une fiche chantier, l'organisation est déjà connue et non ambiguë —
+  // on la présélectionne sans jamais redemander à l'utilisateur. `sites` est
+  // déjà filtré par appartenance (listSites()), donc trouver le site ici
+  // garantit que l'utilisateur en est membre. Sinon (bibliothèque globale),
+  // on retombe sur le sélecteur générique (silencieux en mono-org).
+  const contextSite =
+    sp.target_type === 'site' && sp.target_id ? sites.find((s) => s.id === sp.target_id) : undefined
+  let orgs: OrgOption[]
+  if (contextSite?.organization_id) {
+    const labels = await getOrganizationLabels([contextSite.organization_id])
+    orgs = [
+      { id: contextSite.organization_id, label: labels[contextSite.organization_id] ?? contextSite.organization_id },
+    ]
+  } else {
+    orgs = await getOrgsForSelector()
+  }
+
   return (
     <div className="space-y-6 w-full">
       <header className="space-y-1">
@@ -78,6 +98,7 @@ export default async function DocumentsImportPage({
         prefillTargetId={sp.target_id}
         avgCostUsd={docAvgCost.avgUsd}
         costSampleCount={docAvgCost.count}
+        orgs={orgs}
       />
     </div>
   )
