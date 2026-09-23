@@ -216,6 +216,36 @@ export async function findHistoricalPvByHashForSite(
   return { documentId: doc.id, filename: doc.filename, createdAt: doc.created_at }
 }
 
+/** Organisation propriétaire d'une collection (source de vérité M3). Null si
+ *  la collection est introuvable ou n'a pas d'organisation résolue. */
+export async function getCollectionOrganizationId(collectionId: string): Promise<string | null> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('document_collections')
+    .select('organization_id')
+    .eq('id', collectionId)
+    .maybeSingle()
+  return data?.organization_id ?? null
+}
+
+/** Cherche un document actif ayant EXACTEMENT ce contenu (SHA-256) DANS cette
+ *  organisation. Le dédoublonnage ne franchit jamais une frontière d'organisation
+ *  (même PDF importé par deux organisations = deux nœuds documentaires distincts). */
+export async function findDocumentByHashInOrg(
+  contentHash: string,
+  organizationId: string,
+): Promise<{ id: string; filename: string } | null> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('documents')
+    .select('id, filename')
+    .eq('content_hash', contentHash)
+    .eq('organization_id', organizationId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  return (data as { id: string; filename: string } | null) ?? null
+}
+
 /** Compte les PV historiques déjà importés sur ce chantier pour la même date effective. */
 export async function countHistoricalPvsByDateForSite(
   effectiveDate: string,

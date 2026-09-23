@@ -1149,6 +1149,8 @@ export type DocumentTargetType =
 export interface DbDocumentCollection {
   id: string
   tenant_id: string | null
+  // Migration 089 — isolation multi-tenant.
+  organization_id: string | null
   name: string
   scope_type: string | null
   scope_id: string | null

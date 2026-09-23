@@ -25,7 +25,10 @@ import {
   renameDocumentCollection,
   reorderDocumentCollections,
   deleteDocumentCollection,
+  getCollectionOrganizationId,
+  findDocumentByHashInOrg,
 } from '@/lib/db/documents'
+import { getSiteById } from '@/lib/db/sites'
 import { analyzeDocument } from '@/lib/documents/analyze'
 
 async function requireManagerOrAdmin(): Promise<string> {
@@ -264,6 +267,25 @@ export async function uploadDocumentAction(
   }
   const input = parsed.data
 
+  // Doctrine M3 : l'organisation du document futur est TOUJOURS celle de sa
+  // collection (jamais de la session). On la résout ici, une fois, pour la
+  // garde cross-org (chantier) et le dédoublonnage scoping ci-dessous.
+  const collectionOrgId = await getCollectionOrganizationId(input.collection_id)
+  if (!collectionOrgId) {
+    return { ok: false, error: 'Collection introuvable ou sans organisation' }
+  }
+
+  // GARDE SERVEUR (jamais confiance au client) : une cible chantier doit
+  // appartenir à la MÊME organisation que la collection choisie. Un couple
+  // forgé (collection d'une organisation + chantier d'une autre) est refusé
+  // avant toute écriture — aucun document, aucun lien créé.
+  if (input.target_type === 'site' && input.target_id) {
+    const site = await getSiteById(input.target_id)
+    if (!site?.organization_id || site.organization_id !== collectionOrgId) {
+      return { ok: false, error: 'Organisation de la collection et du chantier incompatibles' }
+    }
+  }
+
   // Embedding SÉLECTIF (doctrine ingestion mémorielle) : on n'indexe que si
   // l'humain l'a validé. Défaut = indexer (rétro-compat) sauf 'false' explicite.
   // Un document non indexé est rangé en couche 'froide', statut 'ready' (pipeline
@@ -285,16 +307,14 @@ export async function uploadDocumentAction(
   const buffer = Buffer.from(await file.arrayBuffer())
   const contentHash = createHash('sha256').update(buffer).digest('hex')
 
-  // DÉDUP : ce contenu est-il déjà importé ? Le document est un NŒUD unique ;
-  // document_links est polymorphe → un doc peut être rattaché à un contrat ET
-  // un client en même temps. Sur doublon : on RÉUTILISE le nœud et on ajoute le
-  // nouveau lien (pas de re-upload, pas de doc dupliqué). On prévient (duplicate).
-  const { data: existingDoc } = await supabase
-    .from('documents')
-    .select('id, filename')
-    .eq('content_hash', contentHash)
-    .is('deleted_at', null)
-    .maybeSingle()
+  // DÉDUP : ce contenu est-il déjà importé DANS CETTE ORGANISATION ? Le
+  // document est un NŒUD unique ; document_links est polymorphe → un doc peut
+  // être rattaché à un contrat ET un client en même temps. Sur doublon : on
+  // RÉUTILISE le nœud et on ajoute le nouveau lien (pas de re-upload, pas de
+  // doc dupliqué). On prévient (duplicate). Le dédoublonnage ne franchit
+  // jamais une frontière d'organisation (même PDF importé par CAPSE et par
+  // AGP = deux nœuds documentaires distincts).
+  const existingDoc = await findDocumentByHashInOrg(contentHash, collectionOrgId)
   if (existingDoc) {
     if (input.target_type && input.target_id) {
       try {

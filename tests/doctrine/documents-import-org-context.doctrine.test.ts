@@ -40,6 +40,15 @@ describe('Import documentaire — site contextualisé résout son organisation',
   })
 })
 
+describe('Import contextualisé — collections restreintes à l’organisation du chantier (Vincent, review 42281128)', () => {
+  it('les collections proposées sont filtrées sur contextSite.organization_id', () => {
+    expect(/allCollections\.filter[\s\S]{0,120}organization_id\s*===\s*contextSite\??\.organization_id/.test(importPage)).toBe(true)
+  })
+  it('BatchImportForm reçoit la liste restreinte (`collections`), jamais la liste brute (`allCollections`)', () => {
+    expect(/<BatchImportForm[\s\S]{0,60}collections=\{collections\.map/.test(importPage)).toBe(true)
+  })
+})
+
 describe('Bibliothèque globale — sélecteur générique sur le second point d’entrée', () => {
   it('la page Bibliothèque calcule aussi orgs via getOrgsForSelector()', () => {
     expect(/getOrgsForSelector\(\)/.test(libraryPage)).toBe(true)

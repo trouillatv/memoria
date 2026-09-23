@@ -36,7 +36,7 @@ export default async function DocumentsImportPage({
 
   const docAvgCost = await getAverageCostForFeatures(['embed_chunks_document'])
 
-  const [collections, contracts, sites, clients, tenders, teams] = await Promise.all([
+  const [allCollections, contracts, sites, clients, tenders, teams] = await Promise.all([
     listDocumentCollections(),
     listContracts(),
     listSites(),
@@ -76,6 +76,14 @@ export default async function DocumentsImportPage({
   } else {
     orgs = await getOrgsForSelector()
   }
+
+  // Chantier contextualisé → les collections proposées à l'import sont
+  // restreintes à l'organisation du chantier (jamais une collection d'une
+  // autre organisation d'appartenance). La Bibliothèque globale (pas de
+  // contextSite) garde sa vue multi-organisation inchangée.
+  const collections = contextSite?.organization_id
+    ? allCollections.filter((c) => c.organization_id === contextSite.organization_id)
+    : allCollections
 
   return (
     <div className="space-y-6 w-full">
