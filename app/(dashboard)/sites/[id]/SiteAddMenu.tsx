@@ -3,25 +3,13 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { Camera, CheckCircle2, ChevronDown, ClipboardCheck, FileSignature, FileText, History, Loader2, Mic, Video } from 'lucide-react'
-import { importSiteEvidenceAction, uploadSiteDocumentAction } from './site-add-actions'
+import { importSiteEvidenceAction, uploadSiteContractualDocumentAction, uploadSiteDocumentAction } from './site-add-actions'
+import { CONTRACTUAL_DOCUMENT_TYPES } from './contractual-document-types'
 import { HistoricalPvUploadForm } from './HistoricalPvUploadForm'
 import { createQuickActionAction } from '@/app/(dashboard)/actions/actions'
 import { createReserveAction } from './reserves/actions'
 
 type DialogKind = 'document' | 'evidence' | 'historical_pv' | 'contractual_document' | 'action' | 'reserve' | null
-
-// Document contractuel (P0-1, Vincent 2026-09-23) : types explicites, jamais le
-// sélecteur générique complet — un CCTP/CCAP/ordre de service importé depuis la
-// fiche chantier reste toujours rattaché au site courant, sans extraction
-// Engagement (P0-2, hors périmètre ici).
-const CONTRACTUAL_DOCUMENT_TYPES: { value: string; label: string }[] = [
-  { value: 'cctp', label: 'CCTP' },
-  { value: 'ccap', label: 'CCAP' },
-  { value: 'ordre_service', label: 'Ordre de service' },
-  { value: 'contrat', label: 'Contrat' },
-  { value: 'avenant', label: 'Avenant' },
-  { value: 'autre', label: 'Autre' },
-]
 
 export function SiteAddMenu({ siteId }: { siteId: string }) {
   const [open, setOpen] = useState(false)
@@ -226,7 +214,7 @@ function SiteContractualDocumentDialog({
     const fd = new FormData(form)
     startTransition(async () => {
       try {
-        const result = await uploadSiteDocumentAction(siteId, fd)
+        const result = await uploadSiteContractualDocumentAction(siteId, fd)
         if (!result.ok) {
           setMessage(result.error ?? 'Import impossible.')
           return

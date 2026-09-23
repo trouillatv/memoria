@@ -8,6 +8,7 @@ import { getUserRoleById } from '@/lib/db/users'
 import { getSiteById } from '@/lib/db/sites'
 import { requireOrganizationRole } from '@/lib/auth/memberships'
 import { createDocumentCollection, listDocumentCollections } from '@/lib/db/documents'
+import { CONTRACTUAL_DOCUMENT_TYPE_VALUES } from './contractual-document-types'
 
 async function ensureSiteCollection(siteId: string): Promise<string> {
   const collections = await listDocumentCollections()
@@ -61,6 +62,59 @@ export async function uploadSiteDocumentAction(
     return result
   } catch (e) {
     console.error('[uploadSiteDocumentAction]', e)
+    return { ok: false, error: 'Une erreur inattendue est survenue.' }
+  }
+}
+
+// Document contractuel (P0-1, Vincent 2026-09-23) — action DÉDIÉE, distincte de
+// uploadSiteDocumentAction. Le flux générique "Document PDF" tolère un
+// document_type absent en le repliant sur 'preuve' ; ce repli est exactement
+// ce qui a produit un CCTP importé comme "preuve" en recette (2026-09-23,
+// review ChatGPT sur le rapport P0-1). Ici, un document_type absent ou hors
+// de la liste contractuelle est un refus, jamais une valeur par défaut.
+export async function uploadSiteContractualDocumentAction(
+  siteId: string,
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string; documentId?: string; duplicate?: boolean }> {
+  try {
+    const documentType = formData.get('document_type')?.toString()
+    if (!documentType || !CONTRACTUAL_DOCUMENT_TYPE_VALUES.includes(documentType)) {
+      return { ok: false, error: 'Nature de document contractuel invalide' }
+    }
+
+    const site = await getSiteById(siteId)
+    if (!site?.organization_id) {
+      return { ok: false, error: 'Chantier introuvable' }
+    }
+    // Même garde qu'uploadSiteDocumentAction : appartenance ET rôle
+    // manager/admin DANS l'organisation du chantier, AVANT tout effet de
+    // bord (ensureSiteCollection peut créer une collection).
+    const membership = await requireOrganizationRole(site.organization_id, ['manager', 'admin'])
+    if (!membership.ok) {
+      return { ok: false, error: membership.error }
+    }
+
+    const { uploadDocumentAction } = await import('@/app/(dashboard)/documents/actions')
+    const collectionId = await ensureSiteCollection(siteId)
+    const fd = new FormData()
+    const file = formData.get('file')
+    if (file) fd.set('file', file)
+    fd.set('collection_id', collectionId)
+    fd.set('document_type', documentType)
+    fd.set('visibility_level', String(formData.get('visibility_level') || 'manager'))
+    fd.set('target_type', 'site')
+    fd.set('target_id', siteId)
+    fd.set('embed', String(formData.get('embed') || 'true'))
+    fd.set('memory_tier', String(formData.get('memory_tier') || 'consultable'))
+    const effectiveDate = formData.get('effective_date')?.toString()
+    if (effectiveDate) fd.set('effective_date', effectiveDate)
+    const result = await uploadDocumentAction(fd)
+    if (result.ok) {
+      revalidatePath(`/sites/${siteId}`, 'page')
+    }
+    return result
+  } catch (e) {
+    console.error('[uploadSiteContractualDocumentAction]', e)
     return { ok: false, error: 'Une erreur inattendue est survenue.' }
   }
 }
