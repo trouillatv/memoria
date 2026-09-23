@@ -338,93 +338,100 @@ export function SiteBriefButton({ siteId, sites, variant = 'desktop', mode = 'vi
                 </div>
               )}
 
-              {/* Priorité C — LLM encadré (sources affichées dessous). Réunion =
-                  « Points à discuter » · Visite = « Objectif de la visite ». */}
-              {brief && (
-                <section className="order-last rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
-                      <Sparkles className="h-3.5 w-3.5 text-sky-600" />
-                      {mode === 'meeting' ? 'Points à discuter' : 'Recommandations MemorIA'}
-                      <span className="rounded bg-sky-100 px-1 text-[9px] font-medium text-sky-700">IA</span>
-                    </h3>
-                    {confirmGen ? (
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={generatePoints}
-                          disabled={genPending}
-                          className="inline-flex items-center gap-1 rounded-lg border border-sky-600 bg-sky-600 px-2 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
-                        >
-                          {genPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                          Confirmer
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfirmGen(false)}
-                          disabled={genPending}
-                          className="rounded-lg border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
-                        >
-                          Annuler
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmGen(true)}
-                        disabled={genPending}
-                        className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
-                      >
-                        {genPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                        {points === null ? 'Générer' : 'Régénérer'}
-                      </button>
-                    )}
-                  </div>
-                  {confirmGen && !genPending && (
-                    <p className="inline-flex items-start gap-1 text-[11px] text-amber-700">
-                      <Info className="mt-0.5 h-3 w-3 shrink-0" />
-                      Cette analyse lance une requête IA — elle consomme un peu de crédit (coût très faible). Confirmer&nbsp;?
-                    </p>
-                  )}
-                  {points && points.length > 0 && (
-                    <>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Priorité complémentaire suggérée par MemorIA</p>
-                    <ul className="space-y-1">
-                      {[...points].sort((a, b) => Number(b.priority === 'high') - Number(a.priority === 'high')).map((p, i) => (
-                        <li key={i} className="flex gap-1.5 text-sm text-sky-950">
-                          <span aria-hidden className="text-sky-500">•</span>
-                          <span className="min-w-0">
-                            {(p.priority === 'high' || i === 0) && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-rose-700">Priorité</span>}
-                            <span>{p.text}</span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    </>
-                  )}
-                  {points && points.length === 0 && !genPending && (
-                    pointsMock ? (
-                      <p className="text-xs italic text-amber-700">
-                        IA en mode démo sur cet environnement (aucune clé configurée) — les points ne sont pas générés.
-                      </p>
-                    ) : pointsHadInput ? (
-                      <p className="text-xs italic text-amber-700">
-                        L&apos;IA n&apos;a rien renvoyé cette fois — réessaie. Si ça persiste, c&apos;est un souci de configuration IA.
-                      </p>
-                    ) : (
-                      <p className="text-xs italic text-muted-foreground">Rien de saillant à discuter pour l&apos;instant.</p>
-                    )
-                  )}
-                  {points !== null && points.length > 0 && (
-                    <p className="text-[10px] text-muted-foreground/70">
-                      Rédigé par l&apos;IA à partir des éléments ci-dessous — vérifiez les sources.
-                    </p>
-                  )}
-                </section>
-              )}
-
               {brief && loadedSite && (
-                <BriefBody brief={brief} mode={mode} motive={motive} siteId={loadedSite} variant={variant} onDebriefChange={refetchBrief} />
+                <BriefBody
+                  brief={brief}
+                  mode={mode}
+                  motive={motive}
+                  siteId={loadedSite}
+                  variant={variant}
+                  onDebriefChange={refetchBrief}
+                  // P0-1b — les recommandations IA sont composées ici (elles portent l'état de
+                  // SiteBriefButton : confirmGen/points/génération) mais rendues par BriefBody à sa
+                  // position dans le flux (après les faits opérationnels déterministes, jamais avant).
+                  recommendationsSlot={
+                    <section className="rounded-xl border border-sky-200 bg-sky-50/40 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
+                          <Sparkles className="h-3.5 w-3.5 text-sky-600" />
+                          {mode === 'meeting' ? 'Points à discuter' : 'Recommandations MemorIA'}
+                          <span className="rounded bg-sky-100 px-1 text-[9px] font-medium text-sky-700">IA</span>
+                        </h3>
+                        {confirmGen ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={generatePoints}
+                              disabled={genPending}
+                              className="inline-flex items-center gap-1 rounded-lg border border-sky-600 bg-sky-600 px-2 py-1 text-xs font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                            >
+                              {genPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                              Confirmer
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmGen(false)}
+                              disabled={genPending}
+                              className="rounded-lg border px-2 py-1 text-xs text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmGen(true)}
+                            disabled={genPending}
+                            className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs hover:bg-muted/40 disabled:opacity-50"
+                          >
+                            {genPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                            {points === null ? 'Générer' : 'Régénérer'}
+                          </button>
+                        )}
+                      </div>
+                      {confirmGen && !genPending && (
+                        <p className="inline-flex items-start gap-1 text-[11px] text-amber-700">
+                          <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                          Cette analyse lance une requête IA — elle consomme un peu de crédit (coût très faible). Confirmer&nbsp;?
+                        </p>
+                      )}
+                      {points && points.length > 0 && (
+                        <>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Priorité complémentaire suggérée par MemorIA</p>
+                        <ul className="space-y-1">
+                          {[...points].sort((a, b) => Number(b.priority === 'high') - Number(a.priority === 'high')).map((p, i) => (
+                            <li key={i} className="flex gap-1.5 text-sm text-sky-950">
+                              <span aria-hidden className="text-sky-500">•</span>
+                              <span className="min-w-0">
+                                {(p.priority === 'high' || i === 0) && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-rose-700">Priorité</span>}
+                                <span>{p.text}</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        </>
+                      )}
+                      {points && points.length === 0 && !genPending && (
+                        pointsMock ? (
+                          <p className="text-xs italic text-amber-700">
+                            IA en mode démo sur cet environnement (aucune clé configurée) — les points ne sont pas générés.
+                          </p>
+                        ) : pointsHadInput ? (
+                          <p className="text-xs italic text-amber-700">
+                            L&apos;IA n&apos;a rien renvoyé cette fois — réessaie. Si ça persiste, c&apos;est un souci de configuration IA.
+                          </p>
+                        ) : (
+                          <p className="text-xs italic text-muted-foreground">Rien de saillant à discuter pour l&apos;instant.</p>
+                        )
+                      )}
+                      {points !== null && points.length > 0 && (
+                        <p className="text-[10px] text-muted-foreground/70">
+                          Rédigé par l&apos;IA à partir des éléments ci-dessous — vérifiez les sources.
+                        </p>
+                      )}
+                    </section>
+                  }
+                />
               )}
 
               {needsSitePick && !selectedSite && !pending && (
@@ -524,14 +531,14 @@ function FactLines({ items, empty = 'Rien à signaler.', defaultDotClass = 'bg-e
 //    changé depuis la dernière réunion + réserves + actions (qui doit quoi) en tête.
 type Tier = { label: string; dot: string; keys: string[] }
 const TIERS_VISIT: Tier[] = [
-  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['followedPoints', 'memoriaNeedsYou', 'vigilance', 'anomalies', 'reserves', 'actions', 'openActivityItems'] },
+  { label: 'Ce qui nécessite mon attention', dot: 'bg-rose-500',    keys: ['followedPoints', 'vigilance', 'anomalies', 'reserves', 'actions', 'openActivityItems'] },
   { label: 'Ce qui a changé',                dot: 'bg-amber-500',   keys: ['change'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
   { label: 'Historique',                     dot: 'bg-slate-400',   keys: ['recentDone', 'missions', 'meetings', 'photos'] },
 ]
 const TIERS_MEETING: Tier[] = [
-  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['followedPoints', 'memoriaNeedsYou', 'change', 'reserves', 'actions', 'openActivityItems'] },
+  { label: 'À aborder / arbitrer',           dot: 'bg-rose-500',    keys: ['followedPoints', 'change', 'reserves', 'actions', 'openActivityItems'] },
   { label: 'Points de vigilance',            dot: 'bg-amber-500',   keys: ['vigilance', 'anomalies'] },
   { label: "Ce qu'il faut savoir",           dot: 'bg-emerald-500', keys: ['aSavoir', 'recurring'] },
   { label: "Qui peut m'aider",               dot: 'bg-sky-500',     keys: ['teams'] },
@@ -1266,6 +1273,46 @@ function RegisterCard({
   )
 }
 
+// P0-1b §1 — le total reste exhaustif (badge de SectionTitle) ; l'aperçu par défaut
+// est borné à `cap` lignes avec un « Voir les N autres » (pattern de LiveDebriefBlock).
+// Composant déclaré hors de `LiveDebriefRegisters` (react-hooks/static-components).
+function RegisterSection({
+  reg, items, cap, expanded, onExpand, siteId, variant, canLiftReserve, onDebriefChange,
+}: {
+  reg: DebriefRegister
+  items: DebriefRegisterItem[]
+  cap?: number
+  expanded: boolean
+  onExpand: () => void
+  siteId: string
+  variant: 'mobile' | 'desktop'
+  canLiftReserve: boolean
+  onDebriefChange: () => void
+}) {
+  const capped = cap != null && !expanded && items.length > cap
+  const visibleItems = capped ? items.slice(0, cap) : items
+  const overflowCount = cap != null ? items.length - cap : 0
+  return (
+    <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+      <SectionTitle icon={REGISTER_META[reg].icon} count={items.length}>{REGISTER_META[reg].label}</SectionTitle>
+      <ul className="space-y-1.5">
+        {visibleItems.map((item) => (
+          <RegisterCard key={item.canonicalSubjectId} item={item} siteId={siteId} variant={variant} canLiftReserve={canLiftReserve} onDebriefChange={onDebriefChange} />
+        ))}
+      </ul>
+      {capped && (
+        <button
+          type="button"
+          onClick={onExpand}
+          className="text-xs font-medium text-sky-700 hover:underline"
+        >
+          Voir les {overflowCount} autre{overflowCount > 1 ? 's' : ''}
+        </button>
+      )}
+    </section>
+  )
+}
+
 function LiveDebriefRegisters({
   registers, siteId, variant, canLiftReserve, onDebriefChange,
 }: {
@@ -1276,38 +1323,38 @@ function LiveDebriefRegisters({
   onDebriefChange: () => void
 }) {
   const [showDormant, setShowDormant] = useState(false)
+  // P0-1b — dépli local par registre (act_now/watch/documentary_silence uniquement).
+  // Dormant garde son propre mécanisme `showDormant` ad hoc, inchangé.
+  const [expandedRegs, setExpandedRegs] = useState<Partial<Record<DebriefRegister, boolean>>>({})
   if (registers.length === 0) return null
   const by = (r: DebriefRegister) => registers.filter((x) => x.register === r)
   const actNow = by('act_now'), watch = by('watch'), silence = by('documentary_silence'), dormant = by('dormant')
   const reopenedCount = registers.filter((x) => x.reopened).length
 
-  // Bandeau de tête = la lecture « remise à niveau » en une phrase (le « wow ») : d'abord l'urgence
-  // réelle (souvent 0 = calme, jamais alarmiste), puis les faits saillants transverses.
-  const headline: string[] = []
-  headline.push(actNow.length > 0 ? `${actNow.length} à traiter maintenant` : 'Rien d’urgent aujourd’hui')
+  // Bandeau de tête strictement descriptif : ce moteur ne couvre pas tous les domaines
+  // opérationnels (Actions/Réserves/Needs-you vivent ailleurs) et ne peut donc jamais
+  // conclure à une absence globale d'urgence. On énonce des comptages, pas un jugement.
+  const headline: string[] = ['Mémoire chantier']
   if (reopenedCount > 0) headline.push(`${reopenedCount} réouvert${reopenedCount > 1 ? 's' : ''}`)
-  if (silence.length > 0) headline.push(`${silence.length} plus mentionné${silence.length > 1 ? 's' : ''} dans les derniers PV`)
+  if (silence.length > 0) headline.push(`${silence.length} en silence documentaire`)
 
-  const Section = ({ reg, items }: { reg: DebriefRegister; items: DebriefRegisterItem[] }) => (
-    <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
-      <SectionTitle icon={REGISTER_META[reg].icon} count={items.length}>{REGISTER_META[reg].label}</SectionTitle>
-      <ul className="space-y-1.5">
-        {items.map((item) => (
-          <RegisterCard key={item.canonicalSubjectId} item={item} siteId={siteId} variant={variant} canLiftReserve={canLiftReserve} onDebriefChange={onDebriefChange} />
-        ))}
-      </ul>
-    </section>
-  )
+  const expandReg = (r: DebriefRegister) => setExpandedRegs((prev) => ({ ...prev, [r]: true }))
 
   return (
     <div className="space-y-3">
       <p className="px-1 text-sm font-medium text-foreground">{headline.join(' · ')}</p>
-      {actNow.length > 0 && <Section reg="act_now" items={actNow} />}
-      {watch.length > 0 && <Section reg="watch" items={watch} />}
-      {silence.length > 0 && <Section reg="documentary_silence" items={silence} />}
+      {actNow.length > 0 && (
+        <RegisterSection reg="act_now" items={actNow} cap={5} expanded={expandedRegs.act_now ?? false} onExpand={() => expandReg('act_now')} siteId={siteId} variant={variant} canLiftReserve={canLiftReserve} onDebriefChange={onDebriefChange} />
+      )}
+      {watch.length > 0 && (
+        <RegisterSection reg="watch" items={watch} cap={5} expanded={expandedRegs.watch ?? false} onExpand={() => expandReg('watch')} siteId={siteId} variant={variant} canLiftReserve={canLiftReserve} onDebriefChange={onDebriefChange} />
+      )}
+      {silence.length > 0 && (
+        <RegisterSection reg="documentary_silence" items={silence} cap={5} expanded={expandedRegs.documentary_silence ?? false} onExpand={() => expandReg('documentary_silence')} siteId={siteId} variant={variant} canLiftReserve={canLiftReserve} onDebriefChange={onDebriefChange} />
+      )}
       {dormant.length > 0 && (
         showDormant ? (
-          <Section reg="dormant" items={dormant} />
+          <RegisterSection reg="dormant" items={dormant} expanded siteId={siteId} variant={variant} canLiftReserve={canLiftReserve} onDebriefChange={onDebriefChange} onExpand={() => {}} />
         ) : (
           <button type="button" onClick={() => setShowDormant(true)}
             className="flex w-full items-center gap-1.5 rounded-xl border border-dashed bg-background px-3.5 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/40">
@@ -1329,6 +1376,7 @@ function BriefBody({
   siteId,
   variant,
   onDebriefChange,
+  recommendationsSlot,
 }: {
   brief: SiteBrief
   mode: 'visit' | 'meeting'
@@ -1336,6 +1384,7 @@ function BriefBody({
   siteId: string
   variant: 'mobile' | 'desktop'
   onDebriefChange: () => void
+  recommendationsSlot: React.ReactNode
 }) {
   const {
     situation,
@@ -1435,12 +1484,6 @@ function BriefBody({
           </a>
         )}
       </section>
-    ),
-    memoriaNeedsYou: !memoriaNeedsYou || memoriaNeedsYou.totalCount === 0 ? null : (
-      <MemoriaNeedsYouBlock
-        summary={memoriaNeedsYou}
-        seeAllHref={variant === 'desktop' ? `/sites/${siteId}/besoin-de-toi` : `/m/site/${siteId}/besoin-de-toi`}
-      />
     ),
     change: !changeSinceLastReport ? null : (
       <section className="space-y-2.5 rounded-xl border bg-muted/30 p-3">
@@ -1797,11 +1840,54 @@ function BriefBody({
         )}
       </section>
 
+      {/* P0-1b §2 — signaux Actions/Réserves déjà calculés, remontés dans le flux principal :
+          les collections complètes restent dans « Voir toutes les données », mais leurs compteurs
+          ne doivent plus être cachés. Aucun nouveau calcul, aucune notion de priorité/urgence. */}
+      {(openActionsTotal > 0 || openReservesTotal > 0) && (
+        <section className="rounded-xl border bg-background p-3.5 space-y-2.5">
+          <SectionTitle icon={<ListTodo className="h-3.5 w-3.5 text-sky-600" />}>À faire</SectionTitle>
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {openActionsTotal > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 text-sky-700 px-2.5 py-1 font-medium">
+                <ListTodo className="h-3.5 w-3.5" />
+                {openActionsTotal} action{openActionsTotal > 1 ? 's' : ''} ouverte{openActionsTotal > 1 ? 's' : ''}
+              </span>
+            )}
+            {unassignedActionsCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium">
+                {unassignedActionsCount} sans responsable
+              </span>
+            )}
+            {deadlinesOverdueCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 text-rose-700 px-2.5 py-1 font-medium">
+                {deadlinesOverdueCount} échéance{deadlinesOverdueCount > 1 ? 's' : ''} dépassée{deadlinesOverdueCount > 1 ? 's' : ''}
+              </span>
+            )}
+            {openReservesTotal > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 font-medium">
+                <Flag className="h-3.5 w-3.5" />
+                {openReservesTotal} réserve{openReservesTotal > 1 ? 's' : ''} ouverte{openReservesTotal > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* P0-1b §3 — synthèse « MemorIA a besoin de toi » sortie du <details> : compacte
+          (total + catégories déjà calculées), jamais les questions brutes. Moteur needs-you
+          inchangé (MemoriaNeedsYouBlock lit exactement le même `memoriaNeedsYou`). */}
+      {memoriaNeedsYou && memoriaNeedsYou.totalCount > 0 && (
+        <MemoriaNeedsYouBlock
+          summary={memoriaNeedsYou}
+          seeAllHref={variant === 'desktop' ? `/sites/${siteId}/besoin-de-toi` : `/m/site/${siteId}/besoin-de-toi`}
+        />
+      )}
+
       {/* WOW-1 — « Situation actuelle » SUJET-FIRST : projection pure de liveDebrief.registers
           (partition category ; reopened en badge ; drill-down CBO durables + objets 1:1). Remplace
           l'ancien mur object-first toHandle/toWatch (411 formulations) par 57 sujets. Le bandeau de
-          tête donne la lecture « remise à niveau » (souvent « Rien d'urgent · N réouverts · N
-          silences »). Desktop et mobile partagent EXACTEMENT cette sémantique. */}
+          tête est strictement descriptif (comptages, jamais un jugement d'urgence globale).
+          Desktop et mobile partagent EXACTEMENT cette sémantique. */}
       <LiveDebriefRegisters
         registers={liveDebrief.registers}
         siteId={siteId}
@@ -1943,6 +2029,12 @@ function BriefBody({
           </div>
         </section>
       )}
+
+      {/* P0-1b §5 — les recommandations IA arrivent APRÈS tous les faits opérationnels
+          déterministes (À faire, Besoin de toi, registres, Traité récemment, activités
+          constatées, incohérences, inconnues, activité récente), jamais avant, et avant
+          Documents/Fiche complète. Aucun changement du moteur de génération lui-même. */}
+      {recommendationsSlot}
 
       {/* Point 15 (desktop) — « Preuves et sources » réduit à une entrée de
           navigation : le Brief n'a pas vocation à être un explorateur documentaire,

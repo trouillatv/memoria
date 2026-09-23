@@ -125,17 +125,17 @@ async function openBrief(liveDebrief: LiveDebrief = makeLiveDebrief()) {
 }
 
 describe('WOW-1 — Debrief registres sujet-first', () => {
-  it('act_now=0 → bandeau « Rien d’urgent aujourd’hui », aucune section « À traiter maintenant »', async () => {
+  it('act_now=0 → bandeau descriptif « Mémoire chantier », aucune section « À traiter maintenant »', async () => {
     await openBrief()
-    expect(screen.getByText(/Rien d.?urgent aujourd/i)).toBeTruthy()
+    expect(screen.getByText(/^Mémoire chantier/)).toBeTruthy()
     expect(screen.queryByText('À traiter maintenant')).toBeNull()
   })
 
-  it('bandeau saillant : N réouverts + N plus mentionnés (lecture remise à niveau)', async () => {
+  it('bandeau saillant : N réouverts + N en silence documentaire (lecture remise à niveau)', async () => {
     await openBrief()
-    const headline = screen.getByText(/Rien d.?urgent aujourd/i).textContent ?? ''
+    const headline = screen.getByText(/^Mémoire chantier/).textContent ?? ''
     expect(headline).toMatch(/2 réouverts/)
-    expect(headline).toMatch(/1 plus mentionné/)
+    expect(headline).toMatch(/1 en silence documentaire/)
   })
 
   it('act_now>0 → section « À traiter maintenant » présente', async () => {
