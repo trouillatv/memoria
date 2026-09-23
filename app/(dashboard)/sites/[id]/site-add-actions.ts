@@ -5,6 +5,8 @@ import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
+import { getSiteById } from '@/lib/db/sites'
+import { requireOrganizationRole } from '@/lib/auth/memberships'
 import { createDocumentCollection, listDocumentCollections } from '@/lib/db/documents'
 
 async function ensureSiteCollection(siteId: string): Promise<string> {
@@ -23,6 +25,21 @@ export async function uploadSiteDocumentAction(
   formData: FormData,
 ): Promise<{ ok: boolean; error?: string; documentId?: string; duplicate?: boolean }> {
   try {
+    const site = await getSiteById(siteId)
+    if (!site?.organization_id) {
+      return { ok: false, error: 'Chantier introuvable' }
+    }
+    // GARDE SERVEUR — appartenance ET rôle manager/admin DANS l'organisation du
+    // chantier, AVANT tout effet de bord : ensureSiteCollection() peut créer une
+    // collection ("Documents chantier") dès qu'aucune n'existe encore, et cette
+    // création n'est protégée que par l'appartenance (pas le rôle). Sans ce
+    // contrôle ici, un membre sans droit d'écriture pourrait déclencher cette
+    // création avant le refus, tardif, de uploadDocumentAction.
+    const membership = await requireOrganizationRole(site.organization_id, ['manager', 'admin'])
+    if (!membership.ok) {
+      return { ok: false, error: membership.error }
+    }
+
     const { uploadDocumentAction } = await import('@/app/(dashboard)/documents/actions')
     const collectionId = await ensureSiteCollection(siteId)
     const fd = new FormData()
