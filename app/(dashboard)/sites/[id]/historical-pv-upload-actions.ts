@@ -256,7 +256,6 @@ export async function confirmHistoricalPvImport(input: {
       addDocumentLink,
       findHistoricalPvByHashForSite,
       countHistoricalPvsByDateForSite,
-      getCollectionOrganizationId,
       findHashClassificationConflict,
     } = await import('@/lib/db/documents')
     const existingByHash = await findHistoricalPvByHashForSite(actualHash, input.siteId)
@@ -270,15 +269,20 @@ export async function confirmHistoricalPvImport(input: {
       }
     }
 
-    // Créer le document (avec hash pour future dédup)
-    const collectionId = await ensureSiteCollection(input.siteId)
-
     // Conflit de classification — ce contenu exact existe déjà DANS CETTE
     // ORGANISATION mais sous un autre document_type (ex. déjà importé comme
     // CCTP). `findHistoricalPvByHashForSite` ne voit que les PV historiques
     // du même site : il est aveugle à ce cas. Jamais résolu en silence par
-    // fusion ou reclassification (Vincent 2026-09-24, cas OCEF).
-    const organizationId = await getCollectionOrganizationId(collectionId)
+    // fusion ou reclassification (Vincent 2026-09-24, cas OCEF). Résolu avant
+    // tout effet de bord (ensureSiteCollection peut créer une collection) :
+    // un import refusé ne doit rien avoir créé (Vincent, revue P0-1B1).
+    const { data: siteRow, error: siteErr } = await adminSupabase
+      .from('sites')
+      .select('organization_id')
+      .eq('id', input.siteId)
+      .maybeSingle()
+    if (siteErr) throw siteErr
+    const organizationId = (siteRow as { organization_id: string } | null)?.organization_id
     if (organizationId) {
       const conflict = await findHashClassificationConflict(actualHash, organizationId, 'historical_visit_report')
       if (conflict) {
@@ -290,6 +294,9 @@ export async function confirmHistoricalPvImport(input: {
         }
       }
     }
+
+    // Créer le document (avec hash pour future dédup) — seulement si aucun conflit
+    const collectionId = await ensureSiteCollection(input.siteId)
 
     // Niveau 2 — Doublon métier (même date, contenu différent) — avertissement non bloquant
     let dateWarning: { count: number } | undefined
