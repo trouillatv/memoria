@@ -21,6 +21,11 @@ vi.mock('@/lib/db/users', () => ({
 }))
 vi.mock('@/lib/auth/memberships', () => ({
   getOrgIdsOfUser: async () => orgIds,
+  ACCES_REFUSE: 'Accès refusé',
+  requireOrganizationMembership: async (organizationId: string) =>
+    orgIds.includes(organizationId)
+      ? { ok: true, context: { userId: 'user-1', organizationId, role: 'manager' } }
+      : { ok: false, error: 'Accès refusé' },
 }))
 vi.mock('@/lib/db/documents', () => ({
   createDocumentCollection,

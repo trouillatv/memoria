@@ -14,7 +14,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
 import { resolveCreationOrgId } from '@/lib/auth/creation-org'
-import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { requireOrganizationMembership, ACCES_REFUSE } from '@/lib/auth/memberships'
 import {
   createDocument,
   addDocumentLink,
@@ -92,7 +92,6 @@ export async function createDocumentCollectionAction(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Forbidden' }
   }
-  void userId
   const parsed = collectionSchema.safeParse({
     name: formData.get('name'),
     scope_type: formData.get('scope_type') || undefined,
@@ -104,6 +103,17 @@ export async function createDocumentCollectionAction(
   const rawOrgId = formData.get('organization_id') as string | null
   const orgResolution = await resolveCreationOrgId(rawOrgId)
   if (!orgResolution.ok) return { ok: false, error: orgResolution.error }
+  // resolveCreationOrgId ne fait que CHOISIR l'organisation (0/1/many) ; elle
+  // ne vérifie ni l'appartenance ni le rôle. Le rôle qui compte est celui DANS
+  // cette organisation, jamais le rôle global du profil déjà vérifié par
+  // requireManagerOrAdmin() ci-dessus.
+  const membership = await requireOrganizationMembership(orgResolution.organizationId, { id: userId })
+  if (!membership.ok) {
+    return { ok: false, error: membership.error }
+  }
+  if (membership.context.role !== 'manager' && membership.context.role !== 'admin') {
+    return { ok: false, error: ACCES_REFUSE }
+  }
   try {
     const collectionId = await createDocumentCollection({
       name: parsed.data.name,
@@ -284,6 +294,12 @@ export async function uploadDocumentAction(
   const membership = await requireOrganizationMembership(collectionOrgId, { id: userId })
   if (!membership.ok) {
     return { ok: false, error: membership.error }
+  }
+  // Le rôle qui compte est celui DANS cette organisation, jamais le rôle
+  // global du profil (requireManagerOrAdmin) : un manager AGP peut n'être que
+  // chef d'équipe côté CAPSE, et ne doit alors pas pouvoir y écrire.
+  if (membership.context.role !== 'manager' && membership.context.role !== 'admin') {
+    return { ok: false, error: ACCES_REFUSE }
   }
 
   // GARDE SERVEUR (jamais confiance au client) : une cible chantier doit

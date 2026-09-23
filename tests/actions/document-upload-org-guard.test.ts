@@ -20,6 +20,14 @@ import { createHash } from 'node:crypto'
 //      l'appartenance n'était vérifiée qu'indirectement, plus tard, par
 //      createDocument() — après que le fichier ait déjà été écrit dans
 //      Supabase Storage.
+//   H. Membre de ORG-X mais avec un rôle insuffisant DANS ORG-X (ex. manager
+//      globalement, chef_equipe côté CAPSE) → refus, même si le profil global
+//      passe requireManagerOrAdmin() et que l'appartenance est active. Trou
+//      trouvé par la review ChatGPT sur 05b936a4 : seule l'appartenance était
+//      vérifiée, jamais le rôle CONTEXTUEL (MembershipContext.role), qui est
+//      le seul qui fasse autorité en multi-organisation. Même vérification
+//      requise sur createDocumentCollectionAction (resolveCreationOrgId ne
+//      fait que choisir l'organisation, jamais un garde de rôle).
 // (A/B — restriction des collections proposées à l'import contextualisé —
 // couverts par tests/doctrine/documents-import-org-context.doctrine.test.ts)
 
@@ -37,6 +45,9 @@ let collectionOrgs: Record<string, string> = {
 }
 let existingDocsByOrgAndHash: Record<string, { id: string; filename: string }> = {}
 let orgIdsOfUser: string[] = [AGP, CAPSE]
+// Rôle DANS chaque organisation (MembershipContext.role) — distinct du rôle
+// global du profil (getUserRoleById, toujours 'manager' par défaut ici).
+let orgRoles: Record<string, string> = { [AGP]: 'manager', [CAPSE]: 'manager' }
 
 const sitesById: Record<string, { organization_id: string | null }> = {
   [AGP_SITE]: { organization_id: AGP },
@@ -59,9 +70,10 @@ vi.mock('@/lib/db/users', () => ({
 }))
 vi.mock('@/lib/auth/memberships', () => ({
   getOrgIdsOfUser: async () => orgIdsOfUser,
+  ACCES_REFUSE: 'Accès refusé',
   requireOrganizationMembership: async (organizationId: string) =>
     orgIdsOfUser.includes(organizationId)
-      ? { ok: true, context: { userId: 'user-1', organizationId, role: 'manager' } }
+      ? { ok: true, context: { userId: 'user-1', organizationId, role: orgRoles[organizationId] ?? 'manager' } }
       : { ok: false, error: 'Accès refusé' },
 }))
 vi.mock('@/lib/db/sites', () => ({
@@ -119,6 +131,7 @@ beforeEach(() => {
   collectionOrgs = { [AGP_COLLECTION]: AGP, [CAPSE_COLLECTION]: CAPSE }
   existingDocsByOrgAndHash = {}
   orgIdsOfUser = [AGP, CAPSE]
+  orgRoles = { [AGP]: 'manager', [CAPSE]: 'manager' }
   getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
   getUserRoleById.mockResolvedValue('manager')
   createDocument.mockResolvedValue('new-doc-id')
@@ -201,6 +214,61 @@ describe('G — utilisateur non membre de l’organisation de la collection', ()
     expect(storageUpload).not.toHaveBeenCalled()
     expect(createDocument).not.toHaveBeenCalled()
     expect(addDocumentLink).not.toHaveBeenCalled()
+  })
+})
+
+describe('H — membre de la collection mais rôle contextuel insuffisant', () => {
+  it('upload : manager global + chef_equipe dans CAPSE → refus avant tout traitement lourd', async () => {
+    orgRoles[CAPSE] = 'chef_equipe'
+
+    const fd = pdfFormData('contenu-role-insuffisant', {
+      collection_id: CAPSE_COLLECTION,
+      // pas de target : on isole le garde de rôle du garde chantier/collection.
+    })
+    const r = await uploadDocumentAction(fd)
+
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('Accès refusé')
+    expect(storageUpload).not.toHaveBeenCalled()
+    expect(createDocument).not.toHaveBeenCalled()
+    expect(addDocumentLink).not.toHaveBeenCalled()
+  })
+
+  it('upload : manager global + manager dans CAPSE → autorisé', async () => {
+    orgRoles[CAPSE] = 'manager'
+
+    const fd = pdfFormData('contenu-role-suffisant', {
+      collection_id: CAPSE_COLLECTION,
+    })
+    const r = await uploadDocumentAction(fd)
+
+    expect(r.ok).toBe(true)
+    expect(createDocument).toHaveBeenCalledTimes(1)
+  })
+
+  it('création de collection : manager global + chef_equipe dans CAPSE → refus', async () => {
+    orgRoles[CAPSE] = 'chef_equipe'
+
+    const collectionFd = new FormData()
+    collectionFd.set('name', 'Procédures CAPSE')
+    collectionFd.set('organization_id', CAPSE)
+    const r = await createDocumentCollectionAction(collectionFd)
+
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('Accès refusé')
+    expect(createDocumentCollection).not.toHaveBeenCalled()
+  })
+
+  it('création de collection : manager global + manager dans CAPSE → autorisé', async () => {
+    orgRoles[CAPSE] = 'manager'
+
+    const collectionFd = new FormData()
+    collectionFd.set('name', 'Procédures CAPSE')
+    collectionFd.set('organization_id', CAPSE)
+    const r = await createDocumentCollectionAction(collectionFd)
+
+    expect(r.ok).toBe(true)
+    expect(createDocumentCollection).toHaveBeenCalledTimes(1)
   })
 })
 
