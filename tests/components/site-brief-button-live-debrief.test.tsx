@@ -104,7 +104,7 @@ function makeBrief(liveDebrief: LiveDebrief, canLiftReserve = true): SiteBrief {
   return {
     siteName: 'Chantier Test', contractName: null,
     situation: { openActions: 0, openAnomalies: 0, nextScheduledAt: null, passagesThisMonth: 0 },
-    vigilance: [], openActions: [], recentDoneActions: [], anomaliesOpen: [], aSavoir: [], recurring: [], teams: [],
+    vigilance: [], openActions: [], openActionsTotal: 0, recentDoneActions: [], anomaliesOpen: [], aSavoir: [], recurring: [], teams: [],
     missionNames: [], recentPhotosCount: 0, meetings: [], openReserves: [], lastReport: null, changeSinceLastReport: null,
     followedPoints: [], followedPointsTotal: 0, unassignedActionsCount: 0, openReservesTotal: 0, deadlinesOverdueCount: 0, memoriaNeedsYou: null,
     phase: 'follow_up', phaseLabel: 'Suivi', minuteSummary: [], urgentItems: [], blockedItems: [],

@@ -1341,6 +1341,7 @@ function BriefBody({
     situation,
     vigilance,
     openActions,
+    openActionsTotal,
     recentDoneActions,
     anomaliesOpen,
     aSavoir,
@@ -1567,6 +1568,14 @@ function BriefBody({
             )
           })}
         </ul>
+        {openActionsTotal > openActions.length && (
+          <a
+            href={variant === 'desktop' ? `/sites/${siteId}/actions` : `/m/actions?site=${siteId}`}
+            className="text-xs font-medium text-sky-700 hover:underline"
+          >
+            Voir les {openActionsTotal - openActions.length} autre{openActionsTotal - openActions.length > 1 ? 's' : ''}
+          </a>
+        )}
       </section>
     ),
     openActivityItems: brief.openActivityItems.length === 0 ? null : (

@@ -266,6 +266,10 @@ export interface SiteBrief {
   situation: SiteBriefSituation
   vigilance: SiteBriefVigilance[]
   openActions: SiteBriefAction[]
+  /** Total AVANT troncature de `openActions` (P0-1 FIX_REQUIRED : le brief est
+   *  une synthèse actionnable, jamais un inventaire exhaustif — même doctrine
+   *  que `followedPointsTotal`/`openReservesTotal`). */
+  openActionsTotal: number
   recentDoneActions: SiteBriefDoneAction[]
   anomaliesOpen: SiteBriefAnomaly[]
   aSavoir: SiteBriefASavoir[]
@@ -590,15 +594,18 @@ export async function getSiteBriefAction(
     passagesThisMonth: currentState?.passagesThisMonth ?? 0,
   }
 
-  // Toutes les actions métier ouvertes du site sont confirmées et doivent
-  // rester visibles ici, quelle que soit leur origine (visite, réunion ou
-  // création manuelle). La limitation est réservée aux blocs de synthèse.
-  const briefOpenActions: SiteBriefAction[] = openActionRows.map((a) => ({
+  // P0-1 FIX_REQUIRED — compteur exhaustif + aperçu borné (même doctrine que
+  // `followedPoints`/`openReserves`) : le brief ne doit jamais rendre la
+  // collection complète des actions ouvertes (jusqu'à 201 sur un gros site).
+  // Ordre conservé tel quel (déjà celui d'`openActionRows`, jamais re-trié).
+  const briefOpenActionsAll: SiteBriefAction[] = openActionRows.map((a) => ({
     id: a.id,
     title: a.title,
     dueDate: a.due_date,
     createdAt: a.created_at,
   }))
+  const openActionsTotal = briefOpenActionsAll.length
+  const briefOpenActions = briefOpenActionsAll.slice(0, 5)
 
   // P0-1 Transfo 2 — actions ouvertes sans responsable ni entreprise assignés.
   // Calculé sur `openActionRows`, déjà chargé (aucune requête supplémentaire).
@@ -969,6 +976,7 @@ export async function getSiteBriefAction(
       situation,
       vigilance,
       openActions: briefOpenActions,
+      openActionsTotal,
       recentDoneActions,
       anomaliesOpen,
       aSavoir: briefASavoir,
