@@ -14,6 +14,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/lib/audit/log'
 import { getUserRoleById } from '@/lib/db/users'
 import { resolveCreationOrgId } from '@/lib/auth/creation-org'
+import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import {
   createDocument,
   addDocumentLink,
@@ -273,6 +274,16 @@ export async function uploadDocumentAction(
   const collectionOrgId = await getCollectionOrganizationId(input.collection_id)
   if (!collectionOrgId) {
     return { ok: false, error: 'Collection introuvable ou sans organisation' }
+  }
+
+  // GARDE SERVEUR — appartenance AVANT tout traitement lourd (hash, Storage) :
+  // un manager/admin authentifié mais non membre de l'organisation de la
+  // collection ne doit jamais faire écrire un fichier dans Storage, même si
+  // createDocument() refuse ensuite. Sans ce contrôle ici, un appel forgé
+  // laisserait un PDF orphelin dans le bucket avant le refus tardif.
+  const membership = await requireOrganizationMembership(collectionOrgId, { id: userId })
+  if (!membership.ok) {
+    return { ok: false, error: membership.error }
   }
 
   // GARDE SERVEUR (jamais confiance au client) : une cible chantier doit

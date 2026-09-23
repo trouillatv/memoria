@@ -14,6 +14,12 @@ import { createHash } from 'node:crypto'
 //   E. Dédoublonnage intra-org (hash déjà AGP) → réutilisation normale (non-régression).
 //   F. Parcours Guillaume : chantier AGP neuf, 0 collection AGP, création puis
 //      import immédiat → document et lien AGP.
+//   G. Collection ORG-X + chantier ORG-X mais utilisateur NON membre de ORG-X
+//      → refus AVANT tout traitement lourd (aucun upload Storage, aucune
+//      création). Trou trouvé par la review ChatGPT sur d49175f1 :
+//      l'appartenance n'était vérifiée qu'indirectement, plus tard, par
+//      createDocument() — après que le fichier ait déjà été écrit dans
+//      Supabase Storage.
 // (A/B — restriction des collections proposées à l'import contextualisé —
 // couverts par tests/doctrine/documents-import-org-context.doctrine.test.ts)
 
@@ -38,10 +44,10 @@ const sitesById: Record<string, { organization_id: string | null }> = {
 
 const getUser = vi.fn()
 const getUserRoleById = vi.fn()
-const createDocument = vi.fn(async () => 'new-doc-id')
-const addDocumentLink = vi.fn(async () => {})
-const createDocumentCollection = vi.fn(async () => NEW_AGP_COLLECTION)
-const storageUpload = vi.fn(async () => ({ error: null }))
+const createDocument = vi.fn(async (..._args: unknown[]) => 'new-doc-id')
+const addDocumentLink = vi.fn(async (..._args: unknown[]) => {})
+const createDocumentCollection = vi.fn(async (..._args: unknown[]) => NEW_AGP_COLLECTION)
+const storageUpload = vi.fn(async (..._args: unknown[]) => ({ error: null }))
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
@@ -53,6 +59,10 @@ vi.mock('@/lib/db/users', () => ({
 }))
 vi.mock('@/lib/auth/memberships', () => ({
   getOrgIdsOfUser: async () => orgIdsOfUser,
+  requireOrganizationMembership: async (organizationId: string) =>
+    orgIdsOfUser.includes(organizationId)
+      ? { ok: true, context: { userId: 'user-1', organizationId, role: 'manager' } }
+      : { ok: false, error: 'Accès refusé' },
 }))
 vi.mock('@/lib/db/sites', () => ({
   getSiteById: async (id: string) => sitesById[id] ?? null,
@@ -172,6 +182,25 @@ describe('E — dédoublonnage intra-org : hash déjà AGP (non-régression)', (
     }
     expect(createDocument).not.toHaveBeenCalled()
     expect(addDocumentLink).toHaveBeenCalledWith('agp-doc-1', 'site', AGP_SITE)
+  })
+})
+
+describe('G — utilisateur non membre de l’organisation de la collection', () => {
+  it('refuse avant tout traitement lourd : aucun upload Storage, aucune création', async () => {
+    orgIdsOfUser = [CAPSE] // plus AGP : manager/admin authentifié, mais pas membre d'AGP
+
+    const fd = pdfFormData('contenu-non-membre', {
+      collection_id: AGP_COLLECTION,
+      target_type: 'site',
+      target_id: AGP_SITE,
+    })
+    const r = await uploadDocumentAction(fd)
+
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('Accès refusé')
+    expect(storageUpload).not.toHaveBeenCalled()
+    expect(createDocument).not.toHaveBeenCalled()
+    expect(addDocumentLink).not.toHaveBeenCalled()
   })
 })
 
