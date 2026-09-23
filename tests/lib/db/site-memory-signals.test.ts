@@ -141,6 +141,33 @@ describe('detectOverdueActions', () => {
     expect(signal).not.toBeNull()
     expect(signal!.items.map((i) => i.id)).toEqual(['a-reopened'])
   })
+
+  // Plan de visite Lot B (revue Vincent) : « Ne plus suivre » sur une action passe
+  // par fn_cancel_action → status='cancelled'. La disparition à N+1 doit venir
+  // UNIQUEMENT de ce statut — jamais d'une mémoire séparée du verdict watchlist.
+  it('action « ne plus suivre » (status=cancelled) → absente du Plan à N+1', async () => {
+    rowsByTable.site_actions = [
+      { id: 'a-dismissed', title: 'Action écartée', assigned_to: 'Entreprise X', due_date: '2026-08-01', due_date_status: 'explicit', status: 'cancelled', created_at: '2026-07-01', site_id: SITE_ID },
+    ]
+
+    const signal = await detectOverdueActions(SITE_ID, TODAY)
+
+    expect(signal).toBeNull()
+  })
+
+  it('action « ne plus suivre » réactivée par un humain (fn_reopen_action → status=open) redevient éligible au Plan', async () => {
+    // Même id que l'action ci-dessus : seul le statut change, comme le ferait
+    // fn_reopen_action en base. Aucune lecture de visit_watchlist_item ici —
+    // ce détecteur ignore structurellement tout historique de verdict watchlist.
+    rowsByTable.site_actions = [
+      { id: 'a-dismissed', title: 'Action écartée', assigned_to: 'Entreprise X', due_date: '2026-08-01', due_date_status: 'explicit', status: 'open', created_at: '2026-07-01', site_id: SITE_ID },
+    ]
+
+    const signal = await detectOverdueActions(SITE_ID, TODAY)
+
+    expect(signal).not.toBeNull()
+    expect(signal!.items.map((i) => i.id)).toEqual(['a-dismissed'])
+  })
 })
 
 describe('detectUnappliedDecisions', () => {
@@ -195,6 +222,30 @@ describe('detectUnappliedDecisions', () => {
     const signal = await detectUnappliedDecisions(SITE_ID, TODAY)
 
     expect(signal!.items.map((i) => i.id).sort()).toEqual(['d-a-verifier', 'd-legacy'])
+  })
+
+  // Plan de visite Lot B (revue Vincent) : « Ne plus suivre » sur une décision
+  // passe par updateSiteDecision(statut='caduque'). La disparition à N+1 doit
+  // venir UNIQUEMENT de ce statut — jamais d'une mémoire séparée du verdict
+  // watchlist (même doctrine que pour les actions ci-dessus).
+  it('décision « ne plus suivre » (statut=caduque) → absente du Plan à N+1', async () => {
+    rowsByTable.site_decisions = [acteeStale({ id: 'd-dismissed', statut: 'caduque' })]
+
+    const signal = await detectUnappliedDecisions(SITE_ID, TODAY)
+
+    expect(signal).toBeNull()
+  })
+
+  it('décision « ne plus suivre » réactivée par un humain (statut=actee) redevient éligible au Plan', async () => {
+    // Même id, seul le statut change — comme le ferait updateSiteDecision en base.
+    // Aucune lecture de visit_watchlist_item ici : ce détecteur ignore
+    // structurellement tout historique de verdict watchlist, dont dismissed_permanently.
+    rowsByTable.site_decisions = [acteeStale({ id: 'd-dismissed', statut: 'actee' })]
+
+    const signal = await detectUnappliedDecisions(SITE_ID, TODAY)
+
+    expect(signal).not.toBeNull()
+    expect(signal!.items.map((i) => i.id)).toEqual(['d-dismissed'])
   })
 })
 

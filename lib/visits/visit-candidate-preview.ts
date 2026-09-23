@@ -10,12 +10,22 @@ import 'server-only'
 //   buildSiteMemorySignals
 //   → buildWatchlistProposals (sans plafond)
 //   → mémoire WOW-2A′ (filterSettledNotApplicable, legacy `not_applicable` uniquement)
-//   → mémoire Plan de visite Lot B (filterDismissedPermanently, `dismissed_permanently`)
 //   → deriveVisitCandidates (WOW-2B, ordre historique)
 //   → top WATCHLIST_MAX
 //
-// `not_applicable_visit` (Lot B) n'entre dans AUCUNE des deux mémoires : il doit
-// rester reproposable à N+1, sans condition de motif ni de fraîcheur.
+// Doctrine Plan de visite Lot B (revue Vincent) : la disparition à N+1 d'une
+// source « Ne plus suivre » vient EXCLUSIVEMENT de la mutation de l'objet métier
+// lui-même (action → cancelled, décision → caduque, obligation → non_applicable),
+// déjà appliquée par l'orchestrateur AVANT l'écriture watchlist. Ces états sont
+// ce que filtrent nativement detectOverdueActions (status='open') et
+// detectUnappliedDecisions (statut='actee') dans site-memory-signals.ts — aucun
+// filtre supplémentaire ici. `dismissed_permanently` sur visit_watchlist_item
+// reste une TRACE HISTORIQUE (pour le récit du CR) : il n'est JAMAIS relu comme
+// mémoire de sélection N+1. Le rejouer comme filtre indépendant recréerait le bug
+// que Lot B corrige : une source réouverte par un humain (statut métier courant
+// redevenu éligible) resterait masquée pour toujours par un ancien verdict figé.
+// Même règle pour `not_applicable_visit` : un pur constat de visite, jamais une
+// mémoire de sélection — il doit rester reproposable à N+1 sans condition.
 //
 // Aucun recalcul local de verificationMode (dérivé de source_kind), aucun parsing
 // de label, aucun LLM, aucun rankVisitCandidates. human_prep n'entre PAS ici : il
@@ -26,8 +36,6 @@ import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { buildWatchlistProposals, WATCHLIST_MAX } from '@/lib/visits/watchlist-proposals'
 import { filterSettledNotApplicable, proposalsNeedingFreshness } from '@/lib/visits/watchlist-not-applicable-memory'
 import { loadNotApplicableVerdicts, loadSourceChangedAt } from '@/lib/db/watchlist-not-applicable'
-import { filterDismissedPermanently } from '@/lib/visits/watchlist-dismissed-memory'
-import { loadDismissedPermanentlyKeys } from '@/lib/db/watchlist-dismissed'
 import { deriveVisitCandidates, type ObjectVisitCandidate, type VerificationMode } from '@/lib/visits/visit-candidates'
 
 /**
@@ -40,17 +48,15 @@ export async function buildVisitCandidatePreview(
   siteId: string,
   motive: VisitMotive | null,
 ): Promise<ObjectVisitCandidate[]> {
-  const [signals, verdicts, dismissedKeys] = await Promise.all([
+  const [signals, verdicts] = await Promise.all([
     buildSiteMemorySignals(siteId),
     loadNotApplicableVerdicts(siteId).catch(() => []),
-    loadDismissedPermanentlyKeys(siteId).catch(() => new Set<string>()),
   ])
   const proposals = buildWatchlistProposals(signals, motive, Number.MAX_SAFE_INTEGER)
   const changedAt = await loadSourceChangedAt(
     proposalsNeedingFreshness(proposals, motive, verdicts),
   ).catch(() => new Map<string, string | null>())
-  const keptNotApplicable = filterSettledNotApplicable(proposals, motive, verdicts, changedAt)
-  const kept = filterDismissedPermanently(keptNotApplicable, dismissedKeys)
+  const kept = filterSettledNotApplicable(proposals, motive, verdicts, changedAt)
   return deriveVisitCandidates(kept).slice(0, WATCHLIST_MAX)
 }
 
