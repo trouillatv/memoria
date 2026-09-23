@@ -9,9 +9,13 @@ import 'server-only'
 // Chaîne (identique au seed WOW-2C) :
 //   buildSiteMemorySignals
 //   → buildWatchlistProposals (sans plafond)
-//   → mémoire WOW-2A′ (filterSettledNotApplicable)
+//   → mémoire WOW-2A′ (filterSettledNotApplicable, legacy `not_applicable` uniquement)
+//   → mémoire Plan de visite Lot B (filterDismissedPermanently, `dismissed_permanently`)
 //   → deriveVisitCandidates (WOW-2B, ordre historique)
 //   → top WATCHLIST_MAX
+//
+// `not_applicable_visit` (Lot B) n'entre dans AUCUNE des deux mémoires : il doit
+// rester reproposable à N+1, sans condition de motif ni de fraîcheur.
 //
 // Aucun recalcul local de verificationMode (dérivé de source_kind), aucun parsing
 // de label, aucun LLM, aucun rankVisitCandidates. human_prep n'entre PAS ici : il
@@ -22,6 +26,8 @@ import { buildSiteMemorySignals } from '@/lib/db/site-memory-signals'
 import { buildWatchlistProposals, WATCHLIST_MAX } from '@/lib/visits/watchlist-proposals'
 import { filterSettledNotApplicable, proposalsNeedingFreshness } from '@/lib/visits/watchlist-not-applicable-memory'
 import { loadNotApplicableVerdicts, loadSourceChangedAt } from '@/lib/db/watchlist-not-applicable'
+import { filterDismissedPermanently } from '@/lib/visits/watchlist-dismissed-memory'
+import { loadDismissedPermanentlyKeys } from '@/lib/db/watchlist-dismissed'
 import { deriveVisitCandidates, type ObjectVisitCandidate, type VerificationMode } from '@/lib/visits/visit-candidates'
 
 /**
@@ -34,15 +40,17 @@ export async function buildVisitCandidatePreview(
   siteId: string,
   motive: VisitMotive | null,
 ): Promise<ObjectVisitCandidate[]> {
-  const [signals, verdicts] = await Promise.all([
+  const [signals, verdicts, dismissedKeys] = await Promise.all([
     buildSiteMemorySignals(siteId),
     loadNotApplicableVerdicts(siteId).catch(() => []),
+    loadDismissedPermanentlyKeys(siteId).catch(() => new Set<string>()),
   ])
   const proposals = buildWatchlistProposals(signals, motive, Number.MAX_SAFE_INTEGER)
   const changedAt = await loadSourceChangedAt(
     proposalsNeedingFreshness(proposals, motive, verdicts),
   ).catch(() => new Map<string, string | null>())
-  const kept = filterSettledNotApplicable(proposals, motive, verdicts, changedAt)
+  const keptNotApplicable = filterSettledNotApplicable(proposals, motive, verdicts, changedAt)
+  const kept = filterDismissedPermanently(keptNotApplicable, dismissedKeys)
   return deriveVisitCandidates(kept).slice(0, WATCHLIST_MAX)
 }
 

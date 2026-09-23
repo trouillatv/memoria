@@ -9,6 +9,7 @@ import { requireFieldAgent } from '@/lib/field/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { addWatchlistItem, setWatchlistItemState } from '@/lib/db/visit-watchlist'
 import { buildWatchContext, type WatchContext, type WatchContextFacts } from '@/lib/visits/watchlist-context'
+import { submitPlanVisiteVerdict } from '@/lib/visits/plan-visite-orchestrator'
 import type { DbVisitWatchlistItem } from '@/types/db'
 
 const stateSchema = z.object({
@@ -123,6 +124,30 @@ export async function getWatchlistContextAction(
   } catch {
     return { ok: false, error: 'Échec du contexte' }
   }
+}
+
+const planVisiteVerdictSchema = z.object({
+  item_id: z.string().uuid(),
+  report_id: z.string().uuid(),
+  site_id: z.string().uuid(),
+  verdict: z.enum(['positif', 'negatif', 'sans_objet_visite', 'ne_plus_suivre']),
+  comment: z.string().trim().max(500).optional(),
+})
+
+export async function submitPlanVisiteVerdictAction(
+  input: z.input<typeof planVisiteVerdictSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = planVisiteVerdictSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+  const r = await submitPlanVisiteVerdict({
+    watchlistItemId: parsed.data.item_id,
+    reportId: parsed.data.report_id,
+    siteId: parsed.data.site_id,
+    verdict: parsed.data.verdict,
+    comment: parsed.data.comment ?? null,
+  })
+  if (!r.ok) return { ok: false, error: r.error }
+  return { ok: true }
 }
 
 const addSchema = z.object({

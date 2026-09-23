@@ -32,6 +32,8 @@ const STATE_FR: Record<WatchlistItemState, string> = {
   checked: 'conforme',
   still_open: 'toujours ouvert',
   not_applicable: 'sans objet',
+  not_applicable_visit: 'sans objet pour cette visite',
+  dismissed_permanently: 'ne plus suivre définitivement',
 }
 
 /** Construit le bloc texte injecté dans le prompt de débrief.

@@ -11,9 +11,13 @@
 import { useState, useTransition } from 'react'
 import { Check, Eye, X, ListChecks, AlertTriangle, ListTodo } from 'lucide-react'
 import { toast } from 'sonner'
-import { setWatchlistItemStateAction } from '@/app/(field)/m/site/[siteId]/watchlist-actions'
+import { setWatchlistItemStateAction, submitPlanVisiteVerdictAction } from '@/app/(field)/m/site/[siteId]/watchlist-actions'
 import { promoteWatchlistItemAction } from './debrief-actions'
-import type { DbVisitWatchlistItem, WatchlistItemPriority, WatchlistItemState } from '@/types/db'
+import { planVisiteVerdictOptions, verdictForWatchlistState, watchlistStateForVerdict, type PlanVisiteVerdict } from '@/lib/visits/plan-visite-verdict'
+import { PlanVisiteVerdictButtons } from '@/components/field/PlanVisiteVerdictButtons'
+import type { DbVisitWatchlistItem, WatchlistItemPriority } from '@/types/db'
+
+type LegacyWatchlistState = 'pending' | 'checked' | 'still_open' | 'not_applicable'
 
 const PRIORITY_DOT: Record<WatchlistItemPriority, string | null> = {
   critical: 'bg-red-500',
@@ -31,13 +35,31 @@ export function WatchlistDebrief({ items: initialItems }: { items: DbVisitWatchl
   const checked = items.filter((i) => i.state === 'checked').length
   const stillOpen = items.filter((i) => i.state === 'still_open')
   const notApplicable = items.filter((i) => i.state === 'not_applicable').length
+  const notApplicableVisit = items.filter((i) => i.state === 'not_applicable_visit').length
+  const dismissedPermanently = items.filter((i) => i.state === 'dismissed_permanently').length
 
-  function decide(item: DbVisitWatchlistItem, state: WatchlistItemState, note?: string) {
+  function decide(item: DbVisitWatchlistItem, state: LegacyWatchlistState, note?: string) {
     setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, state, note: note ?? i.note } : i)))
     start(async () => {
       const r = await setWatchlistItemStateAction({ item_id: item.id, state, note })
       if (!r.ok) toast.error(r.error)
     })
+  }
+
+  // Points à source structurée : verdict métier routé par l'orchestrateur, la
+  // mutation de la source précède l'écriture watchlist (cf. VisitBasket).
+  function decidePlanVisite(item: DbVisitWatchlistItem, verdict: PlanVisiteVerdict, comment: string | null) {
+    return submitPlanVisiteVerdictAction({
+      item_id: item.id,
+      report_id: item.report_id,
+      site_id: item.site_id,
+      verdict,
+      comment: comment ?? undefined,
+    })
+  }
+  function onPlanVisiteSuccess(item: DbVisitWatchlistItem, verdict: PlanVisiteVerdict) {
+    const state = watchlistStateForVerdict(verdict)
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, state } : i)))
   }
 
   function saveNote(item: DbVisitWatchlistItem) {
@@ -64,9 +86,11 @@ export function WatchlistDebrief({ items: initialItems }: { items: DbVisitWatchl
 
   const bilan = [
     `${items.length} point${items.length > 1 ? 's' : ''}`,
-    checked > 0 ? `${checked} conforme${checked > 1 ? 's' : ''}` : null,
+    checked > 0 ? `${checked} positif${checked > 1 ? 's' : ''}` : null,
     stillOpen.length > 0 ? `${stillOpen.length} toujours ouvert${stillOpen.length > 1 ? 's' : ''}` : null,
+    notApplicableVisit > 0 ? `${notApplicableVisit} sans objet pour cette visite` : null,
     notApplicable > 0 ? `${notApplicable} sans objet` : null,
+    dismissedPermanently > 0 ? `${dismissedPermanently} ne plus suivre` : null,
   ].filter(Boolean).join(' · ')
 
   return (
@@ -90,17 +114,34 @@ export function WatchlistDebrief({ items: initialItems }: { items: DbVisitWatchl
             {item.reason && (
               <p className="text-[11px] leading-snug text-muted-foreground pl-4">{item.reason}</p>
             )}
-            <div className="grid grid-cols-3 gap-1.5">
-              <button type="button" onClick={() => decide(item, 'checked')} className="inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium text-emerald-700 active:scale-[0.98]">
-                <Check className="h-3.5 w-3.5" /> Conforme
-              </button>
-              <button type="button" onClick={() => decide(item, 'still_open')} className="inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium text-amber-700 active:scale-[0.98]">
-                <Eye className="h-3.5 w-3.5" /> Toujours ouvert
-              </button>
-              <button type="button" onClick={() => decide(item, 'not_applicable')} className="inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium text-muted-foreground active:scale-[0.98]">
-                <X className="h-3.5 w-3.5" /> Sans objet
-              </button>
-            </div>
+            {(() => {
+              const options = planVisiteVerdictOptions(item.source_kind)
+              if (options.length > 0) {
+                return (
+                  <PlanVisiteVerdictButtons
+                    sourceKind={item.source_kind as string}
+                    options={options}
+                    activeVerdict={verdictForWatchlistState(item.state)}
+                    onSubmit={(verdict, comment) => decidePlanVisite(item, verdict, comment)}
+                    onSuccess={(verdict) => onPlanVisiteSuccess(item, verdict)}
+                    onError={(message) => toast.error(message)}
+                  />
+                )
+              }
+              return (
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button type="button" onClick={() => decide(item, 'checked')} className="inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium text-emerald-700 active:scale-[0.98]">
+                    <Check className="h-3.5 w-3.5" /> Conforme
+                  </button>
+                  <button type="button" onClick={() => decide(item, 'still_open')} className="inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium text-amber-700 active:scale-[0.98]">
+                    <Eye className="h-3.5 w-3.5" /> Toujours ouvert
+                  </button>
+                  <button type="button" onClick={() => decide(item, 'not_applicable')} className="inline-flex items-center justify-center gap-1 rounded-lg border px-1 py-2 text-xs font-medium text-muted-foreground active:scale-[0.98]">
+                    <X className="h-3.5 w-3.5" /> Sans objet
+                  </button>
+                </div>
+              )
+            })()}
           </div>
         )
       })}

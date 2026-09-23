@@ -14,6 +14,7 @@ describe('computeWatchlistCoverage', () => {
     const c = computeWatchlistCoverage([])
     expect(c).toEqual<WatchlistCoverage>({
       total: 0, checked: 0, stillOpen: 0, notApplicable: 0,
+      notApplicableVisit: 0, dismissedPermanently: 0,
       pending: 0, criticalPending: 0, importantPending: 0,
       completionRate: 1, isComplete: true,
     })
@@ -78,6 +79,19 @@ describe('computeWatchlistCoverage', () => {
     expect(c.stillOpen).toBe(2)
     expect(c.pending).toBe(0)
     expect(c.completionRate).toBe(1)
+    expect(c.isComplete).toBe(true)
+  })
+
+  it('not_applicable_visit et dismissed_permanently comptent comme traites, distincts de not_applicable', () => {
+    const c = computeWatchlistCoverage([
+      item('not_applicable_visit'),
+      item('dismissed_permanently'),
+      item('not_applicable'),
+    ])
+    expect(c.notApplicableVisit).toBe(1)
+    expect(c.dismissedPermanently).toBe(1)
+    expect(c.notApplicable).toBe(1)
+    expect(c.pending).toBe(0)
     expect(c.isComplete).toBe(true)
   })
 

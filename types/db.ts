@@ -584,9 +584,19 @@ export interface DbSiteReportProposal {
 // Liste « À vérifier » d'une visite (mig 196) — ARTEFACT DE SESSION, pas un
 // objet métier. pending = pas encore statué (jamais « non vérifié ») ;
 // checked / still_open / not_applicable = les 3 décisions (mig 255, ex verified/to_follow/dismissed).
+// not_applicable est LEGACY (ne plus produire depuis la nouvelle UI) : remplacé
+// par not_applicable_visit (sans objet pour CETTE visite, peut réapparaître) et
+// dismissed_permanently (ne plus suivre définitivement, ne réapparaît jamais) —
+// Plan de visite Lot B (mig 432).
 // Promotion MANUELLE d'un still_open en action/réserve, jamais automatique.
 // priority (mig 254) : criticité déterministe au seed (irréversible > retard > suivi).
-export type WatchlistItemState = 'pending' | 'checked' | 'still_open' | 'not_applicable'
+export type WatchlistItemState =
+  | 'pending'
+  | 'checked'
+  | 'still_open'
+  | 'not_applicable'
+  | 'not_applicable_visit'
+  | 'dismissed_permanently'
 export type WatchlistItemPriority = 'critical' | 'important' | 'normal'
 
 export interface DbVisitWatchlistItem {

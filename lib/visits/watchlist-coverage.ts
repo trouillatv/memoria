@@ -16,6 +16,11 @@ export interface WatchlistCoverage {
   checked: number
   stillOpen: number
   notApplicable: number
+  /** Lot B — sans objet POUR CETTE VISITE (peut réapparaître à N+1). Distinct de
+   *  `notApplicable` (legacy, non produit depuis la nouvelle UI). */
+  notApplicableVisit: number
+  /** Lot B — ne plus suivre définitivement (ne réapparaît jamais). */
+  dismissedPermanently: number
   pending: number
   criticalPending: number
   importantPending: number
@@ -35,6 +40,7 @@ export function computeWatchlistCoverage(items: CoverageItem[]): WatchlistCovera
   if (total === 0) {
     return {
       total: 0, checked: 0, stillOpen: 0, notApplicable: 0,
+      notApplicableVisit: 0, dismissedPermanently: 0,
       pending: 0, criticalPending: 0, importantPending: 0,
       completionRate: 1, isComplete: true,
     }
@@ -42,13 +48,15 @@ export function computeWatchlistCoverage(items: CoverageItem[]): WatchlistCovera
   const checked = items.filter((i) => i.state === 'checked').length
   const stillOpen = items.filter((i) => i.state === 'still_open').length
   const notApplicable = items.filter((i) => i.state === 'not_applicable').length
+  const notApplicableVisit = items.filter((i) => i.state === 'not_applicable_visit').length
+  const dismissedPermanently = items.filter((i) => i.state === 'dismissed_permanently').length
   const pending = items.filter((i) => i.state === 'pending').length
   const pendingItems = items.filter((i) => i.state === 'pending')
   const criticalPending = pendingItems.filter((i) => i.priority === 'critical').length
   const importantPending = pendingItems.filter((i) => i.priority === 'important').length
   const completionRate = (total - pending) / total
   return {
-    total, checked, stillOpen, notApplicable, pending,
+    total, checked, stillOpen, notApplicable, notApplicableVisit, dismissedPermanently, pending,
     criticalPending, importantPending,
     completionRate, isComplete: pending === 0,
   }

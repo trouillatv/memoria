@@ -25,10 +25,12 @@ import { GhostCamera } from './GhostCamera'
 import { VideoRecorder } from './VideoRecorder'
 import { PostShutterDictation, type PostShutterGpsInfo } from './PostShutterDictation'
 import { queueVisitCapture, listQueuedVisitCapturesByReport, removeQueuedVisitCapture } from '@/lib/field/visit-capture-queue'
-import { setWatchlistItemStateAction, addWatchlistItemAction, getWatchlistContextAction } from './watchlist-actions'
+import { setWatchlistItemStateAction, addWatchlistItemAction, getWatchlistContextAction, submitPlanVisiteVerdictAction } from './watchlist-actions'
 import type { WatchContext } from '@/lib/visits/watchlist-context'
-import type { DbVisitWatchlistItem, WatchlistItemState } from '@/types/db'
+import type { DbVisitWatchlistItem } from '@/types/db'
 import { computeWatchlistCoverage } from '@/lib/visits/watchlist-coverage'
+import { planVisiteVerdictOptions, verdictForWatchlistState, watchlistStateForVerdict, type PlanVisiteVerdict } from '@/lib/visits/plan-visite-verdict'
+import { PlanVisiteVerdictButtons } from '@/components/field/PlanVisiteVerdictButtons'
 import { compressImageFile } from '@/lib/field/image-compress'
 import { useVisitCaptureUploader } from '@/lib/field/use-visit-capture-uploader'
 import { mapGeolocationError, PANEL_LABEL, CAMERA_BANNER_LABEL, type GeoStatus } from '@/lib/field/geoloc-status'
@@ -746,11 +748,28 @@ export function VisitBasket({
   const [watchNewLabel, setWatchNewLabel] = useState('')
   const pendingWatch = watchItems.filter((w) => w.state === 'pending')
 
-  function decideWatch(item: DbVisitWatchlistItem, state: WatchlistItemState) {
+  function decideWatch(item: DbVisitWatchlistItem, state: 'pending' | 'checked' | 'still_open' | 'not_applicable') {
     setWatchItems((prev) => prev.map((w) => (w.id === item.id ? { ...w, state } : w)))
     setWatchlistItemStateAction({ item_id: item.id, state })
       .then((r) => { if (!r.ok) toast.error(r.error) })
       .catch(() => toast.error('Échec'))
+  }
+
+  // Points à source structurée (réserve/action/décision/obligation/preuve) :
+  // verdict métier routé par plan-visite-orchestrator, jamais le triplet
+  // générique — la mutation source précède l'écriture watchlist côté serveur.
+  function submitPlanVisite(item: DbVisitWatchlistItem, verdict: PlanVisiteVerdict, comment: string | null) {
+    return submitPlanVisiteVerdictAction({
+      item_id: item.id,
+      report_id: reportId,
+      site_id: siteId,
+      verdict,
+      comment: comment ?? undefined,
+    })
+  }
+  function onPlanVisiteSuccess(item: DbVisitWatchlistItem, verdict: PlanVisiteVerdict) {
+    const state = watchlistStateForVerdict(verdict)
+    setWatchItems((prev) => prev.map((w) => (w.id === item.id ? { ...w, state } : w)))
   }
   function addWatch() {
     const label = watchNewLabel.trim()
@@ -1192,23 +1211,40 @@ export function VisitBasket({
                     })()}
                   </div>
                 )}
-                <div className="grid grid-cols-3 gap-1.5">
-                  <WatchStateButton
-                    active={w.state === 'checked'} icon={<Check className="h-3.5 w-3.5" />} label="Conforme"
-                    activeCls="border-emerald-600 bg-emerald-600 text-white"
-                    onClick={() => decideWatch(w, w.state === 'checked' ? 'pending' : 'checked')}
-                  />
-                  <WatchStateButton
-                    active={w.state === 'still_open'} icon={<Eye className="h-3.5 w-3.5" />} label="Toujours ouvert"
-                    activeCls="border-amber-500 bg-amber-500 text-white"
-                    onClick={() => decideWatch(w, w.state === 'still_open' ? 'pending' : 'still_open')}
-                  />
-                  <WatchStateButton
-                    active={w.state === 'not_applicable'} icon={<X className="h-3.5 w-3.5" />} label="Sans objet"
-                    activeCls="border-slate-500 bg-slate-500 text-white"
-                    onClick={() => decideWatch(w, w.state === 'not_applicable' ? 'pending' : 'not_applicable')}
-                  />
-                </div>
+                {(() => {
+                  const options = planVisiteVerdictOptions(w.source_kind)
+                  if (options.length > 0) {
+                    return (
+                      <PlanVisiteVerdictButtons
+                        sourceKind={w.source_kind as string}
+                        options={options}
+                        activeVerdict={verdictForWatchlistState(w.state)}
+                        onSubmit={(verdict, comment) => submitPlanVisite(w, verdict, comment)}
+                        onSuccess={(verdict) => onPlanVisiteSuccess(w, verdict)}
+                        onError={(message) => toast.error(message)}
+                      />
+                    )
+                  }
+                  return (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <WatchStateButton
+                        active={w.state === 'checked'} icon={<Check className="h-3.5 w-3.5" />} label="Conforme"
+                        activeCls="border-emerald-600 bg-emerald-600 text-white"
+                        onClick={() => decideWatch(w, w.state === 'checked' ? 'pending' : 'checked')}
+                      />
+                      <WatchStateButton
+                        active={w.state === 'still_open'} icon={<Eye className="h-3.5 w-3.5" />} label="Toujours ouvert"
+                        activeCls="border-amber-500 bg-amber-500 text-white"
+                        onClick={() => decideWatch(w, w.state === 'still_open' ? 'pending' : 'still_open')}
+                      />
+                      <WatchStateButton
+                        active={w.state === 'not_applicable'} icon={<X className="h-3.5 w-3.5" />} label="Sans objet"
+                        activeCls="border-slate-500 bg-slate-500 text-white"
+                        onClick={() => decideWatch(w, w.state === 'not_applicable' ? 'pending' : 'not_applicable')}
+                      />
+                    </div>
+                  )
+                })()}
               </div>
             ))}
           </div>
@@ -1244,15 +1280,17 @@ export function VisitBasket({
             icon={<ListChecks className="h-4 w-4" />}
             onClose={() => { setOverlay('none'); doEnd() }}
           >
-            {/* Bilan des 4 états — toujours affiché */}
+            {/* Bilan — tous les états possibles, jamais un total muet. */}
             <div className="space-y-1.5 rounded-xl border bg-muted/30 p-3">
               <p className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wide">
                 {cov.total} point{cov.total > 1 ? 's' : ''} préparés
               </p>
               <ul className="space-y-0.5 text-sm">
-                {cov.checked > 0 && <li className="flex items-center gap-2"><Check className="h-3.5 w-3.5 text-emerald-600" />{cov.checked} conforme{cov.checked > 1 ? 's' : ''}</li>}
+                {cov.checked > 0 && <li className="flex items-center gap-2"><Check className="h-3.5 w-3.5 text-emerald-600" />{cov.checked} positif{cov.checked > 1 ? 's' : ''}</li>}
                 {cov.stillOpen > 0 && <li className="flex items-center gap-2"><Eye className="h-3.5 w-3.5 text-amber-600" />{cov.stillOpen} toujours ouvert{cov.stillOpen > 1 ? 's' : ''}</li>}
+                {cov.notApplicableVisit > 0 && <li className="flex items-center gap-2"><X className="h-3.5 w-3.5 text-muted-foreground" />{cov.notApplicableVisit} sans objet pour cette visite</li>}
                 {cov.notApplicable > 0 && <li className="flex items-center gap-2"><X className="h-3.5 w-3.5 text-muted-foreground" />{cov.notApplicable} sans objet</li>}
+                {cov.dismissedPermanently > 0 && <li className="flex items-center gap-2"><X className="h-3.5 w-3.5 text-red-500" />{cov.dismissedPermanently} ne plus suivre</li>}
                 {cov.pending > 0 && <li className="flex items-center gap-2 font-medium text-muted-foreground"><span className="h-3.5 w-3.5 flex items-center justify-center rounded-full border text-[10px]">○</span>{cov.pending} non vérifié{cov.pending > 1 ? 's' : ''}</li>}
               </ul>
             </div>
