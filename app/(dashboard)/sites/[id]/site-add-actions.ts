@@ -25,7 +25,7 @@ async function ensureSiteCollection(siteId: string): Promise<string> {
 export async function uploadSiteDocumentAction(
   siteId: string,
   formData: FormData,
-): Promise<{ ok: boolean; error?: string; documentId?: string; duplicate?: boolean }> {
+): Promise<UploadDocumentResult> {
   try {
     const site = await getSiteById(siteId)
     if (!site?.organization_id) {
@@ -56,6 +56,8 @@ export async function uploadSiteDocumentAction(
     fd.set('memory_tier', String(formData.get('memory_tier') || 'consultable'))
     const effectiveDate = formData.get('effective_date')?.toString()
     if (effectiveDate) fd.set('effective_date', effectiveDate)
+    const versionDecision = formData.get('version_decision')?.toString()
+    if (versionDecision) fd.set('version_decision', versionDecision)
     const result = await uploadDocumentAction(fd)
     if (result.ok) {
       revalidatePath(`/sites/${siteId}`, 'page')
@@ -109,6 +111,8 @@ export async function uploadSiteContractualDocumentAction(
     fd.set('memory_tier', String(formData.get('memory_tier') || 'consultable'))
     const effectiveDate = formData.get('effective_date')?.toString()
     if (effectiveDate) fd.set('effective_date', effectiveDate)
+    const versionDecision = formData.get('version_decision')?.toString()
+    if (versionDecision) fd.set('version_decision', versionDecision)
     const result = await uploadDocumentAction(fd)
     if (result.ok) {
       revalidatePath(`/sites/${siteId}`, 'page')

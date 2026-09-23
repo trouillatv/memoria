@@ -99,6 +99,8 @@ vi.mock('@/lib/db/documents', () => ({
     if (!doc) return { status: 'none' as const }
     return { status: 'found' as const, id: doc.id, filename: doc.filename, document_type: 'autre', effective_date: null }
   },
+  findFilenameCollisionInCollection: vi.fn(async () => null),
+  markDocumentSuperseded: vi.fn(),
 }))
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({

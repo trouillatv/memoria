@@ -29,6 +29,8 @@ import {
   deleteDocumentCollection,
   getCollectionOrganizationId,
   findDocumentByHashInOrg,
+  findFilenameCollisionInCollection,
+  markDocumentSuperseded,
 } from '@/lib/db/documents'
 import { getSiteById } from '@/lib/db/sites'
 import { analyzeDocument } from '@/lib/documents/analyze'
@@ -147,6 +149,11 @@ const uploadSchema = z
     // Tri d'ingestion (l'humain valide) : indexer (embedding) ou non, + couche.
     embed: z.enum(['true', 'false']).optional(),
     memory_tier: z.enum(['vivante', 'consultable', 'froide']).optional(),
+    // Choix explicite de l'utilisateur face à une collision de nom de fichier
+    // (même collection, même filename, contenu différent) — cf. P0-1B2. Jamais
+    // de devinette automatique : sans ce champ, la collision est signalée et
+    // l'import s'arrête avant tout effet de bord.
+    version_decision: z.enum(['update', 'keep_both']).optional(),
   })
   .refine(
     (d) => (d.target_type ? !!d.target_id : !d.target_id),
@@ -330,6 +337,14 @@ export interface UploadDocumentResult {
   documentTypeChange?: { from: string; to: string }
   /** Date d'effet appliquée (enrichissement) ou proposée (conflit) sur le document existant. */
   effectiveDateChange?: { from: string | null; to: string }
+  /** Même collection + même nom de fichier + contenu différent (P0-1B2) : import
+   *  arrêté avant tout effet de bord, l'appelant doit refaire la requête avec
+   *  `version_decision` renseigné (`update` ou `keep_both`). */
+  versionConflict?: boolean
+  /** Id du document existant en collision de nom (pour `update` : deviendra `supersedes_document_id`). */
+  existingDocumentId?: string
+  /** Une nouvelle version a été créée et l'ancienne marquée `superseded`. */
+  versioned?: boolean
 }
 
 export async function uploadDocumentAction(
@@ -358,6 +373,7 @@ export async function uploadDocumentAction(
     expires_date: formData.get('expires_date') || undefined,
     embed: formData.get('embed') || undefined,
     memory_tier: formData.get('memory_tier') || undefined,
+    version_decision: formData.get('version_decision') || undefined,
   })
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
@@ -511,6 +527,31 @@ export async function uploadDocumentAction(
     }
   }
 
+  // VERSIONING (P0-1B2, Vincent 2026-09-24) : même collection (= même site) +
+  // même nom de fichier + contenu différent = candidat à une nouvelle version,
+  // jamais tranché en silence. Refuse AVANT tout effet de bord (Storage) tant
+  // que l'utilisateur n'a pas choisi explicitement Mettre à jour / Conserver
+  // les deux / Annuler — un nom de fichier différent ne déclenche jamais cette
+  // logique (aucune association automatique par similarité).
+  let supersedesDocumentId: string | null = null
+  if (input.version_decision !== 'keep_both') {
+    const collision = await findFilenameCollisionInCollection(file.name, input.collection_id, contentHash)
+    if (collision) {
+      if (!input.version_decision) {
+        return {
+          ok: false,
+          error: `Un document nommé "${file.name}" existe déjà dans cette collection avec un contenu différent.`,
+          versionConflict: true,
+          existingDocumentId: collision.id,
+          existingFilename: collision.filename,
+        }
+      }
+      if (input.version_decision === 'update') {
+        supersedesDocumentId = collision.id
+      }
+    }
+  }
+
   const { error: uploadErr } = await supabase.storage
     .from('documents')
     .upload(storagePath, buffer, { contentType: 'application/pdf', upsert: false })
@@ -535,10 +576,22 @@ export async function uploadDocumentAction(
       memory_tier: memoryTier,
       analysis_status: embed ? 'pending' : 'ready',
       content_hash: contentHash,
+      supersedes_document_id: supersedesDocumentId,
       created_by: userId,
     })
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Création échouée' }
+  }
+
+  // Création réussie AVANT de basculer l'ancienne version : en cas d'échec de
+  // createDocument (catché ci-dessus), l'ancienne version reste active et
+  // intacte — jamais de version courante perdue sur un échec partiel.
+  if (supersedesDocumentId) {
+    try {
+      await markDocumentSuperseded(supersedesDocumentId)
+    } catch (e) {
+      console.error('[uploadDocumentAction] markDocumentSuperseded failed:', e)
+    }
   }
 
   // Le document est créé : un échec de lien ou d'audit ne doit PAS faire
@@ -578,7 +631,7 @@ export async function uploadDocumentAction(
     after(() => analyzeDocument(documentId))
   }
 
-  return { ok: true, documentId }
+  return { ok: true, documentId, ...(supersedesDocumentId ? { versioned: true } : {}) }
 }
 
 // ===========================================================================

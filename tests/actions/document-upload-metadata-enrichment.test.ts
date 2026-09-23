@@ -93,6 +93,8 @@ vi.mock('@/lib/db/documents', () => ({
       effective_date: doc.effective_date ?? null,
     }
   },
+  findFilenameCollisionInCollection: vi.fn(async () => null),
+  markDocumentSuperseded: vi.fn(),
 }))
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({

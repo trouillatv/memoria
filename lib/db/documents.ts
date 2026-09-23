@@ -307,6 +307,43 @@ export async function updateDocumentMetadata(
   if (error) throw error
 }
 
+/** Existe-t-il déjà, dans cette collection (= « même site », une collection
+ *  « Documents chantier » par site), un document ACTIF portant EXACTEMENT ce
+ *  nom de fichier mais un contenu différent ? Ceci détecte un candidat à une
+ *  NOUVELLE VERSION (P0-1B2, Vincent 2026-09-24) — jamais résolu en silence :
+ *  l'appelant doit toujours faire choisir explicitement l'utilisateur entre
+ *  Mettre à jour / Conserver les deux / Annuler. */
+export async function findFilenameCollisionInCollection(
+  filename: string,
+  collectionId: string,
+  contentHash: string,
+): Promise<{ id: string; filename: string; document_type: string } | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id, filename, document_type')
+    .eq('collection_id', collectionId)
+    .eq('filename', filename)
+    .eq('status', 'active')
+    .neq('content_hash', contentHash)
+    .is('deleted_at', null)
+    .limit(1)
+  if (error) throw error
+  return data && data.length > 0 ? (data[0] as { id: string; filename: string; document_type: string }) : null
+}
+
+/** Marque une version comme remplacée (P0-1B2) — l'ancienne version reste en
+ *  base (historique conservé), seul son `status` change ; distinct d'une
+ *  suppression (`deleted_at` n'est jamais touché ici). */
+export async function markDocumentSuperseded(id: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('documents')
+    .update({ status: 'superseded', updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 /** Compte les PV historiques déjà importés sur ce chantier pour la même date effective. */
 export async function countHistoricalPvsByDateForSite(
   effectiveDate: string,
@@ -359,6 +396,9 @@ export async function listDocumentsByCollection(
     .select('*')
     .eq('collection_id', collectionId)
     .is('deleted_at', null)
+    // Une version remplacée (P0-1B2) reste en base mais ne doit plus apparaître
+    // dans les listes par défaut — une seule version courante visible.
+    .neq('status', 'superseded')
     // Les PV historiques vivent dans le chantier, pas dans la bibliothèque
     .neq('document_type', 'historical_visit_report')
     .order('created_at', { ascending: false })
@@ -389,6 +429,8 @@ export async function listDocumentsForTarget(
     .select('*')
     .in('id', ids)
     .is('deleted_at', null)
+    // Une seule version courante visible (P0-1B2) — cf. listDocumentsByCollection.
+    .neq('status', 'superseded')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as DbDocument[]

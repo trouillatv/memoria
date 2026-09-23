@@ -149,26 +149,49 @@ function SiteDocumentDialog({
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   const [pending, startTransition] = useTransition()
+  const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData } | null>(null)
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = formRef.current
-    if (!form) return
-    const fd = new FormData(form)
+  function runUpload(fd: FormData) {
     startTransition(async () => {
       try {
         const result = await uploadSiteDocumentAction(siteId, fd)
-        if (!result.ok) {
-          setMessage(result.error ?? 'Import impossible.')
+        if (result.versionConflict) {
+          setVersionConflict({ filename: result.existingFilename ?? '', pendingData: fd })
+          setMessage(null)
           return
         }
-        setMessage(result.duplicate ? 'Document déjà connu, lien ajouté au chantier.' : 'Document ajouté au chantier.')
-        form.reset()
+        if (!result.ok) {
+          setMessage(result.error ?? 'Import impossible.')
+          setVersionConflict(null)
+          return
+        }
+        setVersionConflict(null)
+        setMessage(
+          result.versioned
+            ? 'Nouvelle version créée, l’ancienne est conservée dans l’historique.'
+            : result.duplicate
+              ? 'Document déjà connu, lien ajouté au chantier.'
+              : 'Document ajouté au chantier.',
+        )
+        formRef.current?.reset()
       } catch (e) {
         console.error('[SiteDocumentDialog]', e)
         setMessage('Erreur réseau — veuillez réessayer.')
       }
     })
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = formRef.current
+    if (!form) return
+    runUpload(new FormData(form))
+  }
+
+  function resolveVersionConflict(decision: 'update' | 'keep_both') {
+    if (!versionConflict) return
+    versionConflict.pendingData.set('version_decision', decision)
+    runUpload(versionConflict.pendingData)
   }
 
   return (
@@ -182,16 +205,53 @@ function SiteDocumentDialog({
           <span className="text-sm font-medium">PDF</span>
           <input name="file" type="file" accept="application/pdf" required className="block w-full rounded-lg border p-2 text-sm" />
         </label>
-        {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
-          <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
-            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Ajouter
-          </button>
-        </div>
+        {versionConflict ? (
+          <VersionConflictChoice filename={versionConflict.filename} onChoose={resolveVersionConflict} onCancel={() => setVersionConflict(null)} pending={pending} />
+        ) : (
+          <>
+            {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
+              <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+                {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Ajouter
+              </button>
+            </div>
+          </>
+        )}
       </form>
     </Modal>
+  )
+}
+
+// Collision de nom de fichier dans la même collection (P0-1B2, Vincent
+// 2026-09-24) : jamais de devinette automatique — l'utilisateur choisit
+// explicitement entre remplacer, garder les deux, ou annuler.
+function VersionConflictChoice({
+  filename,
+  onChoose,
+  onCancel,
+  pending,
+}: {
+  filename: string
+  onChoose: (decision: 'update' | 'keep_both') => void
+  onCancel: () => void
+  pending: boolean
+}) {
+  return (
+    <div className="space-y-3 rounded-lg border bg-muted/40 p-3 text-sm">
+      <p>
+        Un document nommé <span className="font-medium">{filename || 'ce fichier'}</span> existe déjà dans cette collection avec un contenu différent.
+      </p>
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" onClick={onCancel} disabled={pending} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60">Annuler</button>
+        <button type="button" onClick={() => onChoose('keep_both')} disabled={pending} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted disabled:opacity-60">Conserver les deux</button>
+        <button type="button" onClick={() => onChoose('update')} disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+          {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+          Mettre à jour
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -208,6 +268,35 @@ function SiteContractualDocumentDialog({
 }) {
   const formRef = useRef<HTMLFormElement>(null)
   const [pending, startTransition] = useTransition()
+  const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData; incomingFilename: string | null } | null>(null)
+
+  function runUpload(fd: FormData, incomingFilename: string | null) {
+    startTransition(async () => {
+      try {
+        const result = await uploadSiteContractualDocumentAction(siteId, fd)
+        if (result.versionConflict) {
+          setVersionConflict({ filename: result.existingFilename ?? '', pendingData: fd, incomingFilename })
+          setMessage(null)
+          return
+        }
+        if (!result.ok) {
+          setMessage(result.error ?? 'Import impossible.')
+          setVersionConflict(null)
+          return
+        }
+        setVersionConflict(null)
+        setMessage(
+          result.versioned
+            ? 'Nouvelle version créée, l’ancienne est conservée dans l’historique.'
+            : buildContractualUploadMessage(result, incomingFilename),
+        )
+        formRef.current?.reset()
+      } catch (e) {
+        console.error('[SiteContractualDocumentDialog]', e)
+        setMessage('Erreur réseau — veuillez réessayer.')
+      }
+    })
+  }
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -216,20 +305,13 @@ function SiteContractualDocumentDialog({
     const fd = new FormData(form)
     const incomingFile = fd.get('file')
     const incomingFilename = incomingFile instanceof File ? incomingFile.name : null
-    startTransition(async () => {
-      try {
-        const result = await uploadSiteContractualDocumentAction(siteId, fd)
-        if (!result.ok) {
-          setMessage(result.error ?? 'Import impossible.')
-          return
-        }
-        setMessage(buildContractualUploadMessage(result, incomingFilename))
-        form.reset()
-      } catch (e) {
-        console.error('[SiteContractualDocumentDialog]', e)
-        setMessage('Erreur réseau — veuillez réessayer.')
-      }
-    })
+    runUpload(fd, incomingFilename)
+  }
+
+  function resolveVersionConflict(decision: 'update' | 'keep_both') {
+    if (!versionConflict) return
+    versionConflict.pendingData.set('version_decision', decision)
+    runUpload(versionConflict.pendingData, versionConflict.incomingFilename)
   }
 
   return (
@@ -254,14 +336,20 @@ function SiteContractualDocumentDialog({
           <span className="text-sm font-medium">Date d’effet <span className="text-muted-foreground font-normal">(optionnelle)</span></span>
           <input name="effective_date" type="date" className="block w-full rounded-lg border p-2 text-sm" />
         </label>
-        {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
-          <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
-            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-            Ajouter
-          </button>
-        </div>
+        {versionConflict ? (
+          <VersionConflictChoice filename={versionConflict.filename} onChoose={resolveVersionConflict} onCancel={() => setVersionConflict(null)} pending={pending} />
+        ) : (
+          <>
+            {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
+              <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+                {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Ajouter
+              </button>
+            </div>
+          </>
+        )}
       </form>
     </Modal>
   )
