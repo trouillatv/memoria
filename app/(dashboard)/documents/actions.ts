@@ -413,8 +413,24 @@ export async function uploadDocumentAction(
   // doc dupliqué). On prévient (duplicate). Le dédoublonnage ne franchit
   // jamais une frontière d'organisation (même PDF importé par CAPSE et par
   // AGP = deux nœuds documentaires distincts).
-  const existingDoc = await findDocumentByHashInOrg(contentHash, collectionOrgId)
-  if (existingDoc) {
+  const hashLookup = await findDocumentByHashInOrg(contentHash, collectionOrgId)
+  if (hashLookup.status === 'conflict') {
+    // Anomalie exposée, jamais résolue en silence (pas de "prend la plus
+    // récente") : plusieurs documents actifs partagent déjà ce contenu dans
+    // cette organisation — cas réel constaté sur OCEF (P0-1B, Vincent 2026-09-24).
+    console.error('[uploadDocumentAction] DUPLICATE_INVARIANT_BROKEN', {
+      contentHash,
+      organizationId: collectionOrgId,
+      ids: hashLookup.ids,
+    })
+    return {
+      ok: false,
+      error:
+        'Plusieurs documents existants partagent déjà ce contenu dans cette organisation (anomalie). Import bloqué — signalez ce cas avant de réessayer.',
+    }
+  }
+  if (hashLookup.status === 'found') {
+    const existingDoc = hashLookup
     if (input.target_type && input.target_id) {
       try {
         await addDocumentLink(existingDoc.id, input.target_type, input.target_id)

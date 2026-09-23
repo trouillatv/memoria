@@ -20,7 +20,8 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { findHistoricalPvByHashForSite, addDocumentLink } from '@/lib/db/documents'
+import { findHistoricalPvByHashForSite, findHashClassificationConflict, addDocumentLink } from '@/lib/db/documents'
+import { documentTypeLabel } from '@/lib/documents/labels'
 
 const STORAGE_BUCKET = 'documents'
 const UPLOAD_PATH_PREFIX = 'historical-pv'
@@ -67,8 +68,11 @@ async function ensureSiteCollection(
 
 /**
  * Enregistre un PDF local absent de `documents` pour ce chantier. Idempotent par
- * content_hash (via findHistoricalPvByHashForSite, même primitive que le writer web) :
- * un même fichier rejoué ne crée jamais de seconde ligne ni un second upload.
+ * content_hash (via findHistoricalPvByHashForSite, même primitive que le writer web)
+ * SI le document existant est déjà un PV historique du même chantier. Si ce contenu
+ * exact existe déjà sous un autre document_type dans l'organisation (conflit de
+ * classification), l'enregistrement est refusé plutôt que silencieusement fusionné
+ * ou reclassifié (Vincent 2026-09-24, cas OCEF).
  */
 export async function registerMissingHistoricalDocument(
   input: RegisterMissingDocumentInput,
@@ -89,6 +93,13 @@ export async function registerMissingHistoricalDocument(
   if (siteErr) throw siteErr
   const organizationId = (siteRow as { organization_id: string } | null)?.organization_id
   if (!organizationId) throw new Error(`Site ${siteId} introuvable ou sans organisation`)
+
+  const conflict = await findHashClassificationConflict(contentHash, organizationId, 'historical_visit_report')
+  if (conflict) {
+    throw new Error(
+      `Ce fichier (${path.basename(filePath)}) existe déjà comme ${documentTypeLabel(conflict.document_type)} dans cette organisation. Import refusé — pas de reclassification silencieuse.`,
+    )
+  }
 
   const collectionId = await ensureSiteCollection(admin, siteId, organizationId)
 

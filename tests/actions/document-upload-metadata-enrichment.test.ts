@@ -82,8 +82,17 @@ vi.mock('@/lib/db/documents', () => ({
   reorderDocumentCollections: vi.fn(),
   deleteDocumentCollection: vi.fn(),
   getCollectionOrganizationId: async (collectionId: string) => collectionOrgs[collectionId] ?? null,
-  findDocumentByHashInOrg: async (contentHash: string, organizationId: string) =>
-    existingDocsByOrgAndHash[`${organizationId}:${contentHash}`] ?? null,
+  findDocumentByHashInOrg: async (contentHash: string, organizationId: string) => {
+    const doc = existingDocsByOrgAndHash[`${organizationId}:${contentHash}`]
+    if (!doc) return { status: 'none' as const }
+    return {
+      status: 'found' as const,
+      id: doc.id,
+      filename: doc.filename,
+      document_type: doc.document_type ?? 'autre',
+      effective_date: doc.effective_date ?? null,
+    }
+  },
 }))
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({

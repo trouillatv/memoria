@@ -44,6 +44,7 @@ let collectionOrgs: Record<string, string> = {
   [CAPSE_COLLECTION]: CAPSE,
 }
 let existingDocsByOrgAndHash: Record<string, { id: string; filename: string }> = {}
+let conflictHashKeys = new Set<string>()
 let orgIdsOfUser: string[] = [AGP, CAPSE]
 // Rôle DANS chaque organisation (MembershipContext.role) — distinct du rôle
 // global du profil (getUserRoleById, toujours 'manager' par défaut ici).
@@ -91,8 +92,13 @@ vi.mock('@/lib/db/documents', () => ({
   reorderDocumentCollections: vi.fn(),
   deleteDocumentCollection: vi.fn(),
   getCollectionOrganizationId: async (collectionId: string) => collectionOrgs[collectionId] ?? null,
-  findDocumentByHashInOrg: async (contentHash: string, organizationId: string) =>
-    existingDocsByOrgAndHash[`${organizationId}:${contentHash}`] ?? null,
+  findDocumentByHashInOrg: async (contentHash: string, organizationId: string) => {
+    const key = `${organizationId}:${contentHash}`
+    if (conflictHashKeys.has(key)) return { status: 'conflict' as const, ids: ['dup-1', 'dup-2'] }
+    const doc = existingDocsByOrgAndHash[key]
+    if (!doc) return { status: 'none' as const }
+    return { status: 'found' as const, id: doc.id, filename: doc.filename, document_type: 'autre', effective_date: null }
+  },
 }))
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -118,6 +124,10 @@ function registerExistingDoc(organizationId: string, content: string, doc: { id:
   existingDocsByOrgAndHash[`${organizationId}:${hashOf(content)}`] = doc
 }
 
+function registerHashConflict(organizationId: string, content: string) {
+  conflictHashKeys.add(`${organizationId}:${hashOf(content)}`)
+}
+
 function pdfFormData(content: string, fields: Record<string, string>): FormData {
   const fd = new FormData()
   fd.set('file', new File([content], 'facture.pdf', { type: 'application/pdf' }))
@@ -130,6 +140,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   collectionOrgs = { [AGP_COLLECTION]: AGP, [CAPSE_COLLECTION]: CAPSE }
   existingDocsByOrgAndHash = {}
+  conflictHashKeys = new Set()
   orgIdsOfUser = [AGP, CAPSE]
   orgRoles = { [AGP]: 'manager', [CAPSE]: 'manager' }
   getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
@@ -195,6 +206,24 @@ describe('E — dédoublonnage intra-org : hash déjà AGP (non-régression)', (
     }
     expect(createDocument).not.toHaveBeenCalled()
     expect(addDocumentLink).toHaveBeenCalledWith('agp-doc-1', 'site', AGP_SITE)
+  })
+})
+
+describe('I — invariant cassé : plusieurs documents actifs partagent déjà ce hash (P0-1B1)', () => {
+  it('bloque sans créer de document ni choisir arbitrairement lequel est canonique', async () => {
+    registerHashConflict(AGP, 'contenu-hash-en-conflit')
+
+    const fd = pdfFormData('contenu-hash-en-conflit', {
+      collection_id: AGP_COLLECTION,
+      target_type: 'site',
+      target_id: AGP_SITE,
+    })
+    const r = await uploadDocumentAction(fd)
+
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/anomalie/i)
+    expect(createDocument).not.toHaveBeenCalled()
+    expect(addDocumentLink).not.toHaveBeenCalled()
   })
 })
 
