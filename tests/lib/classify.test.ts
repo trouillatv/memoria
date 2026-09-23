@@ -23,6 +23,22 @@ describe('guessDocumentType', () => {
   it("retourne autre pour un nom générique sans indice", () => {
     expect(guessDocumentType('document_2024.pdf')).toBe('autre')
   })
+
+  it('reconnaît CCTP dans un nom de fichier (jamais routé vers ao)', () => {
+    expect(guessDocumentType('CCTP_AGP_2026.pdf')).toBe('cctp')
+  })
+
+  it('reconnaît CCAP dans un nom de fichier (jamais routé vers ao)', () => {
+    expect(guessDocumentType('CCAP-lot2.pdf')).toBe('ccap')
+  })
+
+  it('reconnaît ordre de service dans un nom de fichier', () => {
+    expect(guessDocumentType('ordre_de_service_n3.pdf')).toBe('ordre_service')
+  })
+
+  it('appel d’offres générique reste routé vers ao', () => {
+    expect(guessDocumentType('appel-doffres-2026.pdf')).toBe('ao')
+  })
 })
 
 describe('classifyDocument — historical_visit_report', () => {

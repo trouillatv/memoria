@@ -1126,6 +1126,9 @@ export type DocumentType =
   | 'securite' | 'ao' | 'memoire_technique' | 'reference' | 'litige'
   | 'facture' | 'preuve' | 'autre'
   | 'historical_visit_report'
+  // P0-1 (2026-09-23) — Document contractuel importé depuis la fiche chantier :
+  // types explicites (jamais masqués sous 'reference'), extraction Engagement = P0-2.
+  | 'cctp' | 'ccap' | 'ordre_service'
 
 export type DocumentVisibility =
   | 'admin_only' | 'manager' | 'operations' | 'field' | 'client_portal'

@@ -18,6 +18,14 @@ describe('classifyDocument — cerveau du tri d’ingestion', () => {
     }
   })
 
+  it('contractuel prescriptif (CCTP/CCAP/ordre de service) → consultable + embedding, jamais routé vers AO', () => {
+    for (const t of ['cctp', 'ccap', 'ordre_service']) {
+      const c = classifyDocument({ documentType: t })
+      expect(c.tier).toBe('consultable')
+      expect(c.embeddingRecommended).toBe(true)
+    }
+  })
+
   it('facture / preuve → archive froide, pas d’embedding', () => {
     for (const t of ['facture', 'preuve']) {
       const c = classifyDocument({ documentType: t })

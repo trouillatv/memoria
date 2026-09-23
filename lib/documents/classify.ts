@@ -41,6 +41,9 @@ const BY_TYPE: Record<string, { tier: MemoryTier; embed: boolean; reason: string
   preuve: { tier: 'froide', embed: false, reason: 'Preuve — artefact, pas mémoire recherchable' },
   autre: { tier: 'consultable', embed: false, reason: 'Type indéterminé — à trancher manuellement' },
   historical_visit_report: { tier: 'froide', embed: false, reason: 'PV historique — archive de visite (analyse IA séparée)' },
+  cctp: { tier: 'consultable', embed: true, reason: 'CCTP — référentiel prescriptif contractuel' },
+  ccap: { tier: 'consultable', embed: true, reason: 'CCAP — référentiel prescriptif contractuel' },
+  ordre_service: { tier: 'consultable', embed: true, reason: 'Ordre de service — référentiel prescriptif contractuel' },
 }
 
 // Indices forts dans le nom de fichier / texte (minuscule).
@@ -81,7 +84,10 @@ export function classifyDocument(input: {
 // magique »). Premier motif qui matche gagne ; sinon 'autre'. L'humain corrige.
 const TYPE_GUESS: Array<[RegExp, string]> = [
   [/\b(facture|devis|avoir)\b/, 'facture'],
-  [/\b(cctp|ccap|\bao\b|appel.?d.?offres?)\b/, 'ao'],
+  [/\bcctp\b/, 'cctp'],
+  [/\bccap\b/, 'ccap'],
+  [/\bordre.?de.?service\b/, 'ordre_service'],
+  [/\b(\bao\b|appel.?d.?offres?)\b/, 'ao'],
   // PV avant procedure : « procès-verbal » contient « proc » mais n'est pas une procédure
   [/\b(pv\b|proc[eè]s.?verbal|rapport.?de.?visite|compte.?rendu.?de.?visite)\b/, 'historical_visit_report'],
   [/\b(proc[ée]dure|consigne)\b/, 'procedure'],

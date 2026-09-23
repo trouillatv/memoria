@@ -45,6 +45,9 @@ export const DOCUMENT_TYPE_OPTIONS: { value: DocumentType; label: string }[] = [
   { value: 'preuve', label: 'Preuve' },
   { value: 'autre', label: 'Autre' },
   { value: 'historical_visit_report', label: 'PV historique' },
+  { value: 'cctp', label: 'CCTP' },
+  { value: 'ccap', label: 'CCAP' },
+  { value: 'ordre_service', label: 'Ordre de service' },
 ]
 
 const DOCUMENT_TYPE_LABEL = new Map(DOCUMENT_TYPE_OPTIONS.map((o) => [o.value, o.label]))

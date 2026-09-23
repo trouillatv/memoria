@@ -35,6 +35,8 @@ export async function uploadSiteDocumentAction(
     fd.set('target_id', siteId)
     fd.set('embed', String(formData.get('embed') || 'true'))
     fd.set('memory_tier', String(formData.get('memory_tier') || 'consultable'))
+    const effectiveDate = formData.get('effective_date')?.toString()
+    if (effectiveDate) fd.set('effective_date', effectiveDate)
     const result = await uploadDocumentAction(fd)
     if (result.ok) {
       revalidatePath(`/sites/${siteId}`, 'page')

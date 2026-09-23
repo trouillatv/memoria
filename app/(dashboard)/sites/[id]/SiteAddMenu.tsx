@@ -2,13 +2,26 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { Camera, CheckCircle2, ChevronDown, ClipboardCheck, FileText, History, Loader2, Mic, Video } from 'lucide-react'
+import { Camera, CheckCircle2, ChevronDown, ClipboardCheck, FileSignature, FileText, History, Loader2, Mic, Video } from 'lucide-react'
 import { importSiteEvidenceAction, uploadSiteDocumentAction } from './site-add-actions'
 import { HistoricalPvUploadForm } from './HistoricalPvUploadForm'
 import { createQuickActionAction } from '@/app/(dashboard)/actions/actions'
 import { createReserveAction } from './reserves/actions'
 
-type DialogKind = 'document' | 'evidence' | 'historical_pv' | 'action' | 'reserve' | null
+type DialogKind = 'document' | 'evidence' | 'historical_pv' | 'contractual_document' | 'action' | 'reserve' | null
+
+// Document contractuel (P0-1, Vincent 2026-09-23) : types explicites, jamais le
+// sélecteur générique complet — un CCTP/CCAP/ordre de service importé depuis la
+// fiche chantier reste toujours rattaché au site courant, sans extraction
+// Engagement (P0-2, hors périmètre ici).
+const CONTRACTUAL_DOCUMENT_TYPES: { value: string; label: string }[] = [
+  { value: 'cctp', label: 'CCTP' },
+  { value: 'ccap', label: 'CCAP' },
+  { value: 'ordre_service', label: 'Ordre de service' },
+  { value: 'contrat', label: 'Contrat' },
+  { value: 'avenant', label: 'Avenant' },
+  { value: 'autre', label: 'Autre' },
+]
 
 export function SiteAddMenu({ siteId }: { siteId: string }) {
   const [open, setOpen] = useState(false)
@@ -66,6 +79,7 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
           <MenuButton icon={<FileText className="h-4 w-4" />} label="Document PDF" onClick={() => openDialog('document')} />
           <MenuButton icon={<Camera className="h-4 w-4" />} label="Photos, vidéos, vocaux" onClick={() => openDialog('evidence')} />
           <MenuButton icon={<History className="h-4 w-4" />} label="PV historique — analyser" onClick={() => openDialog('historical_pv')} />
+          <MenuButton icon={<FileSignature className="h-4 w-4" />} label="Document contractuel" onClick={() => openDialog('contractual_document')} />
           <MenuButton icon={<CheckCircle2 className="h-4 w-4" />} label="Créer une action" onClick={() => openDialog('action')} />
           <MenuButton icon={<ClipboardCheck className="h-4 w-4" />} label="Créer une réserve" onClick={() => openDialog('reserve')} />
         </div>
@@ -89,6 +103,14 @@ export function SiteAddMenu({ siteId }: { siteId: string }) {
       )}
       {dialog === 'historical_pv' && (
         <SiteHistoricalPvDialog
+          siteId={siteId}
+          message={message}
+          setMessage={setMessage}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'contractual_document' && (
+        <SiteContractualDocumentDialog
           siteId={siteId}
           message={message}
           setMessage={setMessage}
@@ -169,6 +191,76 @@ function SiteDocumentDialog({
         <label className="block space-y-2">
           <span className="text-sm font-medium">PDF</span>
           <input name="file" type="file" accept="application/pdf" required className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
+          <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
+            {pending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Ajouter
+          </button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function SiteContractualDocumentDialog({
+  siteId,
+  message,
+  setMessage,
+  onClose,
+}: {
+  siteId: string
+  message: string | null
+  setMessage: (message: string | null) => void
+  onClose: () => void
+}) {
+  const formRef = useRef<HTMLFormElement>(null)
+  const [pending, startTransition] = useTransition()
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const form = formRef.current
+    if (!form) return
+    const fd = new FormData(form)
+    startTransition(async () => {
+      try {
+        const result = await uploadSiteDocumentAction(siteId, fd)
+        if (!result.ok) {
+          setMessage(result.error ?? 'Import impossible.')
+          return
+        }
+        setMessage(result.duplicate ? 'Document déjà connu, lien ajouté au chantier.' : 'Document contractuel ajouté au chantier.')
+        form.reset()
+      } catch (e) {
+        console.error('[SiteContractualDocumentDialog]', e)
+        setMessage('Erreur réseau — veuillez réessayer.')
+      }
+    })
+  }
+
+  return (
+    <Modal title="Ajouter un document contractuel" onClose={onClose}>
+      <form ref={formRef} className="space-y-4" onSubmit={submit}>
+        <input type="hidden" name="visibility_level" value="manager" />
+        <input type="hidden" name="embed" value="true" />
+        <input type="hidden" name="memory_tier" value="consultable" />
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Nature du document</span>
+          <select name="document_type" required defaultValue="cctp" className="block w-full rounded-lg border p-2 text-sm">
+            {CONTRACTUAL_DOCUMENT_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>{t.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">PDF</span>
+          <input name="file" type="file" accept="application/pdf" required className="block w-full rounded-lg border p-2 text-sm" />
+        </label>
+        <label className="block space-y-2">
+          <span className="text-sm font-medium">Date d’effet <span className="text-muted-foreground font-normal">(optionnelle)</span></span>
+          <input name="effective_date" type="date" className="block w-full rounded-lg border p-2 text-sm" />
         </label>
         {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
         <div className="flex justify-end gap-2">

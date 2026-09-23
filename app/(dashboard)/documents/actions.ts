@@ -63,6 +63,7 @@ const DOCUMENT_TYPES = [
   'contrat', 'avenant', 'procedure', 'protocole', 'plan_acces', 'securite',
   'ao', 'memoire_technique', 'reference', 'litige', 'facture', 'preuve', 'autre',
   'historical_visit_report',
+  'cctp', 'ccap', 'ordre_service',
 ] as const
 const VISIBILITY = [
   'admin_only', 'manager', 'operations', 'field', 'client_portal',
