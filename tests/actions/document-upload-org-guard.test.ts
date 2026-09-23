@@ -100,6 +100,8 @@ vi.mock('@/lib/db/documents', () => ({
     return { status: 'found' as const, id: doc.id, filename: doc.filename, document_type: 'autre', effective_date: null }
   },
   findFilenameCollisionInCollection: vi.fn(async () => ({ status: 'none' as const })),
+  findFilenameCollisionForSite: vi.fn(async () => ({ status: 'none' as const })),
+  validateReplaceCandidateForSite: vi.fn(async () => ({ status: 'not_found' as const })),
   copyDocumentLinks: vi.fn(),
   markDocumentSuperseded: vi.fn(),
 }))

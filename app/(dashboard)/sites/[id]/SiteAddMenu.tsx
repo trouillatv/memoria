@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { Camera, CheckCircle2, ChevronDown, ClipboardCheck, FileSignature, FileText, History, Loader2, Mic, Video } from 'lucide-react'
-import { importSiteEvidenceAction, uploadSiteContractualDocumentAction, uploadSiteDocumentAction } from './site-add-actions'
+import { importSiteEvidenceAction, listSiteDocumentsForReplaceAction, uploadSiteContractualDocumentAction, uploadSiteDocumentAction } from './site-add-actions'
 import { CONTRACTUAL_DOCUMENT_TYPES } from './contractual-document-types'
 import { HistoricalPvUploadForm } from './HistoricalPvUploadForm'
 import { createQuickActionAction } from '@/app/(dashboard)/actions/actions'
@@ -281,6 +281,21 @@ function SiteContractualDocumentDialog({
   const formRef = useRef<HTMLFormElement>(null)
   const [pending, startTransition] = useTransition()
   const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData; incomingFilename: string | null; ambiguous: boolean } | null>(null)
+  const [replaceCandidates, setReplaceCandidates] = useState<Array<{ id: string; filename: string; document_type: string }>>([])
+
+  // Remplacement explicite de version (P0-1B2 revue FIX_REQUIRED, Vincent
+  // 2026-09-24, tâche 4) : seul moyen de remplacer une version dont le nom de
+  // fichier importé diffère de celui de l'ancienne — la détection automatique
+  // par collision de nom ne peut jamais couvrir ce cas.
+  useEffect(() => {
+    let active = true
+    listSiteDocumentsForReplaceAction(siteId).then((docs) => {
+      if (active) setReplaceCandidates(docs)
+    })
+    return () => {
+      active = false
+    }
+  }, [siteId])
 
   function runUpload(fd: FormData, incomingFilename: string | null) {
     startTransition(async () => {
@@ -348,6 +363,17 @@ function SiteContractualDocumentDialog({
           <span className="text-sm font-medium">Date d’effet <span className="text-muted-foreground font-normal">(optionnelle)</span></span>
           <input name="effective_date" type="date" className="block w-full rounded-lg border p-2 text-sm" />
         </label>
+        {replaceCandidates.length > 0 && (
+          <label className="block space-y-2">
+            <span className="text-sm font-medium">Remplace un document existant ? <span className="text-muted-foreground font-normal">(optionnel)</span></span>
+            <select name="replaces_document_id" defaultValue="" className="block w-full rounded-lg border p-2 text-sm">
+              <option value="">Non — nouveau document</option>
+              {replaceCandidates.map((d) => (
+                <option key={d.id} value={d.id}>{d.filename} ({documentTypeLabel(d.document_type)})</option>
+              ))}
+            </select>
+          </label>
+        )}
         {versionConflict ? (
           <VersionConflictChoice filename={versionConflict.filename} ambiguous={versionConflict.ambiguous} onChoose={resolveVersionConflict} onCancel={() => setVersionConflict(null)} pending={pending} />
         ) : (

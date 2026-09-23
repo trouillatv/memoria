@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
+import type { ReplaceCandidateValidation } from '@/lib/db/documents'
 
-// P0-1B2 versioning documentaire (Vincent 2026-09-24). Même site (=même
-// collection) + même filename + hash différent = candidat à une nouvelle
-// version, jamais tranché en silence :
+// P0-1B2 versioning documentaire (Vincent 2026-09-24). Même chantier + même
+// filename + hash différent = candidat à une nouvelle version, jamais tranché
+// en silence :
 //   - aucun version_decision -> refus + signal versionConflict, ZÉRO effet de
 //     bord (pas de Storage, pas de createDocument) ;
 //   - version_decision='update' -> nouveau document créé avec
@@ -12,11 +13,17 @@ import { createHash } from 'node:crypto'
 //     collision n'est même pas consultée ;
 //   - filename différent -> jamais cette logique (aucune association
 //     automatique par similarité).
+//
+// Tous les imports de ce fichier ciblent explicitement un chantier
+// (target_type='site') : la recherche de collision passe donc par
+// findFilenameCollisionForSite (P0-1B2 revue FIX_REQUIRED, Vincent
+// 2026-09-24, tâche 3), pas par findFilenameCollisionInCollection —
+// `collection_id` n'étant pas une identité fiable du chantier.
 
 const ORG = '33333333-3333-3333-3333-333333333333'
 const COLLECTION = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const SITE = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-const EXISTING_DOC_ID = 'existing-doc-1'
+const EXISTING_DOC_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
 
 type CollisionLookup =
   | { status: 'none' }
@@ -24,7 +31,7 @@ type CollisionLookup =
   | { status: 'ambiguous'; ids: string[] }
 
 let collectionOrgs: Record<string, string> = { [COLLECTION]: ORG }
-let collisionByCollectionAndFilename: Record<string, CollisionLookup> = {}
+let collisionBySiteAndFilename: Record<string, CollisionLookup> = {}
 
 const sitesById: Record<string, { organization_id: string | null }> = {
   [SITE]: { organization_id: ORG },
@@ -37,8 +44,14 @@ const addDocumentLink = vi.fn(async (..._args: unknown[]) => {})
 const copyDocumentLinks = vi.fn(async (..._args: unknown[]) => {})
 const softDeleteDocument = vi.fn(async (..._args: unknown[]) => {})
 const findFilenameCollisionInCollection = vi.fn(
-  async (filename: string, collectionId: string, _contentHash: string): Promise<CollisionLookup> =>
-    collisionByCollectionAndFilename[`${collectionId}:${filename}`] ?? { status: 'none' },
+  async (..._args: unknown[]): Promise<CollisionLookup> => ({ status: 'none' }),
+)
+const findFilenameCollisionForSite = vi.fn(
+  async (filename: string, siteId: string, _contentHash: string): Promise<CollisionLookup> =>
+    collisionBySiteAndFilename[`${siteId}:${filename}`] ?? { status: 'none' },
+)
+const validateReplaceCandidateForSite = vi.fn(
+  async (..._args: unknown[]): Promise<ReplaceCandidateValidation> => ({ status: 'not_found' }),
 )
 const markDocumentSuperseded = vi.fn(async (..._args: unknown[]) => {})
 const storageUpload = vi.fn(async (..._args: unknown[]) => ({ error: null }))
@@ -78,6 +91,9 @@ vi.mock('@/lib/db/documents', () => ({
   findDocumentByHashInOrg: async (..._args: unknown[]) => ({ status: 'none' as const }),
   findFilenameCollisionInCollection: (...args: [string, string, string]) =>
     findFilenameCollisionInCollection(...args),
+  findFilenameCollisionForSite: (...args: [string, string, string]) =>
+    findFilenameCollisionForSite(...args),
+  validateReplaceCandidateForSite: (...args: unknown[]) => validateReplaceCandidateForSite(...args),
   markDocumentSuperseded: (...args: unknown[]) => markDocumentSuperseded(...args),
 }))
 vi.mock('@/lib/supabase/admin', () => ({
@@ -116,7 +132,7 @@ function pdfFormData(
 beforeEach(() => {
   vi.clearAllMocks()
   collectionOrgs = { [COLLECTION]: ORG }
-  collisionByCollectionAndFilename = {}
+  collisionBySiteAndFilename = {}
   getUser.mockResolvedValue({ data: { user: { id: 'user-1' } } })
   getUserRoleById.mockResolvedValue('manager')
   createDocument.mockResolvedValue('new-doc-id')
@@ -125,7 +141,7 @@ beforeEach(() => {
 
 describe('collision filename + hash différent, aucun version_decision', () => {
   it('refuse et signale versionConflict, sans aucun effet de bord', async () => {
-    collisionByCollectionAndFilename[`${COLLECTION}:facture.pdf`] = {
+    collisionBySiteAndFilename[`${SITE}:facture.pdf`] = {
       status: 'found',
       id: EXISTING_DOC_ID,
       filename: 'facture.pdf',
@@ -149,7 +165,7 @@ describe('collision filename + hash différent, aucun version_decision', () => {
 
 describe('version_decision=update', () => {
   it('crée un nouveau document avec supersedes_document_id et bascule l’ancienne version', async () => {
-    collisionByCollectionAndFilename[`${COLLECTION}:facture.pdf`] = {
+    collisionBySiteAndFilename[`${SITE}:facture.pdf`] = {
       status: 'found',
       id: EXISTING_DOC_ID,
       filename: 'facture.pdf',
@@ -185,7 +201,7 @@ describe('version_decision=update', () => {
 
 describe('version_decision=update, échec de markDocumentSuperseded (invariant B)', () => {
   it('ne renvoie jamais ok/versioned, compense par soft-delete de la nouvelle version, ancienne conservée active', async () => {
-    collisionByCollectionAndFilename[`${COLLECTION}:facture.pdf`] = {
+    collisionBySiteAndFilename[`${SITE}:facture.pdf`] = {
       status: 'found',
       id: EXISTING_DOC_ID,
       filename: 'facture.pdf',
@@ -205,7 +221,7 @@ describe('version_decision=update, échec de markDocumentSuperseded (invariant B
 
 describe('version_decision=update, échec de copyDocumentLinks (invariant A)', () => {
   it('ne bascule jamais l’ancienne version tant que la nouvelle n’a pas hérité de ses liens', async () => {
-    collisionByCollectionAndFilename[`${COLLECTION}:facture.pdf`] = {
+    collisionBySiteAndFilename[`${SITE}:facture.pdf`] = {
       status: 'found',
       id: EXISTING_DOC_ID,
       filename: 'facture.pdf',
@@ -224,7 +240,7 @@ describe('version_decision=update, échec de copyDocumentLinks (invariant A)', (
 
 describe('collision ambiguë : plusieurs versions actives partagent le même nom (invariant D)', () => {
   it('refuse sans choisir arbitrairement, même avec version_decision=update', async () => {
-    collisionByCollectionAndFilename[`${COLLECTION}:rapport.pdf`] = {
+    collisionBySiteAndFilename[`${SITE}:rapport.pdf`] = {
       status: 'ambiguous',
       ids: ['doc-a', 'doc-b'],
     }
@@ -246,7 +262,7 @@ describe('collision ambiguë : plusieurs versions actives partagent le même nom
 
 describe('version_decision=keep_both', () => {
   it('ne consulte pas la collision et crée un document indépendant, sans supersession', async () => {
-    collisionByCollectionAndFilename[`${COLLECTION}:facture.pdf`] = {
+    collisionBySiteAndFilename[`${SITE}:facture.pdf`] = {
       status: 'found',
       id: EXISTING_DOC_ID,
       filename: 'facture.pdf',
@@ -260,7 +276,7 @@ describe('version_decision=keep_both', () => {
     if (r.ok) {
       expect(r.versioned).not.toBe(true)
     }
-    expect(findFilenameCollisionInCollection).not.toHaveBeenCalled()
+    expect(findFilenameCollisionForSite).not.toHaveBeenCalled()
     expect(createDocument.mock.calls[0][0]).toMatchObject({ supersedes_document_id: null })
     expect(markDocumentSuperseded).not.toHaveBeenCalled()
   })
@@ -275,8 +291,45 @@ describe('aucune collision (filename différent ou contenu identique)', () => {
     if (r.ok) {
       expect(r.versioned).not.toBe(true)
     }
-    expect(findFilenameCollisionInCollection).toHaveBeenCalledTimes(1)
+    expect(findFilenameCollisionForSite).toHaveBeenCalledTimes(1)
+    expect(findFilenameCollisionInCollection).not.toHaveBeenCalled()
     expect(createDocument.mock.calls[0][0]).toMatchObject({ supersedes_document_id: null })
     expect(markDocumentSuperseded).not.toHaveBeenCalled()
+  })
+})
+
+describe('replaces_document_id : remplacement explicite (tâche 4)', () => {
+  it('ignore la recherche de collision par nom et remplace directement le document validé', async () => {
+    validateReplaceCandidateForSite.mockResolvedValueOnce({
+      status: 'ok',
+      id: EXISTING_DOC_ID,
+      filename: 'ancien-nom.pdf',
+      content_hash: 'irrelevant',
+    })
+
+    const fd = pdfFormData('nouveau-nom-different.pdf', 'contenu-v2', {
+      replaces_document_id: EXISTING_DOC_ID,
+    })
+    const r = await uploadDocumentAction(fd)
+
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.versioned).toBe(true)
+    expect(validateReplaceCandidateForSite).toHaveBeenCalledWith(EXISTING_DOC_ID, ORG, SITE)
+    expect(findFilenameCollisionForSite).not.toHaveBeenCalled()
+    expect(createDocument.mock.calls[0][0]).toMatchObject({ supersedes_document_id: EXISTING_DOC_ID })
+    expect(markDocumentSuperseded).toHaveBeenCalledWith(EXISTING_DOC_ID)
+  })
+
+  it('refuse si la validation du document désigné échoue, sans aucun effet de bord', async () => {
+    validateReplaceCandidateForSite.mockResolvedValueOnce({ status: 'not_linked_to_site' })
+
+    const fd = pdfFormData('nouveau-nom.pdf', 'contenu-v2', {
+      replaces_document_id: EXISTING_DOC_ID,
+    })
+    const r = await uploadDocumentAction(fd)
+
+    expect(r.ok).toBe(false)
+    expect(storageUpload).not.toHaveBeenCalled()
+    expect(createDocument).not.toHaveBeenCalled()
   })
 })

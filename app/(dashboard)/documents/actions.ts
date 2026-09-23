@@ -30,6 +30,8 @@ import {
   getCollectionOrganizationId,
   findDocumentByHashInOrg,
   findFilenameCollisionInCollection,
+  findFilenameCollisionForSite,
+  validateReplaceCandidateForSite,
   copyDocumentLinks,
   markDocumentSuperseded,
 } from '@/lib/db/documents'
@@ -155,6 +157,13 @@ const uploadSchema = z
     // de devinette automatique : sans ce champ, la collision est signalée et
     // l'import s'arrête avant tout effet de bord.
     version_decision: z.enum(['update', 'keep_both']).optional(),
+    // Désignation EXPLICITE d'un document à remplacer (P0-1B2 revue
+    // FIX_REQUIRED, Vincent 2026-09-24, tâche 4) : seul moyen de remplacer une
+    // version dont le nom de fichier importé diffère de celui de l'ancienne
+    // (la détection par collision de nom, ci-dessous, ne peut jamais couvrir
+    // ce cas). Validé côté serveur via validateReplaceCandidateForSite —
+    // jamais une confiance aveugle dans cet id fourni par le client.
+    replaces_document_id: z.string().uuid().optional(),
   })
   .refine(
     (d) => (d.target_type ? !!d.target_id : !d.target_id),
@@ -380,6 +389,7 @@ export async function uploadDocumentAction(
     embed: formData.get('embed') || undefined,
     memory_tier: formData.get('memory_tier') || undefined,
     version_decision: formData.get('version_decision') || undefined,
+    replaces_document_id: formData.get('replaces_document_id') || undefined,
   })
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
@@ -533,15 +543,56 @@ export async function uploadDocumentAction(
     }
   }
 
-  // VERSIONING (P0-1B2, Vincent 2026-09-24) : même collection (= même site) +
-  // même nom de fichier + contenu différent = candidat à une nouvelle version,
+  // VERSIONING (P0-1B2, Vincent 2026-09-24) : même chantier/collection + même
+  // nom de fichier + contenu différent = candidat à une nouvelle version,
   // jamais tranché en silence. Refuse AVANT tout effet de bord (Storage) tant
   // que l'utilisateur n'a pas choisi explicitement Mettre à jour / Conserver
   // les deux / Annuler — un nom de fichier différent ne déclenche jamais cette
   // logique (aucune association automatique par similarité).
+  //
+  // Scope de collision (P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24, tâche
+  // 3) : `collection_id` n'est PAS l'identité du chantier (un document peut
+  // en être déplacé après import via moveDocumentToCollection). Pour un
+  // upload ciblant explicitement un chantier, la collision se cherche via
+  // document_links (target_type='site'), pas via la collection courante. La
+  // recherche par collection reste le repli pour un upload sans cible
+  // chantier (ex. bibliothèque de collection seule).
+  const targetsSite = input.target_type === 'site' && !!input.target_id
+  const collisionScopeLabel = targetsSite ? 'sur ce chantier' : 'dans cette collection'
   let supersedesDocumentId: string | null = null
-  if (input.version_decision !== 'keep_both') {
-    const collision = await findFilenameCollisionInCollection(file.name, input.collection_id, contentHash)
+
+  // REMPLACEMENT EXPLICITE (P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24,
+  // tâche 4) : l'utilisateur a désigné directement la version à remplacer —
+  // seul chemin qui fonctionne quand le nom de fichier importé diffère de
+  // celui de l'ancienne version (la détection par collision de nom ci-dessous
+  // ne peut jamais couvrir ce cas). Prioritaire sur cette détection, jamais
+  // combiné avec elle. Validation stricte côté serveur, jamais une confiance
+  // aveugle dans l'id fourni par le client — même choisi dans une liste
+  // server-rendue, elle peut être périmée entre l'ouverture du formulaire et
+  // la soumission.
+  if (input.replaces_document_id) {
+    if (!targetsSite) {
+      return { ok: false, error: 'Remplacement de version : réservé à un import ciblant un chantier.' }
+    }
+    const validation = await validateReplaceCandidateForSite(
+      input.replaces_document_id,
+      collectionOrgId,
+      input.target_id as string,
+    )
+    if (validation.status !== 'ok') {
+      const messages: Record<Exclude<typeof validation.status, 'ok'>, string> = {
+        not_found: 'Document à remplacer introuvable ou supprimé.',
+        not_active: 'Document à remplacer : déjà remplacé ou expiré.',
+        wrong_organization: 'Document à remplacer : organisation incompatible.',
+        not_linked_to_site: 'Document à remplacer : non rattaché à ce chantier.',
+      }
+      return { ok: false, error: messages[validation.status] }
+    }
+    supersedesDocumentId = validation.id
+  } else if (input.version_decision !== 'keep_both') {
+    const collision = targetsSite
+      ? await findFilenameCollisionForSite(file.name, input.target_id as string, contentHash)
+      : await findFilenameCollisionInCollection(file.name, input.collection_id, contentHash)
     if (collision.status === 'ambiguous') {
       // Plusieurs versions ACTIVES partagent déjà ce nom (permis par
       // `keep_both`) : jamais de choix arbitraire de celle à remplacer, quel
@@ -549,7 +600,7 @@ export async function uploadDocumentAction(
       // 2026-09-24). Refuse avant tout effet de bord.
       return {
         ok: false,
-        error: `Plusieurs documents nommés "${file.name}" existent déjà dans cette collection : impossible de déterminer lequel remplacer.`,
+        error: `Plusieurs documents nommés "${file.name}" existent déjà ${collisionScopeLabel} : impossible de déterminer lequel remplacer.`,
         versionConflict: true,
         ambiguousVersionConflict: true,
       }
@@ -558,7 +609,7 @@ export async function uploadDocumentAction(
       if (!input.version_decision) {
         return {
           ok: false,
-          error: `Un document nommé "${file.name}" existe déjà dans cette collection avec un contenu différent.`,
+          error: `Un document nommé "${file.name}" existe déjà ${collisionScopeLabel} avec un contenu différent.`,
           versionConflict: true,
           existingDocumentId: collision.id,
           existingFilename: collision.filename,

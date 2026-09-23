@@ -7,7 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUserRoleById } from '@/lib/db/users'
 import { getSiteById } from '@/lib/db/sites'
 import { requireOrganizationRole } from '@/lib/auth/memberships'
-import { createDocumentCollection, listDocumentCollections } from '@/lib/db/documents'
+import { createDocumentCollection, listDocumentCollections, listDocumentsForTarget } from '@/lib/db/documents'
 import { CONTRACTUAL_DOCUMENT_TYPE_VALUES } from './contractual-document-types'
 import type { UploadDocumentResult } from '@/app/(dashboard)/documents/actions'
 
@@ -69,6 +69,22 @@ export async function uploadSiteDocumentAction(
   }
 }
 
+/** Liste les documents ACTIFS actuellement rattachés à ce chantier, pour le
+ *  sélecteur « Remplace un document existant ? » du dialogue Document
+ *  contractuel (P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24, tâche 4).
+ *  Réutilise listDocumentsForTarget, qui exclut déjà `superseded`/supprimés
+ *  (P0-1B2 tâche 2) — jamais proposer de remplacer une version déjà remplacée. */
+export async function listSiteDocumentsForReplaceAction(
+  siteId: string,
+): Promise<Array<{ id: string; filename: string; document_type: string }>> {
+  const site = await getSiteById(siteId)
+  if (!site?.organization_id) return []
+  const membership = await requireOrganizationRole(site.organization_id, ['manager', 'admin'])
+  if (!membership.ok) return []
+  const docs = await listDocumentsForTarget('site', siteId)
+  return docs.map((d) => ({ id: d.id, filename: d.filename, document_type: d.document_type }))
+}
+
 // Document contractuel (P0-1, Vincent 2026-09-23) — action DÉDIÉE, distincte de
 // uploadSiteDocumentAction. Le flux générique "Document PDF" tolère un
 // document_type absent en le repliant sur 'preuve' ; ce repli est exactement
@@ -113,6 +129,8 @@ export async function uploadSiteContractualDocumentAction(
     if (effectiveDate) fd.set('effective_date', effectiveDate)
     const versionDecision = formData.get('version_decision')?.toString()
     if (versionDecision) fd.set('version_decision', versionDecision)
+    const replacesDocumentId = formData.get('replaces_document_id')?.toString()
+    if (replacesDocumentId) fd.set('replaces_document_id', replacesDocumentId)
     const result = await uploadDocumentAction(fd)
     if (result.ok) {
       revalidatePath(`/sites/${siteId}`, 'page')

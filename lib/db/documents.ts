@@ -125,7 +125,7 @@ export async function listOrphanDocuments(): Promise<DbDocument[]> {
   const supabase = createAdminClient()
   const orgIds = await getOrgIdsOfUser()
   if (orgIds.length === 0) return []
-  let q = supabase.from('documents').select('*').is('collection_id', null).is('deleted_at', null).neq('document_type', 'historical_visit_report').order('created_at', { ascending: false })
+  let q = supabase.from('documents').select('*').is('collection_id', null).is('deleted_at', null).neq('status', 'superseded').neq('document_type', 'historical_visit_report').order('created_at', { ascending: false })
   q = q.in('organization_id', orgIds)
   const { data, error } = await q
   if (error) throw error
@@ -346,6 +346,91 @@ export async function findFilenameCollisionInCollection(
   return { status: 'found', id: r.id, filename: r.filename, document_type: r.document_type }
 }
 
+/** Existe-t-il déjà, sur CE CHANTIER (peu importe sa collection actuelle), un
+ *  document ACTIF portant EXACTEMENT ce nom de fichier mais un contenu
+ *  différent ? `collection_id` n'est PAS une identité fiable du chantier : un
+ *  document peut en être déplacé après import (moveDocumentToCollection),
+ *  auquel cas findFilenameCollisionInCollection ne le retrouverait plus alors
+ *  que le chantier le connaît toujours via `document_links`. À utiliser en
+ *  priorité sur findFilenameCollisionInCollection quand l'upload cible
+ *  explicitement un chantier ; la version par collection reste le repli pour
+ *  un upload sans cible chantier (P0-1B2 revue FIX_REQUIRED, Vincent
+ *  2026-09-24, tâche 3). */
+export async function findFilenameCollisionForSite(
+  filename: string,
+  siteId: string,
+  contentHash: string,
+): Promise<FilenameCollisionLookup> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_links')
+    .select('document_id, documents!inner(id, filename, document_type, content_hash, status, deleted_at)')
+    .eq('target_type', 'site')
+    .eq('target_id', siteId)
+    .filter('documents.filename', 'eq', filename)
+    .filter('documents.status', 'eq', 'active')
+    .filter('documents.content_hash', 'neq', contentHash)
+    .is('documents.deleted_at', null)
+  if (error) throw error
+  const rows = (data ?? []) as unknown as Array<{
+    document_id: string
+    documents: { id: string; filename: string; document_type: string }
+  }>
+  const byId = new Map(rows.map((r) => [r.documents.id, r.documents]))
+  const unique = [...byId.values()]
+  if (unique.length === 0) return { status: 'none' }
+  if (unique.length > 1) return { status: 'ambiguous', ids: unique.map((d) => d.id) }
+  const r = unique[0]
+  return { status: 'found', id: r.id, filename: r.filename, document_type: r.document_type }
+}
+
+/** Résultat de la validation d'un document explicitement désigné comme « à
+ *  remplacer » (tâche 4) — distingue le motif de refus pour un message
+ *  précis, jamais un simple booléen. */
+export type ReplaceCandidateValidation =
+  | { status: 'ok'; id: string; filename: string; content_hash: string }
+  | { status: 'not_found' }
+  | { status: 'not_active' }
+  | { status: 'wrong_organization' }
+  | { status: 'not_linked_to_site' }
+
+/** Valide qu'un document désigné EXPLICITEMENT par l'utilisateur comme « à
+ *  remplacer » (Task 4, P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24) peut
+ *  réellement jouer ce rôle : actif (jamais une version déjà remplacée ou
+ *  supprimée), dans la MÊME organisation que l'upload, et effectivement
+ *  rattaché à CE chantier. Jamais une confiance aveugle dans l'id fourni par
+ *  le client — même sélectionné dans une liste server-rendue, elle peut être
+ *  périmée entre l'ouverture du formulaire et la soumission. Ce chemin est
+ *  la seule façon de remplacer un document dont le nom de fichier importé
+ *  diffère de celui de l'ancienne version (la détection automatique par nom
+ *  ne peut jamais couvrir ce cas). */
+export async function validateReplaceCandidateForSite(
+  documentId: string,
+  organizationId: string,
+  siteId: string,
+): Promise<ReplaceCandidateValidation> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id, filename, content_hash, status, organization_id, deleted_at')
+    .eq('id', documentId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data || data.deleted_at) return { status: 'not_found' }
+  if (data.organization_id !== organizationId) return { status: 'wrong_organization' }
+  if (data.status !== 'active') return { status: 'not_active' }
+  const { data: link, error: linkError } = await supabase
+    .from('document_links')
+    .select('document_id')
+    .eq('document_id', documentId)
+    .eq('target_type', 'site')
+    .eq('target_id', siteId)
+    .maybeSingle()
+  if (linkError) throw linkError
+  if (!link) return { status: 'not_linked_to_site' }
+  return { status: 'ok', id: data.id, filename: data.filename, content_hash: data.content_hash }
+}
+
 /** Reporte les rattachements polymorphes (`document_links`) d'une ancienne
  *  version vers sa nouvelle version (P0-1B2 correction invariant C, Vincent
  *  2026-09-24) : un document peut être lié à plusieurs cibles (site, contrat,
@@ -379,7 +464,16 @@ export async function copyDocumentLinks(fromDocumentId: string, toDocumentId: st
 
 /** Marque une version comme remplacée (P0-1B2) — l'ancienne version reste en
  *  base (historique conservé), seul son `status` change ; distinct d'une
- *  suppression (`deleted_at` n'est jamais touché ici). */
+ *  suppression (`deleted_at` n'est jamais touché ici).
+ *
+ *  P0-1B2 revue FIX_REQUIRED (Vincent 2026-09-24) : "superseded" doit devenir
+ *  historique pour de vrai, pas seulement une étiquette — sinon son contenu
+ *  continue de ressurgir comme connaissance courante (knowledge_chunks,
+ *  résonances). Neutralisation stricte : si elle échoue, on repasse la
+ *  version à 'active' avant de relancer, pour que la compensation déjà en
+ *  place dans uploadDocumentAction (soft-delete de la nouvelle version)
+ *  retrouve un état cohérent (ancienne version active, nouvelle invisible)
+ *  au lieu de laisser une version "superseded" qui fuite encore. */
 export async function markDocumentSuperseded(id: string): Promise<void> {
   const supabase = createAdminClient()
   const { error } = await supabase
@@ -387,6 +481,16 @@ export async function markDocumentSuperseded(id: string): Promise<void> {
     .update({ status: 'superseded', updated_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+
+  try {
+    await deactivateDocumentKnowledgeArtifacts(supabase, id)
+  } catch (e) {
+    await supabase
+      .from('documents')
+      .update({ status: 'active', updated_at: new Date().toISOString() })
+      .eq('id', id)
+    throw e
+  }
 }
 
 /** Compte les PV historiques déjà importés sur ce chantier pour la même date effective. */
@@ -534,6 +638,7 @@ export async function listLinkedDocumentsForTargets(
     .select('id, filename, document_type')
     .in('id', docIds)
     .is('deleted_at', null)
+    .neq('status', 'superseded')
   const docById = new Map(((docs ?? []) as Array<{ id: string; filename: string; document_type: string }>).map((d) => [d.id, d]))
   for (const r of rows) {
     const d = docById.get(r.document_id)
@@ -645,18 +750,63 @@ export async function updateDocumentAnalysisStatus(
 }
 
 /**
- * Soft-delete d'un document + nettoyage des dérivés IA.
- *
- * Doctrine : on conserve la trace historique (deleted_at, jamais hard
- * delete du document ni du fichier storage — restauration possible,
- * audit préservé). En revanche, on supprime/staled les artefacts IA
- * qui pourraient ressurgir dans une lecture :
+ * Neutralise les artefacts IA dérivés d'un document (knowledge_chunks +
+ * résonances site_reading_candidates) pour qu'il cesse d'alimenter la
+ * connaissance courante — sans toucher au document ni à son fichier.
+ * Partagé par softDeleteDocument (suppression) et markDocumentSuperseded
+ * (remplacement de version) : les deux doivent produire le même résultat,
+ * "n'apparaît plus en lecture courante", même si leur tolérance à l'échec
+ * diffère (best-effort pour l'un, strict avec compensation pour l'autre).
  *
  *  - `knowledge_chunks` (source_domain='document') → DELETE hard
  *    (regenerable depuis le fichier si restauration, et leur présence
  *    fait fuiter le contenu dans matchAoToKnowledge / recalls).
  *  - `site_reading_candidates` où source_ids[0].id = doc.id → status='stale'
  *    (préserve l'historique des résonances émises, ne re-render plus).
+ */
+async function deactivateDocumentKnowledgeArtifacts(
+  supabase: ReturnType<typeof createAdminClient>,
+  id: string,
+): Promise<void> {
+  const { error: chunksError } = await supabase
+    .from('knowledge_chunks')
+    .delete()
+    .eq('source_domain', 'document')
+    .eq('source_id', id)
+  if (chunksError) throw chunksError
+
+  // Filtre côté JS sur source_ids[0].id car PostgREST ne permet pas un
+  // filtre direct sur l'élément 0 d'un jsonb array.
+  const { data: candidates, error: candidatesError } = await supabase
+    .from('site_reading_candidates')
+    .select('id, source_ids')
+    .like('algorithm_version', 'b%_doc_%')
+    .eq('status', 'active')
+  if (candidatesError) throw candidatesError
+
+  const toStale = (candidates ?? [])
+    .filter((r) => {
+      const src = (r as { source_ids: Array<{ type: string; id: string }> }).source_ids ?? []
+      return src.length > 0 && src[0]?.id === id
+    })
+    .map((r) => (r as { id: string }).id)
+  if (toStale.length > 0) {
+    const { error: staleError } = await supabase
+      .from('site_reading_candidates')
+      .update({ status: 'stale' })
+      .in('id', toStale)
+    if (staleError) throw staleError
+  }
+}
+
+/**
+ * Soft-delete d'un document + nettoyage des dérivés IA.
+ *
+ * Doctrine : on conserve la trace historique (deleted_at, jamais hard
+ * delete du document ni du fichier storage — restauration possible,
+ * audit préservé). Le nettoyage des artefacts IA reste best-effort : le
+ * document est déjà marqué supprimé à ce stade, un échec de nettoyage ne
+ * doit pas faire échouer la suppression elle-même.
  *
  * Le fichier dans le bucket `documents` est CONSERVÉ (pattern soft delete).
  * Une purge définitive est une décision séparée (non couverte ici).
@@ -675,32 +825,11 @@ export async function softDeleteDocument(id: string): Promise<void> {
     .is('deleted_at', null)
   if (docErr) throw docErr
 
-  // 2. Nettoyer knowledge_chunks (re-générables si restauration)
-  await supabase
-    .from('knowledge_chunks')
-    .delete()
-    .eq('source_domain', 'document')
-    .eq('source_id', id)
-
-  // 3. Staler les résonances qui ont ce doc comme source primaire
-  //    (B1 + B2). Filtre côté JS sur source_ids[0].id car PostgREST ne
-  //    permet pas un filtre direct sur l'élément 0 d'un jsonb array.
-  const { data: candidates } = await supabase
-    .from('site_reading_candidates')
-    .select('id, source_ids')
-    .like('algorithm_version', 'b%_doc_%')
-    .eq('status', 'active')
-  const toStale = (candidates ?? [])
-    .filter((r) => {
-      const src = (r as { source_ids: Array<{ type: string; id: string }> }).source_ids ?? []
-      return src.length > 0 && src[0]?.id === id
-    })
-    .map((r) => (r as { id: string }).id)
-  if (toStale.length > 0) {
-    await supabase
-      .from('site_reading_candidates')
-      .update({ status: 'stale' })
-      .in('id', toStale)
+  // 2-3. Nettoyage des artefacts IA (best-effort, cf. doctrine ci-dessus).
+  try {
+    await deactivateDocumentKnowledgeArtifacts(supabase, id)
+  } catch (e) {
+    console.error('[softDeleteDocument] artifact cleanup failed:', e)
   }
 }
 
@@ -712,11 +841,13 @@ export type ActiveDocumentMetadata = {
 }
 
 /**
- * Résout par lot les documents ENCORE ACTIFS (deleted_at IS NULL) parmi une
- * liste d'ids. Un id de document soft-supprimé est absent de la Map retournée
- * — jamais présent avec des métadonnées vides — pour que les cinq files
- * Needs-you puissent écarter la preuve correspondante plutôt que de se
- * contenter d'un affichage blanchi (mandat Vincent P0 Needs-you 2026-09-22).
+ * Résout par lot les documents ENCORE ACTIFS (deleted_at IS NULL et
+ * status != 'superseded') parmi une liste d'ids. Un id de document
+ * soft-supprimé ou remplacé par une version plus récente est absent de la
+ * Map retournée — jamais présent avec des métadonnées vides — pour que les
+ * cinq files Needs-you puissent écarter la preuve correspondante plutôt que
+ * de se contenter d'un affichage blanchi (mandat Vincent P0 Needs-you
+ * 2026-09-22 ; filtre status étendu P0-1B2 revue FIX_REQUIRED 2026-09-24).
  */
 export async function loadActiveDocumentMetadataByIds(
   db: ReturnType<typeof createAdminClient>,
@@ -728,6 +859,7 @@ export async function loadActiveDocumentMetadataByIds(
     .select('id, filename, document_type, effective_date')
     .in('id', documentIds)
     .is('deleted_at', null)
+    .neq('status', 'superseded')
   if (error) throw error
   return new Map((data ?? []).map((d) => [d.id, d as ActiveDocumentMetadata]))
 }
