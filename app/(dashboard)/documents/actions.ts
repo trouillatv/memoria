@@ -93,10 +93,18 @@ function isGenericDocumentType(type: string | null | undefined): boolean {
 function resolveMetadataEnrichment(
   existing: { document_type?: string | null; effective_date?: string | null },
   incoming: { document_type: string; effective_date?: string },
-): { typeToApply?: string; dateToApply?: string; conflict: boolean } {
+): {
+  typeToApply?: string
+  dateToApply?: string
+  conflict: boolean
+  typeConflict?: { existing: string; incoming: string }
+  dateConflict?: { existing: string; incoming: string }
+} {
   let typeToApply: string | undefined
   let dateToApply: string | undefined
   let conflict = false
+  let typeConflict: { existing: string; incoming: string } | undefined
+  let dateConflict: { existing: string; incoming: string } | undefined
 
   const existingType = existing.document_type
   if (existingType && existingType !== incoming.document_type) {
@@ -104,6 +112,7 @@ function resolveMetadataEnrichment(
       typeToApply = incoming.document_type
     } else if (!isGenericDocumentType(existingType) && !isGenericDocumentType(incoming.document_type)) {
       conflict = true
+      typeConflict = { existing: existingType, incoming: incoming.document_type }
     }
     // Existant spécifique, nouveau générique : on ignore silencieusement —
     // jamais de dégradation d'une classification déjà posée.
@@ -115,10 +124,11 @@ function resolveMetadataEnrichment(
       dateToApply = incoming.effective_date
     } else if (existingDate !== incoming.effective_date) {
       conflict = true
+      dateConflict = { existing: existingDate, incoming: incoming.effective_date }
     }
   }
 
-  return { typeToApply, dateToApply, conflict }
+  return { typeToApply, dateToApply, conflict, typeConflict, dateConflict }
 }
 
 const uploadSchema = z
@@ -314,6 +324,12 @@ export interface UploadDocumentResult {
   enriched?: boolean
   /** Le nouvel import contredit un type ou une date déjà spécifique sur le document existant : aucun écrasement, signal explicite. */
   metadataConflict?: boolean
+  /** Nom de fichier du document déjà présent (utile quand il diffère du fichier importé). */
+  existingFilename?: string
+  /** Type appliqué (enrichissement) ou proposé (conflit) sur le document existant. */
+  documentTypeChange?: { from: string; to: string }
+  /** Date d'effet appliquée (enrichissement) ou proposée (conflit) sur le document existant. */
+  effectiveDateChange?: { from: string | null; to: string }
 }
 
 export async function uploadDocumentAction(
@@ -429,7 +445,7 @@ export async function uploadDocumentAction(
     // ou sans date d'effet complète le nœud existant au lieu de laisser sa
     // classification périmée. Jamais d'écrasement silencieux d'un type ou
     // d'une date déjà spécifique — cf. resolveMetadataEnrichment.
-    const { typeToApply, dateToApply, conflict } = resolveMetadataEnrichment(
+    const { typeToApply, dateToApply, conflict, typeConflict, dateConflict } = resolveMetadataEnrichment(
       { document_type: existingDoc.document_type, effective_date: existingDoc.effective_date },
       { document_type: input.document_type, effective_date: input.effective_date },
     )
@@ -463,8 +479,19 @@ export async function uploadDocumentAction(
       ok: true,
       documentId: existingDoc.id,
       duplicate: true,
+      existingFilename: existingDoc.filename,
       ...(typeToApply || dateToApply ? { enriched: true } : {}),
       ...(conflict ? { metadataConflict: true } : {}),
+      ...(typeToApply
+        ? { documentTypeChange: { from: existingDoc.document_type ?? '', to: typeToApply } }
+        : typeConflict
+          ? { documentTypeChange: { from: typeConflict.existing, to: typeConflict.incoming } }
+          : {}),
+      ...(dateToApply
+        ? { effectiveDateChange: { from: existingDoc.effective_date ?? null, to: dateToApply } }
+        : dateConflict
+          ? { effectiveDateChange: { from: dateConflict.existing, to: dateConflict.incoming } }
+          : {}),
     }
   }
 

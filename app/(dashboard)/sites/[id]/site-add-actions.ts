@@ -9,6 +9,7 @@ import { getSiteById } from '@/lib/db/sites'
 import { requireOrganizationRole } from '@/lib/auth/memberships'
 import { createDocumentCollection, listDocumentCollections } from '@/lib/db/documents'
 import { CONTRACTUAL_DOCUMENT_TYPE_VALUES } from './contractual-document-types'
+import type { UploadDocumentResult } from '@/app/(dashboard)/documents/actions'
 
 async function ensureSiteCollection(siteId: string): Promise<string> {
   const collections = await listDocumentCollections()
@@ -75,7 +76,7 @@ export async function uploadSiteDocumentAction(
 export async function uploadSiteContractualDocumentAction(
   siteId: string,
   formData: FormData,
-): Promise<{ ok: boolean; error?: string; documentId?: string; duplicate?: boolean }> {
+): Promise<UploadDocumentResult> {
   try {
     const documentType = formData.get('document_type')?.toString()
     if (!documentType || !CONTRACTUAL_DOCUMENT_TYPE_VALUES.includes(documentType)) {

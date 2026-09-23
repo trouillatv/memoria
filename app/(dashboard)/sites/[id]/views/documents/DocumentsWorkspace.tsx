@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react'
 import { Download, FileSearch, FileText, FolderCheck, ImageIcon, Mic, Search, ShieldCheck, StickyNote, Upload, Video } from 'lucide-react'
 import type { ProofDossier } from '@/lib/db/proof-dossier'
 import type { QrHistoryEvent } from '@/lib/db/site-qr'
+import { documentTypeLabel } from '@/lib/documents/labels'
 import { ActivateQrButton } from '../../qr/ActivateQrButton'
 import { QrShareActions } from '../../qr/QrShareActions'
 import { RevokeQrButton } from '../../qr/RevokeQrButton'
@@ -15,6 +16,7 @@ export interface SiteDocumentSummary {
   filename: string
   document_type: string
   created_at?: string | null
+  effective_date?: string | null
 }
 
 export interface SiteMediaSummary {
@@ -64,7 +66,12 @@ export function DocumentsWorkspace({
       id: `document-${document.id}`,
       kind: 'document',
       title: document.filename,
-      detail: document.document_type || 'Document',
+      // Type = nature réelle (CCTP, CCAP...), jamais "Document" générique ;
+      // detail = date d'IMPORT ("ajouté le"), jamais confondue avec la date
+      // d'effet (business), affichée séparément dans dateDisplay (colonne Date).
+      typeLabel: documentTypeLabel(document.document_type),
+      detail: document.created_at ? `ajouté le ${formatDate(document.created_at)}` : '',
+      dateDisplay: document.effective_date ? `effet ${formatDate(document.effective_date)}` : undefined,
       occurredAt: document.created_at ?? null,
       // La bibliothèque du chantier OUVRE l'objet du graphe (fiche document dans
       // son contexte de chantier) ; la visionneuse /documents/<id> reste la
@@ -76,6 +83,7 @@ export function DocumentsWorkspace({
       id: item.id,
       kind: item.kind,
       title: item.title,
+      typeLabel: kindLabel(item.kind),
       detail: `${kindLabel(item.kind)} · ${sourceLabel(item.source)}${item.detail ? ` · ${item.detail}` : ''}`,
       occurredAt: item.occurredAt,
       href: item.href,
@@ -168,8 +176,8 @@ export function DocumentsWorkspace({
                       <span className="block truncate text-xs text-muted-foreground">{entry.detail}</span>
                     </span>
                   </span>
-                  <span className="flex items-center text-sm text-muted-foreground">{kindLabel(entry.kind)}</span>
-                  <span className="flex items-center text-sm text-muted-foreground">{entry.occurredAt ? formatDate(entry.occurredAt) : 'Non daté'}</span>
+                  <span className="flex items-center text-sm text-muted-foreground">{entry.typeLabel}</span>
+                  <span className="flex items-center text-sm text-muted-foreground">{entry.dateDisplay ?? (entry.occurredAt ? formatDate(entry.occurredAt) : 'Non daté')}</span>
                 </Link>
               ))}
             </div>
@@ -356,7 +364,11 @@ type LibraryEntry = {
   id: string
   kind: 'document' | SiteMediaSummary['kind']
   title: string
+  /** Nature affichée en colonne Type (nature réelle pour un document, sinon kindLabel). */
+  typeLabel: string
   detail: string
+  /** Rendu explicite de la colonne Date (ex. "effet DD/MM/AAAA") ; à défaut, occurredAt formaté. */
+  dateDisplay?: string
   occurredAt: string | null
   href: string
   searchable: string

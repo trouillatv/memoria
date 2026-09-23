@@ -615,6 +615,7 @@ async function DocumentsPreuvesView({ siteId, canExport }: { siteId: string; can
         filename: document.filename,
         document_type: document.document_type,
         created_at: document.created_at,
+        effective_date: document.effective_date,
       }))}
       media={media}
       proofDossiers={proofDossiers}

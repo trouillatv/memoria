@@ -8,6 +8,8 @@ import { CONTRACTUAL_DOCUMENT_TYPES } from './contractual-document-types'
 import { HistoricalPvUploadForm } from './HistoricalPvUploadForm'
 import { createQuickActionAction } from '@/app/(dashboard)/actions/actions'
 import { createReserveAction } from './reserves/actions'
+import { documentTypeLabel } from '@/lib/documents/labels'
+import type { UploadDocumentResult } from '@/app/(dashboard)/documents/actions'
 
 type DialogKind = 'document' | 'evidence' | 'historical_pv' | 'contractual_document' | 'action' | 'reserve' | null
 
@@ -212,6 +214,8 @@ function SiteContractualDocumentDialog({
     const form = formRef.current
     if (!form) return
     const fd = new FormData(form)
+    const incomingFile = fd.get('file')
+    const incomingFilename = incomingFile instanceof File ? incomingFile.name : null
     startTransition(async () => {
       try {
         const result = await uploadSiteContractualDocumentAction(siteId, fd)
@@ -219,7 +223,7 @@ function SiteContractualDocumentDialog({
           setMessage(result.error ?? 'Import impossible.')
           return
         }
-        setMessage(result.duplicate ? 'Document déjà connu, lien ajouté au chantier.' : 'Document contractuel ajouté au chantier.')
+        setMessage(buildContractualUploadMessage(result, incomingFilename))
         form.reset()
       } catch (e) {
         console.error('[SiteContractualDocumentDialog]', e)
@@ -261,6 +265,53 @@ function SiteContractualDocumentDialog({
       </form>
     </Modal>
   )
+}
+
+// P0-1 finition UX (Vincent 2026-09-24) — un doublon détecté par hash n'est
+// jamais un simple "déjà connu" : soit ses métadonnées viennent d'être
+// complétées (aucun nouveau document créé), soit le nouvel import contredit
+// une classification déjà spécifique (aucun écrasement silencieux), soit le
+// contenu était déjà là tel quel. Le message doit distinguer les trois, et
+// jamais laisser croire qu'un document a été créé quand le nœud est réutilisé.
+function formatEffectiveDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+}
+
+function filenameDiffersNote(existingFilename: string | undefined, incomingFilename: string | null): string {
+  if (!existingFilename || !incomingFilename || existingFilename === incomingFilename) return ''
+  return ' Le nom du fichier est différent, mais son contenu est identique au document déjà présent.'
+}
+
+function buildContractualUploadMessage(result: UploadDocumentResult, incomingFilename: string | null): string {
+  if (!result.duplicate) return 'Document contractuel ajouté au chantier.'
+
+  const filenameNote = filenameDiffersNote(result.existingFilename, incomingFilename)
+
+  if (result.metadataConflict) {
+    const parts: string[] = []
+    if (result.documentTypeChange) {
+      parts.push(`nature déjà enregistrée : ${documentTypeLabel(result.documentTypeChange.from)} — nature importée : ${documentTypeLabel(result.documentTypeChange.to)}`)
+    }
+    if (result.effectiveDateChange) {
+      const from = result.effectiveDateChange.from ? formatEffectiveDate(result.effectiveDateChange.from) : 'aucune'
+      parts.push(`date d’effet déjà enregistrée : ${from} — date importée : ${formatEffectiveDate(result.effectiveDateChange.to)}`)
+    }
+    return `Aucun nouveau document créé : ce contenu est déjà connu, mais ses métadonnées entrent en conflit avec l’import (${parts.join(' ; ')}). Rien n’a été modifié automatiquement.${filenameNote}`
+  }
+
+  if (result.enriched) {
+    const parts: string[] = []
+    if (result.documentTypeChange) {
+      parts.push(`nature ${documentTypeLabel(result.documentTypeChange.from)} → ${documentTypeLabel(result.documentTypeChange.to)}`)
+    }
+    if (result.effectiveDateChange) {
+      const from = result.effectiveDateChange.from ? formatEffectiveDate(result.effectiveDateChange.from) : 'aucune date'
+      parts.push(`date d’effet ${from} → ${formatEffectiveDate(result.effectiveDateChange.to)}`)
+    }
+    return `Document déjà connu, aucun nouveau document créé — métadonnées complétées (${parts.join(', ')}).${filenameNote}`
+  }
+
+  return `Document déjà connu, lien ajouté au chantier — contenu identique déjà présent.${filenameNote}`
 }
 
 function SiteEvidenceDialog({
