@@ -6,7 +6,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserRoleById } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getDocument, getDocumentLinkLabels } from '@/lib/db/documents'
-import { getLatestExtractionRunForDocument } from '@/lib/db/document-extractions'
+import {
+  getLatestExtractionRunForDocument,
+  getLatestExtractionRunForDocumentAndExtractor,
+  countPendingProposalsForRun,
+} from '@/lib/db/document-extractions'
+import { ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES } from '@/lib/documents/engagement-eligible-document-types'
 import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
 import { listTenders } from '@/lib/db/tenders'
@@ -130,6 +135,20 @@ export default async function DocumentViewerPage({
     : null
   const extractionInProgress = latestRun?.status === 'processing' || latestRun?.status === 'pending'
 
+  // P0-2D — raccord intake → extraction → revue pour les documents contractuels
+  // (Engagements prescriptifs, P0-2B). Le run engagement ne transite jamais
+  // vers partially_materialized/materialized (contrairement au run PV
+  // historique) : le discriminant "déjà traité" vs "à examiner" est le compte
+  // de propositions review_status='pending', pas le statut du run.
+  const engagementEligible = ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES.includes(doc.document_type)
+  const engagementRun = engagementEligible
+    ? await getLatestExtractionRunForDocumentAndExtractor(doc.id, 'engagement_prescriptif_v1').catch(() => null)
+    : null
+  const engagementInProgress = engagementRun?.status === 'processing' || engagementRun?.status === 'pending'
+  const engagementPendingCount = engagementRun && !engagementInProgress && engagementRun.status !== 'failed'
+    ? await countPendingProposalsForRun(engagementRun.id).catch(() => 0)
+    : 0
+
   // Coût IA indicatif = moyenne observée des dernières analyses de document
   // (responsabilise avant « Réanalyser »). Réel, pas théorique.
   const docAvgCost = await getAverageCostForFeatures(['embed_chunks_document'])
@@ -180,6 +199,9 @@ export default async function DocumentViewerPage({
             extractionInProgress={extractionInProgress}
             latestRunId={latestRun?.id ?? null}
             latestRunStatus={latestRun?.status ?? null}
+            engagementEligible={engagementEligible}
+            engagementRunId={engagementRun?.id ?? null}
+            engagementRunStatus={engagementRun?.status ?? null}
           />
         )}
       </header>
@@ -214,6 +236,45 @@ export default async function DocumentViewerPage({
                 </p>
               )}
             </div>
+          )}
+        </section>
+      )}
+
+      {/* Section extraction IA — uniquement pour les documents contractuels éligibles (P0-2D) */}
+      {engagementEligible && engagementRun && (
+        <section className="rounded-lg border bg-card p-4 space-y-2">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Engagements contractuels
+          </h2>
+          {engagementInProgress ? (
+            <p className="text-sm text-muted-foreground">Analyse en cours…</p>
+          ) : engagementRun.status === 'failed' ? (
+            <p className="text-sm text-destructive">L'analyse du document n'a pas pu être terminée. Réessayer.</p>
+          ) : engagementRun.empty_reason === 'NO_BUSINESS_ELEMENT_DETECTED' ? (
+            <p className="text-sm text-muted-foreground">
+              Analyse terminée — aucun engagement détecté dans ce document.
+            </p>
+          ) : engagementPendingCount > 0 ? (
+            <div className="space-y-1.5">
+              <Link
+                href={`/documents/${doc.id}/extraction/${engagementRun.id}`}
+                className="inline-flex text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
+              >
+                Examiner les {engagementPendingCount} proposition{engagementPendingCount > 1 ? 's' : ''}
+              </Link>
+              <p className="text-xs text-muted-foreground">
+                Ces engagements sont en attente de validation. Ils ne sont pas encore des prestations prévues.
+              </p>
+            </div>
+          ) : engagementRun.target_site_id ? (
+            <Link
+              href={`/sites/${engagementRun.target_site_id}/prestations`}
+              className="inline-flex text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
+            >
+              Voir les prestations prévues
+            </Link>
+          ) : (
+            <p className="text-sm text-muted-foreground">Analyse terminée.</p>
           )}
         </section>
       )}

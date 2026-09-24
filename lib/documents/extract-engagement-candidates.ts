@@ -19,6 +19,7 @@ import {
 import { ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1 } from '@/services/ai/prompts/engagement-extractor-prescriptif.v1'
 import { buildPageWindows } from '@/lib/documents/page-windows'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES } from '@/lib/documents/engagement-eligible-document-types'
 import type { DocumentExtractionEmptyReason } from '@/types/db'
 
 // P0-2B — Extracteur prescriptif de candidats Engagements (Porte B).
@@ -44,7 +45,7 @@ const EXTRACTOR_VERSION = ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1.version
 const MIN_USABLE_CHARS = 100
 
 // Chaîne exacte du mandat : "document contractuel" → "extracteur prescriptif".
-const ELIGIBLE_DOCUMENT_TYPES = new Set(['cctp', 'ccap', 'contrat', 'avenant', 'ordre_service'])
+const ELIGIBLE_DOCUMENT_TYPES = new Set(ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES)
 
 export type ExtractEngagementCandidatesResult =
   | { ok: true; runId: string; reused: boolean; proposalCount: number }

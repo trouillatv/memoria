@@ -9,6 +9,7 @@ import { getSiteById } from '@/lib/db/sites'
 import { requireOrganizationRole } from '@/lib/auth/memberships'
 import { createDocumentCollection, listDocumentCollections, listDocumentsForTarget } from '@/lib/db/documents'
 import { CONTRACTUAL_DOCUMENT_TYPE_VALUES } from './contractual-document-types'
+import { ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES } from '@/lib/documents/engagement-eligible-document-types'
 import type { UploadDocumentResult } from '@/app/(dashboard)/documents/actions'
 
 async function ensureSiteCollection(siteId: string): Promise<string> {
@@ -142,6 +143,34 @@ export async function uploadSiteContractualDocumentAction(
     const result = await uploadDocumentAction(fd)
     if (result.ok) {
       revalidatePath(`/sites/${siteId}`, 'page')
+
+      // P0-2D — un NOUVEAU document contractuel éligible lance l'extraction
+      // Engagement automatiquement. Jamais sur un hit de dédoublonnage
+      // (result.duplicate) : le document existant possède déjà son propre
+      // état d'extraction, visible via la page document (bouton
+      // Analyser/Examiner/Voir les prestations), jamais relancé en silence.
+      if (result.documentId && !result.duplicate && ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES.includes(documentType)) {
+        const secret = process.env.CRON_SECRET
+        if (secret) {
+          const h = await headers()
+          const host = h.get('x-forwarded-host') ?? h.get('host') ?? 'localhost:3000'
+          const proto = h.get('x-forwarded-proto') ?? (process.env.NODE_ENV === 'production' ? 'https' : 'http')
+          const extractionUrl = `${proto}://${host}/api/extraction/engagement`
+          const documentId = result.documentId
+          const userId = membership.context.userId
+          after(async () => {
+            try {
+              await fetch(extractionUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-internal-trigger': secret },
+                body: JSON.stringify({ documentId, userId }),
+              })
+            } catch (e) {
+              console.error('uploadSiteContractualDocumentAction engagement trigger error:', e)
+            }
+          })
+        }
+      }
     }
     return result
   } catch (e) {

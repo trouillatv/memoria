@@ -499,6 +499,21 @@ export async function getLatestExtractionRunForDocumentAndExtractor(
   return (data as DbDocumentExtractionRun | null)
 }
 
+// P0-2D — discriminant léger pour la page document : combien de propositions
+// d'un run restent à examiner. Un COUNT dédié plutôt que de tirer la liste
+// complète des propositions (effective-proposal.ts computeReviewSummary),
+// disproportionné pour un simple badge d'entrée.
+export async function countPendingProposalsForRun(runId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { count, error } = await supabase
+    .from('document_extraction_proposal')
+    .select('id', { count: 'exact', head: true })
+    .eq('extraction_run_id', runId)
+    .eq('review_status', 'pending')
+  if (error) throw new Error(error.message)
+  return count ?? 0
+}
+
 // P0 Unicite des runs historiques — un run dans l'un de ces statuts est
 // exploitable : une extraction standard ne doit pas en recreer un autre pour
 // le meme document. Seule une intention explicite de "Reanalyser" le peut.

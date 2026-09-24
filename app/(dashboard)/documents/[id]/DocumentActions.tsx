@@ -50,6 +50,9 @@ export function DocumentActions({
   extractionInProgress = false,
   latestRunId,
   latestRunStatus,
+  engagementEligible = false,
+  engagementRunId,
+  engagementRunStatus,
 }: {
   documentId: string
   documentType: string
@@ -59,6 +62,9 @@ export function DocumentActions({
   extractionInProgress?: boolean
   latestRunId?: string | null
   latestRunStatus?: string | null
+  engagementEligible?: boolean
+  engagementRunId?: string | null
+  engagementRunStatus?: string | null
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -67,6 +73,9 @@ export function DocumentActions({
   const [extracting, setExtracting] = useState(false)
   const [stage, setStage] = useState<string | null>(null)
   const [pct, setPct] = useState(0)
+
+  const [engagementBusy, setEngagementBusy] = useState(false)
+  const [engagementMsg, setEngagementMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const stageTimers = useRef<ReturnType<typeof setTimeout>[]>([])
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -213,6 +222,32 @@ export function DocumentActions({
     })
   }
 
+  // P0-2D — raccord Engagements : appel synchrone, pas de polling (l'extracteur
+  // P0-2B n'a pas la mécanique after()/pré-création de run de extract-historical-pv ;
+  // cf. mandat P0-2D, ne pas refactorer un module testé pour un raccord).
+  async function onAnalyzeEngagement(force: boolean) {
+    setEngagementMsg(null)
+    setEngagementBusy(true)
+    try {
+      const r = await fetch('/api/extraction/engagement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId, force }),
+      })
+      const data = await r.json() as { ok?: boolean; error?: string; runId?: string; reused?: boolean }
+      if (r.ok && data.ok) {
+        setEngagementMsg({ ok: true, text: data.reused ? 'Analyse déjà disponible pour ce document.' : 'Analyse terminée.' })
+        router.refresh()
+      } else {
+        setEngagementMsg({ ok: false, text: data.error ?? 'Échec de l\'analyse.' })
+      }
+    } catch {
+      setEngagementMsg({ ok: false, text: 'Erreur réseau.' })
+    } finally {
+      setEngagementBusy(false)
+    }
+  }
+
   function onDelete() {
     if (!window.confirm(
       'Supprimer ce document ?\n\n' +
@@ -236,6 +271,9 @@ export function DocumentActions({
   const isHistoricalPv = documentType === 'historical_visit_report'
   const currentInfo = stageInfo(stage)
   const hasReusableRun = !!latestRunStatus && REUSABLE_RUN_STATUSES.has(latestRunStatus)
+
+  const hasEngagementRun = !!engagementRunId
+  const engagementInFlight = engagementRunStatus === 'processing' || engagementRunStatus === 'pending'
 
   return (
     <div className="space-y-3">
@@ -262,6 +300,24 @@ export function DocumentActions({
               {pending ? '…' : 'Réanalyser'}
             </Button>
             <AiCostHint avgUsd={avgCostUsd} sampleCount={costSampleCount} label="analyse de document" />
+          </span>
+        )}
+        {engagementEligible && (
+          <span className="inline-flex items-center gap-1.5">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onAnalyzeEngagement(hasEngagementRun)}
+              disabled={pending || engagementBusy || engagementInFlight}
+              title={hasEngagementRun ? 'Relance une nouvelle extraction — la précédente reste consultable' : undefined}
+            >
+              {engagementBusy ? '…' : engagementInFlight ? 'Analyse en cours…' : hasEngagementRun ? 'Réanalyser les engagements' : 'Analyser les engagements'}
+            </Button>
+            {engagementMsg && (
+              <p className={`text-sm ${engagementMsg.ok ? 'text-muted-foreground' : 'text-destructive'}`}>
+                {engagementMsg.text}
+              </p>
+            )}
           </span>
         )}
         <Button
