@@ -138,9 +138,9 @@ describe('engagements_page_requires_document — généralisée aux deux portes'
   })
 })
 
-describe('documents_clear_engagement_provenance_before_delete — nettoyage à la suppression', () => {
-  it('vide source_document_id/page_number sans supprimer l’engagement, à la suppression du document', async () => {
-    const documentId = await createDocument('delete-cleanup')
+describe('provenance documentaire jamais silencieusement perdue (migration 437)', () => {
+  it('bloque la suppression physique d’un document tant qu’un Engagement le référence (FK NO ACTION, plus de trigger de nettoyage)', async () => {
+    const documentId = await createDocument('delete-blocked')
     const { id: engagementId } = await insertEngagement({
       site_id: siteId,
       source_document_id: documentId,
@@ -149,8 +149,32 @@ describe('documents_clear_engagement_provenance_before_delete — nettoyage à l
 
     const supabase = createAdminClient()
     const { error: deleteError } = await supabase.from('documents').delete().eq('id', documentId)
-    expect(deleteError).toBeNull()
-    createdDocumentIds.splice(createdDocumentIds.indexOf(documentId), 1)
+    expect(deleteError).not.toBeNull()
+
+    // Provenance intacte : la preuve documentaire n'a pas bougé.
+    const { data, error } = await supabase
+      .from('engagements')
+      .select('id, source_document_id, page_number')
+      .eq('id', engagementId)
+      .single()
+    expect(error).toBeNull()
+    expect(data).toMatchObject({ id: engagementId, source_document_id: documentId, page_number: 7 })
+  })
+
+  it('le soft-delete (deleted_at) n’est pas affecté : la ligne documents subsiste, la provenance reste lisible', async () => {
+    const documentId = await createDocument('soft-delete-ok')
+    const { id: engagementId } = await insertEngagement({
+      site_id: siteId,
+      source_document_id: documentId,
+      page_number: 2,
+    })
+
+    const supabase = createAdminClient()
+    const { error: softDeleteError } = await supabase
+      .from('documents')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', documentId)
+    expect(softDeleteError).toBeNull()
 
     const { data, error } = await supabase
       .from('engagements')
@@ -158,7 +182,27 @@ describe('documents_clear_engagement_provenance_before_delete — nettoyage à l
       .eq('id', engagementId)
       .single()
     expect(error).toBeNull()
-    expect(data).toMatchObject({ id: engagementId, source_document_id: null, page_number: null })
+    expect(data).toMatchObject({ id: engagementId, source_document_id: documentId, page_number: 2 })
+  })
+})
+
+describe('engagements_origin_door_check — XOR strict (migration 437)', () => {
+  it('refuse un engagement avec tender_id ET site_id renseignés simultanément', async () => {
+    const { error } = await insertEngagement({ tender_id: null, site_id: siteId })
+    expect(error).toBeNull() // témoin : site_id seul reste valide
+
+    const supabase = createAdminClient()
+    const { error: bothError } = await supabase
+      .from('engagements')
+      .insert({
+        site_id: siteId,
+        tender_id: randomUUID(), // FK inexistante mais le CHECK doit rejeter avant la FK
+        source_type: 'manual',
+        source_excerpt: `${TEST_TAG} both doors`,
+        category: 'other',
+        short_label: `${TEST_TAG} both doors`,
+      })
+    expect(bothError).not.toBeNull()
   })
 })
 

@@ -5,10 +5,12 @@
 // (lib/db/materialize-obligation.ts) et materializeHistoricalVisit.
 //
 // Deux issues seulement : create_new (nouvel engagement, site_id renseigné,
-// tender_id NULL, status='active' directement) et link_existing (rattachement
-// à un engagement existant du même chantier/organisation, zéro mutation de
-// ses champs métier). La Porte A (AO, tender_id NOT NULL) reste inchangée et
-// n'utilise jamais ces RPC.
+// tender_id NULL, status='curated' — validation de l'extraction, PAS
+// activation, cf. migration 437) et link_existing (rattachement à un
+// engagement existant du même chantier/organisation, zéro mutation de ses
+// champs métier). L'activation ('curated' → 'active') est un geste séparé,
+// cf. lib/db/engagements.ts::activateEngagement. La Porte A (AO, tender_id
+// NOT NULL) reste inchangée et n'utilise jamais ces RPC.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { EngagementCategory } from '@/types/db'

@@ -2,17 +2,20 @@
 // fonctions SQL materialize_engagement_create_new / materialize_engagement_link_existing
 // (migration 436, via rpc, pas un mock).
 //
-// P0-2A (réalignement) : Porte B (chantier, sans AO). Une proposition
-// 'engagement' acceptée/éditée ne produit que deux issues — create_new
-// (nouvel engagement, site_id renseigné, tender_id NULL, status='active') ou
-// link_existing (rattachement à un engagement existant du même
-// chantier/organisation, zéro mutation de ses champs métier). Aucune Action
-// n'est jamais générée par ce circuit.
+// P0-2A FIX_REQUIRED (mandat Vincent 2026-09-24, migration 437) : Porte B
+// (chantier, sans AO). Une proposition 'engagement' acceptée/éditée ne
+// produit que deux issues — create_new (nouvel engagement, site_id renseigné,
+// tender_id NULL, status='curated' — validation de l'extraction, PAS
+// activation) ou link_existing (rattachement à un engagement existant du même
+// chantier/organisation, zéro mutation de ses champs métier). L'activation
+// ('curated' → 'active') est un geste séparé et explicite
+// (activateEngagement). Aucune Action n'est jamais générée par ce circuit.
 //
 // Conventions reprises de tests/lib/db/materialize-obligation-contract.test.ts.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { activateEngagement } from '@/lib/db/engagements'
 
 const TAG = `__test_materialize_engagement_${Math.floor(Date.now() / 1000)}__`
 
@@ -138,7 +141,7 @@ afterAll(async () => {
 })
 
 describe('materialize_engagement_create_new', () => {
-  it('crée un nouvel engagement de porte B (site_id renseigné, tender_id NULL, status active) à partir d’une proposition acceptée avec preuve', async () => {
+  it('crée un nouvel engagement de porte B (site_id renseigné, tender_id NULL, status curated — PAS active) à partir d’une proposition acceptée avec preuve', async () => {
     const proposalId = await makeProposal({ label: `${TAG} create happy` })
     await attachEvidence(proposalId)
 
@@ -159,7 +162,7 @@ describe('materialize_engagement_create_new', () => {
       source_document_id: docId,
       category: 'quality',
       short_label: `${TAG} create happy`,
-      status: 'active',
+      status: 'curated',
       organization_id: orgId,
     })
 
@@ -241,6 +244,33 @@ describe('materialize_engagement_create_new', () => {
     const { error } = await createNew(proposalId)
     expect(error).not.toBeNull()
     expect(error!.message).toMatch(/aucun extrait source/)
+  })
+})
+
+describe('activateEngagement — activation séparée et explicite (curated → active)', () => {
+  it('active un engagement porte B fraîchement matérialisé (curated)', async () => {
+    const proposalId = await makeProposal({ label: `${TAG} activation happy` })
+    await attachEvidence(proposalId)
+    const { data: engagementId } = await createNew(proposalId)
+
+    const db = createAdminClient()
+    const before = await db.from('engagements').select('status').eq('id', engagementId as string).single()
+    expect(before.data).toMatchObject({ status: 'curated' })
+
+    await activateEngagement(engagementId as string)
+
+    const after = await db.from('engagements').select('status').eq('id', engagementId as string).single()
+    expect(after.data).toMatchObject({ status: 'active' })
+  })
+
+  it('refuse d’activer un engagement déjà actif (double activation)', async () => {
+    const engagementId = await insertEngagement({ short_label: `${TAG} already active`, status: 'active' })
+    await expect(activateEngagement(engagementId)).rejects.toThrow(/introuvable ou non activable/)
+  })
+
+  it('refuse d’activer un engagement archivé', async () => {
+    const engagementId = await insertEngagement({ short_label: `${TAG} archived`, status: 'archived' })
+    await expect(activateEngagement(engagementId)).rejects.toThrow(/introuvable ou non activable/)
   })
 })
 
@@ -356,5 +386,24 @@ describe('non-régression Porte A (AO) — inchangée', () => {
     expect(error).toBeNull()
     expect(data).toMatchObject({ tender_id: tenderId, site_id: null, status: 'extracted' })
     await db.from('engagements').delete().eq('id', (data as { id: string }).id)
+  })
+})
+
+describe('engagements_origin_door_check — XOR strict (migration 437)', () => {
+  it('refuse un engagement avec tender_id ET site_id renseignés simultanément', async () => {
+    const db = createAdminClient()
+    const { error } = await db
+      .from('engagements')
+      .insert({
+        tender_id: tenderId,
+        site_id: siteId,
+        source_type: 'manual',
+        source_excerpt: `${TAG} double door`,
+        category: 'other',
+        short_label: `${TAG} double door`,
+      })
+      .select('id')
+      .single()
+    expect(error).not.toBeNull()
   })
 })

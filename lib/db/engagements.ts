@@ -270,6 +270,27 @@ export async function activateEngagementsForContract(
   return data?.length ?? 0
 }
 
+// P0-2A FIX_REQUIRED (mandat Vincent 2026-09-24, migration 437) — activation
+// d'un engagement UNIQUE, indépendante d'un contrat/tender. Porte B (chantier)
+// n'a pas d'équivalent « marché gagné » : materialize_engagement_create_new
+// matérialise désormais en 'curated' (validation de l'extraction), jamais
+// 'active' directement. L'activation — « cette règle est maintenant en
+// vigueur » — reste un geste séparé et explicite, symétrique de
+// activateEngagementsForContract côté AO mais sans notion de contrat.
+// Aucun moteur de dates (effective_date/expires_date) : geste manuel P0.
+export async function activateEngagement(id: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('engagements')
+    .update({ status: 'active' as EngagementStatus })
+    .eq('id', id)
+    .in('status', ['extracted', 'curated'])
+    .select('id')
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error('Engagement introuvable ou non activable (déjà actif, complété ou archivé)')
+}
+
 export async function archiveEngagement(id: string, reason?: string): Promise<void> {
   const supabase = createAdminClient()
   const updates: Record<string, unknown> = { status: 'archived' as EngagementStatus }
