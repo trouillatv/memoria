@@ -77,6 +77,139 @@ export async function listEngagementsBySite(siteId: string): Promise<DbEngagemen
   return data ?? []
 }
 
+// ============================================================================
+// P0-3 — Prestations prévues (lecture seule, mandat Vincent 2026-09-25)
+// ============================================================================
+
+export interface PlannedEngagementProvenance {
+  documentId: string | null
+  documentFilename: string | null
+  pageNumber: number | null
+  excerpt: string | null
+  frequencyRaw: string | null
+}
+
+export interface PlannedEngagement {
+  id: string
+  shortLabel: string
+  category: EngagementCategory
+  kind: EngagementKind | null
+  measurable: boolean
+  status: 'curated' | 'active'
+  createdAt: string
+  primaryProvenance: PlannedEngagementProvenance
+  /** Preuves supplémentaires (materialize_engagement_link_existing) — jamais rendues par défaut, cf. section provenance. */
+  additionalProvenance: PlannedEngagementProvenance[]
+}
+
+/**
+ * Engagements Porte B validés (curated/active) d'un chantier, avec leur
+ * provenance documentaire complète — y compris `frequency_raw`, qui n'existe
+ * QUE dans `document_extraction_proposal.source_payload` (jamais copié sur
+ * `engagements`, cf. audit HARD STOP P0-3). Le lineage de matérialisation
+ * (`document_proposal_materialization`, target_entity_type='engagement') est
+ * la seule voie pour retrouver TOUTES les propositions ayant alimenté un même
+ * engagement (`materialize_engagement_link_existing` peut en ajouter plusieurs
+ * sans jamais muter les champs de l'engagement, migration 436).
+ *
+ * 4 requêtes groupées, aucune boucle par engagement (zéro N+1) :
+ *   engagements → document_proposal_materialization → document_extraction_proposal → documents.
+ *
+ * Statuts volontairement limités à curated/active : 'extracted' est encore en
+ * file de revue (P0-2C), 'archived' est retiré, 'completed' n'est atteint par
+ * aucun chemin de code Porte B à ce jour.
+ */
+export async function listPlannedEngagementsForSite(siteId: string): Promise<PlannedEngagement[]> {
+  const supabase = createAdminClient()
+
+  const { data: engagementRows, error: engErr } = await supabase
+    .from('engagements')
+    .select('id, short_label, category, kind, measurable, status, source_document_id, page_number, source_excerpt, created_at')
+    .eq('site_id', siteId)
+    .in('status', ['curated', 'active'])
+    .order('created_at', { ascending: false })
+  if (engErr) throw engErr
+  const engagements = engagementRows ?? []
+  if (engagements.length === 0) return []
+
+  const engagementIds = engagements.map((e) => e.id)
+
+  const { data: matRows, error: matErr } = await supabase
+    .from('document_proposal_materialization')
+    .select('proposal_id, target_entity_id, created_at')
+    .eq('target_entity_type', 'engagement')
+    .in('target_entity_id', engagementIds)
+    .order('created_at', { ascending: true })
+  if (matErr) throw matErr
+  const materializations = matRows ?? []
+
+  const proposalIds = Array.from(new Set(materializations.map((m) => m.proposal_id)))
+  const { data: proposalRows, error: propErr } = proposalIds.length === 0
+    ? { data: [] as Array<{ id: string; document_id: string; source_page: number | null; source_excerpt: string | null; source_payload: Record<string, unknown> | null }>, error: null }
+    : await supabase
+        .from('document_extraction_proposal')
+        .select('id, document_id, source_page, source_excerpt, source_payload')
+        .in('id', proposalIds)
+  if (propErr) throw propErr
+  const proposalById = new Map((proposalRows ?? []).map((p) => [p.id, p]))
+
+  const documentIds = Array.from(new Set([
+    ...(proposalRows ?? []).map((p) => p.document_id),
+    ...engagements.map((e) => e.source_document_id).filter((id): id is string => !!id),
+  ]))
+  const { data: docRows, error: docErr } = documentIds.length === 0
+    ? { data: [] as Array<{ id: string; filename: string | null }>, error: null }
+    : await supabase.from('documents').select('id, filename').in('id', documentIds)
+  if (docErr) throw docErr
+  const filenameById = new Map((docRows ?? []).map((d) => [d.id, d.filename]))
+
+  const matsByEngagement = new Map<string, typeof materializations>()
+  for (const m of materializations) {
+    const list = matsByEngagement.get(m.target_entity_id) ?? []
+    list.push(m)
+    matsByEngagement.set(m.target_entity_id, list)
+  }
+
+  return engagements.map((e) => {
+    const mats = matsByEngagement.get(e.id) ?? []
+    const provenances: PlannedEngagementProvenance[] = mats
+      .map((m) => proposalById.get(m.proposal_id))
+      .filter((p): p is NonNullable<typeof p> => !!p)
+      .map((p) => ({
+        documentId: p.document_id,
+        documentFilename: filenameById.get(p.document_id) ?? null,
+        pageNumber: p.source_page,
+        excerpt: p.source_excerpt,
+        frequencyRaw: typeof p.source_payload?.frequency_raw === 'string' ? p.source_payload.frequency_raw : null,
+      }))
+
+    // Filet de sécurité : un engagement Porte B naît toujours d'au moins une
+    // matérialisation (contrainte RPC), donc `provenances` ne devrait jamais
+    // être vide. Si un lineage venait à manquer, on retombe sur les champs
+    // copiés directement sur l'engagement à sa création plutôt que d'afficher
+    // un vide silencieux.
+    const primaryProvenance = provenances[0] ?? {
+      documentId: e.source_document_id,
+      documentFilename: e.source_document_id ? filenameById.get(e.source_document_id) ?? null : null,
+      pageNumber: e.page_number,
+      excerpt: e.source_excerpt,
+      frequencyRaw: null,
+    }
+
+    return {
+      id: e.id,
+      shortLabel: e.short_label,
+      category: e.category,
+      kind: e.kind,
+      measurable: e.measurable,
+      status: e.status as 'curated' | 'active',
+      createdAt: e.created_at,
+      primaryProvenance,
+      additionalProvenance: provenances.slice(1),
+    }
+  })
+}
+
 export async function listAllEngagements(): Promise<DbEngagement[]> {
   // Used by debug page only
   const supabase = createAdminClient()

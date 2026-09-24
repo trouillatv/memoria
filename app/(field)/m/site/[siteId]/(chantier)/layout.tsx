@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { getSiteHeaderName } from '@/lib/field/site-header'
 import { listDocumentsForTarget } from '@/lib/db/documents'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { SiteTabs } from '@/app/(field)/m/site/[siteId]/SiteTabs'
 
 // ── ESPACE CHANTIER PERSISTANT (groupe (chantier)) ───────────────────────────
@@ -23,13 +24,23 @@ export default async function ChantierLayout({
 }) {
   const { siteId } = await params
   const { user } = await requireSiteAccess(siteId)
-  const [siteName, docs] = await Promise.all([
+  const [siteName, docs, plannedEngagementsCount] = await Promise.all([
     getSiteHeaderName(siteId),
     user.role === 'admin' || user.role === 'manager'
       ? listDocumentsForTarget('site', siteId).catch(() => [])
       : Promise.resolve([]),
+    Promise.resolve(
+      createAdminClient()
+        .from('engagements')
+        .select('id', { count: 'exact', head: true })
+        .eq('site_id', siteId)
+        .in('status', ['curated', 'active']),
+    )
+      .then(({ count }) => count ?? 0)
+      .catch(() => 0),
   ])
   const showDocuments = docs.length > 0
+  const showPrestations = plannedEngagementsCount > 0
 
   return (
     <>
@@ -40,7 +51,7 @@ export default async function ChantierLayout({
         >
           <ArrowLeft className="h-4 w-4" /> {siteName}
         </Link>
-        <SiteTabs siteId={siteId} showDocuments={showDocuments} />
+        <SiteTabs siteId={siteId} showDocuments={showDocuments} showPrestations={showPrestations} />
       </div>
       {children}
     </>

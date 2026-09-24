@@ -21,6 +21,7 @@ import { ScrollActiveRail } from '@/components/ui/ScrollActiveRail'
 export type SiteTab =
   | 'vue' | 'points' | 'sujets' | 'carte' | 'terrain' | 'explorer' | 'reserves'
   | 'actions' | 'visites' | 'photos' | 'reunions' | 'frise' | 'documents' | 'patrimoine'
+  | 'prestations'
 
 // `seg` = segment d'URL après la base ('' = Aujourd'hui/hub).
 const TABS: Array<{ key: SiteTab; label: string; seg: string }> = [
@@ -41,10 +42,21 @@ const TABS: Array<{ key: SiteTab; label: string; seg: string }> = [
   { key: 'reunions',   label: 'Réunions',   seg: 'reunions' },
   { key: 'frise',      label: 'Frise',      seg: 'frise' },
   { key: 'documents',  label: 'Documents',  seg: 'documents' },
+  // P0-3 (mandat Vincent 2026-09-25) : engagements Porte B validés (curated/active),
+  // masqué si aucun n'existe sur ce chantier — même discipline que 'documents'.
+  { key: 'prestations', label: 'Prestations prévues', seg: 'prestations' },
   { key: 'patrimoine', label: 'Patrimoine', seg: 'patrimoine' },
 ]
 
-export function SiteTabs({ siteId, showDocuments }: { siteId: string; showDocuments: boolean }) {
+export function SiteTabs({
+  siteId,
+  showDocuments,
+  showPrestations,
+}: {
+  siteId: string
+  showDocuments: boolean
+  showPrestations: boolean
+}) {
   const pathname = usePathname()
   const base = `/m/site/${siteId}`
   const rest = pathname.startsWith(base) ? pathname.slice(base.length).replace(/^\//, '') : ''
@@ -53,6 +65,7 @@ export function SiteTabs({ siteId, showDocuments }: { siteId: string; showDocume
 
   const tabs = TABS
     .filter((t) => t.key !== 'documents' || showDocuments)
+    .filter((t) => t.key !== 'prestations' || showPrestations)
     .map((t) => ({ key: t.key, label: t.label, href: t.seg ? `${base}/${t.seg}` : base }))
 
   return (
