@@ -3,16 +3,34 @@
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction, updatePersonAttendanceAction } from './review-actions'
-import type { DbDocumentExtractionProposal, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
+import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction, updatePersonAttendanceAction, createEngagementFromProposalAction, linkEngagementToProposalAction } from './review-actions'
+import type { DbDocumentExtractionProposal, DbDocumentExtractionEvidence, DocumentEvidenceRelationType, DbEngagement, DbDocumentProposalMaterialization, EngagementCategory, EngagementKind } from '@/types/db'
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
 
 const FAMILY_LABEL: Record<string, string> = {
   reservation: 'Réserve', action: 'Action', decision: 'Décision',
   observation: 'Observation', deadline: 'Échéance', knowledge_fact: 'Mémoire',
-  person: 'Personne', company: 'Entreprise',
+  person: 'Personne', company: 'Entreprise', engagement: 'Engagement',
 }
+
+const ENGAGEMENT_CATEGORY_OPTIONS: Array<{ value: EngagementCategory; label: string }> = [
+  { value: 'frequency', label: 'Fréquence' },
+  { value: 'quality', label: 'Qualité' },
+  { value: 'compliance', label: 'Conformité' },
+  { value: 'delivery', label: 'Livraison' },
+  { value: 'sla', label: 'SLA' },
+  { value: 'reporting', label: 'Reporting' },
+  { value: 'other', label: 'Autre' },
+]
+
+const ENGAGEMENT_KIND_OPTIONS: Array<{ value: EngagementKind; label: string }> = [
+  { value: 'objectif', label: 'Objectif' },
+  { value: 'obligation', label: 'Obligation' },
+  { value: 'livrable', label: 'Livrable' },
+  { value: 'controle', label: 'Contrôle' },
+  { value: 'penalite', label: 'Pénalité' },
+]
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   pending: { label: 'À examiner', className: 'bg-muted text-muted-foreground' },
@@ -117,6 +135,8 @@ export function ProposalCard({
   signedUrls,
   documentId,
   siteSubjects,
+  materializations,
+  siteEngagements,
   confirmedPhotos = [],
   onPinToggle,
 }: {
@@ -125,6 +145,8 @@ export function ProposalCard({
   signedUrls: Record<string, string>
   documentId: string
   siteSubjects?: Array<{ id: string; name: string }>
+  materializations?: DbDocumentProposalMaterialization[]
+  siteEngagements?: DbEngagement[]
   confirmedPhotos?: ConfirmedPhoto[]
   onPinToggle?: (evidenceId: string) => void
 }) {
@@ -229,6 +251,11 @@ export function ProposalCard({
     responsibleParty?: string
     relevanceScore?: 'strong' | 'medium' | 'weak'
     relevanceReason?: string
+    kind?: EngagementKind
+    category?: EngagementCategory
+    measurable?: boolean
+    frequency_raw?: string | null
+    ai_confidence?: number | null
   } | null
   const relevanceScore = sourcePayload?.relevanceScore ?? null
 
@@ -248,6 +275,48 @@ export function ProposalCard({
       setLocalStatus('edited')
     })
   }
+
+  // ─── Engagement (P0-2C) — curation humaine avant matérialisation ────────────
+  const isEngagement = proposal.proposal_family === 'engagement'
+  const [localCategory, setLocalCategory] = useState<EngagementCategory>(sourcePayload?.category ?? 'other')
+  const [localKind, setLocalKind] = useState<EngagementKind | ''>(sourcePayload?.kind ?? '')
+  const [localMeasurable, setLocalMeasurable] = useState<boolean>(sourcePayload?.measurable ?? false)
+  const [showLinkPicker, setShowLinkPicker] = useState(false)
+  const [engagementSearch, setEngagementSearch] = useState('')
+  // Une proposition n'est matérialisable qu'après validation humaine explicite —
+  // jamais depuis 'pending' (cf. audit P0-2C section 11, précondition de la RPC).
+  const canMaterializeEngagement = isEngagement && (localStatus === 'accepted' || localStatus === 'edited')
+
+  function onCreateEngagement() {
+    if (!localKind) { setMsg({ ok: false, text: 'Choisissez une nature avant de créer l’Engagement' }); return }
+    const fd = new FormData()
+    fd.set('proposal_id', proposal.id)
+    fd.set('document_id', documentId)
+    fd.set('category', localCategory)
+    fd.set('kind', localKind)
+    fd.set('measurable', String(localMeasurable))
+    handleAction(() => createEngagementFromProposalAction(fd), () => {
+      setLocalStatus('materialized')
+      setMsg({ ok: true, text: 'Engagement créé' })
+    })
+  }
+
+  function onLinkEngagement(engagementId: string) {
+    const fd = new FormData()
+    fd.set('proposal_id', proposal.id)
+    fd.set('document_id', documentId)
+    fd.set('engagement_id', engagementId)
+    handleAction(() => linkEngagementToProposalAction(fd), () => {
+      setLocalStatus('materialized')
+      setShowLinkPicker(false)
+      setMsg({ ok: true, text: 'Rattaché à l’Engagement existant' })
+    })
+  }
+
+  const engagementMaterialization = materializations?.find((m) => m.status === 'done') ?? null
+  const linkedEngagementLabel = engagementMaterialization
+    ? siteEngagements?.find((e) => e.id === engagementMaterialization.target_entity_id)?.short_label ?? null
+    : null
 
   return (
     <article className="rounded-[18px] border bg-card p-4 space-y-3 shadow-sm">
@@ -376,7 +445,7 @@ export function ProposalCard({
       )}
 
       {/* Source */}
-      {(proposal.source_excerpt || (sourcePayload && !isPerson)) && (
+      {!isEngagement && (proposal.source_excerpt || (sourcePayload && !isPerson)) && (
         <details>
           <summary className="text-xs text-muted-foreground cursor-pointer select-none hover:text-foreground">
             Source documentaire
@@ -399,6 +468,122 @@ export function ProposalCard({
             )}
           </div>
         </details>
+      )}
+
+      {/* Engagement (P0-2C) — preuve documentaire toujours visible, jamais repliée */}
+      {isEngagement && (
+        <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Preuve documentaire</p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <p className="text-muted-foreground">Fréquence (brute) : <span className="font-medium text-foreground">{sourcePayload?.frequency_raw ?? '—'}</span></p>
+            <p className="text-muted-foreground">Mesurable (IA) : <span className="font-medium text-foreground">{sourcePayload?.measurable ? 'Oui' : 'Non'}</span></p>
+            <p className="text-muted-foreground">Confiance IA : <span className="font-medium text-foreground">{sourcePayload?.ai_confidence != null ? `${Math.round(sourcePayload.ai_confidence * 100)}%` : '—'}</span></p>
+            <p className="text-muted-foreground">Page : <span className="font-medium text-foreground">{proposal.source_page ?? '—'}</span></p>
+          </div>
+          {proposal.source_excerpt && (
+            <blockquote className="text-xs text-muted-foreground italic border-l-2 border-muted pl-2">
+              « {proposal.source_excerpt} »
+            </blockquote>
+          )}
+
+          {!isMaterialized && (
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <div>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Catégorie</label>
+                <select
+                  value={localCategory}
+                  onChange={(e) => setLocalCategory(e.target.value as EngagementCategory)}
+                  disabled={pending}
+                  className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                >
+                  {ENGAGEMENT_CATEGORY_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Nature</label>
+                <select
+                  value={localKind}
+                  onChange={(e) => setLocalKind(e.target.value as EngagementKind)}
+                  disabled={pending}
+                  className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                >
+                  <option value="">— à choisir —</option>
+                  {ENGAGEMENT_KIND_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <label className="col-span-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={localMeasurable}
+                  onChange={(e) => setLocalMeasurable(e.target.checked)}
+                  disabled={pending}
+                />
+                Mesurable (confirmé humainement)
+              </label>
+            </div>
+          )}
+
+          {isMaterialized && (
+            <p className="text-xs text-purple-700 dark:text-purple-300">
+              {engagementMaterialization
+                ? (linkedEngagementLabel ? `Rattaché à l’Engagement « ${linkedEngagementLabel} »` : 'Engagement créé (statut curated)')
+                : 'Matérialisé'}
+            </p>
+          )}
+
+          {!isMaterialized && canMaterializeEngagement && (
+            <div className="pt-1 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={onCreateEngagement} disabled={pending}>
+                  {pending ? '…' : 'Créer un nouvel Engagement'}
+                </Button>
+                <Button type="button" size="sm" variant="outline" onClick={() => setShowLinkPicker((v) => !v)} disabled={pending}>
+                  Rattacher à un Engagement existant
+                </Button>
+              </div>
+              {showLinkPicker && (
+                <div className="space-y-1">
+                  <input
+                    type="text"
+                    value={engagementSearch}
+                    onChange={(e) => setEngagementSearch(e.target.value)}
+                    placeholder="Rechercher un Engagement du chantier…"
+                    className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
+                  {!siteEngagements || siteEngagements.length === 0 ? (
+                    <p className="text-xs text-muted-foreground px-1">Aucun Engagement existant sur ce chantier.</p>
+                  ) : (() => {
+                    const filtered = siteEngagements.filter((e) => e.short_label.toLowerCase().includes(engagementSearch.toLowerCase())).slice(0, 8)
+                    if (filtered.length === 0) return <p className="text-xs text-muted-foreground px-1">Aucun Engagement trouvé.</p>
+                    return (
+                      <ul className="rounded-md border border-border bg-background shadow-sm divide-y divide-border max-h-40 overflow-y-auto">
+                        {filtered.map((e) => (
+                          <li key={e.id}>
+                            <button
+                              type="button"
+                              className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors"
+                              onClick={() => onLinkEngagement(e.id)}
+                              disabled={pending}
+                            >
+                              {e.short_label}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+          {!isMaterialized && !canMaterializeEngagement && (
+            <p className="text-xs text-muted-foreground">Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.</p>
+          )}
+        </div>
       )}
 
       {/* Preuves */}

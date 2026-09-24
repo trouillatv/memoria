@@ -11,7 +11,7 @@ import {
   confirmPhotoAssociationAction, dismissPhotoAssociationAction,
   revertIllustratesAction,
 } from './review-actions'
-import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType } from '@/types/db'
+import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType, DbEngagement } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
 import type { SubjectSuggestionRow } from '@/lib/db/subject-suggestions'
 
@@ -35,15 +35,16 @@ type IllustratesLink = {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const FAMILY_ORDER = ['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact', 'person', 'company']
+const FAMILY_ORDER = ['reservation', 'action', 'decision', 'observation', 'deadline', 'knowledge_fact', 'person', 'company', 'engagement']
 const FAMILY_TITLE: Record<string, string> = {
   reservation: 'Réserves', action: 'Actions', decision: 'Décisions',
   observation: 'Observations', deadline: 'Échéances', knowledge_fact: 'Éléments de mémoire',
   person: 'Intervenants détectés', company: 'Entreprises détectées',
+  engagement: 'Engagements proposés',
 }
 
 type Filter = 'all' | 'pending' | 'accepted' | 'edited' | 'rejected' | 'materialized'
-type FamilyFilter = 'all' | 'weak' | 'knowledge_fact' | 'action' | 'observation' | 'deadline' | 'reservation' | 'decision' | 'person' | 'company' | 'photos'
+type FamilyFilter = 'all' | 'weak' | 'knowledge_fact' | 'action' | 'observation' | 'deadline' | 'reservation' | 'decision' | 'person' | 'company' | 'engagement' | 'photos'
 
 function getRelevanceScore(proposal: import('@/types/db').DbDocumentExtractionProposal): 'strong' | 'medium' | 'weak' {
   const payload = proposal.source_payload as { relevanceScore?: string } | null
@@ -72,18 +73,19 @@ const FAMILY_FILTER_LABELS: { key: FamilyFilter; label: string }[] = [
   { key: 'decision', label: 'Décision' },
   { key: 'person', label: 'Personne' },
   { key: 'company', label: 'Entreprise' },
+  { key: 'engagement', label: 'Engagement' },
   { key: 'photos', label: 'Photos' },
 ]
 
 const FAMILY_TO_URL: Partial<Record<FamilyFilter, string>> = {
   weak: 'weak', knowledge_fact: 'memory', action: 'action', observation: 'observation',
   deadline: 'deadline', reservation: 'reservation', decision: 'decision',
-  person: 'person', company: 'company', photos: 'photos',
+  person: 'person', company: 'company', engagement: 'engagement', photos: 'photos',
 }
 const URL_TO_FAMILY: Record<string, FamilyFilter> = {
   weak: 'weak', memory: 'knowledge_fact', action: 'action', observation: 'observation',
   deadline: 'deadline', reservation: 'reservation', decision: 'decision',
-  person: 'person', company: 'company', photos: 'photos',
+  person: 'person', company: 'company', engagement: 'engagement', photos: 'photos',
 }
 
 // Conservé pour les libellés de relation lors de la reprise de la carte de preuve.
@@ -404,6 +406,7 @@ export function ExtractionReviewClient({
   initialType,
   subjectSuggestions,
   siteSubjects,
+  siteEngagements,
   nonVisitSignal,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
@@ -421,6 +424,7 @@ export function ExtractionReviewClient({
   initialType?: string | null
   subjectSuggestions?: SubjectSuggestionRow[]
   siteSubjects?: Array<{ id: string; name: string }>
+  siteEngagements?: DbEngagement[]
   nonVisitSignal?: { evidence: string | null } | null
 }) {
   const router = useRouter()
@@ -781,6 +785,8 @@ export function ExtractionReviewClient({
                     signedUrls={signedUrls}
                     documentId={documentId}
                     siteSubjects={siteSubjects}
+                    materializations={p.materializations}
+                    siteEngagements={siteEngagements}
                     confirmedPhotos={(confirmedPhotosByProposal.get(p.proposal.id) ?? []).map((photo) => ({
                       evidenceId: photo.evidenceId,
                       caption: photo.caption,

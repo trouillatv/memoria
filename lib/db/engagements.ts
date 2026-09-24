@@ -59,6 +59,24 @@ export async function listEngagementsByContract(contractId: string): Promise<DbE
   return data ?? []
 }
 
+/**
+ * Engagements existants d'un chantier, pour le sélecteur « Rattacher à un
+ * Engagement existant » (P0-2C). Exclut seulement les archivés — Vincent
+ * demande « pas archivé », pas une restriction à active/completed comme
+ * listEngagementsByContract (un curated peut aussi être une cible légitime).
+ */
+export async function listEngagementsBySite(siteId: string): Promise<DbEngagement[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('engagements')
+    .select('*')
+    .eq('site_id', siteId)
+    .neq('status', 'archived')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
 export async function listAllEngagements(): Promise<DbEngagement[]> {
   // Used by debug page only
   const supabase = createAdminClient()

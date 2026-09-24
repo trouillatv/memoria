@@ -9,7 +9,8 @@ import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence, acceptAllPendingForRun, pinAllSnapshotsForRun } from '@/lib/db/document-extractions'
 import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-import-post-processing'
 import { materializeHistoricalRun } from '@/lib/documents/materialize-historical-run'
-import type { DocumentProposalFamily, DocumentEvidenceRelationType } from '@/types/db'
+import { materializeEngagementCreateNew, materializeEngagementLinkExisting } from '@/lib/db/materialize-engagement'
+import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -212,6 +213,105 @@ export async function updatePersonAttendanceAction(fd: FormData): Promise<Action
 
   if (error) return { ok: false, error: error.message }
   return { ok: true }
+}
+
+// ─── Matérialisation — Engagement (P0-2C) ─────────────────────────────────────
+// Décision humaine exclusive : créer un nouvel Engagement (curated, jamais
+// active) ou rattacher à un Engagement existant du même chantier. Aucune des
+// deux RPC n'est appelée automatiquement ailleurs — cf. materialize-engagement.ts.
+
+const VALID_ENGAGEMENT_CATEGORIES = new Set<EngagementCategory>([
+  'frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other',
+])
+const VALID_ENGAGEMENT_KINDS = new Set<EngagementKind>([
+  'objectif', 'obligation', 'livrable', 'controle', 'penalite',
+])
+
+async function verifyEngagementProposal(proposalId: string, documentId: string): Promise<
+  { ok: true } | { ok: false; error: string }
+> {
+  if (!(await verifyProposalOwnership(proposalId, documentId))) {
+    return { ok: false, error: 'Proposition introuvable' }
+  }
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('document_extraction_proposal')
+    .select('proposal_family')
+    .eq('id', proposalId)
+    .maybeSingle()
+  if (!data || (data as { proposal_family: string }).proposal_family !== 'engagement') {
+    return { ok: false, error: 'Proposition non éligible (famille attendue : engagement)' }
+  }
+  return { ok: true }
+}
+
+export async function createEngagementFromProposalAction(fd: FormData): Promise<{
+  ok: boolean; engagementId?: string; error?: string
+}> {
+  const proposalId = fd.get('proposal_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  const category = fd.get('category')?.toString() as EngagementCategory | undefined
+  const kind = fd.get('kind')?.toString() as EngagementKind | undefined
+  const measurableRaw = fd.get('measurable')?.toString()
+
+  if (!proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+  if (!category || !VALID_ENGAGEMENT_CATEGORIES.has(category)) return { ok: false, error: 'Catégorie invalide' }
+  if (kind && !VALID_ENGAGEMENT_KINDS.has(kind)) return { ok: false, error: 'Nature invalide' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return { ok: false, error: access.error }
+
+  const ownership = await verifyEngagementProposal(proposalId, documentId)
+  if (!ownership.ok) return ownership
+
+  const admin = createAdminClient()
+
+  // Nature/mesurable : valeurs humaines-confirmées, jamais le payload IA brut —
+  // même précédent que updatePersonAttendanceAction. La RPC lit kind/measurable
+  // directement depuis source_payload, donc la correction humaine doit y être
+  // écrite AVANT l'appel (cf. audit P0-2C section 9).
+  if (kind !== undefined || measurableRaw !== undefined) {
+    const { data: existing } = await admin
+      .from('document_extraction_proposal')
+      .select('source_payload')
+      .eq('id', proposalId)
+      .maybeSingle()
+    const currentPayload = (existing as { source_payload: Record<string, unknown> | null } | null)?.source_payload ?? {}
+    const newPayload = { ...currentPayload } as Record<string, unknown>
+    if (kind) newPayload.kind = kind
+    if (measurableRaw !== undefined) newPayload.measurable = measurableRaw === 'true'
+    await admin.from('document_extraction_proposal').update({ source_payload: newPayload }).eq('id', proposalId)
+  }
+
+  try {
+    const engagementId = await materializeEngagementCreateNew(proposalId, access.userId, category)
+    return { ok: true, engagementId }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Erreur inconnue' }
+  }
+}
+
+export async function linkEngagementToProposalAction(fd: FormData): Promise<{
+  ok: boolean; engagementId?: string; error?: string
+}> {
+  const proposalId = fd.get('proposal_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  const engagementId = fd.get('engagement_id')?.toString()
+
+  if (!proposalId || !documentId || !engagementId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return { ok: false, error: access.error }
+
+  const ownership = await verifyEngagementProposal(proposalId, documentId)
+  if (!ownership.ok) return ownership
+
+  try {
+    const linkedId = await materializeEngagementLinkExisting(proposalId, engagementId, access.userId)
+    return { ok: true, engagementId: linkedId }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Erreur inconnue' }
+  }
 }
 
 export async function relinkEvidenceAction(fd: FormData): Promise<ActionResult> {

@@ -10,6 +10,7 @@ import { getExtractionRun, listExtractionForReview, listOrphanEvidenceForRun, li
 import { computeReviewSummary } from '@/lib/documents/effective-proposal'
 import { getExistingMaterializedVisit } from '@/lib/db/historical-visit-materialization'
 import { listSuggestionsForReview } from '@/lib/db/subject-suggestions'
+import { listEngagementsBySite } from '@/lib/db/engagements'
 import { ExtractionReviewClient } from './ExtractionReviewClient'
 import { ImportDateBanner } from './ImportDateBanner'
 import { detectDocumentDate, detectNonVisitSignal } from '@/lib/documents/detect-document-date'
@@ -94,7 +95,7 @@ export default async function ExtractionReviewPage({
 
   // Charger les données de revue + visite déjà matérialisée (idempotence)
   const admin = createAdminClient()
-  const [proposalsWithEvidence, orphanEvidenceRaw, alreadySiteReportId, candidateLinks, illustratesLinks, subjectSuggestions, siteSubjectsRes] = await Promise.all([
+  const [proposalsWithEvidence, orphanEvidenceRaw, alreadySiteReportId, candidateLinks, illustratesLinks, subjectSuggestions, siteSubjectsRes, siteEngagements] = await Promise.all([
     listExtractionForReview(runId),
     listOrphanEvidenceForRun(runId),
     getExistingMaterializedVisit(runId),
@@ -104,6 +105,7 @@ export default async function ExtractionReviewPage({
     run.target_site_id
       ? admin.from('subjects').select('id, name').eq('site_id', run.target_site_id).neq('status', 'closed').order('name').limit(200)
       : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+    run.target_site_id ? listEngagementsBySite(run.target_site_id) : Promise.resolve([]),
   ])
   const siteSubjects = (siteSubjectsRes.data ?? []) as Array<{ id: string; name: string }>
 
@@ -238,6 +240,7 @@ export default async function ExtractionReviewPage({
         initialType={sp.type ?? null}
         subjectSuggestions={subjectSuggestions}
         siteSubjects={siteSubjects}
+        siteEngagements={siteEngagements}
         nonVisitSignal={nonVisitSignal.detected ? { evidence: nonVisitSignal.evidence } : null}
       />
     </div>
