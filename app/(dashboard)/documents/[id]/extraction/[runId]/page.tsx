@@ -58,6 +58,13 @@ export default async function ExtractionReviewPage({
   const run = await getExtractionRun(runId)
   if (!run || run.document_id !== documentId) notFound()
 
+  // P0-2C — la surface de revue est partagée entre PV historique et documents
+  // contractuels (Engagement). Un run Engagement ne connaît ni date de visite
+  // ni matérialisation de visite : la semantique "PV historique" (titre, date
+  // du PV, ImportDateBanner, signal non-visite, CreateVisitBlock) ne doit
+  // jamais s'y appliquer.
+  const isEngagementRun = run.extractor_key === 'engagement_prescriptif_v1'
+
   // Si le run n'est pas encore prêt, affichage simplifié
   if (run.status === 'processing' || run.status === 'pending') {
     return (
@@ -172,16 +179,23 @@ export default async function ExtractionReviewPage({
 
   // P0-B — détection générique de la date du document depuis le texte extrait, pour
   // la comparer à la date saisie à l'upload (jamais de substitution silencieuse).
-  const { data: docText } = await admin.from('documents').select('extracted_text').eq('id', documentId).maybeSingle()
-  const extractedText = (docText as { extracted_text: string | null } | null)?.extracted_text ?? ''
-  const dateDetection = detectDocumentDate(extractedText)
-  // Finding #1 — un document daté ne prouve pas une visite terrain. Signal générique,
-  // jamais un blocage silencieux : l'humain confirme avant matérialisation (cf. CreateVisitBlock).
-  const nonVisitSignal = detectNonVisitSignal(extractedText)
-  // Finding #15 — la date de « dernière visite » du cartouche est déjà détectée par
-  // detectDocumentDate (semantics='previous_visit_date') mais jamais affichée : simple
-  // métadonnée de contexte, jamais une proposition métier autonome.
-  const previousVisitCandidate = dateDetection.candidates.find((c) => c.semantics === 'previous_visit_date') ?? null
+  // P0-2C — n'a de sens que pour un PV historique (date de visite) : sans
+  // objet pour un run Engagement, jamais calculé ni affiché dans ce cas.
+  let dateDetection: ReturnType<typeof detectDocumentDate> | null = null
+  let nonVisitSignal: ReturnType<typeof detectNonVisitSignal> | null = null
+  let previousVisitCandidate: ReturnType<typeof detectDocumentDate>['candidates'][number] | null = null
+  if (!isEngagementRun) {
+    const { data: docText } = await admin.from('documents').select('extracted_text').eq('id', documentId).maybeSingle()
+    const extractedText = (docText as { extracted_text: string | null } | null)?.extracted_text ?? ''
+    dateDetection = detectDocumentDate(extractedText)
+    // Finding #1 — un document daté ne prouve pas une visite terrain. Signal générique,
+    // jamais un blocage silencieux : l'humain confirme avant matérialisation (cf. CreateVisitBlock).
+    nonVisitSignal = detectNonVisitSignal(extractedText)
+    // Finding #15 — la date de « dernière visite » du cartouche est déjà détectée par
+    // detectDocumentDate (semantics='previous_visit_date') mais jamais affichée : simple
+    // métadonnée de contexte, jamais une proposition métier autonome.
+    previousVisitCandidate = dateDetection.candidates.find((c) => c.semantics === 'previous_visit_date') ?? null
+  }
 
   return (
     <div className="space-y-6 w-full">
@@ -195,10 +209,11 @@ export default async function ExtractionReviewPage({
 
       {/* En-tête */}
       <header className="space-y-2">
-        <h1 className="text-xl font-semibold">Analyse du PV historique</h1>
+        <h1 className="text-xl font-semibold">{isEngagementRun ? 'Analyse du document contractuel' : 'Analyse du PV historique'}</h1>
         <div className="text-sm text-muted-foreground space-y-0.5">
           <p className="break-words">{doc.filename}</p>
-          {doc.effective_date && <p>Date du PV : {frDate(doc.effective_date)}</p>}
+          {!isEngagementRun && doc.effective_date && <p>Date du PV : {frDate(doc.effective_date)}</p>}
+          {isEngagementRun && <p>Type de document : {doc.document_type} · Statut document : {doc.status}</p>}
           <p>Statut : <span className="font-medium text-foreground">{RUN_STATUS_LABEL[run.status] ?? run.status}</span></p>
           <p className="text-xs">
             {run.extractor_key} · Exécuté le {frDate(run.created_at)}
@@ -206,8 +221,9 @@ export default async function ExtractionReviewPage({
         </div>
       </header>
 
-      {/* P0-B — comparaison date saisie / date détectée dans le document (générique). */}
-      {dateDetection.best || dateDetection.ambiguous ? (
+      {/* P0-B — comparaison date saisie / date détectée dans le document (générique).
+          Sans objet pour un run Engagement (pas de date de visite). */}
+      {!isEngagementRun && dateDetection && (dateDetection.best || dateDetection.ambiguous) ? (
         <ImportDateBanner
           documentId={documentId}
           enteredDate={doc.effective_date ?? null}
@@ -216,8 +232,9 @@ export default async function ExtractionReviewPage({
         />
       ) : null}
 
-      {/* Finding #15 — métadonnée « dernière visite » du cartouche, jamais une proposition. */}
-      {previousVisitCandidate && (
+      {/* Finding #15 — métadonnée « dernière visite » du cartouche, jamais une proposition.
+          Sans objet pour un run Engagement. */}
+      {!isEngagementRun && previousVisitCandidate && (
         <p className="text-xs text-muted-foreground">
           Mention d'une visite précédente dans le document : {frDate(previousVisitCandidate.iso)} — information contextuelle du cartouche.
         </p>
@@ -241,7 +258,8 @@ export default async function ExtractionReviewPage({
         subjectSuggestions={subjectSuggestions}
         siteSubjects={siteSubjects}
         siteEngagements={siteEngagements}
-        nonVisitSignal={nonVisitSignal.detected ? { evidence: nonVisitSignal.evidence } : null}
+        nonVisitSignal={nonVisitSignal?.detected ? { evidence: nonVisitSignal.evidence } : null}
+        isEngagementRun={isEngagementRun}
       />
     </div>
   )

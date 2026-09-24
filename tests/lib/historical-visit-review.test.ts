@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   proposalUpdate: vi.fn(),
   companiesInsert: vi.fn(),
   siteIntervenantsInsert: vi.fn(),
+  materializeEngagementCreateNew: vi.fn(),
+  materializeEngagementLinkExisting: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -70,6 +72,15 @@ vi.mock('@/lib/db/historical-visit-materialization', () => ({
 
 vi.mock('@/lib/documents/detect-document-date', () => ({
   detectNonVisitSignal: mocks.detectNonVisitSignal,
+}))
+
+// P0-2C FIX_REQUIRED (mandat Vincent 2026-09-24, revue SHA e88034a1, problème 2) —
+// jamais la vraie RPC ici : on prouve seulement le contrat de la Server Action
+// (validation stricte category/kind/measurable AVANT tout appel RPC, donc
+// zéro tentative d'écriture pour une entrée invalide).
+vi.mock('@/lib/db/materialize-engagement', () => ({
+  materializeEngagementCreateNew: mocks.materializeEngagementCreateNew,
+  materializeEngagementLinkExisting: mocks.materializeEngagementLinkExisting,
 }))
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -307,6 +318,7 @@ import {
   verifyReviewAccess,
   verifyProposalOwnership,
   createHistoricalVisitAction,
+  createEngagementFromProposalAction,
 } from '../../app/(dashboard)/documents/[id]/extraction/[runId]/review-actions'
 
 describe('Section 3 — Contrôle d\'accès', () => {
@@ -613,5 +625,92 @@ describe('Section 5 — createHistoricalVisitAction (GO point 11)', () => {
     expect(result.ok).toBe(false)
     expect(result.error).toBe('boom')
     expect(mocks.rpc).not.toHaveBeenCalledWith('promote_canonical_extraction_run', expect.anything())
+  })
+})
+
+// ─── Section 6 : createEngagementFromProposalAction (P0-2C FIX_REQUIRED, problème 2) ─
+//
+// La RPC (materialize_engagement_create_new, migration 438) est mockée : ces
+// tests prouvent seulement le contrat de la Server Action elle-même — une
+// category/kind/measurable invalide ou absente est refusée AVANT tout appel
+// RPC (donc avant toute tentative d'écriture), et des valeurs humaines
+// valides sont transmises telles quelles, sans jamais relire source_payload.
+
+function buildEngagementAccessMock(documentId: string, proposalFamily = 'engagement') {
+  return (table: string) => {
+    if (table === 'document_extraction_proposal') {
+      return buildChainWithThen(() => ({
+        data: { document_id: documentId, proposal_family: proposalFamily },
+        error: null,
+      }))
+    }
+    return buildChainWithThen(() => ({ data: null, error: null }))
+  }
+}
+
+describe('Section 6 — createEngagementFromProposalAction (P0-2C, problème 2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-admin' } } })
+    mocks.getUserRoleById.mockResolvedValue('admin')
+    mocks.from.mockImplementation(buildEngagementAccessMock('doc-1'))
+  })
+
+  function buildForm(fields: Record<string, string>) {
+    const fd = new FormData()
+    fd.set('proposal_id', 'prop-1')
+    fd.set('document_id', 'doc-1')
+    for (const [k, v] of Object.entries(fields)) fd.set(k, v)
+    return fd
+  }
+
+  it('nature (kind) absente — refus, aucun appel RPC', async () => {
+    const result = await createEngagementFromProposalAction(buildForm({ category: 'quality', measurable: 'true' }))
+    expect(result).toMatchObject({ ok: false, error: 'Nature invalide' })
+    expect(mocks.materializeEngagementCreateNew).not.toHaveBeenCalled()
+  })
+
+  it('mesurable (measurable) absent — refus, aucun appel RPC', async () => {
+    const result = await createEngagementFromProposalAction(buildForm({ category: 'quality', kind: 'obligation' }))
+    expect(result).toMatchObject({ ok: false, error: 'Mesurable invalide' })
+    expect(mocks.materializeEngagementCreateNew).not.toHaveBeenCalled()
+  })
+
+  it('mesurable (measurable) ni "true" ni "false" — refus, aucun appel RPC', async () => {
+    const result = await createEngagementFromProposalAction(
+      buildForm({ category: 'quality', kind: 'obligation', measurable: 'peut-être' }),
+    )
+    expect(result).toMatchObject({ ok: false, error: 'Mesurable invalide' })
+    expect(mocks.materializeEngagementCreateNew).not.toHaveBeenCalled()
+  })
+
+  it('catégorie (category) invalide — refus, aucun appel RPC', async () => {
+    const result = await createEngagementFromProposalAction(
+      buildForm({ category: 'not_a_real_category', kind: 'obligation', measurable: 'true' }),
+    )
+    expect(result).toMatchObject({ ok: false, error: 'Catégorie invalide' })
+    expect(mocks.materializeEngagementCreateNew).not.toHaveBeenCalled()
+  })
+
+  it('valeurs humaines valides — transmises telles quelles à la RPC, engagementId retourné', async () => {
+    mocks.materializeEngagementCreateNew.mockResolvedValue('eng-new-1')
+
+    const result = await createEngagementFromProposalAction(
+      buildForm({ category: 'sla', kind: 'controle', measurable: 'true' }),
+    )
+
+    expect(result).toMatchObject({ ok: true, engagementId: 'eng-new-1' })
+    expect(mocks.materializeEngagementCreateNew).toHaveBeenCalledWith('prop-1', 'user-admin', 'sla', 'controle', true)
+  })
+
+  it('proposition d’une autre famille (non engagement) — refus, aucun appel RPC', async () => {
+    mocks.from.mockImplementation(buildEngagementAccessMock('doc-1', 'action'))
+
+    const result = await createEngagementFromProposalAction(
+      buildForm({ category: 'sla', kind: 'controle', measurable: 'true' }),
+    )
+
+    expect(result).toMatchObject({ ok: false, error: 'Proposition non éligible (famille attendue : engagement)' })
+    expect(mocks.materializeEngagementCreateNew).not.toHaveBeenCalled()
   })
 })

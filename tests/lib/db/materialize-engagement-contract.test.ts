@@ -1,15 +1,18 @@
 // Test d'INTÉGRATION (vraie Supabase) — suite de contrat pour les vraies
 // fonctions SQL materialize_engagement_create_new / materialize_engagement_link_existing
-// (migration 436, via rpc, pas un mock).
+// (migration 436/437/438, via rpc, pas un mock).
 //
-// P0-2A FIX_REQUIRED (mandat Vincent 2026-09-24, migration 437) : Porte B
-// (chantier, sans AO). Une proposition 'engagement' acceptée/éditée ne
-// produit que deux issues — create_new (nouvel engagement, site_id renseigné,
-// tender_id NULL, status='curated' — validation de l'extraction, PAS
-// activation) ou link_existing (rattachement à un engagement existant du même
-// chantier/organisation, zéro mutation de ses champs métier). L'activation
-// ('curated' → 'active') est un geste séparé et explicite
-// (activateEngagement). Aucune Action n'est jamais générée par ce circuit.
+// P0-2C FIX_REQUIRED (mandat Vincent 2026-09-24, revue SHA e88034a1, migration
+// 438) : category/kind/measurable sont maintenant des paramètres humains
+// OBLIGATOIRES (plus de DEFAULT 'other', plus de lecture repli sur
+// source_payload — qui pouvait porter des valeurs IA non validées). Une
+// proposition pending/rejected doit être refusée AVANT toute écriture, y
+// compris quand des category/kind/measurable valides sont fournis.
+//
+// NE PAS EXÉCUTER avant application de la migration 438 : tant que 438 n'est
+// pas appliquée, la RPC live a encore la signature à 3 paramètres (437) et ces
+// appels à 5 paramètres échoueront (fonction introuvable pour cette
+// signature) — cf. rapport HARD STOP, section migration.
 //
 // Conventions reprises de tests/lib/db/materialize-obligation-contract.test.ts.
 
@@ -71,12 +74,21 @@ async function attachEvidence(proposalId: string) {
   return evidenceId
 }
 
-async function createNew(proposalId: string, category?: string) {
+const DEFAULT_KIND = 'obligation'
+const DEFAULT_CATEGORY = 'other'
+const DEFAULT_MEASURABLE = false
+
+async function createNew(
+  proposalId: string,
+  params: { category?: string | null; kind?: string | null; measurable?: boolean | null } = {},
+) {
   const db = createAdminClient()
   return db.rpc('materialize_engagement_create_new', {
     p_proposal_id: proposalId,
     p_user_id: adminUserId,
-    ...(category ? { p_category: category } : {}),
+    p_category: params.category === undefined ? DEFAULT_CATEGORY : params.category,
+    p_kind: params.kind === undefined ? DEFAULT_KIND : params.kind,
+    p_measurable: params.measurable === undefined ? DEFAULT_MEASURABLE : params.measurable,
   })
 }
 
@@ -145,7 +157,7 @@ describe('materialize_engagement_create_new', () => {
     const proposalId = await makeProposal({ label: `${TAG} create happy` })
     await attachEvidence(proposalId)
 
-    const { data, error } = await createNew(proposalId, 'quality')
+    const { data, error } = await createNew(proposalId, { category: 'quality', kind: 'controle', measurable: true })
     expect(error).toBeNull()
     const engagementId = data as string
     expect(engagementId).toBeTruthy()
@@ -153,7 +165,7 @@ describe('materialize_engagement_create_new', () => {
     const db = createAdminClient()
     const { data: engagement } = await db
       .from('engagements')
-      .select('id, tender_id, site_id, source_type, source_document_id, category, short_label, status, organization_id')
+      .select('id, tender_id, site_id, source_type, source_document_id, category, kind, measurable, short_label, status, organization_id')
       .eq('id', engagementId)
       .single()
     expect(engagement).toMatchObject({
@@ -165,6 +177,8 @@ describe('materialize_engagement_create_new', () => {
       source_type: 'manual',
       source_document_id: docId,
       category: 'quality',
+      kind: 'controle',
+      measurable: true,
       short_label: `${TAG} create happy`,
       status: 'curated',
       organization_id: orgId,
@@ -203,20 +217,91 @@ describe('materialize_engagement_create_new', () => {
     expect(count).toBe(1)
   })
 
-  it('refuse une proposition rejetée', async () => {
+  it('refuse une proposition rejetée — même avec des category/kind/measurable humains valides, zéro écriture', async () => {
     const proposalId = await makeProposal({ label: `${TAG} rejected`, review_status: 'rejected' })
     await attachEvidence(proposalId)
-    const { error } = await createNew(proposalId)
+    const { error } = await createNew(proposalId, { category: 'quality', kind: 'controle', measurable: true })
     expect(error).not.toBeNull()
     expect(error!.message).toMatch(/non matérialisable/)
+
+    const db = createAdminClient()
+    const { count: engagementCount } = await db
+      .from('engagements').select('id', { count: 'exact', head: true }).eq('short_label', `${TAG} rejected`)
+    expect(engagementCount).toBe(0)
+    const { count: matCount } = await db
+      .from('document_proposal_materialization').select('id', { count: 'exact', head: true }).eq('proposal_id', proposalId)
+    expect(matCount).toBe(0)
+    const { data: proposal } = await db
+      .from('document_extraction_proposal').select('review_status').eq('id', proposalId).single()
+    expect((proposal as { review_status: string }).review_status).toBe('rejected')
   })
 
-  it('refuse une proposition encore pending', async () => {
+  it('refuse une proposition encore pending — même avec des category/kind/measurable humains valides, zéro écriture', async () => {
     const proposalId = await makeProposal({ label: `${TAG} pending`, review_status: 'pending' })
     await attachEvidence(proposalId)
-    const { error } = await createNew(proposalId)
+    const { error } = await createNew(proposalId, { category: 'quality', kind: 'controle', measurable: true })
     expect(error).not.toBeNull()
     expect(error!.message).toMatch(/non matérialisable/)
+
+    const db = createAdminClient()
+    const { count: matCount } = await db
+      .from('document_proposal_materialization').select('id', { count: 'exact', head: true }).eq('proposal_id', proposalId)
+    expect(matCount).toBe(0)
+    const { data: proposal } = await db
+      .from('document_extraction_proposal').select('review_status').eq('id', proposalId).single()
+    expect((proposal as { review_status: string }).review_status).toBe('pending')
+  })
+
+  it('refuse une nature (kind) absente', async () => {
+    const proposalId = await makeProposal({ label: `${TAG} kind absent` })
+    await attachEvidence(proposalId)
+    const { error } = await createNew(proposalId, { kind: null })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/Nature .* requise/)
+  })
+
+  it('refuse une nature (kind) invalide', async () => {
+    const proposalId = await makeProposal({ label: `${TAG} kind invalid` })
+    await attachEvidence(proposalId)
+    const { error } = await createNew(proposalId, { kind: 'not_a_real_kind' })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/Nature .* requise/)
+  })
+
+  it('refuse un mesurable (measurable) absent', async () => {
+    const proposalId = await makeProposal({ label: `${TAG} measurable absent` })
+    await attachEvidence(proposalId)
+    const { error } = await createNew(proposalId, { measurable: null })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/Mesurable .* requis/)
+  })
+
+  it('refuse une catégorie (category) absente', async () => {
+    const proposalId = await makeProposal({ label: `${TAG} category absent` })
+    await attachEvidence(proposalId)
+    const { error } = await createNew(proposalId, { category: null })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/Catégorie .* requise/)
+  })
+
+  it('accepté avec des valeurs humaines DIFFÉRENTES du payload IA — l’Engagement porte EXACTEMENT les valeurs humaines', async () => {
+    const proposalId = await makeProposal({
+      label: `${TAG} human override`,
+      source_payload: { kind: 'penalite', measurable: true, category: 'other' },
+    })
+    await attachEvidence(proposalId)
+
+    const { data, error } = await createNew(proposalId, { category: 'sla', kind: 'obligation', measurable: false })
+    expect(error).toBeNull()
+    const engagementId = data as string
+
+    const db = createAdminClient()
+    const { data: engagement } = await db
+      .from('engagements')
+      .select('category, kind, measurable, status')
+      .eq('id', engagementId)
+      .single()
+    expect(engagement).toMatchObject({ category: 'sla', kind: 'obligation', measurable: false, status: 'curated' })
   })
 
   it('refuse une proposition sans chantier cible', async () => {

@@ -408,6 +408,7 @@ export function ExtractionReviewClient({
   siteSubjects,
   siteEngagements,
   nonVisitSignal,
+  isEngagementRun,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
@@ -426,6 +427,8 @@ export function ExtractionReviewClient({
   siteSubjects?: Array<{ id: string; name: string }>
   siteEngagements?: DbEngagement[]
   nonVisitSignal?: { evidence: string | null } | null
+  /** P0-2C — un run Engagement n'a pas de visite à matérialiser : CreateVisitBlock ne doit jamais s'y afficher. */
+  isEngagementRun?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -684,22 +687,24 @@ export function ExtractionReviewClient({
         )}
       </div>
 
-      <CreateVisitBlock
-        runId={runId}
-        documentId={documentId}
-        targetSiteId={targetSiteId}
-        effectiveDate={effectiveDate}
-        alreadySiteReportId={alreadySiteReportId}
-        summary={summary}
-        personCount={personCount}
-        companyCount={companyCount}
-        pinnedCount={pinnedIds.size}
-        snapshotCount={snapshotCount}
-        isPending={isPending}
-        createError={createError}
-        onSubmit={handleCreateVisit}
-        nonVisitSignal={nonVisitSignal ?? null}
-      />
+      {!isEngagementRun && (
+        <CreateVisitBlock
+          runId={runId}
+          documentId={documentId}
+          targetSiteId={targetSiteId}
+          effectiveDate={effectiveDate}
+          alreadySiteReportId={alreadySiteReportId}
+          summary={summary}
+          personCount={personCount}
+          companyCount={companyCount}
+          pinnedCount={pinnedIds.size}
+          snapshotCount={snapshotCount}
+          isPending={isPending}
+          createError={createError}
+          onSubmit={handleCreateVisit}
+          nonVisitSignal={nonVisitSignal ?? null}
+        />
+      )}
 
       {/* Rapprochements sémantiques */}
       {subjectSuggestions && subjectSuggestions.length > 0 && (
@@ -830,7 +835,9 @@ export function ExtractionReviewClient({
               </p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Sélectionnez les pages à afficher dans la fiche de la visite historique.
+                {isEngagementRun
+                  ? 'Sélectionnez les pages à afficher comme preuve documentaire.'
+                  : 'Sélectionnez les pages à afficher dans la fiche de la visite historique.'}
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
