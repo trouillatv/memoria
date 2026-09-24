@@ -355,11 +355,18 @@ export async function findFilenameCollisionInCollection(
  *  priorité sur findFilenameCollisionInCollection quand l'upload cible
  *  explicitement un chantier ; la version par collection reste le repli pour
  *  un upload sans cible chantier (P0-1B2 revue FIX_REQUIRED, Vincent
- *  2026-09-24, tâche 3). */
+ *  2026-09-24, tâche 3).
+ *
+ *  `documentType` restreint la détection aux documents de la MÊME nature
+ *  (P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24, correction 1) : « une
+ *  chaîne de versions ne peut relier que des documents métier compatibles ».
+ *  Sans ce filtre, un CCTP et un PV historique partageant le même nom de
+ *  fichier pouvaient être proposés comme versions l'un de l'autre. */
 export async function findFilenameCollisionForSite(
   filename: string,
   siteId: string,
   contentHash: string,
+  documentType: string,
 ): Promise<FilenameCollisionLookup> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -368,6 +375,7 @@ export async function findFilenameCollisionForSite(
     .eq('target_type', 'site')
     .eq('target_id', siteId)
     .filter('documents.filename', 'eq', filename)
+    .filter('documents.document_type', 'eq', documentType)
     .filter('documents.status', 'eq', 'active')
     .filter('documents.content_hash', 'neq', contentHash)
     .is('documents.deleted_at', null)
@@ -393,6 +401,7 @@ export type ReplaceCandidateValidation =
   | { status: 'not_active' }
   | { status: 'wrong_organization' }
   | { status: 'not_linked_to_site' }
+  | { status: 'wrong_document_type' }
 
 /** Valide qu'un document désigné EXPLICITEMENT par l'utilisateur comme « à
  *  remplacer » (Task 4, P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24) peut
@@ -403,22 +412,35 @@ export type ReplaceCandidateValidation =
  *  périmée entre l'ouverture du formulaire et la soumission. Ce chemin est
  *  la seule façon de remplacer un document dont le nom de fichier importé
  *  diffère de celui de l'ancienne version (la détection automatique par nom
- *  ne peut jamais couvrir ce cas). */
+ *  ne peut jamais couvrir ce cas).
+ *
+ *  `expectedDocumentType` (P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24,
+ *  correction 1) referme le même trou que pour la détection automatique par
+ *  nom : sans ce contrôle, le sélecteur listant TOUS les documents actifs du
+ *  chantier permettait à un CCTP de désigner un PV historique comme version à
+ *  remplacer. Un PV historique (`historical_visit_report`) ne peut JAMAIS
+ *  entrer dans une chaîne de versions contractuelle, quel que soit
+ *  `expectedDocumentType` — défense en profondeur indépendante du filtrage
+ *  côté UI. */
 export async function validateReplaceCandidateForSite(
   documentId: string,
   organizationId: string,
   siteId: string,
+  expectedDocumentType: string,
 ): Promise<ReplaceCandidateValidation> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('documents')
-    .select('id, filename, content_hash, status, organization_id, deleted_at')
+    .select('id, filename, content_hash, status, organization_id, document_type, deleted_at')
     .eq('id', documentId)
     .maybeSingle()
   if (error) throw error
   if (!data || data.deleted_at) return { status: 'not_found' }
   if (data.organization_id !== organizationId) return { status: 'wrong_organization' }
   if (data.status !== 'active') return { status: 'not_active' }
+  if (data.document_type === 'historical_visit_report' || data.document_type !== expectedDocumentType) {
+    return { status: 'wrong_document_type' }
+  }
   const { data: link, error: linkError } = await supabase
     .from('document_links')
     .select('document_id')
@@ -466,31 +488,25 @@ export async function copyDocumentLinks(fromDocumentId: string, toDocumentId: st
  *  base (historique conservé), seul son `status` change ; distinct d'une
  *  suppression (`deleted_at` n'est jamais touché ici).
  *
- *  P0-1B2 revue FIX_REQUIRED (Vincent 2026-09-24) : "superseded" doit devenir
- *  historique pour de vrai, pas seulement une étiquette — sinon son contenu
- *  continue de ressurgir comme connaissance courante (knowledge_chunks,
- *  résonances). Neutralisation stricte : si elle échoue, on repasse la
- *  version à 'active' avant de relancer, pour que la compensation déjà en
- *  place dans uploadDocumentAction (soft-delete de la nouvelle version)
- *  retrouve un état cohérent (ancienne version active, nouvelle invisible)
- *  au lieu de laisser une version "superseded" qui fuite encore. */
+ *  P0-1B2 revue FIX_REQUIRED tâche 2 (Vincent 2026-09-24) : l'ancien
+ *  enchaînement applicatif (status='superseded' → DELETE knowledge_chunks →
+ *  stale des résonances, avec revert du statut en cas d'échec) laissait un
+ *  trou : le DELETE des knowledge_chunks est irréversible, et il précédait
+ *  encore une étape faillible (le stale des résonances). Une compensation
+ *  applicative ne peut jamais annuler un DELETE déjà exécuté — en cas
+ *  d'échec de l'étape suivante, la version "restaurée" à 'active' se
+ *  retrouvait avec sa connaissance indexée définitivement perdue.
+ *
+ *  fn_supersede_document (mig 434) exécute les trois étapes (stale des
+ *  résonances, delete des knowledge_chunks, passage à 'superseded') dans une
+ *  seule transaction SQL : si une étape échoue, Postgres annule tout —
+ *  l'ancienne version reste alors réellement dans le même état exploitable
+ *  qu'avant l'appel (jamais de superseded qui fuite, jamais de chunks
+ *  perdus pour un document resté actif). */
 export async function markDocumentSuperseded(id: string): Promise<void> {
   const supabase = createAdminClient()
-  const { error } = await supabase
-    .from('documents')
-    .update({ status: 'superseded', updated_at: new Date().toISOString() })
-    .eq('id', id)
+  const { error } = await supabase.rpc('fn_supersede_document', { p_document_id: id })
   if (error) throw error
-
-  try {
-    await deactivateDocumentKnowledgeArtifacts(supabase, id)
-  } catch (e) {
-    await supabase
-      .from('documents')
-      .update({ status: 'active', updated_at: new Date().toISOString() })
-      .eq('id', id)
-    throw e
-  }
 }
 
 /** Compte les PV historiques déjà importés sur ce chantier pour la même date effective. */

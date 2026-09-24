@@ -74,15 +74,23 @@ export async function uploadSiteDocumentAction(
  *  contractuel (P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24, tâche 4).
  *  Réutilise listDocumentsForTarget, qui exclut déjà `superseded`/supprimés
  *  (P0-1B2 tâche 2) — jamais proposer de remplacer une version déjà remplacée. */
+// `documentType` (P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24, correction 1)
+// restreint la liste aux documents de la MÊME nature que celle actuellement
+// sélectionnée dans le formulaire : une chaîne de versions ne peut relier que
+// des documents métier compatibles (jamais un CCTP proposé comme remplaçant
+// d'un PV historique via ce sélecteur).
 export async function listSiteDocumentsForReplaceAction(
   siteId: string,
+  documentType: string,
 ): Promise<Array<{ id: string; filename: string; document_type: string }>> {
   const site = await getSiteById(siteId)
   if (!site?.organization_id) return []
   const membership = await requireOrganizationRole(site.organization_id, ['manager', 'admin'])
   if (!membership.ok) return []
   const docs = await listDocumentsForTarget('site', siteId)
-  return docs.map((d) => ({ id: d.id, filename: d.filename, document_type: d.document_type }))
+  return docs
+    .filter((d) => d.document_type === documentType)
+    .map((d) => ({ id: d.id, filename: d.filename, document_type: d.document_type }))
 }
 
 // Document contractuel (P0-1, Vincent 2026-09-23) — action DÉDIÉE, distincte de

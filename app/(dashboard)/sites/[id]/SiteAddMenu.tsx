@@ -282,20 +282,25 @@ function SiteContractualDocumentDialog({
   const [pending, startTransition] = useTransition()
   const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData; incomingFilename: string | null; ambiguous: boolean } | null>(null)
   const [replaceCandidates, setReplaceCandidates] = useState<Array<{ id: string; filename: string; document_type: string }>>([])
+  const [documentType, setDocumentType] = useState('cctp')
 
   // Remplacement explicite de version (P0-1B2 revue FIX_REQUIRED, Vincent
   // 2026-09-24, tâche 4) : seul moyen de remplacer une version dont le nom de
   // fichier importé diffère de celui de l'ancienne — la détection automatique
   // par collision de nom ne peut jamais couvrir ce cas.
+  //
+  // La liste dépend de `documentType` (correction 1, même revue) : le
+  // sélecteur ne doit jamais proposer un document d'une autre nature (une
+  // chaîne de versions ne peut relier que des documents métier compatibles).
   useEffect(() => {
     let active = true
-    listSiteDocumentsForReplaceAction(siteId).then((docs) => {
+    listSiteDocumentsForReplaceAction(siteId, documentType).then((docs) => {
       if (active) setReplaceCandidates(docs)
     })
     return () => {
       active = false
     }
-  }, [siteId])
+  }, [siteId, documentType])
 
   function runUpload(fd: FormData, incomingFilename: string | null) {
     startTransition(async () => {
@@ -349,7 +354,13 @@ function SiteContractualDocumentDialog({
         <input type="hidden" name="memory_tier" value="consultable" />
         <label className="block space-y-2">
           <span className="text-sm font-medium">Nature du document</span>
-          <select name="document_type" required defaultValue="cctp" className="block w-full rounded-lg border p-2 text-sm">
+          <select
+            name="document_type"
+            required
+            value={documentType}
+            onChange={(e) => setDocumentType(e.target.value)}
+            className="block w-full rounded-lg border p-2 text-sm"
+          >
             {CONTRACTUAL_DOCUMENT_TYPES.map((t) => (
               <option key={t.value} value={t.value}>{t.label}</option>
             ))}

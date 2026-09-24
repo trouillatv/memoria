@@ -47,8 +47,12 @@ const findFilenameCollisionInCollection = vi.fn(
   async (..._args: unknown[]): Promise<CollisionLookup> => ({ status: 'none' }),
 )
 const findFilenameCollisionForSite = vi.fn(
-  async (filename: string, siteId: string, _contentHash: string): Promise<CollisionLookup> =>
-    collisionBySiteAndFilename[`${siteId}:${filename}`] ?? { status: 'none' },
+  async (
+    filename: string,
+    siteId: string,
+    _contentHash: string,
+    _documentType: string,
+  ): Promise<CollisionLookup> => collisionBySiteAndFilename[`${siteId}:${filename}`] ?? { status: 'none' },
 )
 const validateReplaceCandidateForSite = vi.fn(
   async (..._args: unknown[]): Promise<ReplaceCandidateValidation> => ({ status: 'not_found' }),
@@ -91,7 +95,7 @@ vi.mock('@/lib/db/documents', () => ({
   findDocumentByHashInOrg: async (..._args: unknown[]) => ({ status: 'none' as const }),
   findFilenameCollisionInCollection: (...args: [string, string, string]) =>
     findFilenameCollisionInCollection(...args),
-  findFilenameCollisionForSite: (...args: [string, string, string]) =>
+  findFilenameCollisionForSite: (...args: [string, string, string, string]) =>
     findFilenameCollisionForSite(...args),
   validateReplaceCandidateForSite: (...args: unknown[]) => validateReplaceCandidateForSite(...args),
   markDocumentSuperseded: (...args: unknown[]) => markDocumentSuperseded(...args),
@@ -314,7 +318,7 @@ describe('replaces_document_id : remplacement explicite (tâche 4)', () => {
 
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.versioned).toBe(true)
-    expect(validateReplaceCandidateForSite).toHaveBeenCalledWith(EXISTING_DOC_ID, ORG, SITE)
+    expect(validateReplaceCandidateForSite).toHaveBeenCalledWith(EXISTING_DOC_ID, ORG, SITE, 'autre')
     expect(findFilenameCollisionForSite).not.toHaveBeenCalled()
     expect(createDocument.mock.calls[0][0]).toMatchObject({ supersedes_document_id: EXISTING_DOC_ID })
     expect(markDocumentSuperseded).toHaveBeenCalledWith(EXISTING_DOC_ID)
@@ -331,5 +335,39 @@ describe('replaces_document_id : remplacement explicite (tâche 4)', () => {
     expect(r.ok).toBe(false)
     expect(storageUpload).not.toHaveBeenCalled()
     expect(createDocument).not.toHaveBeenCalled()
+  })
+})
+
+// P0-1B2 revue FIX_REQUIRED (Vincent 2026-09-24, correction 1) : « une chaîne
+// de versions ne peut relier que des documents métier compatibles ». Le
+// comportement RÉEL du filtre par document_type (même document_type exigé,
+// PV historique jamais supersedable) est prouvé côté lib/db/documents.ts par
+// tests/lib/document-version-chain-type-gate.test.ts. Ici, on prouve
+// seulement que uploadDocumentAction (1) transmet bien le document_type
+// attendu aux deux fonctions de recherche/validation, et (2) refuse
+// correctement quand elles répondent 'wrong_document_type'.
+describe('type gating (correction 1) : câblage document_type dans uploadDocumentAction', () => {
+  it('transmet le document_type sélectionné à findFilenameCollisionForSite', async () => {
+    const fd = pdfFormData('cctp.pdf', 'contenu-cctp', { document_type: 'cctp' })
+    await uploadDocumentAction(fd)
+
+    expect(findFilenameCollisionForSite).toHaveBeenCalledWith('cctp.pdf', SITE, expect.any(String), 'cctp')
+  })
+
+  it('refuse un remplacement dont validateReplaceCandidateForSite signale wrong_document_type (Contrat→CCTP ou PV historique)', async () => {
+    validateReplaceCandidateForSite.mockResolvedValueOnce({ status: 'wrong_document_type' })
+
+    const fd = pdfFormData('cctp.pdf', 'contenu-cctp', {
+      document_type: 'cctp',
+      replaces_document_id: EXISTING_DOC_ID,
+    })
+    const r = await uploadDocumentAction(fd)
+
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toMatch(/nature différente/)
+    expect(validateReplaceCandidateForSite).toHaveBeenCalledWith(EXISTING_DOC_ID, ORG, SITE, 'cctp')
+    expect(storageUpload).not.toHaveBeenCalled()
+    expect(createDocument).not.toHaveBeenCalled()
+    expect(markDocumentSuperseded).not.toHaveBeenCalled()
   })
 })

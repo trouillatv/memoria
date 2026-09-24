@@ -578,6 +578,7 @@ export async function uploadDocumentAction(
       input.replaces_document_id,
       collectionOrgId,
       input.target_id as string,
+      input.document_type,
     )
     if (validation.status !== 'ok') {
       const messages: Record<Exclude<typeof validation.status, 'ok'>, string> = {
@@ -585,13 +586,15 @@ export async function uploadDocumentAction(
         not_active: 'Document à remplacer : déjà remplacé ou expiré.',
         wrong_organization: 'Document à remplacer : organisation incompatible.',
         not_linked_to_site: 'Document à remplacer : non rattaché à ce chantier.',
+        wrong_document_type:
+          'Document à remplacer : nature différente (une chaîne de versions ne peut relier que des documents de même nature).',
       }
       return { ok: false, error: messages[validation.status] }
     }
     supersedesDocumentId = validation.id
   } else if (input.version_decision !== 'keep_both') {
     const collision = targetsSite
-      ? await findFilenameCollisionForSite(file.name, input.target_id as string, contentHash)
+      ? await findFilenameCollisionForSite(file.name, input.target_id as string, contentHash, input.document_type)
       : await findFilenameCollisionInCollection(file.name, input.collection_id, contentHash)
     if (collision.status === 'ambiguous') {
       // Plusieurs versions ACTIVES partagent déjà ce nom (permis par
