@@ -50,3 +50,14 @@ begin
     set status = 'superseded', updated_at = now()
     where id = p_document_id;
 end $$;
+
+-- Cette fonction mute des données transverses (résonances, connaissance
+-- indexée, statut documentaire) sans revérifier l'organisation/le chantier :
+-- cette vérification vit dans les Server Actions appelantes (requireOrganizationRole),
+-- pas dans le RPC. Elle ne doit donc être exécutable que par le serveur via
+-- createAdminClient() (service_role), jamais directement depuis un client
+-- authenticated/anon.
+revoke all on function public.fn_supersede_document(uuid) from public;
+revoke all on function public.fn_supersede_document(uuid) from anon;
+revoke all on function public.fn_supersede_document(uuid) from authenticated;
+grant execute on function public.fn_supersede_document(uuid) to service_role;

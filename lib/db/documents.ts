@@ -323,11 +323,18 @@ export type FilenameCollisionLookup =
  *  nom de fichier mais un contenu différent ? Ceci détecte un candidat à une
  *  NOUVELLE VERSION (P0-1B2, Vincent 2026-09-24) — jamais résolu en silence :
  *  l'appelant doit toujours faire choisir explicitement l'utilisateur entre
- *  Mettre à jour / Conserver les deux / Annuler. */
+ *  Mettre à jour / Conserver les deux / Annuler.
+ *
+ *  `documentType` restreint la détection aux documents de la MÊME nature
+ *  (P0-1B2 revue FIX_REQUIRED, Vincent 2026-09-24, 2e revue) : le fallback
+ *  collection doit respecter la même doctrine que findFilenameCollisionForSite
+ *  — un CCTP et un Contrat partageant le même nom de fichier ne doivent
+ *  jamais être proposés comme versions l'un de l'autre. */
 export async function findFilenameCollisionInCollection(
   filename: string,
   collectionId: string,
   contentHash: string,
+  documentType: string,
 ): Promise<FilenameCollisionLookup> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
@@ -335,6 +342,7 @@ export async function findFilenameCollisionInCollection(
     .select('id, filename, document_type')
     .eq('collection_id', collectionId)
     .eq('filename', filename)
+    .eq('document_type', documentType)
     .eq('status', 'active')
     .neq('content_hash', contentHash)
     .is('deleted_at', null)

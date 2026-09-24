@@ -26,11 +26,19 @@ type FakeLinkRow = {
   documents: FakeDocument
 }
 
+type FakeDocumentRow = {
+  id: string
+  filename: string
+  content_hash: string
+  status: string
+  organization_id: string
+  document_type: string
+  deleted_at: string | null
+  collection_id?: string
+}
+
 let documentLinksRows: FakeLinkRow[] = []
-let documentsById: Record<
-  string,
-  { id: string; filename: string; content_hash: string; status: string; organization_id: string; document_type: string; deleted_at: string | null }
-> = {}
+let documentsRows: FakeDocumentRow[] = []
 
 function documentLinksChain() {
   let rows = documentLinksRows
@@ -60,14 +68,23 @@ function documentLinksChain() {
 }
 
 function documentsTableChain() {
-  let currentId: string | undefined
+  let rows = documentsRows
   const chain = {
     select: () => chain,
-    eq: (_col: string, val: string) => {
-      currentId = val
+    eq: (col: string, val: unknown) => {
+      rows = rows.filter((r) => (r as unknown as Record<string, unknown>)[col] === val)
       return chain
     },
-    maybeSingle: async () => ({ data: documentsById[currentId ?? ''] ?? null, error: null }),
+    neq: (col: string, val: unknown) => {
+      rows = rows.filter((r) => (r as unknown as Record<string, unknown>)[col] !== val)
+      return chain
+    },
+    is: (col: string, val: unknown) => {
+      rows = rows.filter((r) => (r as unknown as Record<string, unknown>)[col] === val)
+      return chain
+    },
+    maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
+    then: (resolve: (v: { data: FakeDocumentRow[]; error: null }) => void) => resolve({ data: rows, error: null }),
   }
   return chain
 }
@@ -82,11 +99,12 @@ vi.mock('@/lib/supabase/admin', () => ({
   }),
 }))
 
-const { findFilenameCollisionForSite, validateReplaceCandidateForSite } = await import('@/lib/db/documents')
+const { findFilenameCollisionForSite, validateReplaceCandidateForSite, findFilenameCollisionInCollection } =
+  await import('@/lib/db/documents')
 
 beforeEach(() => {
   documentLinksRows = []
-  documentsById = {}
+  documentsRows = []
 })
 
 describe('findFilenameCollisionForSite — type gating', () => {
@@ -128,45 +146,51 @@ describe('findFilenameCollisionForSite — type gating', () => {
 
 describe('validateReplaceCandidateForSite — type gating', () => {
   it('Contrat -> CCTP : refuse (nature différente)', async () => {
-    documentsById['doc-contrat-1'] = {
-      id: 'doc-contrat-1',
-      filename: 'contrat.pdf',
-      content_hash: 'h',
-      status: 'active',
-      organization_id: ORG,
-      document_type: 'contrat',
-      deleted_at: null,
-    }
+    documentsRows = [
+      {
+        id: 'doc-contrat-1',
+        filename: 'contrat.pdf',
+        content_hash: 'h',
+        status: 'active',
+        organization_id: ORG,
+        document_type: 'contrat',
+        deleted_at: null,
+      },
+    ]
 
     const result = await validateReplaceCandidateForSite('doc-contrat-1', ORG, SITE, 'cctp')
     expect(result).toEqual({ status: 'wrong_document_type' })
   })
 
   it('refuse un PV historique comme candidat de remplacement, quel que soit expectedDocumentType', async () => {
-    documentsById['doc-pv-1'] = {
-      id: 'doc-pv-1',
-      filename: 'rapport.pdf',
-      content_hash: 'h',
-      status: 'active',
-      organization_id: ORG,
-      document_type: 'historical_visit_report',
-      deleted_at: null,
-    }
+    documentsRows = [
+      {
+        id: 'doc-pv-1',
+        filename: 'rapport.pdf',
+        content_hash: 'h',
+        status: 'active',
+        organization_id: ORG,
+        document_type: 'historical_visit_report',
+        deleted_at: null,
+      },
+    ]
 
     const result = await validateReplaceCandidateForSite('doc-pv-1', ORG, SITE, 'historical_visit_report')
     expect(result).toEqual({ status: 'wrong_document_type' })
   })
 
   it('CCTP -> CCTP : accepte quand le document est rattaché au chantier', async () => {
-    documentsById['doc-cctp-1'] = {
-      id: 'doc-cctp-1',
-      filename: 'cctp.pdf',
-      content_hash: 'h',
-      status: 'active',
-      organization_id: ORG,
-      document_type: 'cctp',
-      deleted_at: null,
-    }
+    documentsRows = [
+      {
+        id: 'doc-cctp-1',
+        filename: 'cctp.pdf',
+        content_hash: 'h',
+        status: 'active',
+        organization_id: ORG,
+        document_type: 'cctp',
+        deleted_at: null,
+      },
+    ]
     documentLinksRows = [
       {
         document_id: 'doc-cctp-1',
@@ -178,5 +202,76 @@ describe('validateReplaceCandidateForSite — type gating', () => {
 
     const result = await validateReplaceCandidateForSite('doc-cctp-1', ORG, SITE, 'cctp')
     expect(result).toMatchObject({ status: 'ok', id: 'doc-cctp-1' })
+  })
+})
+
+// P0-1B2 revue FIX_REQUIRED (Vincent 2026-09-24, 2e revue) : le fallback
+// collection (upload sans cible chantier) doit respecter la même doctrine de
+// type-gating que findFilenameCollisionForSite.
+describe('findFilenameCollisionInCollection — type gating', () => {
+  const COLLECTION = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+
+  it('collection identique + filename identique + CCTP existant + Contrat entrant : aucune collision (natures différentes)', async () => {
+    documentsRows = [
+      {
+        id: 'doc-cctp-1',
+        filename: 'doc.pdf',
+        content_hash: 'old-hash',
+        status: 'active',
+        organization_id: ORG,
+        document_type: 'cctp',
+        deleted_at: null,
+        collection_id: COLLECTION,
+      },
+    ]
+
+    const result = await findFilenameCollisionInCollection('doc.pdf', COLLECTION, 'new-hash', 'contrat')
+    expect(result).toEqual({ status: 'none' })
+  })
+
+  it('CCTP -> CCTP : reste détecté (même nature)', async () => {
+    documentsRows = [
+      {
+        id: 'doc-cctp-1',
+        filename: 'doc.pdf',
+        content_hash: 'old-hash',
+        status: 'active',
+        organization_id: ORG,
+        document_type: 'cctp',
+        deleted_at: null,
+        collection_id: COLLECTION,
+      },
+    ]
+
+    const result = await findFilenameCollisionInCollection('doc.pdf', COLLECTION, 'new-hash', 'cctp')
+    expect(result).toMatchObject({ status: 'found', id: 'doc-cctp-1' })
+  })
+
+  it('plusieurs CCTP actifs de même nom restent ambiguous (le filtre document_type ne cache jamais une ambiguïté réelle)', async () => {
+    documentsRows = [
+      {
+        id: 'doc-cctp-1',
+        filename: 'doc.pdf',
+        content_hash: 'hash-1',
+        status: 'active',
+        organization_id: ORG,
+        document_type: 'cctp',
+        deleted_at: null,
+        collection_id: COLLECTION,
+      },
+      {
+        id: 'doc-cctp-2',
+        filename: 'doc.pdf',
+        content_hash: 'hash-2',
+        status: 'active',
+        organization_id: ORG,
+        document_type: 'cctp',
+        deleted_at: null,
+        collection_id: COLLECTION,
+      },
+    ]
+
+    const result = await findFilenameCollisionInCollection('doc.pdf', COLLECTION, 'new-hash', 'cctp')
+    expect(result).toMatchObject({ status: 'ambiguous' })
   })
 })

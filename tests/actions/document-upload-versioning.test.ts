@@ -93,7 +93,7 @@ vi.mock('@/lib/db/documents', () => ({
   deleteDocumentCollection: vi.fn(),
   getCollectionOrganizationId: async (collectionId: string) => collectionOrgs[collectionId] ?? null,
   findDocumentByHashInOrg: async (..._args: unknown[]) => ({ status: 'none' as const }),
-  findFilenameCollisionInCollection: (...args: [string, string, string]) =>
+  findFilenameCollisionInCollection: (...args: [string, string, string, string]) =>
     findFilenameCollisionInCollection(...args),
   findFilenameCollisionForSite: (...args: [string, string, string, string]) =>
     findFilenameCollisionForSite(...args),

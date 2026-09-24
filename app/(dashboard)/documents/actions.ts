@@ -595,7 +595,7 @@ export async function uploadDocumentAction(
   } else if (input.version_decision !== 'keep_both') {
     const collision = targetsSite
       ? await findFilenameCollisionForSite(file.name, input.target_id as string, contentHash, input.document_type)
-      : await findFilenameCollisionInCollection(file.name, input.collection_id, contentHash)
+      : await findFilenameCollisionInCollection(file.name, input.collection_id, contentHash, input.document_type)
     if (collision.status === 'ambiguous') {
       // Plusieurs versions ACTIVES partagent déjà ce nom (permis par
       // `keep_both`) : jamais de choix arbitraire de celle à remplacer, quel
