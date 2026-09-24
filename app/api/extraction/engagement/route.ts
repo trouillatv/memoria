@@ -7,8 +7,16 @@ export const maxDuration = 300
  * POST /api/extraction/engagement
  *
  * Auth :
- *   - utilisateur manager/admin (cookies) — appelé depuis le client (page document)
+ *   - utilisateur authentifié (cookies) — appelé depuis le client (page document)
  *   - secret interne CRON_SECRET (x-internal-trigger) — appelé depuis after() dans les server actions
+ *
+ * Cette route authentifie seulement l'appelant : le pouvoir métier (manager/admin
+ * DANS l'organisation du document) est vérifié UNE SEULE FOIS, de façon
+ * canonique, par extractEngagementCandidates (requireOrganizationRole) — jamais
+ * ici via un rôle plateforme global, qui ne veut plus rien dire pour un
+ * utilisateur multi-organisations (P0-2D FIX_REQUIRED, revue Vincent 2026-09-25).
+ * Le chemin CRON_SECRET transmet un userId de confiance (posé par un server
+ * action authentifié), mais subit la MÊME garde organisationnelle en aval.
  *
  * Body : { documentId: string, force?: boolean }
  *
@@ -36,14 +44,9 @@ export async function POST(req: Request) {
       userId = body.userId ?? null
     } else {
       const { createClient: createServerClient } = await import('@/lib/supabase/server')
-      const { getUserRoleById } = await import('@/lib/db/users')
       const supabase = await createServerClient()
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return NextResponse.json({ ok: false, error: 'Non authentifié' }, { status: 401 })
-      const role = await getUserRoleById(user.id)
-      if (role !== 'manager' && role !== 'admin') {
-        return NextResponse.json({ ok: false, error: 'Accès refusé' }, { status: 403 })
-      }
       userId = user.id
     }
 

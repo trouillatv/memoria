@@ -18,7 +18,7 @@ import {
 } from '@/services/ai/engagement-prescriptif-extraction'
 import { ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1 } from '@/services/ai/prompts/engagement-extractor-prescriptif.v1'
 import { buildPageWindows } from '@/lib/documents/page-windows'
-import { requireOrganizationMembership } from '@/lib/auth/memberships'
+import { requireOrganizationRole } from '@/lib/auth/memberships'
 import { ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES } from '@/lib/documents/engagement-eligible-document-types'
 import type { DocumentExtractionEmptyReason } from '@/types/db'
 
@@ -96,7 +96,12 @@ export async function extractEngagementCandidates(
 
   // 2. Garde d'organisation STRICTE — relit l'appartenance en base pour CET
   // utilisateur, jamais un rôle global mémorisé (lib/auth/memberships.ts).
-  const membership = await requireOrganizationMembership(d.organization_id, { id: userId })
+  // Exige aussi le pouvoir métier manager/admin DANS cette organisation
+  // (jamais le rôle plateforme) : c'est le SEUL point de garde, quel que soit
+  // l'appelant (bouton fiche document, auto-trigger sur upload, CLI) — la
+  // route API authentifie l'utilisateur puis délègue entièrement l'autorisation
+  // métier ici (P0-2D FIX_REQUIRED, revue Vincent 2026-09-25).
+  const membership = await requireOrganizationRole(d.organization_id, ['manager', 'admin'], { id: userId })
   if (!membership.ok) {
     return { ok: false, error: membership.error }
   }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import type { FormEvent, ReactNode } from 'react'
+import Link from 'next/link'
 import { Camera, CheckCircle2, ChevronDown, ClipboardCheck, FileSignature, FileText, History, Loader2, Mic, Video } from 'lucide-react'
 import { importSiteEvidenceAction, listSiteDocumentsForReplaceAction, uploadSiteContractualDocumentAction, uploadSiteDocumentAction } from './site-add-actions'
 import { CONTRACTUAL_DOCUMENT_TYPES } from './contractual-document-types'
@@ -9,6 +10,7 @@ import { HistoricalPvUploadForm } from './HistoricalPvUploadForm'
 import { createQuickActionAction } from '@/app/(dashboard)/actions/actions'
 import { createReserveAction } from './reserves/actions'
 import { documentTypeLabel } from '@/lib/documents/labels'
+import { ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES } from '@/lib/documents/engagement-eligible-document-types'
 import type { UploadDocumentResult } from '@/app/(dashboard)/documents/actions'
 
 type DialogKind = 'document' | 'evidence' | 'historical_pv' | 'contractual_document' | 'action' | 'reserve' | null
@@ -283,6 +285,12 @@ function SiteContractualDocumentDialog({
   const [versionConflict, setVersionConflict] = useState<{ filename: string; pendingData: FormData; incomingFilename: string | null; ambiguous: boolean } | null>(null)
   const [replaceCandidates, setReplaceCandidates] = useState<Array<{ id: string; filename: string; document_type: string }>>([])
   const [documentType, setDocumentType] = useState('cctp')
+  // Le document reste le hub canonique : sur un doublon (simple, enrichi ou en
+  // conflit de métadonnées), aucun nouveau document n'est créé — mais celui
+  // déjà là doit rester atteignable. Jamais de logique de run dupliquée ici :
+  // seul un lien vers /documents/{id}, la fiche sait déjà tout afficher (P0-2D
+  // FIX_REQUIRED, revue Vincent 2026-09-25).
+  const [documentId, setDocumentId] = useState<string | null>(null)
 
   // Remplacement explicite de version (P0-1B2 revue FIX_REQUIRED, Vincent
   // 2026-09-24, tâche 4) : seul moyen de remplacer une version dont le nom de
@@ -303,6 +311,7 @@ function SiteContractualDocumentDialog({
   }, [siteId, documentType])
 
   function runUpload(fd: FormData, incomingFilename: string | null) {
+    setDocumentId(null)
     startTransition(async () => {
       try {
         const result = await uploadSiteContractualDocumentAction(siteId, fd)
@@ -317,10 +326,12 @@ function SiteContractualDocumentDialog({
           return
         }
         setVersionConflict(null)
+        setDocumentId(result.documentId ?? null)
+        const engagementEligible = ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES.includes(documentType)
         setMessage(
           result.versioned
             ? 'Nouvelle version créée, l’ancienne est conservée dans l’historique.'
-            : buildContractualUploadMessage(result, incomingFilename),
+            : buildContractualUploadMessage(result, incomingFilename, engagementEligible),
         )
         formRef.current?.reset()
       } catch (e) {
@@ -389,7 +400,16 @@ function SiteContractualDocumentDialog({
           <VersionConflictChoice filename={versionConflict.filename} ambiguous={versionConflict.ambiguous} onChoose={resolveVersionConflict} onCancel={() => setVersionConflict(null)} pending={pending} />
         ) : (
           <>
-            {message && <p className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">{message}</p>}
+            {message && (
+              <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
+                <p>{message}</p>
+                {documentId && (
+                  <Link href={`/documents/${documentId}`} className="inline-flex items-center gap-1 text-sm font-medium text-foreground underline underline-offset-4 hover:no-underline">
+                    Ouvrir le document
+                  </Link>
+                )}
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
               <button type="submit" disabled={pending} className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-60">
@@ -419,8 +439,12 @@ function filenameDiffersNote(existingFilename: string | undefined, incomingFilen
   return ' Le nom du fichier est différent, mais son contenu est identique au document déjà présent.'
 }
 
-function buildContractualUploadMessage(result: UploadDocumentResult, incomingFilename: string | null): string {
-  if (!result.duplicate) return 'Document contractuel ajouté au chantier.'
+function buildContractualUploadMessage(result: UploadDocumentResult, incomingFilename: string | null, engagementEligible: boolean): string {
+  if (!result.duplicate) {
+    return engagementEligible
+      ? 'Document ajouté. Analyse des engagements lancée.'
+      : 'Document contractuel ajouté au chantier.'
+  }
 
   const filenameNote = filenameDiffersNote(result.existingFilename, incomingFilename)
 

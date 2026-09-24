@@ -144,8 +144,9 @@ export async function requireOrganizationMembership(
 export async function requireOrganizationRole(
   organizationId: string,
   allowedRoles: readonly UserRole[],
+  currentUser?: Pick<DbUser, 'id'> | null,
 ): Promise<MembershipResult> {
-  const res = await requireOrganizationMembership(organizationId)
+  const res = await requireOrganizationMembership(organizationId, currentUser)
   if (!res.ok) return res
   if (!allowedRoles.includes(res.context.role)) return { ok: false, error: ACCES_REFUSE }
   return res

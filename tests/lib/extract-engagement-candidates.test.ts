@@ -28,6 +28,7 @@ let downloadResult: { data: Blob | null; error: { message: string } | null } = {
 }
 
 let membershipOk = true
+let membershipRole: string = 'manager'
 
 // existingRun n'est "visible" que si on l'interroge avec le MÊME extractor_key
 // que celui qui l'a produit — reproduit fidèlement le filtre .eq('extractor_key', …)
@@ -86,10 +87,11 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 vi.mock('@/lib/auth/memberships', () => ({
-  requireOrganizationMembership: async (organizationId: string) =>
-    membershipOk
-      ? { ok: true, context: { userId: 'user-1', organizationId, role: 'manager' } }
-      : { ok: false, error: 'Accès refusé' },
+  requireOrganizationRole: async (organizationId: string, allowedRoles: string[]) => {
+    if (!membershipOk) return { ok: false, error: 'Accès refusé' }
+    if (!allowedRoles.includes(membershipRole)) return { ok: false, error: 'Accès refusé' }
+    return { ok: true, context: { userId: 'user-1', organizationId, role: membershipRole } }
+  },
 }))
 
 vi.mock('@/lib/db/document-extractions', () => ({
@@ -163,6 +165,7 @@ beforeEach(() => {
   }
   downloadResult = { data: new Blob(['%PDF-fake%']), error: null }
   membershipOk = true
+  membershipRole = 'manager'
   existingRun = null
   existingRunExtractorKey = 'engagement_prescriptif_v1'
   extractPdfTextResult = { text: SOURCE_TEXT, pageCount: 3, charCount: SOURCE_TEXT.length, isLikelyScanned: false }
@@ -203,6 +206,47 @@ describe('document introuvable', () => {
 describe('garde d\'organisation stricte (cross-org)', () => {
   it('utilisateur non membre de l\'organisation du document → refus, aucun run créé', async () => {
     membershipOk = false
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('Accès refusé')
+    expect(createExtractionRun).not.toHaveBeenCalled()
+  })
+
+  // P0-2D FIX_REQUIRED (revue Vincent 2026-09-25) — rôle plateforme ≠ pouvoir
+  // métier : la route API n'autorise plus rien elle-même, seul le rôle DANS
+  // l'organisation du document fait foi ici. Ces 4 cas prouvent que ni un rôle
+  // global, ni une appartenance sans le bon rôle, ni une appartenance à une
+  // AUTRE organisation ne peuvent se substituer à ce garde-fou canonique.
+
+  it('aucune appartenance à l\'organisation du document (même avec un rôle plateforme admin) → refus', async () => {
+    membershipOk = false
+    membershipRole = 'admin'
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('Accès refusé')
+    expect(createExtractionRun).not.toHaveBeenCalled()
+  })
+
+  it('membre actif de l\'organisation du document mais sans rôle manager/admin (ex. technicien) → refus', async () => {
+    membershipRole = 'technicien'
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toBe('Accès refusé')
+    expect(createExtractionRun).not.toHaveBeenCalled()
+  })
+
+  it('membre actif avec rôle manager dans l\'organisation du document → autorisé, quel que soit le rôle plateforme', async () => {
+    membershipRole = 'manager'
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    expect(createExtractionRun).toHaveBeenCalledTimes(1)
+  })
+
+  it('rôle manager détenu dans une AUTRE organisation ne donne aucun droit ici (le mock ne connaît que la garde de l\'organisation du document)', async () => {
+    // Le membership est résolu STRICTEMENT pour d.organization_id (jamais un
+    // rôle porté ailleurs) : le rejeter revient à ne pas être membre ICI.
+    membershipOk = false
+    membershipRole = 'manager'
     const r = await extractEngagementCandidates(DOC_ID, 'user-1')
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toBe('Accès refusé')

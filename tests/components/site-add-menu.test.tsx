@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import type { UploadDocumentResult } from '@/app/(dashboard)/documents/actions'
 
 // ── G1 — LE MENU « AJOUTER » ÉTAIT INUTILISABLE SUR ORDINATEUR ──────────────
 //
@@ -16,13 +17,15 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 // Ces tests interdisent le retour du survol comme mécanisme d'ouverture.
 
 const uploadSiteDocumentAction = vi.fn(async (_siteId: string, _fd: FormData) => ({ ok: true }))
-const uploadSiteContractualDocumentAction = vi.fn(async (_siteId: string, _fd: FormData) => ({ ok: true, documentId: 'doc-1' }))
+const uploadSiteContractualDocumentAction = vi.fn(async (_siteId: string, _fd: FormData): Promise<UploadDocumentResult> => ({ ok: true, documentId: 'doc-1' }))
 const importSiteEvidenceAction = vi.fn(async (_siteId: string, _fd: FormData) => ({ ok: true, created: 1 }))
+const listSiteDocumentsForReplaceAction = vi.fn(async (_siteId: string, _documentType: string) => [] as Array<{ id: string; filename: string; document_type: string }>)
 
 vi.mock('@/app/(dashboard)/sites/[id]/site-add-actions', () => ({
   uploadSiteDocumentAction: (siteId: string, fd: FormData) => uploadSiteDocumentAction(siteId, fd),
   uploadSiteContractualDocumentAction: (siteId: string, fd: FormData) => uploadSiteContractualDocumentAction(siteId, fd),
   importSiteEvidenceAction: (siteId: string, fd: FormData) => importSiteEvidenceAction(siteId, fd),
+  listSiteDocumentsForReplaceAction: (siteId: string, documentType: string) => listSiteDocumentsForReplaceAction(siteId, documentType),
 }))
 vi.mock('next/link', () => ({
   default: ({ children, ...rest }: { children: React.ReactNode }) => <a {...rest}>{children}</a>,
@@ -146,5 +149,101 @@ describe('Document contractuel — le dialogue réel appelle le bon contrat serv
     const [, fd] = uploadSiteDocumentAction.mock.calls[0]!
     expect(fd.get('document_type')).toBe('preuve')
     expect(uploadSiteContractualDocumentAction).not.toHaveBeenCalled()
+  })
+})
+
+// ── P0-2D FIX_REQUIRED (revue Vincent 2026-09-25) ───────────────────────────
+//
+// « Il existe déjà, donc je ne vais pas à l'extraction du doc. » Sur un hit de
+// dédoublonnage, le modal affichait un message texte puis seulement
+// [Fermer] [Ajouter] — aucun chemin vers le document existant. La fiche
+// document est le hub canonique (état du run, revue) : le modal ne doit
+// JAMAIS dupliquer cette logique, seulement conserver le documentId renvoyé
+// et proposer un lien "Ouvrir le document", quelle que soit l'issue.
+function submitContractualDocument(fileName = 'CCTP.pdf') {
+  fireEvent.click(screen.getByRole('button', { name: /Ajouter/ }))
+  fireEvent.click(screen.getByRole('button', { name: /Document contractuel/ }))
+  const form = document.querySelector('form') as HTMLFormElement
+  const file = new File(['contenu-cctp'], fileName, { type: 'application/pdf' })
+  fireEvent.change(screen.getByLabelText('PDF'), { target: { files: [file] } })
+  fireEvent.submit(form)
+  return form
+}
+
+describe('Document contractuel — pont vers la fiche document sur doublon (P0-2D FIX_REQUIRED)', () => {
+  it('même contenu + date d’effet différente → metadataConflict → aucun nouveau document → CTA "Ouvrir le document" avec l’ID canonique', async () => {
+    uploadSiteContractualDocumentAction.mockResolvedValueOnce({
+      ok: true,
+      documentId: 'doc-canonical',
+      duplicate: true,
+      metadataConflict: true,
+      effectiveDateChange: { from: '2026-01-01', to: '2026-09-01' },
+    })
+
+    render(<SiteAddMenu siteId="s1" />)
+    submitContractualDocument()
+
+    await waitFor(() => expect(uploadSiteContractualDocumentAction).toHaveBeenCalledTimes(1))
+    const link = await screen.findByRole('link', { name: 'Ouvrir le document' })
+    expect(link.getAttribute('href')).toBe('/documents/doc-canonical')
+  })
+
+  it('doublon simple (contenu déjà connu, aucun conflit) → CTA "Ouvrir le document" présent également', async () => {
+    uploadSiteContractualDocumentAction.mockResolvedValueOnce({
+      ok: true,
+      documentId: 'doc-existing',
+      duplicate: true,
+    })
+
+    render(<SiteAddMenu siteId="s1" />)
+    submitContractualDocument()
+
+    await waitFor(() => expect(uploadSiteContractualDocumentAction).toHaveBeenCalledTimes(1))
+    const link = await screen.findByRole('link', { name: 'Ouvrir le document' })
+    expect(link.getAttribute('href')).toBe('/documents/doc-existing')
+  })
+
+  it('nouveau document (CCTP, éligible engagements) → analyse annoncée + CTA "Ouvrir le document"', async () => {
+    uploadSiteContractualDocumentAction.mockResolvedValueOnce({
+      ok: true,
+      documentId: 'doc-new',
+    })
+
+    render(<SiteAddMenu siteId="s1" />)
+    submitContractualDocument()
+
+    await waitFor(() => expect(uploadSiteContractualDocumentAction).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText(/Analyse des engagements lancée/)).toBeTruthy()
+    const link = screen.getByRole('link', { name: 'Ouvrir le document' })
+    expect(link.getAttribute('href')).toBe('/documents/doc-new')
+  })
+
+  it('version créée (remplacement) → CTA "Ouvrir le document" avec l’ID de la nouvelle version', async () => {
+    uploadSiteContractualDocumentAction.mockResolvedValueOnce({
+      ok: true,
+      documentId: 'doc-v2',
+      versioned: true,
+    })
+
+    render(<SiteAddMenu siteId="s1" />)
+    submitContractualDocument()
+
+    await waitFor(() => expect(uploadSiteContractualDocumentAction).toHaveBeenCalledTimes(1))
+    const link = await screen.findByRole('link', { name: 'Ouvrir le document' })
+    expect(link.getAttribute('href')).toBe('/documents/doc-v2')
+  })
+
+  it('échec de l’upload → aucun documentId, pas de CTA', async () => {
+    uploadSiteContractualDocumentAction.mockResolvedValueOnce({
+      ok: false,
+      error: 'Nature de document contractuel invalide',
+    })
+
+    render(<SiteAddMenu siteId="s1" />)
+    submitContractualDocument()
+
+    await waitFor(() => expect(uploadSiteContractualDocumentAction).toHaveBeenCalledTimes(1))
+    await screen.findByText('Nature de document contractuel invalide')
+    expect(screen.queryByRole('link', { name: 'Ouvrir le document' })).toBeNull()
   })
 })
