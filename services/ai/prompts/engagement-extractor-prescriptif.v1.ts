@@ -6,14 +6,17 @@
 // plus « que propose-t-on ? » mais « qu'est-ce qui doit être vrai sur CE chantier,
 // d'après ce document ? ».
 export const ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1 = {
-  version: 'engagement-extractor-prescriptif.v1',
-  /** Version persistée dans document_extraction_run.extractor_version — seule
-   *  source de vérité. Ne PAS dupliquer cette valeur ailleurs dans le code :
-   *  l'orchestrateur (lib/documents/extract-engagement-candidates.ts) la lit
-   *  ICI plutôt que de maintenir sa propre constante, pour qu'un bump de
-   *  version ne puisse jamais diverger silencieusement entre le prompt et le
-   *  run persisté. */
-  extractorVersion: '1.0.0',
+  /** Identifiant lisible du profil — PAS une version, ne change pas à chaque
+   *  itération du prompt. Sert de extractor_key ailleurs si besoin, jamais
+   *  comparé à `version`. */
+  id: 'engagement-extractor-prescriptif',
+  /** SEULE source de vérité pour toute notion de version de ce profil :
+   *  document_extraction_run.extractor_version (lib/documents/extract-engagement-
+   *  candidates.ts) ET metadata.prompt_version (services/ai/engagement-
+   *  prescriptif-extraction.ts) lisent TOUS LES DEUX ce champ, jamais une
+   *  constante dupliquée — un bump de version ne doit exister qu'ICI pour ne
+   *  jamais diverger entre le run persisté et les métadonnées. */
+  version: '1.0.0',
   modelTier: 'heavy' as const,
   system: `Tu es un analyste contractuel. Ta mission : extraire les ENGAGEMENTS
 PRESCRITS par un document contractuel déjà en vigueur sur un chantier (CCTP,
@@ -89,6 +92,23 @@ extrait verbatim dans le texte. C'est pourquoi source_excerpt DOIT être une
 recopie exacte du texte source, marqueurs exclus : un extrait reformulé ou
 approximatif ne pourra pas être relocalisé et perdra sa page.
 - Ne recopie JAMAIS les marqueurs « [[page N]] » eux-mêmes dans source_excerpt.
+
+CLAUSE À CHEVAL SUR DEUX PAGES — le marqueur « [[page N]] » marque une
+frontière RÉELLE du document, pas un simple repère cosmétique : un extrait qui
+concatènerait du texte situé avant et après ce marqueur ne pourra JAMAIS être
+relocalisé tel quel, puisque le marqueur reste physiquement présent entre les
+deux fragments dans le texte source.
+- Si une clause commence sur une page et se termine sur la suivante (tu peux
+  le comprendre grâce au recouvrement entre fenêtres voisines), source_excerpt
+  DOIT rester un fragment verbatim entièrement contenu dans UNE SEULE page —
+  jamais une concaténation à cheval sur la frontière. Choisis le fragment
+  mono-page le plus probant possible pour justifier la clause.
+- label et description peuvent, eux, décrire la clause complète telle qu'elle
+  se comprend sur les deux pages : seule la contrainte de mono-page s'applique
+  à source_excerpt.
+- Si aucun fragment mono-page n'est suffisamment probant pour justifier la
+  clause, n'extrais PAS cet engagement plutôt que de produire un extrait
+  invérifiable.
 
 CONTEXTE D'APPEL — le texte source peut être le document ENTIER ou seulement
 une FENÊTRE d'un document plus long (quelques dizaines de pages, avec un léger

@@ -34,10 +34,13 @@ import type { DocumentExtractionEmptyReason } from '@/types/db'
 // prescriptif de clause contractuelle.
 
 const EXTRACTOR_KEY = 'engagement_prescriptif_v1'
-// Source unique : services/ai/prompts/engagement-extractor-prescriptif.v1.ts.
-// Ne PAS dupliquer cette valeur ici — un bump de version doit se voir
-// UNIQUEMENT à cet endroit pour ne jamais diverger du run persisté.
-const EXTRACTOR_VERSION = ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1.extractorVersion
+// Source unique : ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1.version
+// (services/ai/prompts/engagement-extractor-prescriptif.v1.ts). Le même champ
+// alimente aussi metadata.prompt_version (services/ai/engagement-prescriptif-
+// extraction.ts) — ne JAMAIS dupliquer cette valeur dans une constante propre,
+// pour qu'un bump de version ne puisse jamais diverger entre le run persisté
+// et les métadonnées.
+const EXTRACTOR_VERSION = ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1.version
 const MIN_USABLE_CHARS = 100
 
 // Chaîne exacte du mandat : "document contractuel" → "extracteur prescriptif".

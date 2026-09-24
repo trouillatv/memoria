@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1 } from '@/services/ai/prompts/engagement-extractor-prescriptif.v1'
 
 // P0-2B — orchestrateur d'extraction prescriptive de candidats Engagements
 // (lib/documents/extract-engagement-candidates.ts). Couvre : éligibilité de
@@ -330,6 +331,65 @@ describe('grounding obligatoire — page dérivée mécaniquement, jamais devin�
     const [, proposals] = insertExtractionProposals.mock.calls[0]!
     expect((proposals as Array<{ label: string }>)).toHaveLength(1)
     expect((proposals as Array<{ label: string }>)[0]!.label).toBe('Valide')
+  })
+})
+
+describe('grounding cross-page — jamais de concaténation à travers [[page N]] (P0-2B FIX_REQUIRED "très léger" point 1)', () => {
+  // Clause réelle à cheval sur une frontière de page : le marqueur [[page 3]]
+  // reste physiquement présent ENTRE les deux fragments dans le texte source.
+  // normalizeForMatch (orchestrateur) ne fait que replier les espaces / mettre
+  // en minuscules — il ne retire JAMAIS ce marqueur. Un extrait qui le
+  // traverserait ne pourra donc jamais être relocalisé tel quel : c'est
+  // pourquoi le prompt (services/ai/prompts/engagement-extractor-prescriptif.v1.ts)
+  // impose désormais un extrait mono-page pour ce cas.
+  const CROSS_PAGE_TEXT = [
+    '[[page 1]]',
+    'Préambule du marché. Objet et généralités du présent CCTP, contexte administratif complet.',
+    '[[page 2]]',
+    'Le prestataire garantit',
+    '[[page 3]]',
+    'une intervention sous 4 heures ouvrées.',
+  ].join('\n')
+
+  it('extrait mono-page (contenu dans la seule page 3) pour une clause à cheval sur deux pages → proposal conservée, page correcte, aucun faux rejet', async () => {
+    extractPdfTextResult = { text: CROSS_PAGE_TEXT, pageCount: 3, charCount: CROSS_PAGE_TEXT.length, isLikelyScanned: false }
+    agentResult = {
+      candidates: [candidate({ label: 'Délai de reprise', sourceExcerpt: 'une intervention sous 4 heures ouvrées.' })],
+      metadata: {},
+    }
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.proposalCount).toBe(1)
+    expect(insertExtractionProposals).toHaveBeenCalledTimes(1)
+    const [, proposals] = insertExtractionProposals.mock.calls[0]!
+    expect((proposals as Array<{ source_page: number | null }>)[0]!.source_page).toBe(3)
+    expect(insertExtractionEvidence).toHaveBeenCalledTimes(1)
+    expect(linkProposalEvidence).toHaveBeenCalledWith('prop-1', 'ev-1', 'supports')
+  })
+
+  it('extrait artificiellement concaténé à travers la frontière [[page N]] → rejeté comme invérifiable, aucune proposal (moins de propositions, jamais de fausse preuve)', async () => {
+    extractPdfTextResult = { text: CROSS_PAGE_TEXT, pageCount: 3, charCount: CROSS_PAGE_TEXT.length, isLikelyScanned: false }
+    agentResult = {
+      candidates: [candidate({
+        label: 'Délai de reprise (concaténation artificielle)',
+        sourceExcerpt: 'Le prestataire garantit une intervention sous 4 heures ouvrées.',
+      })],
+      metadata: {},
+    }
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.proposalCount).toBe(0)
+    expect(insertExtractionProposals).not.toHaveBeenCalled()
+  })
+})
+
+describe('version — source unique (P0-2B FIX_REQUIRED "très léger" point 2)', () => {
+  it('extractor_version persisté par createExtractionRun est EXACTEMENT ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1.version — aucune constante dupliquée ne peut diverger', async () => {
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    expect(createExtractionRun).toHaveBeenCalledTimes(1)
+    const [arg] = createExtractionRun.mock.calls[0]!
+    expect((arg as { extractor_version: string }).extractor_version).toBe(ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1.version)
   })
 })
 
