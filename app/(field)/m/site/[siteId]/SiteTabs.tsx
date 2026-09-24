@@ -42,8 +42,9 @@ const TABS: Array<{ key: SiteTab; label: string; seg: string }> = [
   { key: 'reunions',   label: 'Réunions',   seg: 'reunions' },
   { key: 'frise',      label: 'Frise',      seg: 'frise' },
   { key: 'documents',  label: 'Documents',  seg: 'documents' },
-  // P0-3 (mandat Vincent 2026-09-25) : engagements Porte B validés (curated/active),
-  // masqué si aucun n'existe sur ce chantier — même discipline que 'documents'.
+  // P0-3 (mandat Vincent 2026-09-25) : engagements Porte B validés (curated/active).
+  // Capacité permanente du chantier (revue ChatGPT 2026-09-25) : toujours visible,
+  // y compris à zéro Engagement — état vide dédié, contrairement à 'documents'.
   { key: 'prestations', label: 'Prestations prévues', seg: 'prestations' },
   { key: 'patrimoine', label: 'Patrimoine', seg: 'patrimoine' },
 ]
@@ -51,11 +52,9 @@ const TABS: Array<{ key: SiteTab; label: string; seg: string }> = [
 export function SiteTabs({
   siteId,
   showDocuments,
-  showPrestations,
 }: {
   siteId: string
   showDocuments: boolean
-  showPrestations: boolean
 }) {
   const pathname = usePathname()
   const base = `/m/site/${siteId}`
@@ -65,7 +64,6 @@ export function SiteTabs({
 
   const tabs = TABS
     .filter((t) => t.key !== 'documents' || showDocuments)
-    .filter((t) => t.key !== 'prestations' || showPrestations)
     .map((t) => ({ key: t.key, label: t.label, href: t.seg ? `${base}/${t.seg}` : base }))
 
   return (

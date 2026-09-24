@@ -45,7 +45,7 @@ export default async function SitePrestationsMobilePage({
 
       {sorted.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-center">
-          <p className="text-sm text-muted-foreground">Aucune prestation validée sur ce chantier.</p>
+          <p className="text-sm text-muted-foreground">Aucun engagement contractuel validé pour ce chantier.</p>
         </div>
       ) : (
         <ul className="space-y-3">
@@ -90,6 +90,11 @@ function PlannedEngagementCard({ engagement: e }: { engagement: PlannedEngagemen
         <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
           {categoryLabel(e.category)}
         </span>
+        {e.measurable && (
+          <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
+            Mesurable
+          </span>
+        )}
       </div>
 
       <ProvenanceLine provenance={e.primaryProvenance} />
