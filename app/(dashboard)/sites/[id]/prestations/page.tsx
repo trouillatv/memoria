@@ -82,7 +82,7 @@ export default async function SitePrestationsPage({ params }: PageProps) {
           </div>
         )
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 sm:grid-cols-2" />
+        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" />
       )}
     </div>
   )
