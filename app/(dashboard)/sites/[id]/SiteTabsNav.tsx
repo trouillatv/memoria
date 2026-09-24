@@ -30,6 +30,12 @@ export const SITE_TABS = [
   // « Actions » : route dédiée existante (/actions), même traitement que Réserves.
   { key: 'actions',          label: 'Actions',   pathSuffix: '/actions' },
   { key: 'documents-preuves', label: 'Documents' },
+  // « Prestations prévues » (P0-3, réouvert par Vincent 2026-09-25) : miroir
+  // desktop de /m/site/[siteId]/prestations, engagements Porte B validés
+  // (curated/active) — capacité permanente du chantier, visible même à zéro
+  // Engagement (contrairement à Documents). Route dédiée, même position
+  // relative que côté mobile (juste après Documents).
+  { key: 'prestations',      label: 'Prestations prévues', pathSuffix: '/prestations' },
   // « Intervenants » (cadrage + maquette validés 2026-07-18).
   { key: 'intervenants',     label: 'Intervenants' },
   // Route dédiée (/memoire) — simplification Mémoire (mandat Vincent 2026-09-22) :

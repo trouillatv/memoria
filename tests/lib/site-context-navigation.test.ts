@@ -6,7 +6,7 @@
 //      déplace jamais le décor derrière lui (onglet, sous-onglet, filtres).
 
 import { describe, it, expect } from 'vitest'
-import { resolveSiteTab } from '@/app/(dashboard)/sites/[id]/SiteTabsNav'
+import { resolveSiteTab, SITE_TABS } from '@/app/(dashboard)/sites/[id]/SiteTabsNav'
 import { mergeFicheHref } from '@/lib/knowledge/fiche-href'
 
 describe('resolveSiteTab — l’onglet actif', () => {
@@ -14,6 +14,13 @@ describe('resolveSiteTab — l’onglet actif', () => {
     expect(resolveSiteTab('memoire')).toBe('memoire')
     expect(resolveSiteTab('intervenants')).toBe('intervenants')
     expect(resolveSiteTab('planning')).toBe('planning')
+  })
+
+  it('P0-3 : « Prestations prévues » est un onglet de premier niveau, route dédiée /prestations', () => {
+    expect(resolveSiteTab('prestations')).toBe('prestations')
+    const tab = SITE_TABS.find((t) => t.key === 'prestations')
+    expect(tab).toBeDefined()
+    expect(tab).toHaveProperty('pathSuffix', '/prestations')
   })
 
   it('retombe sur l’Aperçu si absent ou inconnu (jamais d’écran vide)', () => {
