@@ -1,6 +1,6 @@
 // Libellés documentaires — purs, sans dépendance (UI phase 4a). Aucun IA.
 
-import type { DocumentAnalysisStatus, DocumentType } from '@/types/db'
+import type { DocumentAnalysisStatus, DocumentStatus, DocumentType } from '@/types/db'
 
 export function analysisStatusLabel(s: DocumentAnalysisStatus | string): string {
   const map: Record<string, string> = {
@@ -17,10 +17,15 @@ export function analysisStatusLabel(s: DocumentAnalysisStatus | string): string 
 // Marqueur d'indexation (embedding) explicite : croise le statut d'analyse et
 // la couche mémoire. Une couche 'froide' = stockée SANS embedding → « Non
 // indexé », même si analysis_status='ready'. Évite le « Prêt » trompeur.
+// P0-1B3 : une version remplacée (fn_supersede_document, P0-1B2) a ses
+// knowledge_chunks supprimés en base — sans le statut documentaire, ce
+// libellé continuerait à mentir en affichant « Indexé ».
 export function indexationState(
   analysisStatus: DocumentAnalysisStatus | string,
   memoryTier: 'vivante' | 'consultable' | 'froide' | null | undefined,
+  documentStatus?: DocumentStatus | string | null,
 ): { label: string; indexed: boolean | null } {
+  if (documentStatus === 'superseded') return { label: 'Non indexé (remplacé)', indexed: false }
   if (analysisStatus === 'failed') return { label: 'Indexation échouée', indexed: false }
   if (analysisStatus === 'pending' || analysisStatus === 'ocr' || analysisStatus === 'extracting' || analysisStatus === 'chunking') {
     return { label: 'Indexation…', indexed: null }

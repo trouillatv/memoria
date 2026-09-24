@@ -251,7 +251,7 @@ export default async function DocumentViewerPage({
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Indexation</dt>
-            <dd className="font-medium">{indexationState(doc.analysis_status, doc.memory_tier).label}</dd>
+            <dd className="font-medium">{indexationState(doc.analysis_status, doc.memory_tier, doc.status).label}</dd>
           </div>
           <div className="col-span-2 md:col-span-3">
             <dt className="text-xs text-muted-foreground">Rattaché à</dt>
