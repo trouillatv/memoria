@@ -13,12 +13,12 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: 
 
 function engagement(p: Partial<DbEngagement>): DbEngagement {
   return {
-    id: p.id ?? 'e-1', tender_id: 't-1', contract_id: null, source_type: 'ao_clause',
+    id: p.id ?? 'e-1', tender_id: 't-1', contract_id: null, site_id: null, source_type: 'ao_clause',
     source_excerpt: p.source_excerpt ?? 'clause', source_ref: null,
-    tender_document_id: null, page_number: null, category: 'compliance',
+    tender_document_id: null, source_document_id: null, page_number: null, category: 'compliance',
     kind: p.kind ?? 'obligation', short_label: p.short_label ?? 'Engagement',
     measurable: true, ai_confidence: 0.9, status: 'extracted', proof_requirement: 'none',
-    destination: 'contract_engagement', created_at: '2026-07-27T00:00:00Z',
+    destination: 'contract_engagement', organization_id: null, created_at: '2026-07-27T00:00:00Z',
     updated_at: '2026-07-27T00:00:00Z', created_by: null,
   }
 }

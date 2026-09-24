@@ -275,12 +275,17 @@ export type EngagementKind =
 
 export interface DbEngagement {
   id: string
-  tender_id: string
+  /** Nullable depuis mig 436 — Porte B (chantier) n'a pas d'AO. Deux portes, une primitive : voir engagements_origin_door_check (tender_id OU site_id). */
+  tender_id: string | null
   contract_id: string | null
+  /** Porte B — chantier propriétaire quand l'Engagement n'a pas d'AO (mig 436). */
+  site_id: string | null
   source_type: EngagementSourceType
   source_excerpt: string
   source_ref: Record<string, unknown> | null
   tender_document_id: string | null
+  /** Porte B — provenance documentaire directe (mig 436), mutuellement exclusif avec tender_document_id. */
+  source_document_id: string | null
   page_number: number | null
   category: EngagementCategory
   kind: EngagementKind | null
@@ -290,6 +295,7 @@ export interface DbEngagement {
   status: EngagementStatus
   proof_requirement: EngagementProofRequirement
   destination: EngagementDestination
+  organization_id: string | null
   created_at: string
   updated_at: string
   created_by: string | null
