@@ -9,7 +9,7 @@ import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence, acceptAllPendingForRun, pinAllSnapshotsForRun } from '@/lib/db/document-extractions'
 import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-import-post-processing'
 import { materializeHistoricalRun } from '@/lib/documents/materialize-historical-run'
-import { materializeEngagementCreateNew, materializeEngagementLinkExisting } from '@/lib/db/materialize-engagement'
+import { materializeEngagementCreateNew, materializeEngagementLinkExisting, finalizeAcceptedEngagementsForRun } from '@/lib/db/materialize-engagement'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -303,6 +303,23 @@ export async function linkEngagementToProposalAction(fd: FormData): Promise<{
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Erreur inconnue' }
   }
+}
+
+// ─── Finaliser les Engagements acceptés (mandat Vincent 2026-09-25, recette OCEF) ──
+// Comble le trou entre « proposition acceptée » et « Engagement matérialisé » :
+// acceptAllPendingAction ne fait qu'un accept, jamais de matérialisation.
+
+export async function finalizeAcceptedEngagementsAction(fd: FormData): Promise<{
+  ok: boolean; createdCount?: number; needsReviewCount?: number; error?: string
+}> {
+  const runId = fd.get('run_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  if (!runId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return { ok: false, error: access.error }
+
+  return finalizeAcceptedEngagementsForRun({ runId, userId: access.userId })
 }
 
 export async function relinkEvidenceAction(fd: FormData): Promise<ActionResult> {

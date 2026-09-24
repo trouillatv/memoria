@@ -3,6 +3,7 @@ import { ClipboardList } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listPlannedEngagementsForSite, type PlannedEngagement } from '@/lib/db/engagements'
+import { findPendingEngagementFinalizationForSite } from '@/lib/db/materialize-engagement'
 import { categoryLabel, plannedEngagementStatusLabel } from '@/lib/engagements/labels'
 import { KIND_META, KIND_ORDER, kindLabel } from '@/lib/engagements/kind'
 import type { EngagementKind } from '@/types/db'
@@ -35,6 +36,7 @@ export default async function SitePrestationsPage({ params }: PageProps) {
 
   const engagements = await listPlannedEngagementsForSite(id)
   const sorted = [...engagements].sort((a, b) => kindRank(a.kind) - kindRank(b.kind) || b.createdAt.localeCompare(a.createdAt))
+  const pendingFinalization = sorted.length === 0 ? await findPendingEngagementFinalizationForSite(id) : null
 
   return (
     <div className="mx-auto w-full max-w-[1180px] space-y-5 px-1 pb-10">
@@ -60,9 +62,23 @@ export default async function SitePrestationsPage({ params }: PageProps) {
       </header>
 
       {sorted.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-8 text-center">
-          <p className="text-sm text-muted-foreground">Aucun engagement contractuel validé pour ce chantier.</p>
-        </div>
+        pendingFinalization ? (
+          <div className="rounded-xl border border-dashed p-8 text-center space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {pendingFinalizationMessage(pendingFinalization.count)}
+            </p>
+            <a
+              href={`/documents/${pendingFinalization.documentId}/extraction/${pendingFinalization.runId}`}
+              className="inline-flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90"
+            >
+              {`Finaliser les ${pendingFinalization.count} Engagement${pendingFinalization.count > 1 ? 's' : ''}`}
+            </a>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed p-8 text-center">
+            <p className="text-sm text-muted-foreground">Aucun engagement contractuel validé pour ce chantier.</p>
+          </div>
+        )
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2">
           {sorted.map((e) => (
@@ -72,6 +88,12 @@ export default async function SitePrestationsPage({ params }: PageProps) {
       )}
     </div>
   )
+}
+
+function pendingFinalizationMessage(count: number): string {
+  const s = count > 1 ? 's' : ''
+  const avoir = count > 1 ? 'ont' : 'a'
+  return `${count} proposition${s} contractuelle${s} ${avoir} été acceptée${s} mais n'${avoir} pas encore été créée${s} comme Engagement${s}.`
 }
 
 function kindRank(kind: EngagementKind | null): number {

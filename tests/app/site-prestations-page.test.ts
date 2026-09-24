@@ -28,6 +28,11 @@ vi.mock('@/lib/db/engagements', () => ({
   listPlannedEngagementsForSite: (...a: unknown[]) => mockListPlannedEngagements(...a),
 }))
 
+const mockFindPendingEngagementFinalization = vi.fn(async (..._a: unknown[]) => null as unknown)
+vi.mock('@/lib/db/materialize-engagement', () => ({
+  findPendingEngagementFinalizationForSite: (...a: unknown[]) => mockFindPendingEngagementFinalization(...a),
+}))
+
 const { default: SitePrestationsPage } = await import(
   '@/app/(dashboard)/sites/[id]/prestations/page'
 )
@@ -97,6 +102,17 @@ describe('/sites/[id]/prestations — état vide, badge Mesurable, sécurité', 
     const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
 
     expect(treeContainsText(tree, 'Aucun engagement contractuel validé pour ce chantier.')).toBe(true)
+  })
+
+  it('zéro Engagement mais propositions acceptées non finalisées : état vide intelligent avec CTA', async () => {
+    mockListPlannedEngagements.mockResolvedValueOnce([])
+    mockFindPendingEngagementFinalization.mockResolvedValueOnce({
+      runId: 'run-1', documentId: 'doc-1', count: 43,
+    })
+    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+
+    expect(treeContainsText(tree, 'Aucun engagement contractuel validé pour ce chantier.')).toBe(false)
+    expect(treeContainsText(tree, 'Finaliser les 43 Engagements')).toBe(true)
   })
 
   it('measurable=true : rend le badge « Mesurable »', async () => {

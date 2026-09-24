@@ -9,7 +9,7 @@ import {
   createHistoricalVisitAction, acceptAllPendingAction,
   toggleEvidencePinAction, pinAllSnapshotsAction,
   confirmPhotoAssociationAction, dismissPhotoAssociationAction,
-  revertIllustratesAction,
+  revertIllustratesAction, finalizeAcceptedEngagementsAction,
 } from './review-actions'
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType, DbEngagement } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
@@ -388,6 +388,61 @@ function CreateVisitBlock({
   )
 }
 
+/**
+ * Correction #2 du mandat Vincent 2026-09-25 (recette OCEF) : réparer la
+ * dernière marche du parcours CCTP → Prestations prévues. Tant qu'aucune
+ * proposition n'est acceptée, ce bloc ne s'affiche pas (rien à finaliser) —
+ * il apparaît dès la première acceptation et reste visible jusqu'à ce que
+ * toutes les propositions acceptées soient matérialisées.
+ */
+function EngagementFinalizeBlock({
+  summary, isPending, finalizeError, finalizeResult, onFinalize,
+}: {
+  summary: ReviewSummary
+  isPending: boolean
+  finalizeError: string | null
+  finalizeResult: { createdCount: number; needsReviewCount: number } | null
+  onFinalize: () => void
+}) {
+  const acceptedUnmaterialized = summary.accepted + summary.edited
+
+  if (acceptedUnmaterialized === 0) {
+    if (summary.materialized === 0) return null
+    return (
+      <div className="rounded-lg border bg-card p-4 space-y-1">
+        <h2 className="text-sm font-medium">Finaliser les Engagements</h2>
+        <p className="text-sm text-emerald-700 dark:text-emerald-400">
+          {summary.materialized} Engagement{summary.materialized > 1 ? 's' : ''} matérialisé{summary.materialized > 1 ? 's' : ''}.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <h2 className="text-sm font-medium">Finaliser les Engagements</h2>
+      <p className="text-sm text-muted-foreground">
+        {acceptedUnmaterialized} proposition{acceptedUnmaterialized > 1 ? 's' : ''} acceptée{acceptedUnmaterialized > 1 ? 's' : ''}, 0 Engagement existant correspondant.
+      </p>
+      {finalizeResult && finalizeResult.needsReviewCount > 0 && (
+        <p className="text-xs rounded bg-amber-50 dark:bg-amber-950/30 px-2 py-1.5 text-amber-700 dark:text-amber-400">
+          {finalizeResult.createdCount} Engagement{finalizeResult.createdCount > 1 ? 's' : ''} créé{finalizeResult.createdCount > 1 ? 's' : ''}. {finalizeResult.needsReviewCount} proposition{finalizeResult.needsReviewCount > 1 ? 's' : ''} sans nature reconnue — finalisez-la{finalizeResult.needsReviewCount > 1 ? 's' : ''} individuellement ci-dessous (« Créer un nouvel Engagement » sur la carte).
+        </p>
+      )}
+      {finalizeError && <p className="text-xs text-destructive">{finalizeError}</p>}
+      <button
+        type="button"
+        onClick={onFinalize}
+        disabled={isPending}
+        className="inline-flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+      >
+        {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+        {isPending ? 'Création en cours…' : `Créer les ${acceptedUnmaterialized} Engagement${acceptedUnmaterialized > 1 ? 's' : ''}`}
+      </button>
+    </div>
+  )
+}
+
 // ─── Client principal ─────────────────────────────────────────────────────────
 
 export function ExtractionReviewClient({
@@ -452,6 +507,8 @@ export function ExtractionReviewClient({
   function setFamilyFilter(f: FamilyFilter) { setFamilyFilterState(f); pushUrl(filter, f) }
   const [createError, setCreateError] = useState<string | null>(null)
   const [acceptAllMsg, setAcceptAllMsg] = useState<string | null>(null)
+  const [finalizeError, setFinalizeError] = useState<string | null>(null)
+  const [finalizeResult, setFinalizeResult] = useState<{ createdCount: number; needsReviewCount: number } | null>(null)
   const [isPending, startTransition] = useTransition()
   const [pinAllPending, setPinAllPending] = useState(false)
 
@@ -583,10 +640,31 @@ export function ExtractionReviewClient({
     startTransition(async () => {
       const result = await acceptAllPendingAction(fd)
       if (result.ok) {
-        setAcceptAllMsg(`${result.count ?? 0} proposition${(result.count ?? 0) > 1 ? 's' : ''} confirmée${(result.count ?? 0) > 1 ? 's' : ''}.`)
+        setAcceptAllMsg(`${result.count ?? 0} proposition${(result.count ?? 0) > 1 ? 's' : ''} acceptée${(result.count ?? 0) > 1 ? 's' : ''}.`)
         router.refresh()
       } else {
         setAcceptAllMsg(result.error ?? 'Erreur')
+      }
+    })
+  }
+
+  function handleFinalizeEngagements() {
+    setFinalizeError(null)
+    const fd = new FormData()
+    fd.set('run_id', runId)
+    fd.set('document_id', documentId)
+    startTransition(async () => {
+      const result = await finalizeAcceptedEngagementsAction(fd)
+      if (result.ok) {
+        const needsReview = result.needsReviewCount ?? 0
+        setFinalizeResult({ createdCount: result.createdCount ?? 0, needsReviewCount: needsReview })
+        if (needsReview === 0 && targetSiteId) {
+          router.push(`/sites/${targetSiteId}/prestations`)
+        } else {
+          router.refresh()
+        }
+      } else {
+        setFinalizeError(result.error ?? 'Erreur inconnue')
       }
     })
   }
@@ -677,7 +755,7 @@ export function ExtractionReviewClient({
               disabled={isPending}
               className="shrink-0 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
-              {isPending ? '…' : `Tout confirmer (${summary.pending})`}
+              {isPending ? '…' : `Tout accepter (${summary.pending})`}
             </button>
           )}
         </div>
@@ -703,6 +781,16 @@ export function ExtractionReviewClient({
           createError={createError}
           onSubmit={handleCreateVisit}
           nonVisitSignal={nonVisitSignal ?? null}
+        />
+      )}
+
+      {isEngagementRun && (
+        <EngagementFinalizeBlock
+          summary={summary}
+          isPending={isPending}
+          finalizeError={finalizeError}
+          finalizeResult={finalizeResult}
+          onFinalize={handleFinalizeEngagements}
         />
       )}
 

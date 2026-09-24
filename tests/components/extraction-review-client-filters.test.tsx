@@ -27,6 +27,7 @@ vi.mock('@/app/(dashboard)/documents/[id]/extraction/[runId]/review-actions', ()
   confirmPhotoAssociationAction: vi.fn(),
   dismissPhotoAssociationAction: vi.fn(),
   revertIllustratesAction: vi.fn(),
+  finalizeAcceptedEngagementsAction: vi.fn(),
 }))
 
 vi.mock('@/app/(dashboard)/documents/[id]/extraction/[runId]/SubjectSuggestionsSection', () => ({
