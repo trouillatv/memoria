@@ -26,19 +26,21 @@ export async function verifyReviewAccess(
   const role = await getUserRoleById(user.id)
   if (role !== 'admin' && role !== 'manager') return { ok: false, error: 'Permissions insuffisantes' }
 
-  if (role !== 'admin') {
-    const admin = createAdminClient()
-    const { data: doc } = await admin
-      .from('documents')
-      .select('organization_id')
-      .eq('id', documentId)
-      .is('deleted_at', null)
-      .maybeSingle()
-    if (!doc) return { ok: false, error: 'Document introuvable' }
-    const orgId = (doc as { organization_id: string }).organization_id
-    const orgIds = await getOrgIdsOfUser()
-    if (!orgIds.includes(orgId)) return { ok: false, error: 'Accès refusé' }
-  }
+  // Doctrine docs/multi-organisations/pouvoir-plateforme-vs-metier.md :
+  // le rôle plateforme (admin) n'accorde AUCUN accès métier — l'accès à une
+  // organisation passe TOUJOURS par une appartenance active, y compris pour
+  // un super-admin plateforme. Aucune exemption de rôle ici.
+  const admin = createAdminClient()
+  const { data: doc } = await admin
+    .from('documents')
+    .select('organization_id')
+    .eq('id', documentId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (!doc) return { ok: false, error: 'Document introuvable' }
+  const orgId = (doc as { organization_id: string }).organization_id
+  const orgIds = await getOrgIdsOfUser()
+  if (!orgIds.includes(orgId)) return { ok: false, error: 'Accès refusé' }
 
   return { ok: true, userId: user.id }
 }

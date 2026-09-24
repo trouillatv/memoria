@@ -466,7 +466,11 @@ function buildHistoricalVisitAdminMock(config: {
     }
     if (table === 'documents') {
       return buildChainWithThen(() => ({
-        data: { effective_date: '2025-03-27', extracted_text: 'Compte-rendu de visite du chantier.' },
+        data: {
+          organization_id: config.site.organization_id,
+          effective_date: '2025-03-27',
+          extracted_text: 'Compte-rendu de visite du chantier.',
+        },
         error: null,
       }))
     }
@@ -534,6 +538,7 @@ describe('Section 5 — createHistoricalVisitAction (GO point 11)', () => {
     vi.clearAllMocks()
     mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-admin' } } })
     mocks.getUserRoleById.mockResolvedValue('admin')
+    mocks.getOrgIdsOfUser.mockResolvedValue(['org-1'])
     mocks.detectNonVisitSignal.mockReturnValue({ detected: false })
     mocks.materializeHistoricalVisit.mockResolvedValue('report-1')
     mocks.rpc.mockResolvedValue({ data: true, error: null })
@@ -644,6 +649,9 @@ function buildEngagementAccessMock(documentId: string, proposalFamily = 'engagem
         error: null,
       }))
     }
+    if (table === 'documents') {
+      return buildChainWithThen(() => ({ data: { organization_id: 'org-1' }, error: null }))
+    }
     return buildChainWithThen(() => ({ data: null, error: null }))
   }
 }
@@ -653,6 +661,7 @@ describe('Section 6 — createEngagementFromProposalAction (P0-2C, problème 2)'
     vi.clearAllMocks()
     mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-admin' } } })
     mocks.getUserRoleById.mockResolvedValue('admin')
+    mocks.getOrgIdsOfUser.mockResolvedValue(['org-1'])
     mocks.from.mockImplementation(buildEngagementAccessMock('doc-1'))
   })
 
