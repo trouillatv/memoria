@@ -153,12 +153,16 @@ describe('materialize_engagement_create_new', () => {
     const db = createAdminClient()
     const { data: engagement } = await db
       .from('engagements')
-      .select('id, tender_id, site_id, source_document_id, category, short_label, status, organization_id')
+      .select('id, tender_id, site_id, source_type, source_document_id, category, short_label, status, organization_id')
       .eq('id', engagementId)
       .single()
     expect(engagement).toMatchObject({
       tender_id: null,
       site_id: siteId,
+      // Doctrine source_type (cf. types/db.ts::EngagementSourceType) : ce RPC
+      // hardcode 'manual' — jamais 'ao_clause'/'memoire_engagement', qui ne
+      // sortent que du pipeline d'extraction IA Porte A. Garantie RPC, pas DB.
+      source_type: 'manual',
       source_document_id: docId,
       category: 'quality',
       short_label: `${TAG} create happy`,

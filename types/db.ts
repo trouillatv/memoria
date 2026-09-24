@@ -237,6 +237,29 @@ export interface DbContract {
   created_by: string | null
 }
 
+// Doctrine source_type (audit P0-2A FIX_REQUIRED léger, mandat Vincent
+// 2026-09-24) — AUCUNE de ces trois valeurs n'est protégée par une contrainte
+// SQL : la cohérence ci-dessous est garantie uniquement par les chemins de
+// code qui écrivent engagements.source_type, jamais par le schéma.
+//
+// - 'ao_clause' / 'memoire_engagement' : produites EXCLUSIVEMENT par le
+//   pipeline d'extraction IA Porte A (services/ai/engagement-extraction.ts →
+//   lib/tenders/extract-engagements.ts). Ce pipeline n'écrit jamais que sur
+//   tender_id (jamais site_id) : ces deux valeurs sont donc Porte A par
+//   construction du seul code qui les produit, pas par un invariant de base.
+//   'ao_clause' accompagne toujours un tenderDocumentId réel (clause ancrée
+//   dans un CCTP/CCAP) ; 'memoire_engagement' accompagne toujours
+//   tenderDocumentId=null (promesse du mémoire technique, sans ancrage page).
+// - 'manual' : dénote le MÉCANISME de création (aucune extraction IA de
+//   clause n'est passée par là), PAS une porte d'origine. Utilisée
+//   légitimement par les deux portes : lib/db/engagements.ts::createEngagementManual
+//   (Porte A, saisie humaine directe, tender_id/contract_id uniquement) ET
+//   materialize_engagement_create_new (RPC Porte B, migration 436/437,
+//   hardcode 'manual' — voir supabase/migrations/437_engagement_curated_activation_and_provenance_lock.sql).
+//   Aucune contrainte DB n'impose 'manual' à la Porte B : c'est un choix
+//   d'implémentation de ce RPC précis, testé au niveau RPC
+//   (tests/lib/db/materialize-engagement-contract.test.ts), pas un invariant
+//   de schéma. Ne pas ajouter de CHECK sans nouveau mandat explicite.
 export type EngagementSourceType = 'ao_clause' | 'memoire_engagement' | 'manual'
 
 // Destination d'une proposition extraite (Atelier IA v2, migration 083).

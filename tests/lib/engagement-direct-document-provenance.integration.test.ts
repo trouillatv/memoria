@@ -20,6 +20,8 @@ let clientId: string
 let siteId: string
 const createdEngagementIds: string[] = []
 const createdDocumentIds: string[] = []
+const createdTenderDocumentIds: string[] = []
+const createdTenderIds: string[] = []
 
 async function getAdminUserId(): Promise<string> {
   const supabase = createAdminClient()
@@ -47,6 +49,37 @@ async function createDocument(suffix: string): Promise<string> {
     .single()
   if (error || !data) throw error ?? new Error('Insert document failed')
   createdDocumentIds.push(data.id)
+  return data.id
+}
+
+// Porte A : fixture minimale tender → tender_document, pour tester la
+// contrainte engagements_single_document_provenance avec une VRAIE provenance
+// AO concurrente (pas seulement une valeur nulle jamais renseignée).
+async function createTender(suffix: string): Promise<string> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('tenders')
+    .insert({ title: `${TEST_TAG}_${suffix}`, status: 'submitted', created_by: adminId })
+    .select('id')
+    .single()
+  if (error || !data) throw error ?? new Error('Insert tender failed')
+  createdTenderIds.push(data.id)
+  return data.id
+}
+
+async function createTenderDocument(tenderId: string, suffix: string): Promise<string> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('tender_documents')
+    .insert({
+      tender_id: tenderId,
+      storage_path: `${TEST_TAG}/${suffix}.pdf`,
+      filename: `${TEST_TAG}_${suffix}.pdf`,
+    })
+    .select('id')
+    .single()
+  if (error || !data) throw error ?? new Error('Insert tender document failed')
+  createdTenderDocumentIds.push(data.id)
   return data.id
 }
 
@@ -89,6 +122,12 @@ afterAll(async () => {
   if (createdDocumentIds.length > 0) {
     await supabase.from('documents').delete().in('id', createdDocumentIds)
   }
+  if (createdTenderDocumentIds.length > 0) {
+    await supabase.from('tender_documents').delete().in('id', createdTenderDocumentIds)
+  }
+  if (createdTenderIds.length > 0) {
+    await supabase.from('tenders').delete().in('id', createdTenderIds)
+  }
   await supabase.from('sites').delete().eq('id', siteId)
   await supabase.from('clients').delete().eq('id', clientId)
 })
@@ -107,16 +146,51 @@ describe('engagements_origin_door_check — deux portes, jamais orpheline', () =
 })
 
 describe('engagements_single_document_provenance — une seule provenance documentaire directe', () => {
-  it('refuse tender_document_id ET source_document_id simultanément', async () => {
-    const documentId = await createDocument('mutual-exclusion')
-    const { error } = await insertEngagement({
-      site_id: siteId,
-      source_document_id: documentId,
-      // tender_document_id référence tender_documents, incompatible avec un
-      // engagement sans tender_id — on vérifie la contrainte au niveau le
-      // plus direct : source_document_id seul doit être accepté.
+  it('témoin Porte A : tender_document_id seul reste valide', async () => {
+    const tenderId = await createTender('porte-a-only')
+    const tenderDocumentId = await createTenderDocument(tenderId, 'porte-a-only')
+    const { error, id } = await insertEngagement({
+      tender_id: tenderId,
+      site_id: null,
+      tender_document_id: tenderDocumentId,
     })
     expect(error).toBeNull()
+    expect(id).toBeTruthy()
+  })
+
+  it('témoin Porte B : source_document_id seul reste valide', async () => {
+    const documentId = await createDocument('porte-b-only')
+    const { error, id } = await insertEngagement({
+      site_id: siteId,
+      source_document_id: documentId,
+    })
+    expect(error).toBeNull()
+    expect(id).toBeTruthy()
+  })
+
+  it('refuse tender_document_id ET source_document_id simultanément (CHECK engagements_single_document_provenance)', async () => {
+    const tenderId = await createTender('mutual-exclusion')
+    const tenderDocumentId = await createTenderDocument(tenderId, 'mutual-exclusion')
+    const documentId = await createDocument('mutual-exclusion')
+
+    const supabase = createAdminClient()
+    const { error } = await supabase
+      .from('engagements')
+      .insert({
+        site_id: siteId,
+        tender_document_id: tenderDocumentId,
+        source_document_id: documentId,
+        source_type: 'manual',
+        source_excerpt: `${TEST_TAG} both documents at once`,
+        category: 'quality',
+        short_label: `${TEST_TAG} both documents at once`,
+        created_by: adminId,
+      })
+      .select('id')
+      .single()
+
+    expect(error).not.toBeNull()
+    expect(error?.message).toMatch(/engagements_single_document_provenance/)
   })
 })
 

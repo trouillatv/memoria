@@ -184,6 +184,11 @@ export async function curateEngagement(
   if (error) throw error
 }
 
+// Porte A exclusivement, par construction de la signature : aucun paramètre
+// site_id n'existe ici, donc cette fonction ne peut jamais écrire un
+// Engagement Porte B. source_type='manual' est hardcodé ci-dessous — doctrine
+// complète dans types/db.ts::EngagementSourceType (garantie de code, pas de
+// contrainte DB).
 export async function createEngagementManual(input: {
   tender_id?: string | null
   contract_id?: string | null
