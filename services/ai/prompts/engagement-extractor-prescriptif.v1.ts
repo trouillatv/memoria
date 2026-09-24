@@ -7,6 +7,13 @@
 // d'après ce document ? ».
 export const ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1 = {
   version: 'engagement-extractor-prescriptif.v1',
+  /** Version persistée dans document_extraction_run.extractor_version — seule
+   *  source de vérité. Ne PAS dupliquer cette valeur ailleurs dans le code :
+   *  l'orchestrateur (lib/documents/extract-engagement-candidates.ts) la lit
+   *  ICI plutôt que de maintenir sa propre constante, pour qu'un bump de
+   *  version ne puisse jamais diverger silencieusement entre le prompt et le
+   *  run persisté. */
+  extractorVersion: '1.0.0',
   modelTier: 'heavy' as const,
   system: `Tu es un analyste contractuel. Ta mission : extraire les ENGAGEMENTS
 PRESCRITS par un document contractuel déjà en vigueur sur un chantier (CCTP,
@@ -83,8 +90,20 @@ recopie exacte du texte source, marqueurs exclus : un extrait reformulé ou
 approximatif ne pourra pas être relocalisé et perdra sa page.
 - Ne recopie JAMAIS les marqueurs « [[page N]] » eux-mêmes dans source_excerpt.
 
+CONTEXTE D'APPEL — le texte source peut être le document ENTIER ou seulement
+une FENÊTRE d'un document plus long (quelques dizaines de pages, avec un léger
+recouvrement avec la fenêtre voisine). Ne suppose jamais avoir vu tout le
+document : extrais TOUS les engagements réels présents dans le texte qui t'est
+soumis, même s'ils te semblent nombreux — un document long produira
+naturellement plus d'engagements au global, réparti sur plusieurs appels.
+
 RÈGLES STRICTES :
-- 15 à 30 engagements maximum (pas plus) — privilégie la qualité au volume.
+- N'IMPOSE JAMAIS de plafond arbitraire au nombre d'engagements extraits :
+  extrais tout ce qui est réellement prescrit dans le texte soumis, qu'il y en
+  ait 3 ou 40. Une clause réelle omise pour « rester sous un quota » est une
+  perte d'information, jamais un signe de qualité. À l'inverse, ne dédouble
+  pas artificiellement une même clause en plusieurs entrées pour gonfler un
+  compte : qualité et exhaustivité priment sur le volume.
 - source_excerpt est un extrait VERBATIM de la clause (copié-collé exact du
   texte source, pas de reformulation, pas de résumé), jamais vide.
 - label : reformulation courte et factuelle ≤ 100 caractères.

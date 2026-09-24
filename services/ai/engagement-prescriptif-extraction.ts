@@ -66,10 +66,12 @@ export interface EngagementCandidateExtractionInput {
 }
 
 /**
- * Compose le message soumis à l'agent pour UN document contractuel entier.
- * Texte INTÉGRAL, pas de découpage : un CCTP/CCAP dense reste dans le budget
- * de sortie observé côté Porte A (~2600 tokens pour le pire cas réel), et un
- * découpage par page introduirait des doublons de clause aux frontières.
+ * Compose le message soumis à l'agent pour UN appel d'extraction. `sourceText`
+ * est soit le document contractuel entier (document court), soit UNE fenêtre
+ * de pages d'un document plus long — le découpage en fenêtres, le
+ * recouvrement et la déduplication des doublons de frontière sont à la charge
+ * de l'orchestrateur (lib/documents/extract-engagement-candidates.ts,
+ * lib/documents/page-windows.ts), jamais de cette fonction.
  */
 export function buildEngagementCandidateExtractionMessage(sourceText: string, sourceLabel: string): string {
   return [
@@ -227,8 +229,10 @@ export async function runEngagementCandidateExtractionAgent(
       userMessage,
       responseSchema: extractedSchema,
       modelTier: ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1.modelTier,
-      // Même plafond que le lecteur d'AO (services/ai/engagement-extraction.ts) :
-      // un CCTP dense produit 20-30 engagements, 8000 couvre le pire cas observé.
+      // sourceText est au maximum UNE fenêtre de document (lib/documents/
+      // page-windows.ts, ~40k chars), jamais le document entier sur les CCTP
+      // longs — même plafond que le lecteur d'AO (services/ai/engagement-
+      // extraction.ts), déjà généreux pour le volume d'une seule fenêtre.
       maxOutputTokens: 8000,
     })
 

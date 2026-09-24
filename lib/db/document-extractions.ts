@@ -476,6 +476,29 @@ export async function getLatestExtractionRunForDocument(
   return (data as DbDocumentExtractionRun | null)
 }
 
+// Un même document peut être traité par PLUSIEURS profils d'extraction
+// (ex. historical_pv ET engagement_prescriptif_v1). Le dernier run tous
+// extracteurs confondus (ci-dessus) ne dit rien sur l'état du profil qui
+// nous intéresse : un run 'ready_for_review' d'un AUTRE extractor_key ne
+// doit jamais être lu comme "déjà extrait" par celui-ci, sous peine de
+// bloquer silencieusement une extraction qui n'a en réalité jamais eu lieu.
+export async function getLatestExtractionRunForDocumentAndExtractor(
+  documentId: string,
+  extractorKey: string,
+): Promise<DbDocumentExtractionRun | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_extraction_run')
+    .select('*')
+    .eq('document_id', documentId)
+    .eq('extractor_key', extractorKey)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(error.message)
+  return (data as DbDocumentExtractionRun | null)
+}
+
 // P0 Unicite des runs historiques — un run dans l'un de ces statuts est
 // exploitable : une extraction standard ne doit pas en recreer un autre pour
 // le meme document. Seule une intention explicite de "Reanalyser" le peut.

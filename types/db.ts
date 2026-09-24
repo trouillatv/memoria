@@ -1244,7 +1244,7 @@ export type DocumentExtractionRunStatus =
 export type DocumentProposalFamily =
   | 'reservation' | 'action' | 'decision' | 'observation'
   | 'deadline' | 'knowledge_fact' | 'person' | 'company'
-  | 'planning' | 'obligation'
+  | 'planning' | 'obligation' | 'engagement'
 
 export type DocumentProposalReviewStatus =
   | 'pending' | 'accepted' | 'rejected' | 'edited' | 'materialized' | 'failed'

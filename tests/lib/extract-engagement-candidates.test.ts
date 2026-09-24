@@ -28,7 +28,12 @@ let downloadResult: { data: Blob | null; error: { message: string } | null } = {
 
 let membershipOk = true
 
-let existingRun: { id: string; status: string } | null = null
+// existingRun n'est "visible" que si on l'interroge avec le MÊME extractor_key
+// que celui qui l'a produit — reproduit fidèlement le filtre .eq('extractor_key', …)
+// de la vraie requête (lib/db/document-extractions.ts), sans quoi le test ne
+// prouverait rien sur le scoping (P0-2B FIX_REQUIRED point 2).
+let existingRun: { id: string; status: string; extractor_version?: string } | null = null
+let existingRunExtractorKey = 'engagement_prescriptif_v1'
 const createExtractionRun = vi.fn(async (..._args: unknown[]) => 'run-new')
 const updateExtractionRunStatus = vi.fn(async (..._args: unknown[]) => {})
 const updateExtractionStage = vi.fn(async (..._args: unknown[]) => {})
@@ -39,7 +44,10 @@ const insertExtractionEvidence = vi.fn(async (_runId: string, items: unknown[]) 
   items.map((_e, i) => ({ id: `ev-${i + 1}`, storage_path: null })),
 )
 const linkProposalEvidence = vi.fn(async (..._args: unknown[]) => {})
-const getLatestExtractionRunForDocument = vi.fn(async (..._args: unknown[]) => existingRun)
+const getLatestExtractionRunForDocumentAndExtractor = vi.fn(
+  async (_documentId: string, extractorKey: string) =>
+    extractorKey === existingRunExtractorKey ? existingRun : null,
+)
 
 let extractPdfTextResult = { text: '', pageCount: 1, charCount: 0, isLikelyScanned: false }
 const extractPdfText = vi.fn(async () => extractPdfTextResult)
@@ -48,6 +56,12 @@ const extractWithGeminiOCR = vi.fn(async () => ocrText)
 
 let agentResult: { candidates: unknown[]; metadata: Record<string, unknown> } = { candidates: [], metadata: {} }
 const runEngagementCandidateExtractionAgent = vi.fn(async () => agentResult)
+
+// null par défaut → délègue au VRAI buildPageWindows (module pur, non mocké
+// pour son comportement de base) ; les tests de découpage/déduplication
+// (P0-2B FIX_REQUIRED points 1 et 3) le surchargent pour contrôler exactement
+// les fenêtres soumises à l'agent sans avoir à construire un texte géant.
+let pageWindowsOverride: Array<{ index: number; pages: number[]; text: string }> | null = null
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -84,7 +98,7 @@ vi.mock('@/lib/db/document-extractions', () => ({
   insertExtractionProposals,
   insertExtractionEvidence,
   linkProposalEvidence,
-  getLatestExtractionRunForDocument,
+  getLatestExtractionRunForDocumentAndExtractor,
   READY_STATUSES: new Set(['ready_for_review', 'partially_materialized', 'materialized']),
 }))
 
@@ -96,6 +110,16 @@ vi.mock('@/services/pdf/extract', () => ({
 vi.mock('@/services/ai/engagement-prescriptif-extraction', () => ({
   runEngagementCandidateExtractionAgent,
 }))
+
+vi.mock('@/lib/documents/page-windows', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/documents/page-windows')>(
+    '@/lib/documents/page-windows',
+  )
+  return {
+    ...actual,
+    buildPageWindows: (text: string) => pageWindowsOverride ?? actual.buildPageWindows(text),
+  }
+})
 
 const { extractEngagementCandidates } = await import('@/lib/documents/extract-engagement-candidates')
 
@@ -139,9 +163,11 @@ beforeEach(() => {
   downloadResult = { data: new Blob(['%PDF-fake%']), error: null }
   membershipOk = true
   existingRun = null
+  existingRunExtractorKey = 'engagement_prescriptif_v1'
   extractPdfTextResult = { text: SOURCE_TEXT, pageCount: 3, charCount: SOURCE_TEXT.length, isLikelyScanned: false }
   ocrText = null
   agentResult = { candidates: [candidate()], metadata: { provider: 'mock' } }
+  pageWindowsOverride = null
   createExtractionRun.mockResolvedValue('run-new')
 })
 
@@ -213,8 +239,19 @@ describe('idempotence', () => {
     expect(createExtractionRun).not.toHaveBeenCalled()
   })
 
-  it('run déjà exploitable (ready_for_review) sans force → réutilisé, pas de ré-extraction', async () => {
-    existingRun = { id: 'run-ready', status: 'ready_for_review' }
+  it('run déjà en cours (processing) bloque MÊME si sa version diffère de la version courante — le refus concurrent ignore la version', async () => {
+    existingRun = { id: 'run-in-flight', status: 'processing', extractor_version: '0.9.0' }
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.error).toMatch(/déjà en cours/i)
+      expect(r.runId).toBe('run-in-flight')
+    }
+    expect(createExtractionRun).not.toHaveBeenCalled()
+  })
+
+  it('run déjà exploitable (ready_for_review), MÊME version → réutilisé, pas de ré-extraction', async () => {
+    existingRun = { id: 'run-ready', status: 'ready_for_review', extractor_version: '1.0.0' }
     const r = await extractEngagementCandidates(DOC_ID, 'user-1')
     expect(r.ok).toBe(true)
     if (r.ok) {
@@ -226,12 +263,34 @@ describe('idempotence', () => {
   })
 
   it('run déjà exploitable mais force=true → relance complète', async () => {
-    existingRun = { id: 'run-ready', status: 'ready_for_review' }
+    existingRun = { id: 'run-ready', status: 'ready_for_review', extractor_version: '1.0.0' }
     const r = await extractEngagementCandidates(DOC_ID, 'user-1', { force: true })
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.reused).toBe(false)
     expect(createExtractionRun).toHaveBeenCalledTimes(1)
     expect(runEngagementCandidateExtractionAgent).toHaveBeenCalledTimes(1)
+  })
+
+  it('run READY existant mais d\'un AUTRE extractor_key (ex. historical_pv_v1) → ignoré, profil relancé', async () => {
+    existingRun = { id: 'run-other-extractor', status: 'ready_for_review', extractor_version: '1.0.0' }
+    existingRunExtractorKey = 'historical_pv_v1'
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.reused).toBe(false)
+    expect(createExtractionRun).toHaveBeenCalledTimes(1)
+    expect(runEngagementCandidateExtractionAgent).toHaveBeenCalled()
+  })
+
+  it('run READY existant mais de version ANTÉRIEURE à EXTRACTOR_VERSION → pas réutilisé, nouvelle extraction propre', async () => {
+    existingRun = { id: 'run-old-version', status: 'ready_for_review', extractor_version: '0.9.0' }
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.reused).toBe(false)
+      expect(r.runId).toBe('run-new')
+    }
+    expect(createExtractionRun).toHaveBeenCalledTimes(1)
+    expect(runEngagementCandidateExtractionAgent).toHaveBeenCalled()
   })
 })
 
@@ -271,6 +330,90 @@ describe('grounding obligatoire — page dérivée mécaniquement, jamais devin�
     const [, proposals] = insertExtractionProposals.mock.calls[0]!
     expect((proposals as Array<{ label: string }>)).toHaveLength(1)
     expect((proposals as Array<{ label: string }>)[0]!.label).toBe('Valide')
+  })
+})
+
+describe('découpage en fenêtres de pages et déduplication déterministe (P0-2B FIX_REQUIRED points 1 et 3)', () => {
+  const MULTI_WINDOW_TEXT = [
+    '[[page 1]]',
+    'Clause de la première fenêtre : le prestataire nettoie quotidiennement les locaux techniques.',
+    '[[page 5]]',
+    'Clause de la dernière fenêtre : un rapport de synthèse est transmis chaque trimestre au client.',
+  ].join('\n')
+
+  it('document multi-fenêtres → un appel LLM par fenêtre, candidats de la PREMIÈRE et de la DERNIÈRE fenêtre tous deux retenus', async () => {
+    extractPdfTextResult = { text: MULTI_WINDOW_TEXT, pageCount: 2, charCount: MULTI_WINDOW_TEXT.length, isLikelyScanned: false }
+    pageWindowsOverride = [
+      { index: 0, pages: [1], text: '[[page 1]]Clause de la première fenêtre : le prestataire nettoie quotidiennement les locaux techniques.' },
+      { index: 1, pages: [5], text: '[[page 5]]Clause de la dernière fenêtre : un rapport de synthèse est transmis chaque trimestre au client.' },
+    ]
+    runEngagementCandidateExtractionAgent
+      .mockImplementationOnce(async () => ({
+        candidates: [candidate({ label: 'Première fenêtre', sourceExcerpt: 'Clause de la première fenêtre : le prestataire nettoie quotidiennement les locaux techniques.' })],
+        metadata: {},
+      }))
+      .mockImplementationOnce(async () => ({
+        candidates: [candidate({ label: 'Dernière fenêtre', sourceExcerpt: 'Clause de la dernière fenêtre : un rapport de synthèse est transmis chaque trimestre au client.' })],
+        metadata: {},
+      }))
+
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.proposalCount).toBe(2)
+    expect(runEngagementCandidateExtractionAgent).toHaveBeenCalledTimes(2)
+    const [, proposals] = insertExtractionProposals.mock.calls[0]!
+    const labels = (proposals as Array<{ label: string; source_page: number | null }>).map((p) => p.label)
+    expect(labels).toEqual(['Première fenêtre', 'Dernière fenêtre'])
+    expect((proposals as Array<{ source_page: number | null }>).map((p) => p.source_page)).toEqual([1, 5])
+  })
+
+  it('même candidat retourné par deux fenêtres qui se chevauchent → UNE seule proposal (dédup déterministe par page + extrait)', async () => {
+    pageWindowsOverride = [
+      { index: 0, pages: [1, 2], text: '[[page 1]]...[[page 2]]Le prestataire assure un nettoyage quotidien des sanitaires du site.' },
+      { index: 1, pages: [2, 3], text: '[[page 2]]Le prestataire assure un nettoyage quotidien des sanitaires du site.[[page 3]]...' },
+    ]
+    const overlapCandidate = candidate({ sourceExcerpt: 'Le prestataire assure un nettoyage quotidien des sanitaires du site.' })
+    runEngagementCandidateExtractionAgent
+      .mockImplementationOnce(async () => ({ candidates: [overlapCandidate], metadata: {} }))
+      .mockImplementationOnce(async () => ({ candidates: [overlapCandidate], metadata: {} }))
+
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.proposalCount).toBe(1)
+    expect(runEngagementCandidateExtractionAgent).toHaveBeenCalledTimes(2)
+    expect(insertExtractionProposals).toHaveBeenCalledTimes(1)
+    const [, proposals] = insertExtractionProposals.mock.calls[0]!
+    expect(proposals).toHaveLength(1)
+  })
+
+  it('deux clauses distinctes sur la MÊME page (fenêtres différentes) → deux propositions (la dédup ne se fie jamais à la page seule)', async () => {
+    const SAME_PAGE_TWO_CLAUSES = [
+      '[[page 2]]',
+      'Le prestataire assure un nettoyage quotidien des sanitaires du site. ',
+      'Un rapport d\'intervention est remis au client à chaque visite du technicien.',
+    ].join('\n')
+    extractPdfTextResult = { text: SAME_PAGE_TWO_CLAUSES, pageCount: 1, charCount: SAME_PAGE_TWO_CLAUSES.length, isLikelyScanned: false }
+    pageWindowsOverride = [
+      { index: 0, pages: [2], text: SAME_PAGE_TWO_CLAUSES },
+      { index: 1, pages: [2], text: SAME_PAGE_TWO_CLAUSES },
+    ]
+    runEngagementCandidateExtractionAgent
+      .mockImplementationOnce(async () => ({
+        candidates: [candidate({ label: 'Nettoyage', sourceExcerpt: 'Le prestataire assure un nettoyage quotidien des sanitaires du site.' })],
+        metadata: {},
+      }))
+      .mockImplementationOnce(async () => ({
+        candidates: [candidate({ label: 'Rapport', sourceExcerpt: 'Un rapport d\'intervention est remis au client à chaque visite du technicien.' })],
+        metadata: {},
+      }))
+
+    const r = await extractEngagementCandidates(DOC_ID, 'user-1')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.proposalCount).toBe(2)
+    const [, proposals] = insertExtractionProposals.mock.calls[0]!
+    expect((proposals as Array<{ label: string; source_page: number | null }>).map((p) => p.label).sort())
+      .toEqual(['Nettoyage', 'Rapport'])
+    expect((proposals as Array<{ source_page: number | null }>).every((p) => p.source_page === 2)).toBe(true)
   })
 })
 

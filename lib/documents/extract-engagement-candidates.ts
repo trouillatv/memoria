@@ -9,10 +9,15 @@ import {
   insertExtractionProposals,
   insertExtractionEvidence,
   linkProposalEvidence,
-  getLatestExtractionRunForDocument,
+  getLatestExtractionRunForDocumentAndExtractor,
   READY_STATUSES,
 } from '@/lib/db/document-extractions'
-import { runEngagementCandidateExtractionAgent } from '@/services/ai/engagement-prescriptif-extraction'
+import {
+  runEngagementCandidateExtractionAgent,
+  type ExtractedEngagementCandidate,
+} from '@/services/ai/engagement-prescriptif-extraction'
+import { ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1 } from '@/services/ai/prompts/engagement-extractor-prescriptif.v1'
+import { buildPageWindows } from '@/lib/documents/page-windows'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import type { DocumentExtractionEmptyReason } from '@/types/db'
 
@@ -29,7 +34,10 @@ import type { DocumentExtractionEmptyReason } from '@/types/db'
 // prescriptif de clause contractuelle.
 
 const EXTRACTOR_KEY = 'engagement_prescriptif_v1'
-const EXTRACTOR_VERSION = '1.0.0'
+// Source unique : services/ai/prompts/engagement-extractor-prescriptif.v1.ts.
+// Ne PAS dupliquer cette valeur ici — un bump de version doit se voir
+// UNIQUEMENT à cet endroit pour ne jamais diverger du run persisté.
+const EXTRACTOR_VERSION = ENGAGEMENT_EXTRACTOR_PRESCRIPTIF_V1.extractorVersion
 const MIN_USABLE_CHARS = 100
 
 // Chaîne exacte du mandat : "document contractuel" → "extracteur prescriptif".
@@ -114,13 +122,21 @@ export async function extractEngagementCandidates(
     return { ok: false, error: 'Chantier cible hors organisation du document — rattachement refusé' }
   }
 
-  // 5. Idempotence : pas deux extractions en vol sur le même document, et
-  // réutilisation d'un run déjà exploitable sauf intention explicite (force).
-  const existing = await getLatestExtractionRunForDocument(documentId)
+  // 5. Idempotence : SCOPÉE à ce seul extractor_key. Un document peut être
+  // traité par plusieurs profils d'extraction (ex. historical_pv) — un run
+  // d'un autre profil ne doit jamais bloquer ni faire réutiliser celui-ci.
+  // Une nouvelle version du profil (EXTRACTOR_VERSION) ne réutilise jamais un
+  // run READY d'une version antérieure : elle relance une extraction propre.
+  const existing = await getLatestExtractionRunForDocumentAndExtractor(documentId, EXTRACTOR_KEY)
   if (existing && (existing.status === 'pending' || existing.status === 'processing')) {
     return { ok: false, error: 'Extraction déjà en cours', runId: existing.id }
   }
-  if (existing && !opts.force && READY_STATUSES.has(existing.status)) {
+  if (
+    existing &&
+    !opts.force &&
+    existing.extractor_version === EXTRACTOR_VERSION &&
+    READY_STATUSES.has(existing.status)
+  ) {
     return { ok: true, runId: existing.id, reused: true, proposalCount: 0 }
   }
 
@@ -163,21 +179,43 @@ export async function extractEngagementCandidates(
     const extractedTextLength = text.length
     log('text_extracted', documentId, { runId, chars: extractedTextLength })
 
-    // 7. Extraction LLM des candidats prescriptifs.
+    // 7. Extraction LLM des candidats prescriptifs, fenêtre de pages par
+    // fenêtre de pages (lib/documents/page-windows.ts). Un CCTP qui tient
+    // sous le budget d'une fenêtre produit une fenêtre unique — comportement
+    // inchangé pour les documents courts. Le plafond de clauses n'est jamais
+    // global au document (cf. prompt v1) : chaque fenêtre est lue en entier.
     await updateExtractionStage(runId, 'extracting_engagements')
-    const { candidates, metadata } = await runEngagementCandidateExtractionAgent({
-      sourceText: text,
-      sourceLabel: d.storage_path.split('/').pop() ?? documentId,
-      userId,
-    })
-    log('candidates_extracted', documentId, { runId, count: candidates.length, provider: metadata.provider })
+    const windows = buildPageWindows(text)
+    log('windows_built', documentId, { runId, windowCount: windows.length })
+
+    const allCandidates: ExtractedEngagementCandidate[] = []
+    let provider: unknown
+    for (const w of windows) {
+      const baseLabel = d.storage_path.split('/').pop() ?? documentId
+      const sourceLabel = windows.length > 1
+        ? `${baseLabel} (pages ${w.pages[0]}-${w.pages[w.pages.length - 1]})`
+        : baseLabel
+      const { candidates, metadata } = await runEngagementCandidateExtractionAgent({
+        sourceText: w.text,
+        sourceLabel,
+        userId,
+      })
+      provider = provider ?? metadata.provider
+      log('window_candidates_extracted', documentId, {
+        runId, windowIndex: w.index, pages: w.pages, count: candidates.length,
+      })
+      allCandidates.push(...candidates)
+    }
+    log('candidates_extracted', documentId, { runId, count: allCandidates.length, provider, windowCount: windows.length })
 
     // 8. Grounding : la page n'est JAMAIS celle devinée par le modèle — elle
     // est retrouvée mécaniquement à partir du marqueur [[page N]] qui précède
-    // l'extrait verbatim dans le texte source (même principe que Porte A,
-    // cf. lib/tenders/engagement-provenance.ts). Un extrait introuvable
-    // verbatim n'est pas une preuve exploitable : le candidat est écarté.
-    const proposalInputs = candidates.flatMap((c) => {
+    // l'extrait verbatim dans le texte source COMPLET (même principe que
+    // Porte A, cf. lib/tenders/engagement-provenance.ts) — la découpe en
+    // fenêtres ne change que ce qui est soumis au modèle, jamais la base du
+    // grounding. Un extrait introuvable verbatim n'est pas une preuve
+    // exploitable : le candidat est écarté.
+    const groundedInputs = allCandidates.flatMap((c) => {
       const needle = normalizeForMatch(c.sourceExcerpt)
       if (!normalizeForMatch(text).includes(needle)) {
         log('candidate_dropped_unverifiable_excerpt', documentId, { runId, label: c.label })
@@ -201,6 +239,25 @@ export async function extractEngagementCandidates(
           ai_confidence: c.aiConfidence,
         },
       }]
+    })
+
+    // 8bis. Déduplication déterministe : une clause présente dans le
+    // recouvrement de deux fenêtres adjacentes ne doit produire qu'UNE seule
+    // proposition. Clé = page mécaniquement retrouvée + extrait normalisé —
+    // provenance réelle, jamais de réconciliation LLM. Deux clauses
+    // différentes mais proches restent deux propositions distinctes tant que
+    // leur extrait normalisé diffère.
+    const seenDedupKeys = new Set<string>()
+    const proposalInputs = groundedInputs.filter((p) => {
+      const key = `${p.source_page ?? 'null'}::${normalizeForMatch(p.source_excerpt)}`
+      if (seenDedupKeys.has(key)) {
+        log('candidate_dropped_duplicate_window_overlap', documentId, {
+          runId, label: p.label, source_page: p.source_page,
+        })
+        return false
+      }
+      seenDedupKeys.add(key)
+      return true
     })
 
     let proposalCount = 0
