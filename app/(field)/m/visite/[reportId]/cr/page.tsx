@@ -22,6 +22,8 @@ import { CrAnalyseOrigine } from './CrAnalyseOrigine'
 import { WatchlistBilan } from './WatchlistBilan'
 import { getOrCreateVisitCrDocument } from '@/lib/db/visit-cr-documents'
 import { listProposalsByReport } from '@/lib/db/knowledge-proposals'
+import { getVisitOutcomeSummary } from '@/lib/db/visit-outcome-summary'
+import { VisitOutcomeSummaryCard } from './VisitOutcomeSummaryCard'
 import { VisitShareButton } from '../VisitShareButton'
 
 export const dynamic = 'force-dynamic'
@@ -54,7 +56,7 @@ export default async function VisitCrPreviewPage({
     notFound()
   }
 
-  const [doc, decisions, crDocument, proposals, crMapLayerStatus] = await Promise.all([
+  const [doc, decisions, crDocument, proposals, crMapLayerStatus, outcomeSummary] = await Promise.all([
     buildVisitCrDoc(reportId, user.id),
     listDecisionsByReport(reportId).catch(() => []),
     // Le CR éditable. `null` = pas encore d'analyse (le débrief se lance à
@@ -68,6 +70,8 @@ export default async function VisitCrPreviewPage({
     // préférence interactive, lu ici pour donner un état initial cohérent au
     // contrôle sans flash côté client.
     getCrMapBaseLayerStatus(reportId),
+    // SUIVI-1 — ce que la visite a produit / laissé en attente (lecture seule).
+    getVisitOutcomeSummary(reportId).catch(() => null),
   ])
   if (!doc) notFound()
 
@@ -292,6 +296,11 @@ export default async function VisitCrPreviewPage({
               {/* Propositions IA originales — toutes, avec statut (remplacé, écarté,
                   créé). Dépliable sur demande : la plupart du temps inutile. */}
               <CrAnalyseOrigine proposals={proposals} />
+
+              {/* SUIVI-1 — ce que cette visite a produit ou laissé en attente côté
+                  mémoire du chantier (sujets suivis, intervenants non identifiés).
+                  Lecture seule : ne déclenche aucune écriture ni matérialisation. */}
+              <VisitOutcomeSummaryCard summary={outcomeSummary} />
 
               {/* L'analyse initiale reste atteignable — elle explique la provenance.
                   Mais elle passe APRÈS, et ne charge rien tant qu'on ne la demande
