@@ -21,6 +21,14 @@ import { promoteProposal, dismissProposal } from '@/lib/db/knowledge-proposals'
 import { trackAiOutcome } from '@/lib/db/ai-outcome-events'
 import { listSiteActionResponsibleCandidates, resolveActionResponsibility } from '@/lib/knowledge/action-responsible-candidates'
 import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
+import {
+  listCandidateEngagementsForSite,
+  listEngagementLinksForAction,
+  createSiteActionEngagementLink,
+  removeSiteActionEngagementLink,
+  type SiteActionEngagementLinkView,
+} from '@/lib/db/site-action-engagement-links'
+import type { DbEngagement } from '@/types/db'
 
 const IdSchema = z.string().uuid()
 const CommentSchema = z.string().trim().min(1, 'Un commentaire est requis').max(1000)
@@ -160,6 +168,83 @@ export async function associateActionToElementAction(formData: FormData): Promis
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'Échec' }
   }
+}
+
+// ── P0-4B — rapprocher une Action à un Engagement de référence ──────────────
+// « Engagement = ce qui doit être vrai. Action = quelque chose qu'il faut
+// traiter. » Ce lien signifie UNIQUEMENT « un humain considère que cette
+// Action concerne cet Engagement » — jamais conformité, écart, ou mutation
+// de l'Engagement. Manager/admin seulement, même doctrine que ci-dessus.
+
+/** Engagements actifs candidats au rattachement (Porte A ∪ Porte B du chantier). */
+export async function listCandidateEngagementsForActionAction(siteId: string): Promise<DbEngagement[]> {
+  if (!IdSchema.safeParse(siteId).success) return []
+  const access = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
+  if (!access.ok) return []
+  return listCandidateEngagementsForSite(siteId)
+}
+
+/** Engagements déjà rapprochés d'une Action (tout statut — préservation historique). */
+export async function listEngagementLinksForActionAction(actionId: string): Promise<SiteActionEngagementLinkView[]> {
+  if (!IdSchema.safeParse(actionId).success) return []
+  const access = await requireSiteActionWriteAccess(actionId, 'managerOrAdmin')
+  if (!access.ok) return []
+  return listEngagementLinksForAction(actionId)
+}
+
+const CreateEngagementLinkSchema = z.object({
+  actionId: z.string().uuid(),
+  engagementId: z.string().uuid(),
+  siteId: z.string().uuid().optional(),
+})
+
+export async function createEngagementLinkAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = CreateEngagementLinkSchema.safeParse({
+    actionId: formData.get('actionId'),
+    engagementId: formData.get('engagementId'),
+    siteId: (formData.get('siteId') as string | null) || undefined,
+  })
+  if (!parsed.success) return { ok: false, error: 'Saisie invalide' }
+  const { actionId, engagementId, siteId } = parsed.data
+  const access = await requireSiteActionWriteAccess(actionId, 'managerOrAdmin')
+  if (!access.ok) return access
+  const result = await createSiteActionEngagementLink({
+    siteActionId: actionId,
+    engagementId,
+    organizationId: access.organizationId,
+    createdBy: access.userId,
+  })
+  if (!result.ok) return result
+  revalidateActionSurfaces(siteId)
+  return { ok: true }
+}
+
+const RemoveEngagementLinkSchema = z.object({
+  linkId: z.string().uuid(),
+  actionId: z.string().uuid(),
+  siteId: z.string().uuid().optional(),
+})
+
+export async function removeEngagementLinkAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = RemoveEngagementLinkSchema.safeParse({
+    linkId: formData.get('linkId'),
+    actionId: formData.get('actionId'),
+    siteId: (formData.get('siteId') as string | null) || undefined,
+  })
+  if (!parsed.success) return { ok: false, error: 'Saisie invalide' }
+  const { linkId, actionId, siteId } = parsed.data
+  // Racine = l'Action (M2C) : le retrait d'un lien est un geste sur l'Action,
+  // pas sur l'Engagement.
+  const access = await requireSiteActionWriteAccess(actionId, 'managerOrAdmin')
+  if (!access.ok) return access
+  const result = await removeSiteActionEngagementLink({ linkId, organizationId: access.organizationId })
+  if (!result.ok) return result
+  revalidateActionSurfaces(siteId)
+  return { ok: true }
 }
 
 /**

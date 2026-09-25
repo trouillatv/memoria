@@ -14,15 +14,21 @@ import { noterFiche, terminerParcours } from '../fiche-espace-historique'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
 import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
+import type { SiteActionEngagementLinkView } from '@/lib/db/site-action-engagement-links'
+import type { DbEngagement } from '@/types/db'
 
 export function ActionFichePanel({
   action,
   responsibleCandidates = [],
   companies = [],
+  engagementLinks = [],
+  engagementCandidates = [],
 }: {
   action: ActionFicheData
   responsibleCandidates?: ResponsibleCandidate[]
   companies?: SiteCandidateCompany[]
+  engagementLinks?: SiteActionEngagementLinkView[]
+  engagementCandidates?: DbEngagement[]
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -52,7 +58,13 @@ export function ActionFichePanel({
   return (
     <Sheet open onOpenChange={(o) => { if (!o) quitter() }}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-        <ActionFicheBody action={a} responsibleCandidates={responsibleCandidates} companies={companies} />
+        <ActionFicheBody
+          action={a}
+          responsibleCandidates={responsibleCandidates}
+          companies={companies}
+          engagementLinks={engagementLinks}
+          engagementCandidates={engagementCandidates}
+        />
       </SheetContent>
     </Sheet>
   )

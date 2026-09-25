@@ -324,6 +324,19 @@ export interface DbEngagement {
   created_by: string | null
 }
 
+// P0-4B (mig 439) — rapprochement humain Action ↔ Engagement. Signifie
+// UNIQUEMENT « un humain considère que cette Action concerne cet Engagement » —
+// jamais conformité/écart/modification de l'Engagement.
+export interface DbSiteActionEngagementLink {
+  id: string
+  organization_id: string
+  site_id: string
+  site_action_id: string
+  engagement_id: string
+  created_by: string | null
+  created_at: string
+}
+
 // Compliance helpers (computed view-side, not persisted)
 export type EngagementHealth = 'green' | 'amber' | 'red' | 'unknown'
 

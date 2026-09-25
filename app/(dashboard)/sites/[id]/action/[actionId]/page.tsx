@@ -6,6 +6,7 @@ import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { getSiteActionFiche } from '@/lib/knowledge/action-fiche'
 import { listSiteActionResponsibleCandidates } from '@/lib/knowledge/action-responsible-candidates'
 import { listSiteCandidateCompanies } from '@/lib/db/site-intervenants'
+import { listCandidateEngagementsForActionAction, listEngagementLinksForActionAction } from '@/app/(dashboard)/actions/actions'
 import { ActionFicheBody } from '../../views/action/ActionFiche'
 
 export const dynamic = 'force-dynamic'
@@ -22,13 +23,16 @@ export default async function ActionFichePage({
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id, actionId } = await params
-  const [identity, action, responsibleCandidates, companies] = await Promise.all([
+  const [identity, action, responsibleCandidates, companies, engagementCandidates, engagementLinks] = await Promise.all([
     getSiteIdentity(id),
     getSiteActionFiche(id, actionId, { withSubjectContext: true }).catch(() => null),
     // Lot normalisation 3 points d'entrée (Vincent 2026-09-15) — même panneau
     // d'affectation partagé que Point/Vue Actions.
     listSiteActionResponsibleCandidates(id).catch(() => []),
     listSiteCandidateCompanies(id).catch(() => []),
+    // P0-4B — Engagement de référence (managerOrAdmin, cf. server actions).
+    listCandidateEngagementsForActionAction(id).catch(() => []),
+    listEngagementLinksForActionAction(actionId).catch(() => []),
   ])
   if (!identity || !action) notFound()
 
@@ -41,7 +45,14 @@ export default async function ActionFichePage({
         <ArrowLeft className="h-4 w-4" /> {identity.name}
       </Link>
       <div className="rounded-[22px] border bg-card shadow-sm">
-        <ActionFicheBody action={action} variant="page" responsibleCandidates={responsibleCandidates} companies={companies} />
+        <ActionFicheBody
+          action={action}
+          variant="page"
+          responsibleCandidates={responsibleCandidates}
+          companies={companies}
+          engagementCandidates={engagementCandidates}
+          engagementLinks={engagementLinks}
+        />
       </div>
     </div>
   )

@@ -16,10 +16,12 @@ import { cn } from '@/lib/utils'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { describeAssignedActionDate } from '@/lib/knowledge/assigned-actions'
 import { ActionFicheCta, ActionFicheDetailsCta, ActionFicheDueDateCta, ActionFicheResponsibleCta } from './ActionFicheCta'
+import { ActionFicheEngagementCta } from './ActionFicheEngagementCta'
 import type { ActionFicheData } from '@/lib/knowledge/action-fiche'
 import type { ResponsibleCandidate } from '@/lib/knowledge/action-responsible-candidates'
 import type { SiteCandidateCompany } from '@/lib/db/site-intervenants'
-import type { SiteActionStatus } from '@/types/db'
+import type { SiteActionEngagementLinkView } from '@/lib/db/site-action-engagement-links'
+import type { DbEngagement, SiteActionStatus } from '@/types/db'
 
 // Trois niveaux de poids visuel — le dossier hiérarchise, il ne s'aplatit pas.
 const H4 = 'text-[11.5px] font-semibold uppercase tracking-wide text-muted-foreground' // moyen
@@ -45,6 +47,8 @@ export function ActionFicheBody({
   variant = 'panel',
   responsibleCandidates = [],
   companies = [],
+  engagementLinks = [],
+  engagementCandidates = [],
 }: {
   action: ActionFicheData | null
   back?: TrailBack | null
@@ -52,6 +56,8 @@ export function ActionFicheBody({
   variant?: 'panel' | 'page'
   responsibleCandidates?: ResponsibleCandidate[]
   companies?: SiteCandidateCompany[]
+  engagementLinks?: SiteActionEngagementLinkView[]
+  engagementCandidates?: DbEngagement[]
 }) {
   if (!action) return null
   const a = action
@@ -166,6 +172,23 @@ export function ActionFicheBody({
               Voir le chantier <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </section>
+
+          {/* ── ENGAGEMENT DE RÉFÉRENCE (P0-4B) — rapprochement humain déclaré, jamais
+               une conformité/écart calculé. Absent des chantiers sans Engagement actif
+               ET sans rapprochement déjà posé (pas de section vide à perpétuité). ── */}
+          {(engagementLinks.length > 0 || engagementCandidates.length > 0) && (
+            <section>
+              <h4 className={H4}>Engagement de référence</h4>
+              <div className="mt-1">
+                <ActionFicheEngagementCta
+                  actionId={a.id}
+                  siteId={a.siteId}
+                  links={engagementLinks}
+                  candidates={engagementCandidates}
+                />
+              </div>
+            </section>
+          )}
 
           {/* ── PROVENANCE — désormais portée par le fil (les maillons amont) et le
                chapô (« Découle de : … ») ; on ne la répète plus en section. L'auteur
