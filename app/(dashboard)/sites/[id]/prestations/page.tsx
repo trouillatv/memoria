@@ -3,11 +3,13 @@ import { ClipboardList } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { listPlannedEngagementsForSite } from '@/lib/db/engagements'
+import { listPlannedEngagementsForSite, getMissionsForEngagements } from '@/lib/db/engagements'
+import { getActionsForEngagements } from '@/lib/db/site-action-engagement-links'
 import { findPendingEngagementFinalizationForSite } from '@/lib/db/materialize-engagement'
 import { KIND_ORDER } from '@/lib/engagements/kind'
-import { groupPlannedEngagementsBySection } from '@/lib/engagements/section'
+import { groupPlannedEngagementsBySection, computePlannedEngagementSynthesis } from '@/lib/engagements/section'
 import { PlannedEngagementSections } from '@/components/engagements/PlannedEngagementSections'
+import { PlannedEngagementSynthesisHeader } from '@/components/engagements/PlannedEngagementSynthesisHeader'
 import { AddPlannedEngagementDialog } from '@/components/engagements/AddPlannedEngagementDialog'
 import type { EngagementKind } from '@/types/db'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
@@ -44,7 +46,15 @@ export default async function SitePrestationsPage({ params }: PageProps) {
   const engagements = await listPlannedEngagementsForSite(id)
   const sorted = [...engagements].sort((a, b) => kindRank(a.kind) - kindRank(b.kind) || b.createdAt.localeCompare(a.createdAt))
   const sections = groupPlannedEngagementsBySection(sorted)
-  const pendingFinalization = sorted.length === 0 ? await findPendingEngagementFinalizationForSite(id) : null
+  // ENG-UX-1 LOT D (mandat Vincent 2026-09-26) — Organisation (Missions) + Actions
+  // liées, batchées (LOT B/C), pour que la carte Engagement montre ce qui a déjà
+  // été traité sans jamais griser/labelliser « Traité » l'Engagement lui-même.
+  const engagementIds = sorted.map((e) => e.id)
+  const [missionsByEngagement, actionsByEngagement, pendingFinalization] = await Promise.all([
+    getMissionsForEngagements(engagementIds),
+    getActionsForEngagements(engagementIds),
+    sorted.length === 0 ? findPendingEngagementFinalizationForSite(id) : Promise.resolve(null),
+  ])
   // P0-3.2 FIX (mandat Vincent 2026-09-25) — le gating d'affichage doit parler
   // le même langage que la mutation autoritaire : le rôle DANS l'organisation
   // du chantier (requireSiteWriteAccess), pas users.role (rôle plateforme,
@@ -99,7 +109,10 @@ export default async function SitePrestationsPage({ params }: PageProps) {
           </div>
         )
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" siteId={id} canActivate={canActivate} canPlan={canActivate} canTreatPoint={canActivate} />
+        <>
+          <PlannedEngagementSynthesisHeader synthesis={computePlannedEngagementSynthesis(sorted, missionsByEngagement, actionsByEngagement)} />
+          <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" siteId={id} canActivate={canActivate} canPlan={canActivate} canTreatPoint={canActivate} missionsByEngagement={missionsByEngagement} actionsByEngagement={actionsByEngagement} />
+        </>
       )}
     </div>
   )

@@ -12,10 +12,22 @@ import Link from 'next/link'
 import { CalendarPlus } from 'lucide-react'
 import { categoryLabel, plannedEngagementStatusLabel } from '@/lib/engagements/labels'
 import { KIND_META, kindLabel } from '@/lib/engagements/kind'
-import type { PlannedEngagement } from '@/lib/db/engagements'
+import type { EngagementMission, PlannedEngagement } from '@/lib/db/engagements'
+import type { EngagementAction } from '@/lib/db/site-action-engagement-links'
+import type { MissionHealthTone } from '@/lib/missions/mission-health'
 import { ActivateEngagementButton } from '@/components/engagements/ActivateEngagementButton'
 import { EngagementTreatPointButton } from '@/components/engagements/EngagementTreatPointButton'
 import { buttonVariants } from '@/components/ui/button'
+
+// ENG-UX-1 LOT D (mandat Vincent 2026-09-26) — teintes des chips de santé Mission
+// (buildMissionHealth), réutilisées telles quelles. Décrivent l'ORGANISATION de
+// l'exécution, jamais l'Engagement lui-même : un Engagement actif reste actif
+// quel que soit l'état de ses Missions.
+const HEALTH_CHIP_TONE: Record<MissionHealthTone, string> = {
+  red: 'border-red-300 bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300',
+  orange: 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300',
+  green: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300',
+}
 
 export function PlannedEngagementCard({
   engagement: e,
@@ -24,24 +36,37 @@ export function PlannedEngagementCard({
   canActivate = false,
   canPlan = false,
   canTreatPoint = false,
+  missions = [],
+  actions = [],
 }: {
   engagement: PlannedEngagement
   showStatusBadge: boolean
-  /** P0-3.5B — requis pour construire le lien « Planifier » (route site-first,
-   *  jamais un contrat forgé). */
+  /** P0-3.5B — requis pour construire le lien « Créer une mission » (route
+   *  site-first, jamais un contrat forgé). */
   siteId: string
   /** P0-3.2 — CTA « Mettre en vigueur » réservé à managerOrAdmin ; la garde
    *  autoritaire reste côté serveur, ceci n'évite qu'un bouton voué à échouer. */
   canActivate?: boolean
-  /** « Planifier » (P0-3.5B, mandat Vincent 2026-09-26) — organise l'exécution
-   *  normale (création de Mission), distinct de « Traiter un point » (situation
-   *  ponctuelle). Même politique managerOrAdmin ; garde autoritaire côté
-   *  serveur (createMissionAction / resolveEngagementAuthorization). */
+  /** « Créer une mission » (P0-3.5B, renommé ENG-UX-1 LOT E mandat Vincent
+   *  2026-09-26 — avant, le CTA disait « Planifier » alors qu'il ne menait
+   *  qu'à la création d'une Mission, jamais une intervention datée). Organise
+   *  l'exécution normale, distinct de « Traiter un point » (situation
+   *  ponctuelle). Une fois une Mission créée, ce CTA disparaît au profit des
+   *  liens par Mission (« Voir la mission » / « Planifier la prochaine
+   *  intervention », cf. section Organisation ci-dessous). Même politique
+   *  managerOrAdmin ; garde autoritaire côté serveur (createMissionAction /
+   *  resolveEngagementAuthorization). */
   canPlan?: boolean
   /** « Traiter un point » (mandat Vincent 2026-09-25) — même politique
    *  managerOrAdmin que canActivate ; garde autoritaire côté serveur. */
   canTreatPoint?: boolean
+  /** ENG-UX-1 LOT B/D — Missions organisant cet Engagement, batchées côté page.
+   *  Plusieurs Missions possibles ; aucune n'affecte le statut de l'Engagement. */
+  missions?: EngagementMission[]
+  /** ENG-UX-1 LOT C/D — Actions liées (P0-4B) à cet Engagement, batchées côté page. */
+  actions?: EngagementAction[]
 }) {
+  const openActions = actions.filter((a) => a.active)
   const statusBadge = e.status === 'active'
     ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
     : 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
@@ -82,17 +107,49 @@ export function PlannedEngagementCard({
         </div>
       )}
 
-      {e.status === 'active' && (canPlan || canTreatPoint) && (
+      {e.status === 'active' && ((canPlan && missions.length === 0) || canTreatPoint) && (
         <div className="flex justify-end gap-1.5">
-          {canPlan && (
+          {canPlan && missions.length === 0 && (
             <Link
               href={`/sites/${siteId}/missions/new?engagement=${e.id}`}
               className={buttonVariants({ variant: 'outline', size: 'sm', className: 'gap-1.5' })}
             >
-              <CalendarPlus className="h-3.5 w-3.5" /> Planifier
+              <CalendarPlus className="h-3.5 w-3.5" /> Créer une mission
             </Link>
           )}
           {canTreatPoint && <EngagementTreatPointButton engagementId={e.id} />}
+        </div>
+      )}
+
+      {(missions.length > 0 || openActions.length > 0) && (
+        <div className="space-y-1.5 border-t border-border pt-2">
+          {missions.length > 0 && (
+            <div className="space-y-1">
+              {missions.map((m) => (
+                <div key={m.missionId} className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-medium text-foreground">{m.missionName}</span>
+                  {m.health.chips.map((chip, i) => (
+                    <span key={i} className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${HEALTH_CHIP_TONE[chip.tone]}`}>
+                      {chip.label}
+                    </span>
+                  ))}
+                  <Link href={`/missions/${m.missionId}`} className="text-[11px] font-medium text-primary hover:underline">
+                    Voir la mission
+                  </Link>
+                  {canPlan && !m.nextInterventionDate && (
+                    <Link href={`/missions/${m.missionId}`} className="text-[11px] font-medium text-primary hover:underline">
+                      Planifier la prochaine intervention
+                    </Link>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {openActions.length > 0 && (
+            <Link href={`/sites/${siteId}/actions`} className="inline-block text-[11px] font-medium text-primary hover:underline">
+              {openActions.length} action{openActions.length > 1 ? 's' : ''} ouverte{openActions.length > 1 ? 's' : ''}
+            </Link>
+          )}
         </div>
       )}
 

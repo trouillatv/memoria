@@ -12,6 +12,9 @@ import type {
 import { suggestDestination } from '@/lib/engagements/destination'
 import { defaultProofForKind } from '@/lib/engagements/kind'
 import { getSiteById } from '@/lib/db/sites'
+import { todayLocalIso } from '@/lib/time/local-date'
+import { buildMissionHealth, type MissionHealth } from '@/lib/missions/mission-health'
+import type { MissionCadence } from '@/types/db'
 
 export async function listEngagementsByTender(tenderId: string): Promise<DbEngagement[]> {
   const supabase = createAdminClient()
@@ -209,6 +212,139 @@ export async function listPlannedEngagementsForSite(siteId: string): Promise<Pla
       additionalProvenance: provenances.slice(1),
     }
   })
+}
+
+// ============================================================================
+// ENG-UX-1 LOT B — Missions organisant des Engagements (mandat Vincent 2026-09-26)
+// ============================================================================
+
+export interface EngagementMission {
+  missionId: string
+  missionName: string
+  cadence: MissionCadence
+  active: boolean
+  assignedTeam: { id: string; name: string; color: string | null } | null
+  lastInterventionDate: string | null
+  nextInterventionDate: string | null
+  openAnomalyCount: number
+  health: MissionHealth
+}
+
+/**
+ * Missions organisant chacun des Engagements donnés, batché (même pattern que
+ * getEvidenceForEngagements : .overlaps('engagement_ids', ids), zéro N+1).
+ * État dérivé via buildMissionHealth — jamais recalculé localement. Une Mission
+ * sans prochaine occurrence ou sans équipe n'affecte JAMAIS le statut de
+ * l'Engagement (qui reste actif de plein droit) : c'est un signal d'organisation
+ * restitué tel quel, jamais traduit en « Traité »/grisé côté Engagement.
+ */
+export async function getMissionsForEngagements(
+  engagementIds: string[]
+): Promise<Map<string, EngagementMission[]>> {
+  const result = new Map<string, EngagementMission[]>()
+  if (engagementIds.length === 0) return result
+
+  const supabase = createAdminClient()
+  const today = todayLocalIso()
+
+  const { data: missionRows, error } = await supabase
+    .from('missions')
+    .select('id, name, cadence, active, assigned_team_id, engagement_ids')
+    .overlaps('engagement_ids', engagementIds)
+    .is('deleted_at', null)
+  if (error) throw error
+  const missions = missionRows ?? []
+  if (missions.length === 0) return result
+
+  const missionIds = missions.map((m) => m.id)
+
+  const teamIdSet = new Set(missions.map((m) => m.assigned_team_id).filter((id): id is string => !!id))
+  const teamById = new Map<string, { id: string; name: string; color: string | null }>()
+  if (teamIdSet.size > 0) {
+    const { data: teamRows } = await supabase.from('teams').select('id, name, color').in('id', [...teamIdSet])
+    for (const t of (teamRows ?? []) as Array<{ id: string; name: string; color: string | null }>) teamById.set(t.id, t)
+  }
+
+  const [lastRes, nextRes, inProgressRes] = await Promise.all([
+    supabase
+      .from('interventions')
+      .select('id, mission_id, scheduled_for')
+      .in('mission_id', missionIds)
+      .in('status', ['completed', 'validated'])
+      .not('scheduled_for', 'is', null)
+      .order('scheduled_for', { ascending: false })
+      .limit(2000),
+    supabase
+      .from('interventions')
+      .select('id, mission_id, scheduled_for')
+      .in('mission_id', missionIds)
+      .eq('status', 'planned')
+      .gte('scheduled_for', today)
+      .order('scheduled_for', { ascending: true })
+      .limit(2000),
+    supabase
+      .from('interventions')
+      .select('id, mission_id')
+      .in('mission_id', missionIds)
+      .eq('status', 'in_progress'),
+  ])
+
+  type IntvRow = { id: string; mission_id: string; scheduled_for?: string }
+  const lastByMission = new Map<string, string>()
+  for (const r of (lastRes.data ?? []) as IntvRow[]) {
+    if (r.scheduled_for && !lastByMission.has(r.mission_id)) lastByMission.set(r.mission_id, r.scheduled_for)
+  }
+  const nextByMission = new Map<string, string>()
+  for (const r of (nextRes.data ?? []) as IntvRow[]) {
+    if (r.scheduled_for && !nextByMission.has(r.mission_id)) nextByMission.set(r.mission_id, r.scheduled_for)
+  }
+
+  const interventionToMission = new Map<string, string>()
+  for (const r of (lastRes.data ?? []) as IntvRow[]) interventionToMission.set(r.id, r.mission_id)
+  for (const r of (nextRes.data ?? []) as IntvRow[]) interventionToMission.set(r.id, r.mission_id)
+  for (const r of (inProgressRes.data ?? []) as IntvRow[]) interventionToMission.set(r.id, r.mission_id)
+
+  const anomalyCountByMission = new Map<string, number>()
+  const knownIntvIds = [...interventionToMission.keys()]
+  if (knownIntvIds.length > 0) {
+    const { data: anomalyRows } = await supabase
+      .from('intervention_anomalies')
+      .select('intervention_id')
+      .in('intervention_id', knownIntvIds)
+      .eq('status', 'open')
+    for (const a of (anomalyRows ?? []) as Array<{ intervention_id: string }>) {
+      const mId = interventionToMission.get(a.intervention_id)
+      if (!mId) continue
+      anomalyCountByMission.set(mId, (anomalyCountByMission.get(mId) ?? 0) + 1)
+    }
+  }
+
+  for (const m of missions as Array<{ id: string; name: string; cadence: MissionCadence; active: boolean; assigned_team_id: string | null; engagement_ids: string[] }>) {
+    const engagementOverlap = (m.engagement_ids ?? []).filter((eid) => engagementIds.includes(eid))
+    if (engagementOverlap.length === 0) continue
+    const assignedTeam = m.assigned_team_id ? (teamById.get(m.assigned_team_id) ?? null) : null
+    const lastInterventionDate = lastByMission.get(m.id) ?? null
+    const nextInterventionDate = nextByMission.get(m.id) ?? null
+    const openAnomalyCount = anomalyCountByMission.get(m.id) ?? 0
+    const mission: EngagementMission = {
+      missionId: m.id,
+      missionName: m.name,
+      cadence: m.cadence,
+      active: m.active,
+      assignedTeam,
+      lastInterventionDate,
+      nextInterventionDate,
+      openAnomalyCount,
+      health: buildMissionHealth({ active: m.active, cadence: m.cadence, lastInterventionDate, nextInterventionDate, openAnomalyCount, assignedTeam }, today),
+    }
+    for (const eid of engagementOverlap) {
+      const list = result.get(eid) ?? []
+      list.push(mission)
+      result.set(eid, list)
+    }
+  }
+
+  return result
 }
 
 export async function listAllEngagements(): Promise<DbEngagement[]> {

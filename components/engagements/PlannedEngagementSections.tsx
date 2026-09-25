@@ -5,6 +5,8 @@
 
 import { plannedEngagementStatusLabel } from '@/lib/engagements/labels'
 import { getSectionHomogeneousStatus, type PlannedEngagementSectionGroup } from '@/lib/engagements/section'
+import type { EngagementMission } from '@/lib/db/engagements'
+import type { EngagementAction } from '@/lib/db/site-action-engagement-links'
 import { PlannedEngagementCard } from './PlannedEngagementCard'
 
 export function PlannedEngagementSections({
@@ -14,18 +16,25 @@ export function PlannedEngagementSections({
   canActivate = false,
   canPlan = false,
   canTreatPoint = false,
+  missionsByEngagement,
+  actionsByEngagement,
 }: {
   groups: PlannedEngagementSectionGroup[]
   gridClassName: string
   /** P0-3.5B — requis par PlannedEngagementCard pour construire le lien
-   *  « Planifier » (route site-first). */
+   *  « Créer une mission » (route site-first). */
   siteId: string
   /** P0-3.2 — propage la permission d'activation (managerOrAdmin) à chaque carte. */
   canActivate?: boolean
-  /** « Planifier » (P0-3.5B) — propage la permission (managerOrAdmin) à chaque carte. */
+  /** « Créer une mission » / « Planifier la prochaine intervention » (P0-3.5B,
+   *  renommé ENG-UX-1 LOT E) — propage la permission (managerOrAdmin) à chaque carte. */
   canPlan?: boolean
   /** « Traiter un point » — propage la permission (managerOrAdmin) à chaque carte. */
   canTreatPoint?: boolean
+  /** ENG-UX-1 LOT B/D — Missions par engagement, batchées côté page. */
+  missionsByEngagement?: Map<string, EngagementMission[]>
+  /** ENG-UX-1 LOT C/D — Actions liées par engagement, batchées côté page. */
+  actionsByEngagement?: Map<string, EngagementAction[]>
 }) {
   return (
     <div className="space-y-6">
@@ -42,7 +51,17 @@ export function PlannedEngagementSections({
             </div>
             <ul className={gridClassName}>
               {group.engagements.map((e) => (
-                <PlannedEngagementCard key={e.id} engagement={e} showStatusBadge={!homogeneousStatus} siteId={siteId} canActivate={canActivate} canPlan={canPlan} canTreatPoint={canTreatPoint} />
+                <PlannedEngagementCard
+                  key={e.id}
+                  engagement={e}
+                  showStatusBadge={!homogeneousStatus}
+                  siteId={siteId}
+                  canActivate={canActivate}
+                  canPlan={canPlan}
+                  canTreatPoint={canTreatPoint}
+                  missions={missionsByEngagement?.get(e.id) ?? []}
+                  actions={actionsByEngagement?.get(e.id) ?? []}
+                />
               ))}
             </ul>
           </section>

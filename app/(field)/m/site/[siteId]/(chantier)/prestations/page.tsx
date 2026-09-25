@@ -2,10 +2,12 @@ import { notFound } from 'next/navigation'
 import { requireSiteAccess } from '@/lib/field/site-access'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listPlannedEngagementsForSite } from '@/lib/db/engagements'
+import { listPlannedEngagementsForSite, getMissionsForEngagements } from '@/lib/db/engagements'
+import { getActionsForEngagements } from '@/lib/db/site-action-engagement-links'
 import { KIND_ORDER } from '@/lib/engagements/kind'
-import { groupPlannedEngagementsBySection } from '@/lib/engagements/section'
+import { groupPlannedEngagementsBySection, computePlannedEngagementSynthesis } from '@/lib/engagements/section'
 import { PlannedEngagementSections } from '@/components/engagements/PlannedEngagementSections'
+import { PlannedEngagementSynthesisHeader } from '@/components/engagements/PlannedEngagementSynthesisHeader'
 import { AddPlannedEngagementDialog } from '@/components/engagements/AddPlannedEngagementDialog'
 import type { EngagementKind } from '@/types/db'
 
@@ -48,6 +50,13 @@ export default async function SitePrestationsMobilePage({
   const engagements = await listPlannedEngagementsForSite(siteId)
   const sorted = [...engagements].sort((a, b) => kindRank(a.kind) - kindRank(b.kind) || b.createdAt.localeCompare(a.createdAt))
   const sections = groupPlannedEngagementsBySection(sorted)
+  // ENG-UX-1 LOT D (mandat Vincent 2026-09-26) — même vérité Organisation/Actions
+  // que desktop (LOT B/C), batchée.
+  const engagementIds = sorted.map((e) => e.id)
+  const [missionsByEngagement, actionsByEngagement] = await Promise.all([
+    getMissionsForEngagements(engagementIds),
+    getActionsForEngagements(engagementIds),
+  ])
 
   return (
     <div className="max-w-md space-y-4 pb-16">
@@ -61,7 +70,10 @@ export default async function SitePrestationsMobilePage({
           <p className="text-sm text-muted-foreground">Aucun engagement validé pour ce chantier.</p>
         </div>
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="space-y-3" siteId={siteId} canActivate={canActivate} canPlan={canActivate} canTreatPoint={canActivate} />
+        <>
+          <PlannedEngagementSynthesisHeader synthesis={computePlannedEngagementSynthesis(sorted, missionsByEngagement, actionsByEngagement)} />
+          <PlannedEngagementSections groups={sections} gridClassName="space-y-3" siteId={siteId} canActivate={canActivate} canPlan={canActivate} canTreatPoint={canActivate} missionsByEngagement={missionsByEngagement} actionsByEngagement={actionsByEngagement} />
+        </>
       )}
     </div>
   )

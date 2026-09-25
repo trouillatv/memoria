@@ -158,7 +158,8 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
       {/* Liste principale — hiérarchie durable SUJET → CBO → historique. */}
       <ActionsPilotageClient subjects={pilotage.subjects} siteId={id}
         responsibleCandidates={responsibleCandidates} companies={companies}
-        reserveCountBySubject={reserveCountBySubject} deadlineCountBySubject={deadlineCountBySubject} />
+        reserveCountBySubject={reserveCountBySubject} deadlineCountBySubject={deadlineCountBySubject}
+        unattachedActions={pilotage.unattachedActions} />
     </div>
   )
 }

@@ -115,10 +115,16 @@ export interface PilotageKpi {
 export interface SiteActionsPilotage {
   kpi: PilotageKpi
   subjects: PilotageSubject[]
+  /** ENG-UX-1 LOT A — Actions ouvertes/planifiées dont canonical_subject_id est encore
+   *  null (canonicalisation asynchrone échouée ou ambiguë, cf. resolveManualObjectCanonicalSubjectId).
+   *  Le résolveur reste best-effort et n'est jamais forcé : une Action explicitement créée par
+   *  un humain ne doit jamais devenir invisible parce que sa canonicalisation a échoué ou reste
+   *  ambiguë. Aucun sujet/CBO n'est fabriqué pour ces lignes, elles restent hors hiérarchie SUJET. */
+  unattachedActions: PilotageCbo[]
 }
 
 export function emptyActionsPilotage(): SiteActionsPilotage {
-  return { kpi: { subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 }, subjects: [] }
+  return { kpi: { subjectsWithActions: 0, activeCbo: 0, completedCbo: 0, toQualifyCbo: 0, unattachedCbo: 0, totalCbo: 0, historicalFormulations: 0 }, subjects: [], unattachedActions: [] }
 }
 
 /**
@@ -202,6 +208,9 @@ export function assembleActionsPilotage(
   return {
     kpi: { subjectsWithActions: subjects.length, activeCbo, completedCbo, toQualifyCbo, unattachedCbo, totalCbo, historicalFormulations },
     subjects,
+    // ENG-UX-1 LOT A — calculé séparément dans getSiteActionsPilotage à partir des rawRows
+    // (cette fonction PURE n'a accès qu'aux CBO déjà réduits, jamais aux site_actions brutes).
+    unattachedActions: [],
   }
 }
 
@@ -216,6 +225,29 @@ export async function getActionsPilotageKpi(siteId: string): Promise<PilotageKpi
 }
 
 type RawFormulationRow = { id: string; title: string | null; status: string; due_date: string | null; report_id: string | null; canonical_subject_id: string | null }
+
+/**
+ * ENG-UX-1 LOT A — PUR (aucune DB), testable seul. Extrait des `site_actions` brutes celles
+ * qui sont opérationnellement pertinentes (open/planned) et dont canonical_subject_id est
+ * encore null : `attachToCanonicalBusinessObject` ne crée JAMAIS de CBO tant que la
+ * canonicalisation n'a pas abouti, donc ces lignes n'apparaissent dans AUCUN `reduced`/sujet.
+ * Ne fabrique ni sujet ni CBO : restitue l'Action telle quelle, hors hiérarchie SUJET.
+ */
+export function unattachedActionsFrom(rawRows: RawFormulationRow[]): PilotageCbo[] {
+  return rawRows
+    .filter((a) => !a.canonical_subject_id && (a.status === 'open' || a.status === 'planned'))
+    .map((a) => ({
+      cboId: `raw-${a.id}`,
+      label: a.title ?? '(sans titre)',
+      computedCurrentState: 'open' as const,
+      active: true,
+      terminal: false,
+      stateBasis: [],
+      conflicts: [],
+      documentaryDivergences: [],
+      targetActionId: a.id,
+    }))
+}
 
 export async function getSiteActionsPilotage(siteId: string): Promise<SiteActionsPilotage> {
   const sb = createAdminClient()
@@ -270,6 +302,14 @@ export async function getSiteActionsPilotage(siteId: string): Promise<SiteAction
   }
   const pilotage = assembleActionsPilotage(ctxById, reduced.values(), rawRows.length, formulationsBySubject)
 
+  // ENG-UX-1 LOT A — repli visibilité : une Action ouverte/planifiée dont la canonicalisation
+  // async n'a jamais abouti (attachToCanonicalBusinessObject court-circuite avant de créer un
+  // CBO quand canonical_subject_id est null) n'apparaît dans AUCUN sujet ni AUCUN CBO réduit.
+  // Elle reste néanmoins un geste humain réel : on la restitue telle quelle, sans lui fabriquer
+  // de sujet/CBO, en réutilisant `PilotageCbo` pour hériter des mêmes gestes (CboRow).
+  const unattachedActions = unattachedActionsFrom(rawRows)
+  const allCbos = [...pilotage.subjects.flatMap((s) => s.cbos), ...unattachedActions]
+
   // « Vérifié : toujours ouvert » — dernière vérification humaine par action, dérivée du
   // journal (1 requête batchée site-wide). Neutre pour C2A ; restitution seulement.
   const { data: confirms } = await sb.from('site_action_events')
@@ -284,17 +324,15 @@ export async function getSiteActionsPilotage(siteId: string): Promise<SiteAction
     const comment = e.after_value?.comment_is_system ? null : e.reason
     lastConfirmByAction.set(e.action_id, { at: e.occurred_at, by: e.actor_label, comment })
   }
-  for (const s of pilotage.subjects) {
-    for (const c of s.cbos) {
-      const v = c.targetActionId ? lastConfirmByAction.get(c.targetActionId) : undefined
-      if (v) { c.lastHumanVerifiedAt = v.at; c.lastHumanVerifiedBy = v.by; c.lastHumanVerifiedComment = v.comment }
-    }
+  for (const c of allCbos) {
+    const v = c.targetActionId ? lastConfirmByAction.get(c.targetActionId) : undefined
+    if (v) { c.lastHumanVerifiedAt = v.at; c.lastHumanVerifiedBy = v.by; c.lastHumanVerifiedComment = v.comment }
   }
 
   // Responsable actuel — même geste, même mutation partout (lot normalisation 3 points
   // d'entrée, 2026-09-15) : 1 requête batchée sur les actions cibles, puis résolution
   // contact/entreprise batchée (jamais une requête par CBO).
-  const targetActionIds = [...new Set(pilotage.subjects.flatMap((s) => s.cbos.map((c) => c.targetActionId)).filter((x): x is string => !!x))]
+  const targetActionIds = [...new Set(allCbos.map((c) => c.targetActionId).filter((x): x is string => !!x))]
   if (targetActionIds.length > 0) {
     const { data: targetActions } = await sb.from('site_actions')
       .select('id, assigned_contact_id, assigned_company_id, assigned_to, due_date').in('id', targetActionIds)
@@ -327,14 +365,12 @@ export async function getSiteActionsPilotage(siteId: string): Promise<SiteAction
         responsibleByAction.set(r.id, { kind: 'text', label: r.assigned_to })
       }
     }
-    for (const s of pilotage.subjects) {
-      for (const c of s.cbos) {
-        c.responsible = c.targetActionId ? responsibleByAction.get(c.targetActionId) ?? null : null
-        c.dueDate = c.targetActionId ? dueDateByAction.get(c.targetActionId) ?? null : null
-      }
+    for (const c of allCbos) {
+      c.responsible = c.targetActionId ? responsibleByAction.get(c.targetActionId) ?? null : null
+      c.dueDate = c.targetActionId ? dueDateByAction.get(c.targetActionId) ?? null : null
     }
   } else {
-    for (const s of pilotage.subjects) for (const c of s.cbos) { c.responsible = null; c.dueDate = null }
+    for (const c of allCbos) { c.responsible = null; c.dueDate = null }
   }
-  return pilotage
+  return { ...pilotage, unattachedActions }
 }

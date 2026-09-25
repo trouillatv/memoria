@@ -64,6 +64,7 @@ import {
   removeSiteActionEngagementLink,
   resolveActiveEngagementLinkOwner,
   addEngagementLinkQualification,
+  getActionsForEngagements,
 } from '@/lib/db/site-action-engagement-links'
 import { getSiteById } from '@/lib/db/sites'
 import { listActiveEngagementsByContracts, listActiveEngagementsBySites, listEngagementsByIds } from '@/lib/db/engagements'
@@ -346,6 +347,72 @@ describe('removeSiteActionEngagementLink', () => {
     queue('site_action_engagement_links', { data: null, error: new Error('db down') })
     const result = await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1', removedBy: 'user-1' })
     expect(result).toEqual({ ok: false, error: 'Échec du retrait' })
+  })
+})
+
+describe('getActionsForEngagements — ENG-UX-1 LOT C (indépendant de canonical_subject_id)', () => {
+  it('aucun engagement fourni → map vide, aucune requête', async () => {
+    const result = await getActionsForEngagements([])
+    expect(result.size).toBe(0)
+  })
+
+  it('engagement sans lien actif → absent de la map (jamais de ligne fabriquée)', async () => {
+    queue('site_action_engagement_links', { data: [] })
+    const result = await getActionsForEngagements(['eng-1'])
+    expect(result.has('eng-1')).toBe(false)
+  })
+
+  it('lien actif joint à site_actions, groupé par engagement_id', async () => {
+    queue('site_action_engagement_links', { data: [{ site_action_id: 'action-1', engagement_id: 'eng-1' }] })
+    queue('site_actions', { data: [{ id: 'action-1', title: 'Traiter le point', status: 'open', due_date: null }] })
+    const result = await getActionsForEngagements(['eng-1'])
+    expect(result.get('eng-1')).toEqual([{ actionId: 'action-1', title: 'Traiter le point', status: 'open', dueDate: null, active: true }])
+  })
+
+  it('Action done → présente mais active=false (terminale, pas une charge à piloter)', async () => {
+    queue('site_action_engagement_links', { data: [{ site_action_id: 'action-1', engagement_id: 'eng-1' }] })
+    queue('site_actions', { data: [{ id: 'action-1', title: 'Fait', status: 'done', due_date: null }] })
+    const result = await getActionsForEngagements(['eng-1'])
+    expect(result.get('eng-1')?.[0].active).toBe(false)
+  })
+
+  it('lien retiré (removed_at non null) jamais compté — filtré côté requête (.is(removed_at, null))', async () => {
+    // .is('removed_at', null) exclut ce lien côté Postgres ; simulé ici par une
+    // réponse vide, comme le ferait la requête réelle.
+    queue('site_action_engagement_links', { data: [] })
+    const result = await getActionsForEngagements(['eng-1'])
+    expect(result.has('eng-1')).toBe(false)
+  })
+
+  it('une Action liée à plusieurs Engagements apparaît sous chacun', async () => {
+    queue('site_action_engagement_links', {
+      data: [
+        { site_action_id: 'action-1', engagement_id: 'eng-a' },
+        { site_action_id: 'action-1', engagement_id: 'eng-b' },
+      ],
+    })
+    queue('site_actions', { data: [{ id: 'action-1', title: 'Partagée', status: 'open', due_date: null }] })
+    const result = await getActionsForEngagements(['eng-a', 'eng-b'])
+    expect(result.get('eng-a')?.[0].actionId).toBe('action-1')
+    expect(result.get('eng-b')?.[0].actionId).toBe('action-1')
+  })
+
+  it('lien orphelin (Action introuvable) filtré silencieusement', async () => {
+    queue('site_action_engagement_links', { data: [{ site_action_id: 'action-gone', engagement_id: 'eng-1' }] })
+    queue('site_actions', { data: [] })
+    const result = await getActionsForEngagements(['eng-1'])
+    expect(result.has('eng-1')).toBe(false)
+  })
+
+  it('propage une erreur Supabase sur les liens', async () => {
+    queue('site_action_engagement_links', { data: null, error: new Error('db down') })
+    await expect(getActionsForEngagements(['eng-1'])).rejects.toThrow('db down')
+  })
+
+  it('propage une erreur Supabase sur les actions', async () => {
+    queue('site_action_engagement_links', { data: [{ site_action_id: 'action-1', engagement_id: 'eng-1' }] })
+    queue('site_actions', { data: null, error: new Error('db down') })
+    await expect(getActionsForEngagements(['eng-1'])).rejects.toThrow('db down')
   })
 })
 

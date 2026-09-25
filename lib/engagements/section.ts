@@ -6,7 +6,8 @@
 // sections ne fusionnent jamais plusieurs Engagements en une seule carte.
 
 import type { EngagementCategory, EngagementKind } from '@/types/db'
-import type { PlannedEngagement } from '@/lib/db/engagements'
+import type { EngagementMission, PlannedEngagement } from '@/lib/db/engagements'
+import type { EngagementAction } from '@/lib/db/site-action-engagement-links'
 
 export type PlannedEngagementSectionKey =
   | 'recurring'
@@ -104,4 +105,58 @@ export function groupPlannedEngagementsBySection(
   return PLANNED_ENGAGEMENT_SECTION_ORDER
     .filter((key) => buckets.has(key))
     .map((key) => ({ key, label: PLANNED_ENGAGEMENT_SECTION_LABELS[key], engagements: buckets.get(key)! }))
+}
+
+export interface PlannedEngagementSynthesis {
+  total: number
+  withMission: number
+  /** Actif mais sans aucune Mission organisatrice (pas encore prise en charge). */
+  withoutMission: number
+  /** Actif ET (sans Mission, ou aucune Mission n'a de prochaine occurrence connue). */
+  needsPlanning: number
+  /** Actions ouvertes liées (P0-4B), dédupliquées : une Action liée à plusieurs
+   *  Engagements ne compte qu'une fois. */
+  openActionsCount: number
+}
+
+/**
+ * Synthèse légère de la page Prestations prévues (ENG-UX-1 LOT F, mandat
+ * Vincent 2026-09-26) — dérivée UNIQUEMENT des read-models déjà batchés
+ * (LOT B `getMissionsForEngagements`, LOT C `getActionsForEngagements`),
+ * aucune nouvelle vérité persistée, aucun nouveau calcul métier. Un Engagement
+ * `curated` (pas encore en vigueur) ne peut par construction avoir ni Mission
+ * ni Action liée — il n'est jamais compté dans withMission/withoutMission/
+ * needsPlanning, seulement dans `total`.
+ */
+export function computePlannedEngagementSynthesis(
+  engagements: PlannedEngagement[],
+  missionsByEngagement: Map<string, EngagementMission[]>,
+  actionsByEngagement: Map<string, EngagementAction[]>,
+): PlannedEngagementSynthesis {
+  let withMission = 0
+  let withoutMission = 0
+  let needsPlanning = 0
+  for (const e of engagements) {
+    if (e.status !== 'active') continue
+    const missions = missionsByEngagement.get(e.id) ?? []
+    if (missions.length > 0) withMission++
+    else withoutMission++
+    const hasUpcoming = missions.some((m) => !!m.nextInterventionDate)
+    if (!hasUpcoming) needsPlanning++
+  }
+
+  const openActionIds = new Set<string>()
+  for (const actions of actionsByEngagement.values()) {
+    for (const a of actions) {
+      if (a.active) openActionIds.add(a.actionId)
+    }
+  }
+
+  return {
+    total: engagements.length,
+    withMission,
+    withoutMission,
+    needsPlanning,
+    openActionsCount: openActionIds.size,
+  }
 }

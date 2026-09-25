@@ -54,7 +54,8 @@ export default async function SiteActionsPillPage({ params }: { params: Promise<
       </header>
       <ActionsPilotageClient subjects={pilotage.subjects} siteId={siteId}
         responsibleCandidates={responsibleCandidates} companies={companies}
-        reserveCountBySubject={reserveCountBySubject} deadlineCountBySubject={deadlineCountBySubject} />
+        reserveCountBySubject={reserveCountBySubject} deadlineCountBySubject={deadlineCountBySubject}
+        unattachedActions={pilotage.unattachedActions} />
     </div>
   )
 }

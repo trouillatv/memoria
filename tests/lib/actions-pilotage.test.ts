@@ -2,7 +2,7 @@
 // liste par SUJET (CBO rattachés), unknown « à qualifier » jamais ouvert, états C2A consommés tels quels.
 
 import { describe, it, expect } from 'vitest'
-import { assembleActionsPilotage, type PilotageSubjectContext } from '@/lib/knowledge/actions-pilotage'
+import { assembleActionsPilotage, unattachedActionsFrom, type PilotageSubjectContext } from '@/lib/knowledge/actions-pilotage'
 import type { CboReducedEntry } from '@/lib/knowledge/canonical-business-object-evolution'
 import type { CboComputedCurrentState } from '@/lib/knowledge/cbo-lifecycle-reducer'
 
@@ -93,5 +93,45 @@ describe('assembleActionsPilotage — KPI + hiérarchie sujet→CBO', () => {
     const formulations = new Map([['s1', [f('ancien', '2025-12-03'), f('sans-date', null), f('recent', '2026-07-22'), f('milieu', '2026-02-19')]]])
     const p = assembleActionsPilotage(new Map([ctx('s1', 'X', 'open')]), [entry('c1', 's1', 'A', 'open')], 4, formulations)
     expect(p.subjects[0].formulations.map((x) => x.id)).toEqual(['recent', 'milieu', 'ancien', 'sans-date'])
+  })
+})
+
+// ENG-UX-1 LOT A (mandat Vincent 2026-09-26) — canonicalisation asynchrone échouée/ambiguë
+// (canonical_subject_id null) ne doit jamais rendre une Action humaine invisible. Le résolveur
+// reste best-effort (jamais forcé) ; aucun sujet/CBO n'est fabriqué pour ces lignes.
+const raw = (over: { id: string; status: string; canonical_subject_id: string | null; title?: string | null }) => ({
+  id: over.id, title: over.title ?? 'Traiter le point', status: over.status,
+  due_date: null, report_id: null, canonical_subject_id: over.canonical_subject_id,
+})
+
+describe('unattachedActionsFrom — ENG-UX-1 LOT A (repli visibilité, aucune canonicalisation forcée)', () => {
+  it('site_action open, canonical_subject_id = null → visible (fallback)', () => {
+    const out = unattachedActionsFrom([raw({ id: 'a1', status: 'open', canonical_subject_id: null })])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ cboId: 'raw-a1', targetActionId: 'a1', computedCurrentState: 'open', active: true, terminal: false })
+  })
+
+  it('site_action planned, canonical_subject_id = null → visible (fallback)', () => {
+    const out = unattachedActionsFrom([raw({ id: 'a2', status: 'planned', canonical_subject_id: null })])
+    expect(out).toHaveLength(1)
+  })
+
+  it('canonical_subject_id présent → absent du fallback (déjà rattachée à un sujet)', () => {
+    const out = unattachedActionsFrom([raw({ id: 'a3', status: 'open', canonical_subject_id: 's1' })])
+    expect(out).toHaveLength(0)
+  })
+
+  it('status done/cancelled + canonical_subject_id null → absent du fallback (terminal, pas une charge à piloter)', () => {
+    const out = unattachedActionsFrom([
+      raw({ id: 'a4', status: 'done', canonical_subject_id: null }),
+      raw({ id: 'a5', status: 'cancelled', canonical_subject_id: null }),
+    ])
+    expect(out).toHaveLength(0)
+  })
+
+  it('aucune canonicalisation forcée : ne fabrique ni sujet ni canonicalSubjectId sur la ligne', () => {
+    const out = unattachedActionsFrom([raw({ id: 'a6', status: 'open', canonical_subject_id: null })])
+    expect(out[0]).not.toHaveProperty('canonicalSubjectId')
+    expect(out[0].label).toBe('Traiter le point')
   })
 })

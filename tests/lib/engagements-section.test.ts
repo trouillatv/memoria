@@ -4,13 +4,16 @@
 
 import { describe, it, expect } from 'vitest'
 import {
+  computePlannedEngagementSynthesis,
   getPlannedEngagementSection,
   getSectionHomogeneousStatus,
   groupPlannedEngagementsBySection,
   PLANNED_ENGAGEMENT_SECTION_ORDER,
 } from '@/lib/engagements/section'
-import type { PlannedEngagement } from '@/lib/db/engagements'
+import type { EngagementMission, PlannedEngagement } from '@/lib/db/engagements'
+import type { EngagementAction } from '@/lib/db/site-action-engagement-links'
 import type { EngagementCategory, EngagementKind } from '@/types/db'
+import { buildMissionHealth } from '@/lib/missions/mission-health'
 
 function engagement(overrides: Partial<PlannedEngagement> & { id: string }): PlannedEngagement {
   return {
@@ -168,5 +171,115 @@ describe('getSectionHomogeneousStatus', () => {
 
   it('renvoie null pour une section vide', () => {
     expect(getSectionHomogeneousStatus({ engagements: [] })).toBeNull()
+  })
+})
+
+// ENG-UX-1 LOT F (mandat Vincent 2026-09-26) — synthèse dérivée UNIQUEMENT des
+// read-models LOT B/C, aucun nouveau calcul métier.
+function testMission(overrides: Partial<EngagementMission> & { missionId: string }): EngagementMission {
+  const input = {
+    active: true,
+    cadence: 'monthly' as const,
+    lastInterventionDate: null as string | null,
+    nextInterventionDate: null as string | null,
+    openAnomalyCount: 0,
+    assignedTeam: null,
+    ...overrides,
+  }
+  return {
+    missionId: overrides.missionId,
+    missionName: overrides.missionName ?? 'Mission',
+    cadence: input.cadence,
+    active: input.active,
+    assignedTeam: input.assignedTeam,
+    lastInterventionDate: input.lastInterventionDate,
+    nextInterventionDate: input.nextInterventionDate,
+    openAnomalyCount: input.openAnomalyCount,
+    health: buildMissionHealth(input, '2026-09-26'),
+  }
+}
+
+function testAction(overrides: Partial<EngagementAction> & { actionId: string }): EngagementAction {
+  return {
+    actionId: overrides.actionId,
+    title: overrides.title ?? 'Action',
+    status: overrides.status ?? 'open',
+    dueDate: overrides.dueDate ?? null,
+    active: overrides.active ?? true,
+  }
+}
+
+describe('computePlannedEngagementSynthesis — ENG-UX-1 LOT F', () => {
+  it('total compte tous les Engagements, y compris curated', () => {
+    const engagements = [
+      engagement({ id: 'a', status: 'curated' }),
+      engagement({ id: 'b', status: 'active' }),
+    ]
+    const result = computePlannedEngagementSynthesis(engagements, new Map(), new Map())
+    expect(result.total).toBe(2)
+    expect(result.withMission).toBe(0)
+    expect(result.withoutMission).toBe(1) // seul 'b' est actif ; 'a' (curated) n'est jamais compté
+    expect(result.needsPlanning).toBe(1)
+  })
+
+  it('un Engagement curated ne compte jamais dans withMission/withoutMission/needsPlanning', () => {
+    const engagements = [engagement({ id: 'a', status: 'curated' })]
+    const result = computePlannedEngagementSynthesis(engagements, new Map(), new Map())
+    expect(result.withMission).toBe(0)
+    expect(result.withoutMission).toBe(0)
+    expect(result.needsPlanning).toBe(0)
+  })
+
+  it('actif avec une Mission ayant une prochaine occurrence : withMission=1, needsPlanning=0', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', nextInterventionDate: '2026-10-01' })]]])
+    const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
+    expect(result.withMission).toBe(1)
+    expect(result.withoutMission).toBe(0)
+    expect(result.needsPlanning).toBe(0)
+  })
+
+  it('actif avec une Mission SANS prochaine occurrence : withMission=1 mais needsPlanning=1', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', nextInterventionDate: null })]]])
+    const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
+    expect(result.withMission).toBe(1)
+    expect(result.withoutMission).toBe(0)
+    expect(result.needsPlanning).toBe(1)
+  })
+
+  it('actif sans aucune Mission : withoutMission=1 et needsPlanning=1', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const result = computePlannedEngagementSynthesis(engagements, new Map(), new Map())
+    expect(result.withMission).toBe(0)
+    expect(result.withoutMission).toBe(1)
+    expect(result.needsPlanning).toBe(1)
+  })
+
+  it('plusieurs Missions, une seule avec prochaine occurrence : needsPlanning=0 (au moins une organisée)', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const missionsByEngagement = new Map([['a', [
+      testMission({ missionId: 'm1', nextInterventionDate: null }),
+      testMission({ missionId: 'm2', nextInterventionDate: '2026-11-01' }),
+    ]]])
+    const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
+    expect(result.needsPlanning).toBe(0)
+  })
+
+  it('actions ouvertes dédupliquées : une Action liée à 2 Engagements ne compte qu’une fois', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' }), engagement({ id: 'b', status: 'active' })]
+    const actionsByEngagement = new Map([
+      ['a', [testAction({ actionId: 'act-1' })]],
+      ['b', [testAction({ actionId: 'act-1' })]],
+    ])
+    const result = computePlannedEngagementSynthesis(engagements, new Map(), actionsByEngagement)
+    expect(result.openActionsCount).toBe(1)
+  })
+
+  it('une Action done (active=false) n’est jamais comptée dans openActionsCount', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const actionsByEngagement = new Map([['a', [testAction({ actionId: 'act-1', status: 'done', active: false })]]])
+    const result = computePlannedEngagementSynthesis(engagements, new Map(), actionsByEngagement)
+    expect(result.openActionsCount).toBe(0)
   })
 })

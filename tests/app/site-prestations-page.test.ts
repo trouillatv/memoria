@@ -40,8 +40,18 @@ vi.mock('@/lib/auth/site-write-access', () => ({
 }))
 
 const mockListPlannedEngagements = vi.fn(async (..._a: unknown[]) => [] as unknown[])
+// ENG-UX-1 LOT D — read-models Organisation/Actions (LOT B/C), non testés ici
+// (voir tests/lib/engagements.test.ts et tests/lib/db/site-action-engagement-links.test.ts) ;
+// map vide par défaut pour ne pas affecter les preuves déjà établies.
+const mockGetMissionsForEngagements = vi.fn(async (..._a: unknown[]) => new Map())
 vi.mock('@/lib/db/engagements', () => ({
   listPlannedEngagementsForSite: (...a: unknown[]) => mockListPlannedEngagements(...a),
+  getMissionsForEngagements: (...a: unknown[]) => mockGetMissionsForEngagements(...a),
+}))
+
+const mockGetActionsForEngagements = vi.fn(async (..._a: unknown[]) => new Map())
+vi.mock('@/lib/db/site-action-engagement-links', () => ({
+  getActionsForEngagements: (...a: unknown[]) => mockGetActionsForEngagements(...a),
 }))
 
 const mockFindPendingEngagementFinalization = vi.fn(async (..._a: unknown[]) => null as unknown)

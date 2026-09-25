@@ -18,6 +18,7 @@ import {
   findSimilarEngagements,
   getEvidenceForEngagement,
   getEvidenceForEngagements,
+  getMissionsForEngagements,
   listActiveEngagementsByContracts,
   listActiveEngagementsBySites,
   listEngagementsByIds,
@@ -650,6 +651,152 @@ describe('getEvidenceForEngagements (batch)', () => {
       expect(evidence.get(eng1)!.interventionsExecuted).toBe(0)
       expect(evidence.get(eng2)!.interventionsExecuted).toBe(0)
     } finally {
+      await cleanupTender(tenderId)
+    }
+  })
+})
+
+// ============================================================================
+// ENG-UX-1 LOT B — Missions organisant des Engagements (mandat Vincent 2026-09-26)
+// ============================================================================
+
+describe('getMissionsForEngagements (ENG-UX-1 LOT B)', () => {
+  it('returns empty map for empty input', async () => {
+    const m = await getMissionsForEngagements([])
+    expect(m.size).toBe(0)
+  })
+
+  it('engagement sans mission → absent de la map (jamais de ligne fabriquée)', async () => {
+    const { id: tenderId } = await ensureTenderExists('engux1-lotb-no-mission')
+    try {
+      const inserted = await bulkInsertEngagements({
+        tender_id: tenderId,
+        created_by: null,
+        engagements: [{
+          source_type: 'memoire_engagement',
+          source_excerpt: 'Engagement isolé sans mission pour test LOT B',
+          source_ref: null,
+          category: 'frequency',
+          short_label: 'Isolé LOT B',
+          measurable: true,
+          ai_confidence: 0.9,
+        }],
+      })
+      const map = await getMissionsForEngagements([inserted[0].id])
+      expect(map.has(inserted[0].id)).toBe(false)
+    } finally {
+      await cleanupTender(tenderId)
+    }
+  })
+
+  it('mission couvrant un Engagement → health dérivée via buildMissionHealth, jamais recalculée localement', { timeout: 20_000 }, async () => {
+    const { id: tenderId } = await ensureTenderExists('engux1-lotb-health')
+    const supabase = createAdminClient()
+    const admin = await getAdminFixture()
+    const { data: client } = await supabase.from('clients').select('id').limit(1).single()
+    let contractId: string | null = null
+
+    try {
+      const inserted = await bulkInsertEngagements({
+        tender_id: tenderId,
+        created_by: null,
+        engagements: [{
+          source_type: 'memoire_engagement',
+          source_excerpt: 'Engagement organisé par une mission pour test LOT B',
+          source_ref: null,
+          category: 'frequency',
+          short_label: 'Organisé LOT B',
+          measurable: true,
+          ai_confidence: 0.9,
+        }],
+      })
+      const engagementId = inserted[0].id
+
+      contractId = await createContract({
+        tender_id: tenderId,
+        name: 'Test contract LOT B',
+        client_name: 'Test client LOT B',
+        start_date: '2026-04-01',
+        created_by: null,
+      })
+      await activateEngagementsForContract(tenderId, contractId)
+
+      const siteId = await createSite({
+        client_id: client!.id,
+        contract_id: contractId,
+        name: 'Test site LOT B',
+      })
+      const missionId = await createMission({
+        site_id: siteId,
+        name: 'Mission LOT B',
+        cadence: 'weekly',
+        engagement_ids: [engagementId],
+        created_by: admin!.id,
+      })
+
+      const map = await getMissionsForEngagements([engagementId])
+      const missions = map.get(engagementId) ?? []
+      expect(missions).toHaveLength(1)
+      expect(missions[0].missionId).toBe(missionId)
+      expect(missions[0].active).toBe(true)
+      // Mission active, jamais exécutée, sans équipe → doctrine ENG-UX-1 : signal
+      // d'organisation, jamais un statut « Traité » ou grisé sur l'Engagement.
+      expect(missions[0].health.never).toBe(true)
+      expect(missions[0].health.sansEquipe).toBe(true)
+    } finally {
+      if (contractId) await cleanupSitesByContract(contractId)
+      await cleanupTender(tenderId)
+    }
+  })
+
+  it('une mission couvrant plusieurs Engagements apparaît sous chacun (multi-engagements non perdue)', { timeout: 20_000 }, async () => {
+    const { id: tenderId } = await ensureTenderExists('engux1-lotb-multi')
+    const supabase = createAdminClient()
+    const admin = await getAdminFixture()
+    const { data: client } = await supabase.from('clients').select('id').limit(1).single()
+    let contractId: string | null = null
+
+    try {
+      const inserted = await bulkInsertEngagements({
+        tender_id: tenderId,
+        created_by: null,
+        engagements: [
+          { source_type: 'memoire_engagement', source_excerpt: 'Multi A LOT B exemple', source_ref: null,
+            category: 'frequency', short_label: 'Multi A', measurable: true, ai_confidence: 0.9 },
+          { source_type: 'memoire_engagement', source_excerpt: 'Multi B LOT B exemple', source_ref: null,
+            category: 'frequency', short_label: 'Multi B', measurable: true, ai_confidence: 0.9 },
+        ],
+      })
+      const engA = inserted[0].id
+      const engB = inserted[1].id
+
+      contractId = await createContract({
+        tender_id: tenderId,
+        name: 'Test contract multi LOT B',
+        client_name: 'Test client multi LOT B',
+        start_date: '2026-04-01',
+        created_by: null,
+      })
+      await activateEngagementsForContract(tenderId, contractId)
+
+      const siteId = await createSite({
+        client_id: client!.id,
+        contract_id: contractId,
+        name: 'Test site multi LOT B',
+      })
+      const missionId = await createMission({
+        site_id: siteId,
+        name: 'Mission multi LOT B',
+        cadence: 'monthly',
+        engagement_ids: [engA, engB],
+        created_by: admin!.id,
+      })
+
+      const map = await getMissionsForEngagements([engA, engB])
+      expect((map.get(engA) ?? []).map((m) => m.missionId)).toEqual([missionId])
+      expect((map.get(engB) ?? []).map((m) => m.missionId)).toEqual([missionId])
+    } finally {
+      if (contractId) await cleanupSitesByContract(contractId)
       await cleanupTender(tenderId)
     }
   })

@@ -388,13 +388,17 @@ function useHighlightFormulationFromUrl() {
   }, [])
 }
 
-export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates, companies, reserveCountBySubject, deadlineCountBySubject }: {
+export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates, companies, reserveCountBySubject, deadlineCountBySubject, unattachedActions = [] }: {
   subjects: PilotageSubject[]
   siteId: string
   responsibleCandidates: ResponsibleCandidate[]
   companies: SiteCandidateCompany[]
   reserveCountBySubject: Record<string, number>
   deadlineCountBySubject: Record<string, number>
+  /** ENG-UX-1 LOT A — Actions ouvertes/planifiées sans canonical_subject_id (canonicalisation
+   *  asynchrone échouée ou ambiguë). Restituées telles quelles, hors hiérarchie SUJET, jamais
+   *  masquées : le résolveur reste best-effort, la visibilité utilisateur n'en dépend plus. */
+  unattachedActions?: PilotageCbo[]
 }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ActionsFilter>('all')
@@ -402,7 +406,7 @@ export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates,
   const visible = useMemo(() => filterPilotageSubjects(subjects, query, filter), [subjects, query, filter])
   useHighlightFormulationFromUrl()
 
-  if (subjects.length === 0) {
+  if (subjects.length === 0 && unattachedActions.length === 0) {
     return (
       <p className="rounded-xl border border-dashed bg-muted/20 p-6 text-center text-sm text-muted-foreground">
         Aucun sujet à piloter sur ce chantier.
@@ -412,6 +416,27 @@ export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates,
 
   return (
     <div className="space-y-3">
+      {/* ENG-UX-1 LOT A — Actions dont la canonicalisation reste en attente/ambiguë : jamais
+          fabriquer de sujet pour elles, jamais les faire disparaître. Hors recherche/filtre
+          sujet (périmètre distinct), toujours visibles quand la liste n'est pas vide. */}
+      {unattachedActions.length > 0 && (
+        <div className="rounded-xl border border-dashed p-3">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Actions sans sujet identifié — {unattachedActions.length}
+          </p>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Rattachement à un sujet en attente ou ambigu. Ces actions restent pilotables normalement.
+          </p>
+          <ul className="space-y-1.5">
+            {unattachedActions.map((c) => (
+              <CboRow key={c.cboId} cbo={c} siteId={siteId} responsibleCandidates={responsibleCandidates} companies={companies} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {subjects.length === 0 ? null : (
+      <>
       {/* ── Zone de contrôle : recherche + filtres déterministes (navigation, zéro vérité) ── */}
       <div className="space-y-2">
         <div className="relative">
@@ -535,6 +560,8 @@ export function ActionsPilotageClient({ subjects, siteId, responsibleCandidates,
         )
       })}
     </ul>
+      )}
+      </>
       )}
     </div>
   )

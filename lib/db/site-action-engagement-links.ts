@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSiteById } from '@/lib/db/sites'
 import { listActiveEngagementsByContracts, listActiveEngagementsBySites, listEngagementsByIds } from '@/lib/db/engagements'
-import type { DbEngagement, DbSiteActionEngagementLink, DbSiteActionEngagementLinkEvent, EngagementLinkQualification } from '@/types/db'
+import type { DbEngagement, DbSiteActionEngagementLink, DbSiteActionEngagementLinkEvent, EngagementLinkQualification, SiteActionStatus } from '@/types/db'
 
 // P0-4B — rapprochement humain Action ↔ Engagement (GO Vincent 2026-09-25).
 // « Engagement = ce qui doit être vrai. Action = quelque chose qu'il faut
@@ -34,6 +34,69 @@ export async function listCandidateEngagementsForSite(siteId: string): Promise<D
     byId.set(e.id, e)
   }
   return [...byId.values()]
+}
+
+// ============================================================================
+// ENG-UX-1 LOT C — Actions liées à des Engagements (mandat Vincent 2026-09-26)
+// ============================================================================
+
+export interface EngagementAction {
+  actionId: string
+  title: string
+  status: SiteActionStatus
+  dueDate: string | null
+  /** open/planned = charge encore à traiter ; done/cancelled = terminale. */
+  active: boolean
+}
+
+/**
+ * Actions liées à chacun des Engagements donnés, batché (un `.in()` sur les
+ * liens actifs, un `.in()` sur les site_actions, zéro N+1). Indépendant de
+ * `canonical_subject_id` : un lien Action↔Engagement (P0-4B) ne dépend jamais
+ * de la canonicalisation. Un lien retiré (removed_at) n'est jamais compté.
+ */
+export async function getActionsForEngagements(
+  engagementIds: string[]
+): Promise<Map<string, EngagementAction[]>> {
+  const result = new Map<string, EngagementAction[]>()
+  if (engagementIds.length === 0) return result
+
+  const supabase = createAdminClient()
+  const { data: linkRows, error } = await supabase
+    .from('site_action_engagement_links')
+    .select('site_action_id, engagement_id')
+    .in('engagement_id', engagementIds)
+    .is('removed_at', null)
+  if (error) throw error
+  const links = (linkRows ?? []) as Array<{ site_action_id: string; engagement_id: string }>
+  if (links.length === 0) return result
+
+  const actionIds = [...new Set(links.map((l) => l.site_action_id))]
+  const { data: actionRows, error: actionError } = await supabase
+    .from('site_actions')
+    .select('id, title, status, due_date')
+    .in('id', actionIds)
+  if (actionError) throw actionError
+  const actionById = new Map(
+    ((actionRows ?? []) as Array<{ id: string; title: string; status: SiteActionStatus; due_date: string | null }>).map((a) => [a.id, a])
+  )
+
+  for (const link of links) {
+    const action = actionById.get(link.site_action_id)
+    if (!action) continue
+    const entry: EngagementAction = {
+      actionId: action.id,
+      title: action.title,
+      status: action.status,
+      dueDate: action.due_date,
+      active: action.status === 'open' || action.status === 'planned',
+    }
+    const list = result.get(link.engagement_id) ?? []
+    list.push(entry)
+    result.set(link.engagement_id, list)
+  }
+
+  return result
 }
 
 export interface SiteActionEngagementLinkView {
