@@ -26,9 +26,11 @@ import {
   listEngagementLinksForAction,
   createSiteActionEngagementLink,
   removeSiteActionEngagementLink,
+  resolveActiveEngagementLinkOwner,
+  addEngagementLinkQualification,
   type SiteActionEngagementLinkView,
 } from '@/lib/db/site-action-engagement-links'
-import type { DbEngagement } from '@/types/db'
+import type { DbEngagement, EngagementLinkQualification } from '@/types/db'
 
 const IdSchema = z.string().uuid()
 const CommentSchema = z.string().trim().min(1, 'Un commentaire est requis').max(1000)
@@ -245,6 +247,56 @@ export async function removeEngagementLinkAction(
     linkId,
     siteActionId: actionId,
     organizationId: access.organizationId,
+    removedBy: access.userId,
+  })
+  if (!result.ok) return result
+  revalidateActionSurfaces(siteId)
+  return { ok: true }
+}
+
+// ── P0-4C — qualifier POURQUOI une Action est liée à un Engagement ─────────
+// Répond à « pourquoi ce lien ? », jamais à « est-ce respecté ? ». Le client
+// ne fournit que `linkId` : la vraie Action et l'organisation propriétaires
+// sont dérivées du lien lui-même côté serveur (M2C) — jamais d'un actionId ou
+// organizationId fourni par le client. Append-only : « Modifier » crée un
+// nouvel événement, jamais un UPDATE du précédent.
+
+const QUALIFICATIONS = ['demande_evolution', 'mise_en_oeuvre', 'ecart_a_examiner', 'clarification'] as const
+
+const QualifyEngagementLinkSchema = z.object({
+  linkId: z.string().uuid(),
+  qualification: z.enum(QUALIFICATIONS),
+  note: z.string().trim().max(1000).nullable(),
+  siteId: z.string().uuid().optional(),
+})
+
+export async function qualifyEngagementLinkAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = QualifyEngagementLinkSchema.safeParse({
+    linkId: formData.get('linkId'),
+    qualification: formData.get('qualification'),
+    note: ((formData.get('note') as string | null) ?? '') || null,
+    siteId: (formData.get('siteId') as string | null) || undefined,
+  })
+  if (!parsed.success) return { ok: false, error: 'Saisie invalide' }
+  const { linkId, qualification, note, siteId } = parsed.data
+
+  const owner = await resolveActiveEngagementLinkOwner(linkId)
+  if (!owner) return { ok: false, error: 'Accès refusé' }
+
+  const access = await requireSiteActionWriteAccess(owner.siteActionId, 'managerOrAdmin')
+  if (!access.ok) return access
+  if (access.organizationId !== owner.organizationId) {
+    return { ok: false, error: 'Accès refusé' }
+  }
+
+  const result = await addEngagementLinkQualification({
+    linkId,
+    qualification: qualification as EngagementLinkQualification,
+    note,
+    organizationId: access.organizationId,
+    createdBy: access.userId,
   })
   if (!result.ok) return result
   revalidateActionSurfaces(siteId)

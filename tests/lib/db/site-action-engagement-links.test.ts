@@ -31,8 +31,11 @@ vi.mock('@/lib/supabase/admin', () => ({
           eqCalls.push({ table, field, value })
           return builder
         },
+        is: () => builder,
+        in: () => builder,
         order: () => builder,
         insert: () => builder,
+        update: () => builder,
         delete: () => builder,
         maybeSingle: () => Promise.resolve(response),
         single: () => Promise.resolve(response),
@@ -59,6 +62,8 @@ import {
   listEngagementLinksForAction,
   createSiteActionEngagementLink,
   removeSiteActionEngagementLink,
+  resolveActiveEngagementLinkOwner,
+  addEngagementLinkQualification,
 } from '@/lib/db/site-action-engagement-links'
 import { getSiteById } from '@/lib/db/sites'
 import { listActiveEngagementsByContracts, listActiveEngagementsBySites, listEngagementsByIds } from '@/lib/db/engagements'
@@ -145,17 +150,34 @@ describe('listEngagementLinksForAction', () => {
     queue('site_action_engagement_links', {
       data: [{ id: 'link-1', site_action_id: 'action-1', engagement_id: 'eng-1', organization_id: 'org-1', site_id: 'site-1', created_by: 'user-1', created_at: '2026-01-01' }],
     })
+    queue('site_action_engagement_link_events', { data: [] })
     mockedByIds.mockResolvedValue([fakeEngagement({ id: 'eng-1', status: 'archived' })])
     const result = await listEngagementLinksForAction('action-1')
     expect(result).toHaveLength(1)
     expect(result[0].engagement.status).toBe('archived')
+    expect(result[0].currentQualification).toBeNull()
+    expect(result[0].qualificationHistory).toEqual([])
     expect(mockedByIds).toHaveBeenCalledWith(['eng-1'])
+  })
+
+  it('qualification courante = événement le plus récent, historique complet conservé', async () => {
+    queue('site_action_engagement_links', {
+      data: [{ id: 'link-1', site_action_id: 'action-1', engagement_id: 'eng-1', organization_id: 'org-1', site_id: 'site-1', created_by: 'user-1', created_at: '2026-01-01' }],
+    })
+    const eventOld = { id: 'ev-1', organization_id: 'org-1', link_id: 'link-1', qualification: 'demande_evolution', note: null, created_by: 'user-1', created_at: '2026-01-01' }
+    const eventNew = { id: 'ev-2', organization_id: 'org-1', link_id: 'link-1', qualification: 'clarification', note: 'précision', created_by: 'user-1', created_at: '2026-01-02' }
+    queue('site_action_engagement_link_events', { data: [eventOld, eventNew] })
+    mockedByIds.mockResolvedValue([fakeEngagement({ id: 'eng-1' })])
+    const result = await listEngagementLinksForAction('action-1')
+    expect(result[0].currentQualification).toEqual(eventNew)
+    expect(result[0].qualificationHistory).toEqual([eventOld, eventNew])
   })
 
   it('lien orphelin (engagement supprimé) est filtré silencieusement', async () => {
     queue('site_action_engagement_links', {
       data: [{ id: 'link-1', site_action_id: 'action-1', engagement_id: 'eng-gone', organization_id: 'org-1', site_id: 'site-1', created_by: null, created_at: '2026-01-01' }],
     })
+    queue('site_action_engagement_link_events', { data: [] })
     mockedByIds.mockResolvedValue([])
     const result = await listEngagementLinksForAction('action-1')
     expect(result).toEqual([])
@@ -280,15 +302,15 @@ describe('createSiteActionEngagementLink', () => {
 })
 
 describe('removeSiteActionEngagementLink', () => {
-  it('retrait réussi', async () => {
+  it('retrait réussi (fermeture logique, pas de DELETE physique)', async () => {
     queue('site_action_engagement_links', { data: { id: 'link-1' } })
-    const result = await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1' })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1', removedBy: 'user-1' })
     expect(result).toEqual({ ok: true })
   })
 
-  it('filtre la suppression par id + site_action_id + organization_id', async () => {
+  it('filtre la fermeture par id + site_action_id + organization_id', async () => {
     queue('site_action_engagement_links', { data: { id: 'link-1' } })
-    await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1' })
+    await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1', removedBy: 'user-1' })
     expect(eqCalls).toEqual([
       { table: 'site_action_engagement_links', field: 'id', value: 'link-1' },
       { table: 'site_action_engagement_links', field: 'site_action_id', value: 'action-1' },
@@ -298,7 +320,15 @@ describe('removeSiteActionEngagementLink', () => {
 
   it('lien introuvable ou hors organisation → refus', async () => {
     queue('site_action_engagement_links', { data: null })
-    const result = await removeSiteActionEngagementLink({ linkId: 'link-x', siteActionId: 'action-1', organizationId: 'org-1' })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-x', siteActionId: 'action-1', organizationId: 'org-1', removedBy: 'user-1' })
+    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+  })
+
+  it('lien déjà retiré (removed_at non null) → refus, ré-attachement futur reste possible via un nouveau lien', async () => {
+    // Le filtre .is('removed_at', null) exclut ce lien côté Postgres ; simulé
+    // ici par data: null comme le ferait la requête réelle.
+    queue('site_action_engagement_links', { data: null })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-already-removed', siteActionId: 'action-1', organizationId: 'org-1', removedBy: 'user-1' })
     expect(result).toEqual({ ok: false, error: 'Accès refusé' })
   })
 
@@ -307,14 +337,80 @@ describe('removeSiteActionEngagementLink', () => {
     // site_action_id = "action-A" ne le trouve pas (simulé ici par data: null,
     // comme le ferait Postgres avec l'AND supplémentaire).
     queue('site_action_engagement_links', { data: null })
-    const result = await removeSiteActionEngagementLink({ linkId: 'link-of-action-b', siteActionId: 'action-a', organizationId: 'org-1' })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-of-action-b', siteActionId: 'action-a', organizationId: 'org-1', removedBy: 'user-1' })
     expect(result).toEqual({ ok: false, error: 'Accès refusé' })
     expect(eqCalls).toContainEqual({ table: 'site_action_engagement_links', field: 'site_action_id', value: 'action-a' })
   })
 
   it('erreur Supabase → message générique', async () => {
     queue('site_action_engagement_links', { data: null, error: new Error('db down') })
-    const result = await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1' })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1', removedBy: 'user-1' })
     expect(result).toEqual({ ok: false, error: 'Échec du retrait' })
+  })
+})
+
+describe('resolveActiveEngagementLinkOwner', () => {
+  it('lien actif → renvoie site_action_id + organization_id', async () => {
+    queue('site_action_engagement_links', { data: { site_action_id: 'action-1', organization_id: 'org-1' } })
+    const result = await resolveActiveEngagementLinkOwner('link-1')
+    expect(result).toEqual({ siteActionId: 'action-1', organizationId: 'org-1' })
+  })
+
+  it('lien inexistant ou retiré (removed_at non null) → null', async () => {
+    queue('site_action_engagement_links', { data: null })
+    const result = await resolveActiveEngagementLinkOwner('link-x')
+    expect(result).toBeNull()
+  })
+})
+
+describe('addEngagementLinkQualification', () => {
+  it('lien actif de la bonne organisation → insère un événement, createdBy = paramètre serveur', async () => {
+    queue('site_action_engagement_links', { data: { id: 'link-1' } })
+    queue('site_action_engagement_link_events', { data: null })
+    const result = await addEngagementLinkQualification({
+      linkId: 'link-1',
+      qualification: 'demande_evolution',
+      note: 'Demande formulée par le client lors de la visite.',
+      organizationId: 'org-1',
+      createdBy: 'user-1',
+    })
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('lien introuvable, retiré, ou d’une autre organisation → refus, aucun insert', async () => {
+    queue('site_action_engagement_links', { data: null })
+    const result = await addEngagementLinkQualification({
+      linkId: 'link-x',
+      qualification: 'clarification',
+      note: null,
+      organizationId: 'org-1',
+      createdBy: 'user-1',
+    })
+    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+    expect(responses['site_action_engagement_link_events']).toBeUndefined()
+  })
+
+  it('erreur Supabase à l’insertion → message générique', async () => {
+    queue('site_action_engagement_links', { data: { id: 'link-1' } })
+    queue('site_action_engagement_link_events', { data: null, error: new Error('insert failed') })
+    const result = await addEngagementLinkQualification({
+      linkId: 'link-1',
+      qualification: 'mise_en_oeuvre',
+      note: null,
+      organizationId: 'org-1',
+      createdBy: 'user-1',
+    })
+    expect(result).toEqual({ ok: false, error: 'Échec de l\'enregistrement' })
+  })
+
+  it('deuxième qualification n’écrase pas la première (append-only, deux inserts distincts)', async () => {
+    queue('site_action_engagement_links', { data: { id: 'link-1' } })
+    queue('site_action_engagement_link_events', { data: null })
+    await addEngagementLinkQualification({ linkId: 'link-1', qualification: 'demande_evolution', note: null, organizationId: 'org-1', createdBy: 'user-1' })
+
+    queue('site_action_engagement_links', { data: { id: 'link-1' } })
+    queue('site_action_engagement_link_events', { data: null })
+    const second = await addEngagementLinkQualification({ linkId: 'link-1', qualification: 'clarification', note: null, organizationId: 'org-1', createdBy: 'user-1' })
+    expect(second).toEqual({ ok: true })
   })
 })

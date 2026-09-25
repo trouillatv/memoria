@@ -335,6 +335,28 @@ export interface DbSiteActionEngagementLink {
   engagement_id: string
   created_by: string | null
   created_at: string
+  /** P0-4C (mig 440) — fermeture logique du rapprochement, jamais de DELETE. */
+  removed_at: string | null
+  removed_by: string | null
+}
+
+// P0-4C (mig 440) — qualification humaine append-only du lien Action↔Engagement.
+// Répond à « pourquoi ce lien ? », jamais à « est-ce conforme ? ». Ne jamais
+// étendre avec conforme/non_conforme/ecart_confirme sans nouveau GO.
+export type EngagementLinkQualification =
+  | 'demande_evolution'
+  | 'mise_en_oeuvre'
+  | 'ecart_a_examiner'
+  | 'clarification'
+
+export interface DbSiteActionEngagementLinkEvent {
+  id: string
+  organization_id: string
+  link_id: string
+  qualification: EngagementLinkQualification
+  note: string | null
+  created_by: string | null
+  created_at: string
 }
 
 // Compliance helpers (computed view-side, not persisted)

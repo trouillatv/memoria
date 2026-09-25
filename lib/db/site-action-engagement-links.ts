@@ -1,12 +1,16 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getSiteById } from '@/lib/db/sites'
 import { listActiveEngagementsByContracts, listActiveEngagementsBySites, listEngagementsByIds } from '@/lib/db/engagements'
-import type { DbEngagement, DbSiteActionEngagementLink } from '@/types/db'
+import type { DbEngagement, DbSiteActionEngagementLink, DbSiteActionEngagementLinkEvent, EngagementLinkQualification } from '@/types/db'
 
 // P0-4B — rapprochement humain Action ↔ Engagement (GO Vincent 2026-09-25).
 // « Engagement = ce qui doit être vrai. Action = quelque chose qu'il faut
 // traiter. » Ce module ne fait QUE ce lien déclaratif : jamais de conformité,
 // d'écart, ni de mutation de l'Engagement ou de l'Action elle-même.
+//
+// P0-4C (mig 440) — qualification humaine append-only du POURQUOI de ce lien.
+// Le retrait d'un lien est désormais une fermeture logique (removed_at) : une
+// qualification passée doit survivre au retrait du rapprochement.
 
 /**
  * Engagements candidats pour un rattachement MANUEL depuis un chantier :
@@ -35,11 +39,35 @@ export async function listCandidateEngagementsForSite(siteId: string): Promise<D
 export interface SiteActionEngagementLinkView {
   link: DbSiteActionEngagementLink
   engagement: DbEngagement
+  /** Événement de qualification le plus récent, ou null = « Non qualifié » (état valide). */
+  currentQualification: DbSiteActionEngagementLinkEvent | null
+  /** Historique complet, ordre chronologique croissant. Jamais de correction en place. */
+  qualificationHistory: DbSiteActionEngagementLinkEvent[]
+}
+
+async function listQualificationEventsForLinks(linkIds: string[]): Promise<Map<string, DbSiteActionEngagementLinkEvent[]>> {
+  const byLink = new Map<string, DbSiteActionEngagementLinkEvent[]>()
+  if (linkIds.length === 0) return byLink
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_action_engagement_link_events')
+    .select('*')
+    .in('link_id', linkIds)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  for (const row of (data ?? []) as DbSiteActionEngagementLinkEvent[]) {
+    const arr = byLink.get(row.link_id) ?? []
+    arr.push(row)
+    byLink.set(row.link_id, arr)
+  }
+  return byLink
 }
 
 /**
- * Engagements déjà rapprochés d'une Action, quel que soit leur statut actuel
- * (préservation historique — cf. listEngagementsByIds).
+ * Rapprochements ACTIFS d'une Action (removed_at IS NULL), quel que soit le
+ * statut actuel de l'Engagement (préservation historique — cf.
+ * listEngagementsByIds). Chaque vue porte sa qualification courante et son
+ * historique complet.
  */
 export async function listEngagementLinksForAction(siteActionId: string): Promise<SiteActionEngagementLinkView[]> {
   const supabase = createAdminClient()
@@ -47,16 +75,23 @@ export async function listEngagementLinksForAction(siteActionId: string): Promis
     .from('site_action_engagement_links')
     .select('*')
     .eq('site_action_id', siteActionId)
+    .is('removed_at', null)
     .order('created_at', { ascending: true })
   if (error) throw error
   const rows = (links ?? []) as DbSiteActionEngagementLink[]
   if (rows.length === 0) return []
-  const engagements = await listEngagementsByIds(rows.map((r) => r.engagement_id))
+  const [engagements, eventsByLink] = await Promise.all([
+    listEngagementsByIds(rows.map((r) => r.engagement_id)),
+    listQualificationEventsForLinks(rows.map((r) => r.id)),
+  ])
   const engagementById = new Map(engagements.map((e) => [e.id, e]))
   return rows
     .map((link) => {
       const engagement = engagementById.get(link.engagement_id)
-      return engagement ? { link, engagement } : null
+      if (!engagement) return null
+      const history = eventsByLink.get(link.id) ?? []
+      const currentQualification = history.length > 0 ? history[history.length - 1] : null
+      return { link, engagement, currentQualification, qualificationHistory: history }
     })
     .filter((v): v is SiteActionEngagementLinkView => v !== null)
 }
@@ -114,6 +149,7 @@ export async function createSiteActionEngagementLink(input: {
     .select('id')
     .eq('site_action_id', input.siteActionId)
     .eq('engagement_id', input.engagementId)
+    .is('removed_at', null)
     .maybeSingle()
   if (existing) return { ok: true, id: existing.id as string }
 
@@ -132,25 +168,90 @@ export async function createSiteActionEngagementLink(input: {
   return { ok: true, id: inserted.id as string }
 }
 
-/** Retire le rapprochement — n'a AUCUN effet sur l'Action ou l'Engagement eux-mêmes. */
+/**
+ * Retire le rapprochement — n'a AUCUN effet sur l'Action ou l'Engagement
+ * eux-mêmes. P0-4C : fermeture LOGIQUE (removed_at/removed_by), jamais un
+ * DELETE — une qualification passée doit survivre au retrait.
+ */
 export async function removeSiteActionEngagementLink(input: {
   linkId: string
   siteActionId: string
   organizationId: string
+  removedBy: string | null
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = createAdminClient()
   // La racine d'autorisation (M2C) est l'Action : le lien retiré doit être
   // exactement celui de cette Action, jamais un lien d'une autre Action de
-  // la même organisation.
+  // la même organisation. Seul un lien encore actif peut être retiré.
   const { data, error } = await supabase
     .from('site_action_engagement_links')
-    .delete()
+    .update({ removed_at: new Date().toISOString(), removed_by: input.removedBy })
     .eq('id', input.linkId)
     .eq('site_action_id', input.siteActionId)
     .eq('organization_id', input.organizationId)
+    .is('removed_at', null)
     .select('id')
     .maybeSingle()
   if (error) return { ok: false, error: 'Échec du retrait' }
   if (!data) return { ok: false, error: 'Accès refusé' }
+  return { ok: true }
+}
+
+export interface EngagementLinkOwner {
+  siteActionId: string
+  organizationId: string
+}
+
+/**
+ * Résout la vraie Action et organisation propriétaires d'un lien ACTIF, pour
+ * dériver l'autorité d'écriture (M2C) côté serveur — jamais depuis un
+ * actionId fourni par le client. Un lien retiré n'est plus qualifiable.
+ */
+export async function resolveActiveEngagementLinkOwner(linkId: string): Promise<EngagementLinkOwner | null> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('site_action_engagement_links')
+    .select('site_action_id, organization_id')
+    .eq('id', linkId)
+    .is('removed_at', null)
+    .maybeSingle()
+  if (!data) return null
+  return { siteActionId: data.site_action_id as string, organizationId: data.organization_id as string }
+}
+
+/**
+ * Ajoute un événement de qualification — APPEND-ONLY, jamais un UPDATE d'un
+ * événement précédent. Ne répond qu'à « pourquoi ce lien ? », jamais à
+ * « est-ce conforme ? ». Revalide côté serveur que le lien est actif et
+ * appartient bien à `organizationId` (défense en profondeur, indépendante de
+ * la résolution faite par l'appelant).
+ */
+export async function addEngagementLinkQualification(input: {
+  linkId: string
+  qualification: EngagementLinkQualification
+  note: string | null
+  organizationId: string
+  createdBy: string | null
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const supabase = createAdminClient()
+  const { data: link } = await supabase
+    .from('site_action_engagement_links')
+    .select('id')
+    .eq('id', input.linkId)
+    .eq('organization_id', input.organizationId)
+    .is('removed_at', null)
+    .maybeSingle()
+  if (!link) return { ok: false, error: 'Accès refusé' }
+
+  const { error } = await supabase
+    .from('site_action_engagement_link_events')
+    .insert({
+      organization_id: input.organizationId,
+      link_id: input.linkId,
+      qualification: input.qualification,
+      note: input.note,
+      created_by: input.createdBy,
+    })
+  if (error) return { ok: false, error: 'Échec de l\'enregistrement' }
   return { ok: true }
 }

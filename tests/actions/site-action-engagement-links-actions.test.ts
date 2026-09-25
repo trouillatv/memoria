@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   listEngagementLinksForAction: vi.fn(),
   createSiteActionEngagementLink: vi.fn(),
   removeSiteActionEngagementLink: vi.fn(),
+  resolveActiveEngagementLinkOwner: vi.fn(),
+  addEngagementLinkQualification: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
@@ -25,6 +27,8 @@ vi.mock('@/lib/db/site-action-engagement-links', () => ({
   listEngagementLinksForAction: mocks.listEngagementLinksForAction,
   createSiteActionEngagementLink: mocks.createSiteActionEngagementLink,
   removeSiteActionEngagementLink: mocks.removeSiteActionEngagementLink,
+  resolveActiveEngagementLinkOwner: mocks.resolveActiveEngagementLinkOwner,
+  addEngagementLinkQualification: mocks.addEngagementLinkQualification,
 }))
 
 import {
@@ -32,6 +36,7 @@ import {
   listEngagementLinksForActionAction,
   createEngagementLinkAction,
   removeEngagementLinkAction,
+  qualifyEngagementLinkAction,
 } from '@/app/(dashboard)/actions/actions'
 
 const siteId = '11111111-1111-4111-8111-111111111111'
@@ -49,6 +54,8 @@ beforeEach(() => {
   mocks.requireSiteActionWriteAccess.mockResolvedValue(accessOk())
   mocks.createSiteActionEngagementLink.mockResolvedValue({ ok: true, id: 'link-99' })
   mocks.removeSiteActionEngagementLink.mockResolvedValue({ ok: true })
+  mocks.resolveActiveEngagementLinkOwner.mockResolvedValue({ siteActionId: actionId, organizationId: 'org-1' })
+  mocks.addEngagementLinkQualification.mockResolvedValue({ ok: true })
 })
 
 describe('listCandidateEngagementsForActionAction', () => {
@@ -179,6 +186,7 @@ describe('removeEngagementLinkAction', () => {
       linkId,
       siteActionId: actionId,
       organizationId: 'org-1',
+      removedBy: 'user-1',
     })
     expect(result).toEqual({ ok: true })
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/sites/${siteId}`)
@@ -191,8 +199,108 @@ describe('removeEngagementLinkAction', () => {
       linkId,
       siteActionId: actionId,
       organizationId: 'org-1',
+      removedBy: 'user-1',
     })
     expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('qualifyEngagementLinkAction', () => {
+  function qualifyFormData(overrides: Record<string, string> = {}) {
+    const fd = new FormData()
+    fd.set('linkId', linkId)
+    fd.set('qualification', 'demande_evolution')
+    fd.set('siteId', siteId)
+    for (const [k, v] of Object.entries(overrides)) fd.set(k, v)
+    return fd
+  }
+
+  it('saisie invalide (qualification hors des 4 valeurs V1) → refuse sans résoudre le lien', async () => {
+    const result = await qualifyEngagementLinkAction(qualifyFormData({ qualification: 'conforme' }))
+    expect(result).toEqual({ ok: false, error: 'Saisie invalide' })
+    expect(mocks.resolveActiveEngagementLinkOwner).not.toHaveBeenCalled()
+  })
+
+  it('linkId inexistant → refus uniforme sans appeler la frontière M2C', async () => {
+    mocks.resolveActiveEngagementLinkOwner.mockResolvedValue(null)
+    const result = await qualifyEngagementLinkAction(qualifyFormData())
+    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+    expect(mocks.requireSiteActionWriteAccess).not.toHaveBeenCalled()
+    expect(mocks.addEngagementLinkQualification).not.toHaveBeenCalled()
+  })
+
+  it('lien retiré (removed_at non null) → resolveActiveEngagementLinkOwner retourne null → refus', async () => {
+    mocks.resolveActiveEngagementLinkOwner.mockResolvedValue(null)
+    const result = await qualifyEngagementLinkAction(qualifyFormData())
+    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+  })
+
+  it('dérive site_action_id DU LIEN, jamais d’un actionId fourni par le client', async () => {
+    await qualifyEngagementLinkAction(qualifyFormData())
+    expect(mocks.resolveActiveEngagementLinkOwner).toHaveBeenCalledWith(linkId)
+    expect(mocks.requireSiteActionWriteAccess).toHaveBeenCalledWith(actionId, 'managerOrAdmin')
+  })
+
+  it('accès refusé (chef_equipe) → aucune écriture', async () => {
+    mocks.requireSiteActionWriteAccess.mockResolvedValue({ ok: false, error: 'Accès refusé' })
+    const result = await qualifyEngagementLinkAction(qualifyFormData())
+    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+    expect(mocks.addEngagementLinkQualification).not.toHaveBeenCalled()
+  })
+
+  it('accès autorisé (admin) → autorisé', async () => {
+    mocks.requireSiteActionWriteAccess.mockResolvedValue(accessOk('admin'))
+    const result = await qualifyEngagementLinkAction(qualifyFormData())
+    expect(result).toEqual({ ok: true })
+  })
+
+  it('lien d’une autre organisation que l’accès résolu → refus même si requireSiteActionWriteAccess réussit', async () => {
+    mocks.resolveActiveEngagementLinkOwner.mockResolvedValue({ siteActionId: actionId, organizationId: 'org-2' })
+    const result = await qualifyEngagementLinkAction(qualifyFormData())
+    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+    expect(mocks.addEngagementLinkQualification).not.toHaveBeenCalled()
+  })
+
+  it('écrit avec createdBy = userId authentifié, jamais un champ client', async () => {
+    await qualifyEngagementLinkAction(qualifyFormData({ qualification: 'clarification' }))
+    expect(mocks.addEngagementLinkQualification).toHaveBeenCalledWith({
+      linkId,
+      qualification: 'clarification',
+      note: null,
+      organizationId: 'org-1',
+      createdBy: 'user-1',
+    })
+  })
+
+  it('accepte les 4 qualifications V1', async () => {
+    for (const q of ['demande_evolution', 'mise_en_oeuvre', 'ecart_a_examiner', 'clarification']) {
+      mocks.addEngagementLinkQualification.mockClear()
+      const result = await qualifyEngagementLinkAction(qualifyFormData({ qualification: q }))
+      expect(result).toEqual({ ok: true })
+      expect(mocks.addEngagementLinkQualification).toHaveBeenCalledWith(
+        expect.objectContaining({ qualification: q }),
+      )
+    }
+  })
+
+  it('note optionnelle transmise telle quelle', async () => {
+    await qualifyEngagementLinkAction(qualifyFormData({ note: 'Demande formulée par le client lors de la visite.' }))
+    expect(mocks.addEngagementLinkQualification).toHaveBeenCalledWith(
+      expect.objectContaining({ note: 'Demande formulée par le client lors de la visite.' }),
+    )
+  })
+
+  it('succès : revalide les surfaces Action', async () => {
+    await qualifyEngagementLinkAction(qualifyFormData())
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/actions')
+    expect(mocks.revalidatePath).toHaveBeenCalledWith(`/sites/${siteId}`)
+  })
+
+  it('le DB helper refuse → propage l’erreur sans revalider', async () => {
+    mocks.addEngagementLinkQualification.mockResolvedValue({ ok: false, error: 'Échec de l\'enregistrement' })
+    const result = await qualifyEngagementLinkAction(qualifyFormData())
+    expect(result).toEqual({ ok: false, error: 'Échec de l\'enregistrement' })
     expect(mocks.revalidatePath).not.toHaveBeenCalled()
   })
 })
