@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { PlannedEngagementCard } from '@/components/engagements/PlannedEngagementCard'
 import type { EngagementMission, PlannedEngagement } from '@/lib/db/engagements'
+import type { EngagementAction } from '@/lib/db/site-action-engagement-links'
 import { buildMissionHealth } from '@/lib/missions/mission-health'
 
 function engagement(overrides: Partial<PlannedEngagement> = {}): PlannedEngagement {
@@ -205,5 +206,121 @@ describe('PlannedEngagementCard — liens par Mission (ENG-UX-1 LOT E)', () => {
       missions: [mission({ missionId: 'mission-9', nextInterventionDate: null })],
     })
     expect(containsLinkWithText(tree, '/missions/mission-9', 'Planifier la prochaine intervention')).toBe(false)
+  })
+})
+
+// ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Mission inactive est de
+// l'historique : elle reste visible en compact mais n'organise plus rien.
+describe('PlannedEngagementCard — Mission inactive (ENG-UX-1 MICRO-FIX)', () => {
+  it('Mission inactive seule : le CTA « Créer une mission » réapparaît (l’inactive n’organise pas l’Engagement)', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      canPlan: true,
+      missions: [mission({ missionId: 'mission-old', active: false })],
+    })
+    expect(containsLinkWithText(tree, '/sites/site-1/missions/new?engagement=eng-42', 'Créer une mission')).toBe(true)
+  })
+
+  it('Mission inactive : « Planifier la prochaine intervention » reste absent même sans prochaine occurrence connue', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      canPlan: true,
+      missions: [mission({ missionId: 'mission-old', active: false, nextInterventionDate: null })],
+    })
+    expect(containsLinkWithText(tree, '/missions/mission-old', 'Planifier la prochaine intervention')).toBe(false)
+  })
+
+  it('Mission inactive : « Voir la mission » reste présent (historique visible, compact)', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      missions: [mission({ missionId: 'mission-old', active: false })],
+    })
+    expect(containsLinkWithText(tree, '/missions/mission-old', 'Voir la mission')).toBe(true)
+  })
+
+  it('Mission inactive + Mission active : le CTA « Créer une mission » reste absent (une organisation actuelle existe déjà)', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      canPlan: true,
+      missions: [mission({ missionId: 'mission-old', active: false }), mission({ missionId: 'mission-new', active: true })],
+    })
+    expect(containsLinkWithText(tree, '/sites/site-1/missions/new?engagement=eng-42', 'Créer une mission')).toBe(false)
+  })
+})
+
+// ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Action terminée ne doit
+// jamais disparaître complètement de la carte Engagement.
+function engagementAction(overrides: Partial<EngagementAction> & { actionId: string }): EngagementAction {
+  return {
+    actionId: overrides.actionId,
+    title: overrides.title ?? 'Action',
+    status: overrides.status ?? 'open',
+    dueDate: overrides.dueDate ?? null,
+    active: overrides.active ?? true,
+    currentQualification: overrides.currentQualification ?? null,
+  }
+}
+
+describe('PlannedEngagementCard — trace des Actions terminées (ENG-UX-1 MICRO-FIX)', () => {
+  it('1 ouverte + 2 terminées : « Actions / 1 ouverte · 2 terminées »', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      actions: [
+        engagementAction({ actionId: 'a1', active: true }),
+        engagementAction({ actionId: 'a2', active: false, status: 'done' }),
+        engagementAction({ actionId: 'a3', active: false, status: 'cancelled' }),
+      ],
+    })
+    expect(containsLinkWithText(tree, '/sites/site-1/actions', 'Actions / 1 ouverte · 2 terminées')).toBe(true)
+  })
+
+  it('1 Action ouverte avec qualification connue : la qualification remplace le compte brut', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      actions: [engagementAction({ actionId: 'a1', active: true, currentQualification: 'demande_evolution' })],
+    })
+    expect(containsLinkWithText(tree, '/sites/site-1/actions', "Actions / 1 ouverte · Demande d'évolution")).toBe(true)
+  })
+
+  it('toutes les Actions terminées (aucune ouverte) : la trace reste visible, jamais disparue', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      actions: [engagementAction({ actionId: 'a1', active: false, status: 'done' })],
+    })
+    expect(containsLinkWithText(tree, '/sites/site-1/actions', '✓ 1 action terminée')).toBe(true)
+  })
+
+  it('aucune Action liée : aucune trace affichée', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      actions: [],
+    })
+    expect(containsLinkWithText(tree, '/sites/site-1/actions', 'Actions /')).toBe(false)
+  })
+
+  it('même avec toutes les Actions terminées, l’Engagement n’est jamais labellisé « Traité »', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      actions: [engagementAction({ actionId: 'a1', active: false, status: 'done' })],
+    })
+    expect(textInChildren(tree, 'Traité')).toBe(false)
   })
 })

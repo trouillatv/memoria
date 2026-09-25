@@ -206,6 +206,7 @@ function testAction(overrides: Partial<EngagementAction> & { actionId: string })
     status: overrides.status ?? 'open',
     dueDate: overrides.dueDate ?? null,
     active: overrides.active ?? true,
+    currentQualification: overrides.currentQualification ?? null,
   }
 }
 
@@ -281,5 +282,28 @@ describe('computePlannedEngagementSynthesis — ENG-UX-1 LOT F', () => {
     const actionsByEngagement = new Map([['a', [testAction({ actionId: 'act-1', status: 'done', active: false })]]])
     const result = computePlannedEngagementSynthesis(engagements, new Map(), actionsByEngagement)
     expect(result.openActionsCount).toBe(0)
+  })
+
+  // ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Mission inactive est
+  // de l'historique, jamais une organisation actuelle.
+  it('actif avec une seule Mission INACTIVE : withoutMission=1 et needsPlanning=1 (l’inactive ignorée)', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', active: false, nextInterventionDate: '2026-10-01' })]]])
+    const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
+    expect(result.withMission).toBe(0)
+    expect(result.withoutMission).toBe(1)
+    expect(result.needsPlanning).toBe(1)
+  })
+
+  it('Mission inactive + Mission active organisée : withMission=1, needsPlanning=0 (l’inactive n’en bloque pas la comptabilisation)', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const missionsByEngagement = new Map([['a', [
+      testMission({ missionId: 'm1', active: false, nextInterventionDate: null }),
+      testMission({ missionId: 'm2', active: true, nextInterventionDate: '2026-11-01' }),
+    ]]])
+    const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
+    expect(result.withMission).toBe(1)
+    expect(result.withoutMission).toBe(0)
+    expect(result.needsPlanning).toBe(0)
   })
 })

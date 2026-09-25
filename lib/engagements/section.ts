@@ -138,7 +138,10 @@ export function computePlannedEngagementSynthesis(
   let needsPlanning = 0
   for (const e of engagements) {
     if (e.status !== 'active') continue
-    const missions = missionsByEngagement.get(e.id) ?? []
+    // ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Mission inactive
+    // n'organise pas l'Engagement : elle ne doit ni compter comme prise en
+    // charge actuelle, ni éviter le compteur "à planifier".
+    const missions = (missionsByEngagement.get(e.id) ?? []).filter((m) => m.active)
     if (missions.length > 0) withMission++
     else withoutMission++
     const hasUpcoming = missions.some((m) => !!m.nextInterventionDate)

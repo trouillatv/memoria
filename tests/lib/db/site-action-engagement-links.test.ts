@@ -363,17 +363,29 @@ describe('getActionsForEngagements — ENG-UX-1 LOT C (indépendant de canonical
   })
 
   it('lien actif joint à site_actions, groupé par engagement_id', async () => {
-    queue('site_action_engagement_links', { data: [{ site_action_id: 'action-1', engagement_id: 'eng-1' }] })
+    queue('site_action_engagement_links', { data: [{ id: 'link-1', site_action_id: 'action-1', engagement_id: 'eng-1' }] })
     queue('site_actions', { data: [{ id: 'action-1', title: 'Traiter le point', status: 'open', due_date: null }] })
+    queue('site_action_engagement_link_events', { data: [] })
     const result = await getActionsForEngagements(['eng-1'])
-    expect(result.get('eng-1')).toEqual([{ actionId: 'action-1', title: 'Traiter le point', status: 'open', dueDate: null, active: true }])
+    expect(result.get('eng-1')).toEqual([{ actionId: 'action-1', title: 'Traiter le point', status: 'open', dueDate: null, active: true, currentQualification: null }])
   })
 
   it('Action done → présente mais active=false (terminale, pas une charge à piloter)', async () => {
-    queue('site_action_engagement_links', { data: [{ site_action_id: 'action-1', engagement_id: 'eng-1' }] })
+    queue('site_action_engagement_links', { data: [{ id: 'link-1', site_action_id: 'action-1', engagement_id: 'eng-1' }] })
     queue('site_actions', { data: [{ id: 'action-1', title: 'Fait', status: 'done', due_date: null }] })
+    queue('site_action_engagement_link_events', { data: [] })
     const result = await getActionsForEngagements(['eng-1'])
     expect(result.get('eng-1')?.[0].active).toBe(false)
+  })
+
+  it('qualification courante = dernier événement du lien (P0-4C, ENG-UX-1 MICRO-FIX)', async () => {
+    queue('site_action_engagement_links', { data: [{ id: 'link-1', site_action_id: 'action-1', engagement_id: 'eng-1' }] })
+    queue('site_actions', { data: [{ id: 'action-1', title: 'Traiter le point', status: 'open', due_date: null }] })
+    const eventOld = { id: 'ev-1', organization_id: 'org-1', link_id: 'link-1', qualification: 'demande_evolution', note: null, created_by: 'user-1', created_at: '2026-01-01' }
+    const eventNew = { id: 'ev-2', organization_id: 'org-1', link_id: 'link-1', qualification: 'clarification', note: null, created_by: 'user-1', created_at: '2026-01-02' }
+    queue('site_action_engagement_link_events', { data: [eventOld, eventNew] })
+    const result = await getActionsForEngagements(['eng-1'])
+    expect(result.get('eng-1')?.[0].currentQualification).toBe('clarification')
   })
 
   it('lien retiré (removed_at non null) jamais compté — filtré côté requête (.is(removed_at, null))', async () => {
@@ -387,19 +399,21 @@ describe('getActionsForEngagements — ENG-UX-1 LOT C (indépendant de canonical
   it('une Action liée à plusieurs Engagements apparaît sous chacun', async () => {
     queue('site_action_engagement_links', {
       data: [
-        { site_action_id: 'action-1', engagement_id: 'eng-a' },
-        { site_action_id: 'action-1', engagement_id: 'eng-b' },
+        { id: 'link-a', site_action_id: 'action-1', engagement_id: 'eng-a' },
+        { id: 'link-b', site_action_id: 'action-1', engagement_id: 'eng-b' },
       ],
     })
     queue('site_actions', { data: [{ id: 'action-1', title: 'Partagée', status: 'open', due_date: null }] })
+    queue('site_action_engagement_link_events', { data: [] })
     const result = await getActionsForEngagements(['eng-a', 'eng-b'])
     expect(result.get('eng-a')?.[0].actionId).toBe('action-1')
     expect(result.get('eng-b')?.[0].actionId).toBe('action-1')
   })
 
   it('lien orphelin (Action introuvable) filtré silencieusement', async () => {
-    queue('site_action_engagement_links', { data: [{ site_action_id: 'action-gone', engagement_id: 'eng-1' }] })
+    queue('site_action_engagement_links', { data: [{ id: 'link-1', site_action_id: 'action-gone', engagement_id: 'eng-1' }] })
     queue('site_actions', { data: [] })
+    queue('site_action_engagement_link_events', { data: [] })
     const result = await getActionsForEngagements(['eng-1'])
     expect(result.has('eng-1')).toBe(false)
   })
@@ -410,8 +424,9 @@ describe('getActionsForEngagements — ENG-UX-1 LOT C (indépendant de canonical
   })
 
   it('propage une erreur Supabase sur les actions', async () => {
-    queue('site_action_engagement_links', { data: [{ site_action_id: 'action-1', engagement_id: 'eng-1' }] })
+    queue('site_action_engagement_links', { data: [{ id: 'link-1', site_action_id: 'action-1', engagement_id: 'eng-1' }] })
     queue('site_actions', { data: null, error: new Error('db down') })
+    queue('site_action_engagement_link_events', { data: [] })
     await expect(getActionsForEngagements(['eng-1'])).rejects.toThrow('db down')
   })
 })

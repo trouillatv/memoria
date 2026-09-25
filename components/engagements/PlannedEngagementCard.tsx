@@ -12,6 +12,7 @@ import Link from 'next/link'
 import { CalendarPlus } from 'lucide-react'
 import { categoryLabel, plannedEngagementStatusLabel } from '@/lib/engagements/labels'
 import { KIND_META, kindLabel } from '@/lib/engagements/kind'
+import { QUALIFICATION_LABEL } from '@/lib/engagements/qualification-labels'
 import type { EngagementMission, PlannedEngagement } from '@/lib/db/engagements'
 import type { EngagementAction } from '@/lib/db/site-action-engagement-links'
 import type { MissionHealthTone } from '@/lib/missions/mission-health'
@@ -66,7 +67,12 @@ export function PlannedEngagementCard({
   /** ENG-UX-1 LOT C/D — Actions liées (P0-4B) à cet Engagement, batchées côté page. */
   actions?: EngagementAction[]
 }) {
-  const openActions = actions.filter((a) => a.active)
+  // ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Mission inactive
+  // n'organise pas l'Engagement : elle reste visible en historique compact
+  // mais ne bloque ni "Créer une mission" ni "Planifier la prochaine
+  // intervention", et ne compte pas comme prise en charge actuelle.
+  const activeMissions = missions.filter((m) => m.active)
+  const actionsSummary = describeEngagementActionsSummary(actions)
   const statusBadge = e.status === 'active'
     ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
     : 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
@@ -107,9 +113,9 @@ export function PlannedEngagementCard({
         </div>
       )}
 
-      {e.status === 'active' && ((canPlan && missions.length === 0) || canTreatPoint) && (
+      {e.status === 'active' && ((canPlan && activeMissions.length === 0) || canTreatPoint) && (
         <div className="flex justify-end gap-1.5">
-          {canPlan && missions.length === 0 && (
+          {canPlan && activeMissions.length === 0 && (
             <Link
               href={`/sites/${siteId}/missions/new?engagement=${e.id}`}
               className={buttonVariants({ variant: 'outline', size: 'sm', className: 'gap-1.5' })}
@@ -121,14 +127,21 @@ export function PlannedEngagementCard({
         </div>
       )}
 
-      {(missions.length > 0 || openActions.length > 0) && (
+      {(missions.length > 0 || actions.length > 0) && (
         <div className="space-y-1.5 border-t border-border pt-2">
           {missions.length > 0 && (
             <div className="space-y-1">
               {missions.map((m) => (
                 <div key={m.missionId} className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[11px] font-medium text-foreground">{m.missionName}</span>
-                  {m.health.chips.map((chip, i) => (
+                  <span className={`text-[11px] font-medium ${m.active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    {m.missionName}
+                  </span>
+                  {!m.active && (
+                    <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                      Inactive
+                    </span>
+                  )}
+                  {m.active && m.health.chips.map((chip, i) => (
                     <span key={i} className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${HEALTH_CHIP_TONE[chip.tone]}`}>
                       {chip.label}
                     </span>
@@ -136,7 +149,7 @@ export function PlannedEngagementCard({
                   <Link href={`/missions/${m.missionId}`} className="text-[11px] font-medium text-primary hover:underline">
                     Voir la mission
                   </Link>
-                  {canPlan && !m.nextInterventionDate && (
+                  {canPlan && m.active && !m.nextInterventionDate && (
                     <Link href={`/missions/${m.missionId}`} className="text-[11px] font-medium text-primary hover:underline">
                       Planifier la prochaine intervention
                     </Link>
@@ -145,9 +158,12 @@ export function PlannedEngagementCard({
               ))}
             </div>
           )}
-          {openActions.length > 0 && (
+          {actionsSummary && (
+            // ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Action
+            // terminée ne doit jamais disparaître complètement de la carte ;
+            // elle reste tracée en compact, jamais comme "Engagement traité".
             <Link href={`/sites/${siteId}/actions`} className="inline-block text-[11px] font-medium text-primary hover:underline">
-              {openActions.length} action{openActions.length > 1 ? 's' : ''} ouverte{openActions.length > 1 ? 's' : ''}
+              {`Actions / ${actionsSummary}`}
             </Link>
           )}
         </div>
@@ -174,6 +190,31 @@ export function PlannedEngagementCard({
       </details>
     </li>
   )
+}
+
+/**
+ * ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — trace compacte des Actions
+ * liées, jamais un statut de l'Engagement lui-même. Une Action terminale
+ * (done/cancelled) reste comptée, jamais retirée silencieusement. Quand une
+ * seule Action est ouverte, sa qualification courante (P0-4C) est affichée si
+ * connue — jamais de nouvelle taxonomie, seulement le libellé déjà canonique.
+ */
+function describeEngagementActionsSummary(actions: EngagementAction[]): string | null {
+  if (actions.length === 0) return null
+  const openActions = actions.filter((a) => a.active)
+  const doneActions = actions.filter((a) => !a.active)
+
+  if (openActions.length === 0) {
+    return `✓ ${doneActions.length} action${doneActions.length > 1 ? 's' : ''} terminée${doneActions.length > 1 ? 's' : ''}`
+  }
+
+  const openLabel =
+    openActions.length === 1 && openActions[0].currentQualification
+      ? `1 ouverte · ${QUALIFICATION_LABEL[openActions[0].currentQualification] ?? openActions[0].currentQualification}`
+      : `${openActions.length} ouverte${openActions.length > 1 ? 's' : ''}`
+  const doneLabel = doneActions.length > 0 ? `${doneActions.length} terminée${doneActions.length > 1 ? 's' : ''}` : null
+
+  return [openLabel, doneLabel].filter(Boolean).join(' · ')
 }
 
 export function ProvenanceLine({ provenance: p }: { provenance: PlannedEngagement['primaryProvenance'] }) {
