@@ -1,19 +1,24 @@
 // « Traiter un point » (mandat Vincent 2026-09-25) — créer une Action depuis un
-// Engagement ACTIF, dans la même opération logique que le rapprochement P0-4B
-// et la qualification P0-4C. Preuves : ordre fail-closed (inexistant → site_id
-// absent → statut ≠ active → SEULEMENT ENSUITE requireSiteWriteAccess
-// managerOrAdmin), aucune nouvelle taxonomie (4 qualifications P0-4C
-// réutilisées telles quelles), origine facultative pliée dans le champ note
-// existant, et propagation de l'échec d'une étape intermédiaire.
+// Engagement ACTIF, dans la même transaction SQL que le rapprochement P0-4B
+// et la qualification P0-4C (migration 441, FIX_REQUIRED review sur c05469a7).
+// Preuves : ordre fail-closed (inexistant → site_id absent → statut ≠ active →
+// SEULEMENT ENSUITE requireSiteWriteAccess managerOrAdmin), aucune nouvelle
+// taxonomie (4 qualifications P0-4C réutilisées telles quelles), origine
+// facultative pliée dans le champ note existant, UN SEUL appel atomique
+// (createActionFromEngagementPoint) et AUCUN effet de bord si cet appel
+// échoue. La preuve du rollback réel des 3 écritures en base (0 Action / 0
+// lien / 0 événement sur échec à n'importe quelle étape interne de la RPC)
+// vit dans tests/lib/db/create-action-from-engagement-point-atomic.test.ts
+// (test d'intégration, vraie Supabase).
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   requireSiteWriteAccess: vi.fn(),
   getEngagementAuthContext: vi.fn(),
-  createSiteAction: vi.fn(),
-  createSiteActionEngagementLink: vi.fn(),
-  addEngagementLinkQualification: vi.fn(),
+  createActionFromEngagementPoint: vi.fn(),
+  invalidateSiteProjection: vi.fn(),
+  resolveSubjectAndAttachCanonicalBusinessObject: vi.fn(),
   revalidatePath: vi.fn(),
 }))
 
@@ -24,10 +29,12 @@ vi.mock('@/lib/db/engagements', () => ({
   getEngagementAuthContext: mocks.getEngagementAuthContext,
   activateEngagement: vi.fn(),
 }))
-vi.mock('@/lib/db/site-actions', () => ({ createSiteAction: mocks.createSiteAction }))
 vi.mock('@/lib/db/site-action-engagement-links', () => ({
-  createSiteActionEngagementLink: mocks.createSiteActionEngagementLink,
-  addEngagementLinkQualification: mocks.addEngagementLinkQualification,
+  createActionFromEngagementPoint: mocks.createActionFromEngagementPoint,
+}))
+vi.mock('@/lib/knowledge/invalidate', () => ({ invalidateSiteProjection: mocks.invalidateSiteProjection }))
+vi.mock('@/lib/db/canonical-business-object-attach', () => ({
+  resolveSubjectAndAttachCanonicalBusinessObject: mocks.resolveSubjectAndAttachCanonicalBusinessObject,
 }))
 
 import { createActionFromEngagementAction } from '@/app/(dashboard)/sites/[id]/prestations/actions'
@@ -52,9 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.getEngagementAuthContext.mockResolvedValue(activeEngagement())
   mocks.requireSiteWriteAccess.mockResolvedValue({ ok: true, organizationId: 'org-1', userId: 'user-1', role: 'manager' })
-  mocks.createSiteAction.mockResolvedValue(actionId)
-  mocks.createSiteActionEngagementLink.mockResolvedValue({ ok: true, id: linkId })
-  mocks.addEngagementLinkQualification.mockResolvedValue({ ok: true })
+  mocks.createActionFromEngagementPoint.mockResolvedValue({ ok: true, actionId, linkId })
 })
 
 describe('createActionFromEngagementAction', () => {
@@ -69,7 +74,7 @@ describe('createActionFromEngagementAction', () => {
     const result = await createActionFromEngagementAction({ ...validInput, qualification: 'conforme' } as never)
 
     expect(result.ok).toBe(false)
-    expect(mocks.createSiteAction).not.toHaveBeenCalled()
+    expect(mocks.createActionFromEngagementPoint).not.toHaveBeenCalled()
   })
 
   it('Engagement inexistant : refuse, aucune écriture', async () => {
@@ -79,7 +84,7 @@ describe('createActionFromEngagementAction', () => {
 
     expect(result).toEqual({ ok: false, error: 'Impossible de créer cette Action' })
     expect(mocks.requireSiteWriteAccess).not.toHaveBeenCalled()
-    expect(mocks.createSiteAction).not.toHaveBeenCalled()
+    expect(mocks.createActionFromEngagementPoint).not.toHaveBeenCalled()
   })
 
   it('Engagement sans site_id : refuse avant toute autorisation', async () => {
@@ -98,7 +103,7 @@ describe('createActionFromEngagementAction', () => {
 
     expect(result).toEqual({ ok: false, error: 'Impossible de créer cette Action' })
     expect(mocks.requireSiteWriteAccess).not.toHaveBeenCalled()
-    expect(mocks.createSiteAction).not.toHaveBeenCalled()
+    expect(mocks.createActionFromEngagementPoint).not.toHaveBeenCalled()
   })
 
   it('accès refusé (chef_equipe ou autre organisation) : aucune écriture', async () => {
@@ -107,7 +112,7 @@ describe('createActionFromEngagementAction', () => {
     const result = await createActionFromEngagementAction(validInput)
 
     expect(result).toEqual({ ok: false, error: 'Accès refusé' })
-    expect(mocks.createSiteAction).not.toHaveBeenCalled()
+    expect(mocks.createActionFromEngagementPoint).not.toHaveBeenCalled()
   })
 
   it('demande la politique managerOrAdmin, pas operator', async () => {
@@ -116,53 +121,44 @@ describe('createActionFromEngagementAction', () => {
     expect(mocks.requireSiteWriteAccess).toHaveBeenCalledWith(siteId, 'managerOrAdmin')
   })
 
-  it('succès : crée site_action (titre = description), rapprochement, puis qualification (note = origine)', async () => {
+  it('succès : un seul appel atomique (Action + rapprochement + qualification), puis effets non critiques', async () => {
     const result = await createActionFromEngagementAction(validInput)
 
     expect(result).toEqual({ ok: true, actionId })
-    expect(mocks.createSiteAction).toHaveBeenCalledWith(expect.objectContaining({
-      site_id: siteId,
-      title: validInput.description,
-      created_by: 'user-1',
-      created_from: 'engagement_treat_point',
-    }))
-    expect(mocks.createSiteActionEngagementLink).toHaveBeenCalledWith({
-      siteActionId: actionId,
+    expect(mocks.createActionFromEngagementPoint).toHaveBeenCalledTimes(1)
+    expect(mocks.createActionFromEngagementPoint).toHaveBeenCalledWith({
       engagementId,
+      siteId,
       organizationId: 'org-1',
-      createdBy: 'user-1',
-    })
-    expect(mocks.addEngagementLinkQualification).toHaveBeenCalledWith({
-      linkId,
+      title: validInput.description,
       qualification: 'demande_evolution',
       note: 'Visite du 23/09',
-      organizationId: 'org-1',
       createdBy: 'user-1',
     })
+    expect(mocks.invalidateSiteProjection).toHaveBeenCalledWith(siteId)
+    expect(mocks.resolveSubjectAndAttachCanonicalBusinessObject).toHaveBeenCalledWith(expect.objectContaining({
+      siteId,
+      entityType: 'site_action',
+      entityId: actionId,
+      label: validInput.description,
+    }))
   })
 
   it('origine facultative absente : note = null, aucune écriture perdue', async () => {
     await createActionFromEngagementAction({ ...validInput, origin: null })
 
-    expect(mocks.addEngagementLinkQualification).toHaveBeenCalledWith(expect.objectContaining({ note: null }))
+    expect(mocks.createActionFromEngagementPoint).toHaveBeenCalledWith(expect.objectContaining({ note: null }))
   })
 
-  it('échec du rapprochement (étape 2) : propage l’erreur, l’Action déjà créée n’est pas supprimée (aucune primitive de suppression)', async () => {
-    mocks.createSiteActionEngagementLink.mockResolvedValueOnce({ ok: false, error: 'Accès refusé' })
+  it('échec de la création atomique : propage l’erreur, AUCUN effet de bord (pas d’Action orpheline)', async () => {
+    mocks.createActionFromEngagementPoint.mockResolvedValueOnce({ ok: false, error: 'Impossible de créer cette Action' })
 
     const result = await createActionFromEngagementAction(validInput)
 
-    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
-    expect(mocks.createSiteAction).toHaveBeenCalledTimes(1)
-    expect(mocks.addEngagementLinkQualification).not.toHaveBeenCalled()
-  })
-
-  it('échec de la qualification (étape 3) : propage l’erreur', async () => {
-    mocks.addEngagementLinkQualification.mockResolvedValueOnce({ ok: false, error: 'Échec de l\'enregistrement' })
-
-    const result = await createActionFromEngagementAction(validInput)
-
-    expect(result).toEqual({ ok: false, error: 'Échec de l\'enregistrement' })
+    expect(result).toEqual({ ok: false, error: 'Impossible de créer cette Action' })
+    expect(mocks.invalidateSiteProjection).not.toHaveBeenCalled()
+    expect(mocks.resolveSubjectAndAttachCanonicalBusinessObject).not.toHaveBeenCalled()
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
   })
 
   it('succès : revalide prestations desktop, mobile, et la liste des Actions du chantier', async () => {

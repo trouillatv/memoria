@@ -168,6 +168,43 @@ export async function createSiteActionEngagementLink(input: {
   return { ok: true, id: inserted.id as string }
 }
 
+export type CreateActionFromEngagementPointResult =
+  | { ok: true; actionId: string; linkId: string }
+  | { ok: false; error: string }
+
+/**
+ * « Traiter un point » ATOMIQUE (migration 441, FIX_REQUIRED review sur c05469a7) —
+ * Action + rapprochement P0-4B + qualification P0-4C dans UNE SEULE transaction SQL
+ * (fn_create_action_from_engagement_point). Un échec à n'importe quelle étape fait
+ * rollback les trois : jamais d'Action orpheline, jamais de compensation par DELETE.
+ * La RPC revalide elle-même l'Engagement (actif, même site, même organisation) —
+ * défense en profondeur, indépendante de l'appelant.
+ */
+export async function createActionFromEngagementPoint(input: {
+  engagementId: string
+  siteId: string
+  organizationId: string
+  title: string
+  qualification: EngagementLinkQualification
+  note: string | null
+  createdBy: string | null
+}): Promise<CreateActionFromEngagementPointResult> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('fn_create_action_from_engagement_point', {
+    p_engagement_id: input.engagementId,
+    p_site_id: input.siteId,
+    p_organization_id: input.organizationId,
+    p_title: input.title,
+    p_qualification: input.qualification,
+    p_note: input.note,
+    p_created_by: input.createdBy,
+  })
+  if (error) return { ok: false, error: 'Impossible de créer cette Action' }
+  const row = (Array.isArray(data) ? data[0] : data) as { action_id: string; link_id: string } | undefined
+  if (!row?.action_id || !row?.link_id) return { ok: false, error: 'Impossible de créer cette Action' }
+  return { ok: true, actionId: row.action_id, linkId: row.link_id }
+}
+
 /**
  * Retire le rapprochement — n'a AUCUN effet sur l'Action ou l'Engagement
  * eux-mêmes. P0-4C : fermeture LOGIQUE (removed_at/removed_by), jamais un

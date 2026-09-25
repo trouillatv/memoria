@@ -9,8 +9,9 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { createSiteEngagementManual, getEngagementAuthContext, activateEngagement } from '@/lib/db/engagements'
-import { createSiteAction } from '@/lib/db/site-actions'
-import { createSiteActionEngagementLink, addEngagementLinkQualification } from '@/lib/db/site-action-engagement-links'
+import { createActionFromEngagementPoint } from '@/lib/db/site-action-engagement-links'
+import { invalidateSiteProjection } from '@/lib/knowledge/invalidate'
+import { resolveSubjectAndAttachCanonicalBusinessObject } from '@/lib/db/canonical-business-object-attach'
 import type { EngagementCategory, EngagementKind, EngagementLinkQualification } from '@/types/db'
 
 const CATEGORY_VALUES = ['frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other'] as const
@@ -100,18 +101,20 @@ export async function activatePlannedEngagementAction(
 // d'Action depuis un Engagement ACTIF. « MemorIA peut proposer d'agir ;
 // l'utilisateur décide qu'une Action est nécessaire » : ceci ne crée rien tant
 // que l'humain n'a pas rempli motif + description et cliqué « Créer
-// l'action ». Un seul clic crée, dans la même opération logique, le
-// site_action, le rapprochement P0-4B et la qualification P0-4C — jamais de
-// nouvelle taxonomie, jamais de nouvel objet « fait terrain » persistant :
-// les 4 qualifications et le champ note existants sont réutilisés tels quels
-// (motif → qualification, description → titre de l'Action, origine
-// facultative → note de la qualification). Même ordre fail-closed que
-// activatePlannedEngagementAction : Engagement inexistant/sans site/non actif
-// → refus, PUIS requireSiteWriteAccess(site_id, 'managerOrAdmin'). En cas
-// d'échec du rapprochement ou de la qualification après création de l'Action,
-// celle-ci reste (aucune primitive de suppression de site_action n'existe,
-// par doctrine) : l'humain peut alors la rapprocher/qualifier manuellement
-// depuis sa fiche (mécanisme P0-4B/P0-4C déjà en place) — aucune perte.
+// l'action ». Un seul clic crée, dans la MÊME TRANSACTION SQL (migration 441,
+// fn_create_action_from_engagement_point), le site_action, le rapprochement
+// P0-4B et la qualification P0-4C — jamais de nouvelle taxonomie, jamais de
+// nouvel objet « fait terrain » persistant : les 4 qualifications et le champ
+// note existants sont réutilisés tels quels (motif → qualification,
+// description → titre de l'Action, origine facultative → note de la
+// qualification). Même ordre fail-closed que activatePlannedEngagementAction :
+// Engagement inexistant/sans site/non actif → refus, PUIS
+// requireSiteWriteAccess(site_id, 'managerOrAdmin'). FIX_REQUIRED (review
+// ChatGPT sur c05469a7) : un échec à n'importe quelle étape interne fait
+// rollback les trois écritures — jamais d'Action orpheline, jamais de
+// compensation par DELETE. Les effets non critiques (invalidation de
+// projection, rattachement best-effort au sujet canonique) restent
+// non-transactionnels et ne s'exécutent qu'APRÈS le succès de la RPC.
 const QUALIFICATIONS = ['demande_evolution', 'mise_en_oeuvre', 'ecart_a_examiner', 'clarification'] as const
 
 const CreateActionFromEngagementSchema = z.object({
@@ -138,32 +141,31 @@ export async function createActionFromEngagementAction(
   const access = await requireSiteWriteAccess(engagement.site_id, 'managerOrAdmin')
   if (!access.ok) return access
 
-  const actionId = await createSiteAction({
-    site_id: engagement.site_id,
-    title: description,
-    created_by: access.userId,
-    created_from: 'engagement_treat_point',
-  })
-
-  const linkResult = await createSiteActionEngagementLink({
-    siteActionId: actionId,
+  const result = await createActionFromEngagementPoint({
     engagementId: engagement.id,
+    siteId: engagement.site_id,
     organizationId: access.organizationId,
-    createdBy: access.userId,
-  })
-  if (!linkResult.ok) return linkResult
-
-  const qualifyResult = await addEngagementLinkQualification({
-    linkId: linkResult.id,
+    title: description,
     qualification: qualification as EngagementLinkQualification,
     note: origin || null,
-    organizationId: access.organizationId,
     createdBy: access.userId,
   })
-  if (!qualifyResult.ok) return qualifyResult
+  if (!result.ok) return result
+
+  // Effets non critiques, non-transactionnels, APRÈS le commit atomique —
+  // exactement ce que createSiteAction() fait déjà pour tout autre appelant.
+  invalidateSiteProjection(engagement.site_id)
+  void resolveSubjectAndAttachCanonicalBusinessObject({
+    siteId: engagement.site_id,
+    entityType: 'site_action',
+    entityId: result.actionId,
+    label: description,
+    date: null,
+    knownCanonicalSubjectId: null,
+  })
 
   revalidatePath(`/sites/${engagement.site_id}/prestations`)
   revalidatePath(`/m/site/${engagement.site_id}/prestations`)
   revalidatePath(`/sites/${engagement.site_id}/actions`)
-  return { ok: true, actionId }
+  return { ok: true, actionId: result.actionId }
 }
