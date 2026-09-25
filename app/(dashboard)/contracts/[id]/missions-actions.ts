@@ -2,25 +2,23 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { createClient as createServerClient } from '@/lib/supabase/server'
-import { getUserRoleById } from '@/lib/db/users'
 import { createMission, updateMission, getMission } from '@/lib/db/missions'
 import { getSiteById } from '@/lib/db/sites'
 import {
   listActiveEngagementsByContracts,
   listActiveEngagementsBySites,
 } from '@/lib/db/engagements'
-import { requireOwned } from '@/lib/auth/ownership'
-import type { UserRole } from '@/types/db'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 
-async function requireManagerOrAdmin(): Promise<{ userId: string; role: UserRole } | { error: string }> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Not authenticated' }
-  const role = await getUserRoleById(user.id)
-  if (role !== 'admin' && role !== 'manager') return { error: 'Forbidden' }
-  return { userId: user.id, role }
-}
+// FIX_REQUIRED P0-3.5A FINAL — le rôle métier vient du membership dans
+// l'organisation DU CHANTIER (doctrine M2C), jamais de users.role : un compte
+// manager sur son profil mais chef_equipe sur l'organisation propriétaire du
+// site ne doit pas pouvoir créer/modifier une Mission de ce chantier.
+// requireSiteWriteAccess résout à la fois l'appartenance et le rôle dans
+// l'organisation du site — remplace l'ancienne paire
+// requireManagerOrAdmin()+requireOwned() qui vérifiait ces deux dimensions
+// séparément, l'une sur le mauvais référentiel (users.role).
+const REFUS = 'Accès refusé' as const
 
 /**
  * Population d'Engagements autorisée pour un site : Porte A (contrat du
@@ -85,9 +83,6 @@ const createMissionSchema = z.object({
 })
 
 export async function createMissionAction(formData: FormData) {
-  const auth = await requireManagerOrAdmin()
-  if ('error' in auth) return auth
-
   const engagementIdsRaw = formData.get('engagement_ids') as string
   const checklistRaw = formData.get('default_checklist') as string
   let engagement_ids: string[] = []
@@ -109,9 +104,10 @@ export async function createMissionAction(formData: FormData) {
   })
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid input' }
 
-  // Lot S : le chantier ciblé doit être de mon organisation.
-  const owned = await requireOwned(auth.role, 'sites', parsed.data.site_id)
-  if (!owned.allowed) return { error: owned.error }
+  // FIX_REQUIRED P0-3.5A FINAL : rôle métier résolu dans l'organisation DU
+  // SITE, pas depuis users.role.
+  const access = await requireSiteWriteAccess(parsed.data.site_id, 'managerOrAdmin')
+  if (!access.ok) return { error: access.error }
 
   // FIX_REQUIRED P0-3.5A #1 : ne jamais faire confiance aux engagement_ids
   // du client (ni ceux de engagement_ids, ni ceux référencés depuis
@@ -133,7 +129,7 @@ export async function createMissionAction(formData: FormData) {
       position: idx + 1,
       expected_qty: it.expected_qty ?? null,
     })),
-    created_by: auth.userId,
+    created_by: access.userId,
   })
 
   // Règle d'or (lot R) : ce chemin ne revalidait RIEN — incohérent avec le
@@ -156,9 +152,6 @@ const updateMissionSchema = z.object({
 })
 
 export async function updateMissionAction(formData: FormData) {
-  const auth = await requireManagerOrAdmin()
-  if ('error' in auth) return auth
-
   const engagementIdsRaw = formData.get('engagement_ids') as string | null
   const checklistRaw = formData.get('default_checklist') as string | null
   let engagement_ids: string[] | undefined
@@ -184,17 +177,18 @@ export async function updateMissionAction(formData: FormData) {
   const { id, default_checklist: dc, engagement_ids: requestedEngagementIds, ...rest } = parsed.data
   const patch: Record<string, unknown> = { ...rest }
 
-  // FIX_REQUIRED P0-3.5A #1 (revue finale) : le site est immuable en édition
-  // (absent du formulaire) — le résoudre depuis la Mission elle-même, jamais
-  // depuis une valeur cliente, et autoriser CETTE mutation via ce site avec
-  // requireOwned — jamais se fier au seul rôle plateforme
-  // (requireManagerOrAdmin ne prouve pas l'appartenance à l'organisation
-  // propriétaire de cette Mission précise). Vérifié sur CHAQUE update, même
-  // quand ni engagement_ids ni default_checklist ne sont soumis.
+  // FIX_REQUIRED P0-3.5A FINAL : le site est immuable en édition (absent du
+  // formulaire) — le résoudre depuis la Mission elle-même, jamais depuis une
+  // valeur cliente, puis autoriser CETTE mutation via requireSiteWriteAccess
+  // sur ce site (rôle résolu dans l'organisation DU SITE, pas users.role).
+  // Vérifié sur CHAQUE update, même quand ni engagement_ids ni
+  // default_checklist ne sont soumis. Mission absente ou refus d'accès
+  // renvoient le MÊME message : aucun oracle ne doit permettre de distinguer
+  // « n'existe pas » de « existe mais appartient à une autre organisation ».
   const mission = await getMission(id)
-  if (!mission) return { error: 'Mission introuvable' }
-  const owned = await requireOwned(auth.role, 'sites', mission.site_id)
-  if (!owned.allowed) return { error: owned.error }
+  if (!mission) return { error: REFUS }
+  const access = await requireSiteWriteAccess(mission.site_id, 'managerOrAdmin')
+  if (!access.ok) return { error: REFUS }
 
   const engagementAuth = await resolveEngagementAuthorization(mission.site_id, mission.engagement_ids)
 
