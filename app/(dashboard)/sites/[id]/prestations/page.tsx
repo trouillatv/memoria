@@ -7,6 +7,7 @@ import { findPendingEngagementFinalizationForSite } from '@/lib/db/materialize-e
 import { KIND_ORDER } from '@/lib/engagements/kind'
 import { groupPlannedEngagementsBySection } from '@/lib/engagements/section'
 import { PlannedEngagementSections } from '@/components/engagements/PlannedEngagementSections'
+import { AddPlannedEngagementDialog } from '@/components/engagements/AddPlannedEngagementDialog'
 import type { EngagementKind } from '@/types/db'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { SiteChantierNav } from '../SiteChantierNav'
@@ -54,10 +55,13 @@ export default async function SitePrestationsPage({ params }: PageProps) {
       <SiteChantierNav siteId={id} siteName={identity.name} clientName={identity.clientName} activeTab="prestations" />
 
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
-          <ClipboardList className="h-5 w-5 text-muted-foreground" />
-          Prestations prévues
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="text-2xl font-semibold inline-flex items-center gap-2">
+            <ClipboardList className="h-5 w-5 text-muted-foreground" />
+            Prestations prévues
+          </h1>
+          <AddPlannedEngagementDialog siteId={id} />
+        </div>
         <p className="text-sm text-muted-foreground">
           Ce que MemorIA sait devoir être vrai sur ce chantier — engagements contractuels validés (CCTP/CCAP).
         </p>

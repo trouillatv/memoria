@@ -77,7 +77,12 @@ export function PlannedEngagementCard({
 }
 
 export function ProvenanceLine({ provenance: p }: { provenance: PlannedEngagement['primaryProvenance'] }) {
-  const source = [p.documentFilename ?? 'Document', p.pageNumber ? `p.${p.pageNumber}` : null].filter(Boolean).join(' · ')
+  // P0-3.1A — un Engagement Porte B manuel n'a, PAR CONSTRUCTION, aucun document
+  // (documentId null). Le laisser tomber sur le libellé générique « Document »
+  // affirmerait une provenance documentaire fictive : dire « Créé manuellement ».
+  const source = p.documentId
+    ? [p.documentFilename ?? 'Document', p.pageNumber ? `p.${p.pageNumber}` : null].filter(Boolean).join(' · ')
+    : 'Créé manuellement'
   return (
     <div className="space-y-0.5">
       <p className="truncate text-xs text-muted-foreground">{source}</p>

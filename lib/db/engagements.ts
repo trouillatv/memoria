@@ -11,6 +11,7 @@ import type {
 } from '@/types/db'
 import { suggestDestination } from '@/lib/engagements/destination'
 import { defaultProofForKind } from '@/lib/engagements/kind'
+import { getSiteById } from '@/lib/db/sites'
 
 export async function listEngagementsByTender(tenderId: string): Promise<DbEngagement[]> {
   const supabase = createAdminClient()
@@ -393,6 +394,59 @@ export async function createEngagementManual(input: {
       destination: suggestDestination({ category: input.category, sourceExcerpt: source_excerpt, shortLabel: input.short_label, kind }).destination,
       created_by: input.created_by,
       organization_id: orgId,
+    })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data
+}
+
+// P0-3.1A — Porte B manuelle : création directe depuis Prestations prévues,
+// SANS document contractuel. Signature dédiée (site_id obligatoire) pour ne
+// jamais brouiller les invariants de createEngagementManual (Porte A, ci-
+// dessus) : tender_id/contract_id/source_document_id sont toujours null ici,
+// status='curated' (validé, pas encore en vigueur — activateEngagement reste
+// le geste séparé), organization_id dérivé du chantier, jamais du client.
+export async function createSiteEngagementManual(input: {
+  site_id: string
+  short_label: string
+  source_excerpt?: string | null
+  category: EngagementCategory
+  kind?: EngagementKind | null
+  measurable: boolean
+  created_by: string | null
+}): Promise<DbEngagement> {
+  const supabase = createAdminClient()
+  const site = await getSiteById(input.site_id)
+  if (!site) throw new Error('Chantier introuvable')
+  if (!site.organization_id) throw new Error('Chantier sans organisation')
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) throw new Error(membership.error)
+  const kind = input.kind ?? null
+  // Extrait source : la description fournie (≥5 car) sinon le libellé. Tronqué à 2000 (CHECK).
+  const excerptRaw = (input.source_excerpt ?? '').trim()
+  const source_excerpt = (excerptRaw.length >= 5 ? excerptRaw : input.short_label).slice(0, 2000)
+  const { data, error } = await supabase
+    .from('engagements')
+    .insert({
+      tender_id: null,
+      contract_id: null,
+      site_id: input.site_id,
+      source_document_id: null,
+      page_number: null,
+      source_type: 'manual' as EngagementSourceType,
+      source_excerpt,
+      source_ref: null,
+      category: input.category,
+      kind,
+      short_label: input.short_label,
+      measurable: input.measurable,
+      ai_confidence: null,
+      status: 'curated' as EngagementStatus,
+      proof_requirement: defaultProofForKind(kind),
+      destination: suggestDestination({ category: input.category, sourceExcerpt: source_excerpt, shortLabel: input.short_label, kind }).destination,
+      created_by: input.created_by,
+      organization_id: site.organization_id,
     })
     .select('*')
     .single()

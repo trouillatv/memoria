@@ -5,6 +5,7 @@ import { listPlannedEngagementsForSite } from '@/lib/db/engagements'
 import { KIND_ORDER } from '@/lib/engagements/kind'
 import { groupPlannedEngagementsBySection } from '@/lib/engagements/section'
 import { PlannedEngagementSections } from '@/components/engagements/PlannedEngagementSections'
+import { AddPlannedEngagementDialog } from '@/components/engagements/AddPlannedEngagementDialog'
 import type { EngagementKind } from '@/types/db'
 
 export const dynamic = 'force-dynamic'
@@ -12,9 +13,10 @@ export const dynamic = 'force-dynamic'
 /**
  * Prestations prévues d'un chantier (mobile) — ce que MemorIA sait devoir être
  * vrai/réalisé sur ce chantier (engagements Porte B validés), distinct de
- * l'onglet Documents (ce que MemorIA peut consulter). Lecture seule : aucune
- * activation, édition, calendrier, occurrence, comparaison terrain ou Action
- * n'est proposée depuis cette vue (P0-3, hors scope explicite).
+ * l'onglet Documents (ce que MemorIA peut consulter). Sinon lecture seule :
+ * aucune activation, édition, calendrier, occurrence, comparaison terrain ou
+ * Action n'est proposée depuis cette vue (P0-3, hors scope explicite). Seul
+ * ajout P0-3.1A : créer manuellement un Engagement Porte B, sans document.
  */
 export default async function SitePrestationsMobilePage({
   params,
@@ -41,8 +43,9 @@ export default async function SitePrestationsMobilePage({
 
   return (
     <div className="max-w-md space-y-4 pb-16">
-      <header>
+      <header className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Prestations prévues</h1>
+        <AddPlannedEngagementDialog siteId={siteId} />
       </header>
 
       {sorted.length === 0 ? (

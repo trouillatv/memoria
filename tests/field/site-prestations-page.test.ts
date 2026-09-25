@@ -50,7 +50,17 @@ function treeContainsText(node: unknown, text: string): boolean {
   if (Array.isArray(node)) return node.some((n) => treeContainsText(n, text))
   const el = node as { type?: unknown; props?: { children?: unknown } }
   if (typeof el.type === 'function') {
-    return treeContainsText((el.type as (props: unknown) => unknown)(el.props), text)
+    // P0-3.1A : le header embarque désormais AddPlannedEngagementDialog, un
+    // composant client à hooks (useState/useRouter). L'invoquer comme une
+    // fonction pure (hors rendu React) lève "Invalid hook call" — ce n'est
+    // pas une régression du composant, juste hors de portée de ce marcheur
+    // d'arbre léger. On l'ignore (pas de texte trouvé dedans) plutôt que de
+    // faire échouer des assertions qui ne le concernent pas.
+    try {
+      return treeContainsText((el.type as (props: unknown) => unknown)(el.props), text)
+    } catch {
+      return false
+    }
   }
   return el.props ? treeContainsText(el.props.children, text) : false
 }

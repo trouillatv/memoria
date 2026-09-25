@@ -237,4 +237,21 @@ describe('listPlannedEngagementsForSite — filtres réellement exécutés', () 
 
     await expect(listPlannedEngagementsForSite('site-1')).rejects.toThrow('database unavailable')
   })
+
+  it('P0-3.1A — Engagement Porte B manuel (source_document_id null, aucune matérialisation) : provenance sans document', async () => {
+    tableData.engagements = [
+      engagementRow({ id: 'eng-manual', source_document_id: null, page_number: null, source_excerpt: 'Nettoyage hebdomadaire des vitres' }),
+    ]
+
+    const result = await listPlannedEngagementsForSite('site-1')
+
+    expect(result[0].primaryProvenance).toEqual({
+      documentId: null,
+      documentFilename: null,
+      pageNumber: null,
+      excerpt: 'Nettoyage hebdomadaire des vitres',
+      frequencyRaw: null,
+    })
+    expect(queryLog.some((q) => q.table === 'document_proposal_materialization')).toBe(true)
+  })
 })

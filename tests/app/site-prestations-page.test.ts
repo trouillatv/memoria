@@ -44,9 +44,11 @@ const { default: SitePrestationsPage } = await import(
  * simples fonctions hors du rendu React lèverait « Invalid hook call ». On les
  * traite spécialement — DynamicCrumb/BreadcrumbPrefix sont invisibles (skip),
  * ScrollActiveRail est un simple passe-plat de ses enfants (on descend dans
- * ses props.children sans l'invoquer).
+ * ses props.children sans l'invoquer). P0-3.1A ajoute AddPlannedEngagementDialog
+ * (useState/useTransition/useRouter) au header : même traitement (skip), ce
+ * marcheur ne teste pas son contenu.
  */
-const SKIP_COMPONENTS = new Set(['DynamicCrumb', 'BreadcrumbPrefix'])
+const SKIP_COMPONENTS = new Set(['DynamicCrumb', 'BreadcrumbPrefix', 'AddPlannedEngagementDialog'])
 const UNWRAP_COMPONENTS = new Set(['ScrollActiveRail'])
 
 function treeContainsText(node: unknown, text: string): boolean {
