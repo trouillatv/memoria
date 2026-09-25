@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { DbEngagement } from '@/types/db'
 
 let responses: Record<string, Array<{ data: unknown; error: unknown }>> = {}
+let eqCalls: Array<{ table: string; field: string; value: unknown }> = []
 
 function queue(table: string, response: { data: unknown; error?: unknown }) {
   if (!responses[table]) responses[table] = []
@@ -26,7 +27,10 @@ vi.mock('@/lib/supabase/admin', () => ({
       const response = nextResponse(table)
       const builder: Record<string, unknown> = {
         select: () => builder,
-        eq: () => builder,
+        eq: (field: string, value: unknown) => {
+          eqCalls.push({ table, field, value })
+          return builder
+        },
         order: () => builder,
         insert: () => builder,
         delete: () => builder,
@@ -82,6 +86,7 @@ function fakeEngagement(overrides: Partial<DbEngagement> = {}): DbEngagement {
 
 beforeEach(() => {
   responses = {}
+  eqCalls = []
   vi.clearAllMocks()
 })
 
@@ -107,6 +112,24 @@ describe('listCandidateEngagementsForSite', () => {
     mockedBySites.mockResolvedValue(new Map([['site-1', [fakeEngagement({ id: 'eng-shared' }), fakeEngagement({ id: 'eng-b' })]]]))
     const result = await listCandidateEngagementsForSite('site-1')
     expect(result.map((e) => e.id).sort()).toEqual(['eng-a', 'eng-b', 'eng-shared'])
+  })
+
+  it('Porte A active → présent, Porte A completed → absent (listActiveEngagementsByContracts n’est pas modifié, il retourne active+completed pour Mission)', async () => {
+    mockedGetSiteById.mockResolvedValue(fakeSite({ contract_id: 'contract-1' }))
+    mockedByContracts.mockResolvedValue(
+      new Map([
+        [
+          'contract-1',
+          [
+            fakeEngagement({ id: 'eng-active', status: 'active' }),
+            fakeEngagement({ id: 'eng-completed', status: 'completed' }),
+          ],
+        ],
+      ]),
+    )
+    mockedBySites.mockResolvedValue(new Map())
+    const result = await listCandidateEngagementsForSite('site-1')
+    expect(result.map((e) => e.id)).toEqual(['eng-active'])
   })
 })
 
@@ -259,19 +282,39 @@ describe('createSiteActionEngagementLink', () => {
 describe('removeSiteActionEngagementLink', () => {
   it('retrait réussi', async () => {
     queue('site_action_engagement_links', { data: { id: 'link-1' } })
-    const result = await removeSiteActionEngagementLink({ linkId: 'link-1', organizationId: 'org-1' })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1' })
     expect(result).toEqual({ ok: true })
+  })
+
+  it('filtre la suppression par id + site_action_id + organization_id', async () => {
+    queue('site_action_engagement_links', { data: { id: 'link-1' } })
+    await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1' })
+    expect(eqCalls).toEqual([
+      { table: 'site_action_engagement_links', field: 'id', value: 'link-1' },
+      { table: 'site_action_engagement_links', field: 'site_action_id', value: 'action-1' },
+      { table: 'site_action_engagement_links', field: 'organization_id', value: 'org-1' },
+    ])
   })
 
   it('lien introuvable ou hors organisation → refus', async () => {
     queue('site_action_engagement_links', { data: null })
-    const result = await removeSiteActionEngagementLink({ linkId: 'link-x', organizationId: 'org-1' })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-x', siteActionId: 'action-1', organizationId: 'org-1' })
     expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+  })
+
+  it('linkId appartient à une autre Action (même organisation) → refus, aucune suppression', async () => {
+    // Le lien existe bel et bien, mais pour Action B — la requête filtrée par
+    // site_action_id = "action-A" ne le trouve pas (simulé ici par data: null,
+    // comme le ferait Postgres avec l'AND supplémentaire).
+    queue('site_action_engagement_links', { data: null })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-of-action-b', siteActionId: 'action-a', organizationId: 'org-1' })
+    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+    expect(eqCalls).toContainEqual({ table: 'site_action_engagement_links', field: 'site_action_id', value: 'action-a' })
   })
 
   it('erreur Supabase → message générique', async () => {
     queue('site_action_engagement_links', { data: null, error: new Error('db down') })
-    const result = await removeSiteActionEngagementLink({ linkId: 'link-1', organizationId: 'org-1' })
+    const result = await removeSiteActionEngagementLink({ linkId: 'link-1', siteActionId: 'action-1', organizationId: 'org-1' })
     expect(result).toEqual({ ok: false, error: 'Échec du retrait' })
   })
 })

@@ -241,7 +241,11 @@ export async function removeEngagementLinkAction(
   // pas sur l'Engagement.
   const access = await requireSiteActionWriteAccess(actionId, 'managerOrAdmin')
   if (!access.ok) return access
-  const result = await removeSiteActionEngagementLink({ linkId, organizationId: access.organizationId })
+  const result = await removeSiteActionEngagementLink({
+    linkId,
+    siteActionId: actionId,
+    organizationId: access.organizationId,
+  })
   if (!result.ok) return result
   revalidateActionSurfaces(siteId)
   return { ok: true }

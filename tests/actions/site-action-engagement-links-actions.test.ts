@@ -173,10 +173,26 @@ describe('removeEngagementLinkAction', () => {
     expect(mocks.requireSiteActionWriteAccess).toHaveBeenCalledWith(actionId, 'managerOrAdmin')
   })
 
-  it('succès : retire le lien via son organizationId authentifié et revalide', async () => {
+  it('succès : retire le lien via son organizationId authentifié, scope siteActionId=actionId, et revalide', async () => {
     const result = await removeEngagementLinkAction(removeFormData())
-    expect(mocks.removeSiteActionEngagementLink).toHaveBeenCalledWith({ linkId, organizationId: 'org-1' })
+    expect(mocks.removeSiteActionEngagementLink).toHaveBeenCalledWith({
+      linkId,
+      siteActionId: actionId,
+      organizationId: 'org-1',
+    })
     expect(result).toEqual({ ok: true })
     expect(mocks.revalidatePath).toHaveBeenCalledWith(`/sites/${siteId}`)
+  })
+
+  it('linkId appartenant à une autre Action → le DB helper refuse (scopé par siteActionId), aucune revalidation', async () => {
+    mocks.removeSiteActionEngagementLink.mockResolvedValue({ ok: false, error: 'Accès refusé' })
+    const result = await removeEngagementLinkAction(removeFormData())
+    expect(mocks.removeSiteActionEngagementLink).toHaveBeenCalledWith({
+      linkId,
+      siteActionId: actionId,
+      organizationId: 'org-1',
+    })
+    expect(result).toEqual({ ok: false, error: 'Accès refusé' })
+    expect(mocks.revalidatePath).not.toHaveBeenCalled()
   })
 })

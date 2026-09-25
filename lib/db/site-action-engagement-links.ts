@@ -21,8 +21,12 @@ export async function listCandidateEngagementsForSite(siteId: string): Promise<D
     site.contract_id ? listActiveEngagementsByContracts([site.contract_id]) : Promise.resolve(new Map<string, DbEngagement[]>()),
     listActiveEngagementsBySites([siteId]),
   ])
+  // listActiveEngagementsByContracts() retourne volontairement active+completed
+  // pour P0-3.5A (Mission) — ne pas modifier ce helper partagé. P0-4B exige
+  // status='active' au moment du rattachement : filtrer ici, localement.
+  const porteA = (site.contract_id ? byContract.get(site.contract_id) ?? [] : []).filter((e) => e.status === 'active')
   const byId = new Map<string, DbEngagement>()
-  for (const e of [...(site.contract_id ? byContract.get(site.contract_id) ?? [] : []), ...(bySite.get(siteId) ?? [])]) {
+  for (const e of [...porteA, ...(bySite.get(siteId) ?? [])]) {
     byId.set(e.id, e)
   }
   return [...byId.values()]
@@ -131,13 +135,18 @@ export async function createSiteActionEngagementLink(input: {
 /** Retire le rapprochement — n'a AUCUN effet sur l'Action ou l'Engagement eux-mêmes. */
 export async function removeSiteActionEngagementLink(input: {
   linkId: string
+  siteActionId: string
   organizationId: string
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = createAdminClient()
+  // La racine d'autorisation (M2C) est l'Action : le lien retiré doit être
+  // exactement celui de cette Action, jamais un lien d'une autre Action de
+  // la même organisation.
   const { data, error } = await supabase
     .from('site_action_engagement_links')
     .delete()
     .eq('id', input.linkId)
+    .eq('site_action_id', input.siteActionId)
     .eq('organization_id', input.organizationId)
     .select('id')
     .maybeSingle()
