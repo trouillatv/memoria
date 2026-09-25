@@ -788,6 +788,38 @@ describe('P0-3.5A — population batchée Porte A/B', () => {
     }
   })
 
+  it('exclut le Porte B completed (FIX_REQUIRED P0-3.5A #2 — pas de notion de "complété" côté Porte B)', async () => {
+    const supabase = createAdminClient()
+    const admin = await getAdminFixture()
+    const { data: client } = await supabase.from('clients').select('id').limit(1).single()
+    const siteId = await createSite({ client_id: client!.id, contract_id: null, name: '__test_p035a_completed__', organization_id: admin.organization_id })
+
+    try {
+      const eng = await createSiteEngagementManual({
+        site_id: siteId,
+        short_label: 'Site — Porte B completed (doit être exclue)',
+        category: 'other',
+        measurable: false,
+        created_by: null,
+      })
+      await activateEngagement(eng.id)
+      // Aucun chemin de code ne fait passer un Porte B à 'completed' à ce
+      // jour (cf. commentaire listPlannedEngagementsForSite) — on simule
+      // l'état pour verrouiller le comportement si ce chemin apparaît un jour.
+      await supabase.from('engagements').update({ status: 'completed' }).eq('id', eng.id)
+
+      const map = await listActiveEngagementsBySites([siteId])
+      expect(map.get(siteId) ?? []).toEqual([])
+
+      // Préservation intacte : listEngagementsByIds n'a aucun filtre de statut.
+      const preserved = await listEngagementsByIds([eng.id])
+      expect(preserved.map((e) => e.id)).toEqual([eng.id])
+    } finally {
+      await supabase.from('engagements').delete().eq('site_id', siteId)
+      await supabase.from('sites').delete().eq('id', siteId)
+    }
+  })
+
   it('listEngagementsByIds résout un Engagement quel que soit son statut (préservation)', async () => {
     const supabase = createAdminClient()
     const admin = await getAdminFixture()

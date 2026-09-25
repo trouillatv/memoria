@@ -5,7 +5,11 @@ import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getContract } from '@/lib/db/contracts'
 import { listSitesByContract } from '@/lib/db/sites'
 import { listMissionsByContract } from '@/lib/db/missions'
-import { listEngagementsByContract, listActiveEngagementsBySites } from '@/lib/db/engagements'
+import {
+  listEngagementsByContract,
+  listActiveEngagementsBySites,
+  listEngagementsByIds,
+} from '@/lib/db/engagements'
 import { ContractTabs } from '../contract-tabs'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 
@@ -45,6 +49,17 @@ export default async function ContractMissionsPage({
   const engagementById = new Map(engagements.map((e) => [e.id, e]))
   for (const list of engagementsBySite.values()) {
     for (const e of list) engagementById.set(e.id, e)
+  }
+  // Préservation : un Engagement déjà lié à une Mission (ex. Porte B
+  // `completed`, exclu de listActiveEngagementsBySites depuis FIX_REQUIRED
+  // P0-3.5A #2) doit rester visible sur son badge même hors population
+  // active courante — jamais le faire disparaître silencieusement.
+  const missingIds = Array.from(
+    new Set(allMissions.flatMap((m) => m.engagement_ids).filter((eid) => !engagementById.has(eid)))
+  )
+  if (missingIds.length > 0) {
+    const preserved = await listEngagementsByIds(missingIds)
+    for (const e of preserved) engagementById.set(e.id, e)
   }
 
   const missions = filterSiteId

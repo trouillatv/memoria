@@ -12,8 +12,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MissionEditor } from '@/app/(dashboard)/contracts/[id]/missions/[missionId]/edit/mission-editor'
 import type { DbSite, DbEngagement, DbMission } from '@/types/db'
 
+const mockPush = vi.fn()
+
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: mockPush, refresh: vi.fn() }),
 }))
 
 const mockCreate = vi.fn()
@@ -171,6 +173,89 @@ describe('MissionEditor — changement de site cross-contrat (otherSites)', () =
     // Plus aucune fuite de l'Engagement du contrat de la route.
     expect(screen.getByText('Engagement Y')).toBeInTheDocument()
     expect(screen.queryByText('Engagement X')).not.toBeInTheDocument()
+  })
+})
+
+describe('MissionEditor — redirection après création (FIX_REQUIRED P0-3.5A #3)', () => {
+  it('redirige vers le contrat de la route quand le site sélectionné est celui de la route', async () => {
+    mockCreate.mockResolvedValue({ ok: true, missionId: 'new-mission' })
+    const siteA = makeSite({ id: 'site-a', contract_id: 'contract-x', name: 'Site A' })
+
+    render(
+      <MissionEditor
+        mode="create"
+        contractId="contract-x"
+        sites={[siteA]}
+        contractEngagements={{}}
+        siteEngagements={{}}
+      />,
+    )
+
+    const [nameInput] = screen.getAllByRole('textbox')
+    fireEvent.change(nameInput, { target: { value: 'Mission même contrat' } })
+    fireEvent.click(screen.getByText('Créer la mission'))
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1))
+    expect(mockPush).toHaveBeenCalledWith('/contracts/contract-x/missions')
+  })
+
+  it('redirige vers le contrat RÉEL du site sélectionné, pas celui de la route', async () => {
+    mockCreate.mockResolvedValue({ ok: true, missionId: 'new-mission' })
+    const siteA = makeSite({ id: 'site-a', contract_id: 'contract-x', name: 'Site A' })
+    const otherSiteC = { id: 'site-c', name: 'Site C', contract_name: 'Contrat Y', contract_id: 'contract-y' }
+
+    render(
+      <MissionEditor
+        mode="create"
+        contractId="contract-x"
+        sites={[siteA]}
+        otherSites={[otherSiteC]}
+        contractEngagements={{}}
+        siteEngagements={{}}
+      />,
+    )
+
+    // Bascule vers Site C (contrat Y) via le SiteSelector réel.
+    fireEvent.click(screen.getByRole('button', { name: 'Site A' }))
+    const siteCOption = screen.getAllByRole('option').find((o) => o.textContent?.includes('Site C'))
+    fireEvent.click(siteCOption!)
+
+    const [nameInput] = screen.getAllByRole('textbox')
+    fireEvent.change(nameInput, { target: { value: 'Mission cross-contrat' } })
+    fireEvent.click(screen.getByText('Créer la mission'))
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1))
+    const fd = mockCreate.mock.calls[0][0] as FormData
+    expect(fd.get('site_id')).toBe('site-c')
+    expect(mockPush).toHaveBeenCalledWith('/contracts/contract-y/missions')
+  })
+
+  it('redirige vers /missions si le site sélectionné n’a pas de contrat', async () => {
+    mockCreate.mockResolvedValue({ ok: true, missionId: 'new-mission' })
+    const siteA = makeSite({ id: 'site-a', contract_id: 'contract-x', name: 'Site A' })
+    const otherSiteNoContract = { id: 'site-d', name: 'Site D', contract_name: null, contract_id: null }
+
+    render(
+      <MissionEditor
+        mode="create"
+        contractId="contract-x"
+        sites={[siteA]}
+        otherSites={[otherSiteNoContract]}
+        contractEngagements={{}}
+        siteEngagements={{}}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Site A' }))
+    const siteDOption = screen.getAllByRole('option').find((o) => o.textContent?.includes('Site D'))
+    fireEvent.click(siteDOption!)
+
+    const [nameInput] = screen.getAllByRole('textbox')
+    fireEvent.change(nameInput, { target: { value: 'Mission sans contrat' } })
+    fireEvent.click(screen.getByText('Créer la mission'))
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1))
+    expect(mockPush).toHaveBeenCalledWith('/missions')
   })
 })
 

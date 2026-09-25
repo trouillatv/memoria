@@ -102,6 +102,16 @@ export function MissionEditor({ mode, contractId, sites, otherSites, contractEng
     }
     const validChecklist = checklist.filter((it) => it.label.trim().length > 0)
 
+    // FIX_REQUIRED P0-3.5A #3 : le site sélectionné peut appartenir à un
+    // AUTRE contrat que celui de la route (réutilisation cross-contrat via
+    // "Autres sites du tenant"). Rediriger vers le contrat RÉEL du site,
+    // jamais vers celui de la route — sinon la mission créée sur B apparaît
+    // comme perdue depuis la liste des missions de A.
+    const targetContractId = allSitesById.get(siteId)?.contract_id ?? null
+    const missionsListHref = targetContractId
+      ? `/contracts/${targetContractId}/missions`
+      : '/missions'
+
     startTransition(async () => {
       const fd = new FormData()
       if (mode === 'edit' && initialMission) {
@@ -114,7 +124,7 @@ export function MissionEditor({ mode, contractId, sites, otherSites, contractEng
         const r = await updateMissionAction(fd)
         if (r && 'error' in r && r.error) { toast.error(r.error); return }
         toast.success('Mission mise à jour')
-        router.push(`/contracts/${contractId}/missions`)
+        router.push(missionsListHref)
       } else {
         fd.set('site_id', siteId)
         fd.set('name', name.trim())
@@ -125,7 +135,7 @@ export function MissionEditor({ mode, contractId, sites, otherSites, contractEng
         const r = await createMissionAction(fd)
         if (r && 'error' in r && r.error) { toast.error(r.error); return }
         toast.success('Mission créée')
-        router.push(`/contracts/${contractId}/missions`)
+        router.push(missionsListHref)
       }
     })
   }

@@ -269,8 +269,12 @@ export async function listActiveEngagementsByContracts(
 }
 
 /**
- * Engagements Porte B actifs/complétés de plusieurs chantiers — un seul appel,
- * groupé par site_id. Modèle : countEngagementsByContracts (P0-3.5A).
+ * Engagements Porte B actifs (statut `active` uniquement) de plusieurs
+ * chantiers — un seul appel, groupé par site_id. Porte B n'a pas de notion
+ * de "complété" au sens Porte A (pas d'AO qui se termine) : un Engagement
+ * Porte B `completed` déjà lié à une Mission reste visible via le mécanisme
+ * de préservation (listEngagementsByIds), jamais via cette population
+ * (FIX_REQUIRED P0-3.5A #2).
  */
 export async function listActiveEngagementsBySites(
   siteIds: string[]
@@ -281,7 +285,7 @@ export async function listActiveEngagementsBySites(
     .from('engagements')
     .select('*')
     .in('site_id', siteIds)
-    .in('status', ['active', 'completed'])
+    .eq('status', 'active')
   if (error) throw error
   const bySite = new Map<string, DbEngagement[]>()
   for (const e of data ?? []) {
