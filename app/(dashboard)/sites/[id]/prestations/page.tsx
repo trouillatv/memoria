@@ -99,7 +99,7 @@ export default async function SitePrestationsPage({ params }: PageProps) {
           </div>
         )
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" canActivate={canActivate} canTreatPoint={canActivate} />
+        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" siteId={id} canActivate={canActivate} canPlan={canActivate} canTreatPoint={canActivate} />
       )}
     </div>
   )

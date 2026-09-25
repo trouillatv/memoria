@@ -10,7 +10,10 @@ import type { DbSite, DbEngagement, DbMission, MissionCadence, ChecklistTemplate
 
 interface MissionEditorProps {
   mode: 'create' | 'edit'
-  contractId: string
+  /** Nullable pour l'entrée site-first (P0-3.5B) : un chantier Porte B sans
+   *  contrat n'a pas de contract_id, et on n'invente jamais de contrat
+   *  placeholder. */
+  contractId: string | null
   sites: DbSite[]
   /** Sites du tenant rattachés à d'autres contrats — permet la réutilisation
    *  cross-contrat (ex. un site historique sans nouveau contrat). Optionnel. */
@@ -25,6 +28,36 @@ interface MissionEditorProps {
   preservedEngagements?: DbEngagement[]
   initialMission?: DbMission
   defaultSiteId?: string
+  /** Engagement à présélectionner (P0-3.5B, ex. depuis le CTA « Planifier »
+   *  d'un Engagement actif). N'est retenu que s'il appartient à la
+   *  population autorisée de `defaultSiteId` — jamais pris en confiance tel
+   *  quel : un id forgé d'un autre site/contrat/organisation ne doit jamais
+   *  apparaître coché, même transitoirement. L'autorisation serveur
+   *  (`resolveEngagementAuthorization`) reste seule autoritaire. */
+  defaultEngagementIds?: string[]
+}
+
+/** Réplique pure de la population Porte A ∪ Porte B visible pour un site
+ *  donné (cf. `visibleEngagements` ci-dessous), utilisable en dehors de
+ *  l'ordre des hooks — nécessaire pour l'initialisation paresseuse de
+ *  `engagementIds`. */
+function resolveVisibleEngagementIds(
+  siteId: string,
+  sites: DbSite[],
+  otherSites: Array<{ id: string; contract_id?: string | null }> | undefined,
+  contractEngagements: Record<string, DbEngagement[]>,
+  siteEngagements: Record<string, DbEngagement[]>,
+): Set<string> {
+  const allSitesById = new Map<string, { id: string; contract_id?: string | null }>()
+  for (const s of sites) allSitesById.set(s.id, s)
+  for (const s of otherSites ?? []) allSitesById.set(s.id, s)
+  const site = allSitesById.get(siteId)
+  const ids = new Set<string>()
+  if (site?.contract_id) {
+    for (const e of contractEngagements[site.contract_id] ?? []) ids.add(e.id)
+  }
+  for (const e of siteEngagements[siteId] ?? []) ids.add(e.id)
+  return ids
 }
 
 const CADENCE_OPTIONS: { value: MissionCadence; label: string }[] = [
@@ -35,15 +68,21 @@ const CADENCE_OPTIONS: { value: MissionCadence; label: string }[] = [
   { value: 'on_demand', label: 'À la demande' },
 ]
 
-export function MissionEditor({ mode, contractId, sites, otherSites, contractEngagements, siteEngagements, preservedEngagements, initialMission, defaultSiteId }: MissionEditorProps) {
+export function MissionEditor({ mode, contractId, sites, otherSites, contractEngagements, siteEngagements, preservedEngagements, initialMission, defaultSiteId, defaultEngagementIds }: MissionEditorProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
-  const [siteId, setSiteId] = useState(initialMission?.site_id ?? defaultSiteId ?? sites[0]?.id ?? '')
+  const initialSiteId = initialMission?.site_id ?? defaultSiteId ?? sites[0]?.id ?? ''
+  const [siteId, setSiteId] = useState(initialSiteId)
   const [name, setName] = useState(initialMission?.name ?? '')
   const [description, setDescription] = useState(initialMission?.description ?? '')
   const [cadence, setCadence] = useState<MissionCadence>(initialMission?.cadence ?? 'daily')
-  const [engagementIds, setEngagementIds] = useState<string[]>(initialMission?.engagement_ids ?? [])
+  const [engagementIds, setEngagementIds] = useState<string[]>(() => {
+    if (mode === 'edit') return initialMission?.engagement_ids ?? []
+    if (!defaultEngagementIds || defaultEngagementIds.length === 0) return []
+    const authorized = resolveVisibleEngagementIds(initialSiteId, sites, otherSites, contractEngagements, siteEngagements)
+    return defaultEngagementIds.filter((id) => authorized.has(id))
+  })
   const [checklist, setChecklist] = useState<ChecklistTemplateItem[]>(
     initialMission?.default_checklist ?? []
   )
@@ -300,7 +339,15 @@ export function MissionEditor({ mode, contractId, sites, otherSites, contractEng
       </div>
 
       <div className="flex justify-between">
-        <button type="button" onClick={() => router.push(`/contracts/${contractId}/missions`)} disabled={pending} className="px-3 py-1.5 rounded border text-sm disabled:opacity-50">
+        <button
+          type="button"
+          onClick={() => {
+            const cid = allSitesById.get(siteId)?.contract_id ?? contractId ?? null
+            router.push(cid ? `/contracts/${cid}/missions` : '/missions')
+          }}
+          disabled={pending}
+          className="px-3 py-1.5 rounded border text-sm disabled:opacity-50"
+        >
           Annuler
         </button>
         <button

@@ -306,6 +306,109 @@ describe('MissionEditor — création', () => {
   })
 })
 
+describe('MissionEditor — présélection defaultEngagementIds (P0-3.5B)', () => {
+  it('Porte A : un engagement autorisé du contrat du site est présélectionné', () => {
+    const siteA = makeSite()
+    const engA = makeEngagement({ id: 'eng-a', contract_id: 'contract-x', short_label: 'Porte A — contrat X' })
+
+    render(
+      <MissionEditor
+        mode="create"
+        contractId="contract-x"
+        sites={[siteA]}
+        contractEngagements={{ 'contract-x': [engA] }}
+        siteEngagements={{}}
+        defaultSiteId="site-a"
+        defaultEngagementIds={['eng-a']}
+      />,
+    )
+
+    expect(screen.getByRole('checkbox')).toBeChecked()
+  })
+
+  it('Porte B : un engagement autorisé du site lui-même est présélectionné', () => {
+    const siteA = makeSite()
+    const engB = makeEngagement({ id: 'eng-b', site_id: 'site-a', short_label: 'Porte B — site A' })
+
+    render(
+      <MissionEditor
+        mode="create"
+        contractId="contract-x"
+        sites={[siteA]}
+        contractEngagements={{}}
+        siteEngagements={{ 'site-a': [engB] }}
+        defaultSiteId="site-a"
+        defaultEngagementIds={['eng-b']}
+      />,
+    )
+
+    expect(screen.getByRole('checkbox')).toBeChecked()
+  })
+
+  it('un id hors population (autre site/contrat/organisation, ou curated) n’est ni affiché ni présélectionné', async () => {
+    mockCreate.mockResolvedValue({ ok: true, missionId: 'new-mission' })
+    const siteA = makeSite()
+    const engA = makeEngagement({ id: 'eng-a', contract_id: 'contract-x', short_label: 'Porte A — contrat X' })
+
+    render(
+      <MissionEditor
+        mode="create"
+        contractId="contract-x"
+        sites={[siteA]}
+        contractEngagements={{ 'contract-x': [engA] }}
+        siteEngagements={{}}
+        defaultSiteId="site-a"
+        defaultEngagementIds={['eng-a', 'eng-forge-autre-org']}
+      />,
+    )
+
+    // Un seul engagement visible : celui de la population autorisée.
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1)
+    expect(screen.getByRole('checkbox')).toBeChecked()
+
+    const [nameInput] = screen.getAllByRole('textbox')
+    fireEvent.change(nameInput, { target: { value: 'Mission avec id forgé' } })
+    fireEvent.click(screen.getByText('Créer la mission'))
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1))
+    const fd = mockCreate.mock.calls[0][0] as FormData
+    expect(JSON.parse(fd.get('engagement_ids') as string)).toEqual(['eng-a'])
+  })
+})
+
+describe('MissionEditor — entrée site-first sans contrat (P0-3.5B, Porte B pure)', () => {
+  it('formulaire accessible, présélection appliquée, création réussie sans contrat', async () => {
+    mockCreate.mockResolvedValue({ ok: true, missionId: 'new-mission' })
+    const siteSansContrat = makeSite({ id: 'site-b', contract_id: null, name: 'Site B' })
+    const engB = makeEngagement({ id: 'eng-b', site_id: 'site-b', short_label: 'Porte B — site B sans contrat' })
+
+    render(
+      <MissionEditor
+        mode="create"
+        contractId={null}
+        sites={[siteSansContrat]}
+        contractEngagements={{}}
+        siteEngagements={{ 'site-b': [engB] }}
+        defaultSiteId="site-b"
+        defaultEngagementIds={['eng-b']}
+      />,
+    )
+
+    expect(screen.getByText('Porte B — site B sans contrat')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox')).toBeChecked()
+
+    const [nameInput] = screen.getAllByRole('textbox')
+    fireEvent.change(nameInput, { target: { value: 'Mission Porte B sans contrat' } })
+    fireEvent.click(screen.getByText('Créer la mission'))
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1))
+    const fd = mockCreate.mock.calls[0][0] as FormData
+    expect(fd.get('site_id')).toBe('site-b')
+    expect(JSON.parse(fd.get('engagement_ids') as string)).toEqual(['eng-b'])
+    expect(mockPush).toHaveBeenCalledWith('/missions')
+  })
+})
+
 describe('MissionEditor — édition, préservation hors population', () => {
   it('affiche un Engagement déjà lié mais sorti de la population, et permet de le détacher', async () => {
     mockUpdate.mockResolvedValue({ ok: true })

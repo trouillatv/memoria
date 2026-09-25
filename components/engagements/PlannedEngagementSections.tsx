@@ -10,13 +10,20 @@ import { PlannedEngagementCard } from './PlannedEngagementCard'
 export function PlannedEngagementSections({
   groups,
   gridClassName,
+  siteId,
   canActivate = false,
+  canPlan = false,
   canTreatPoint = false,
 }: {
   groups: PlannedEngagementSectionGroup[]
   gridClassName: string
+  /** P0-3.5B — requis par PlannedEngagementCard pour construire le lien
+   *  « Planifier » (route site-first). */
+  siteId: string
   /** P0-3.2 — propage la permission d'activation (managerOrAdmin) à chaque carte. */
   canActivate?: boolean
+  /** « Planifier » (P0-3.5B) — propage la permission (managerOrAdmin) à chaque carte. */
+  canPlan?: boolean
   /** « Traiter un point » — propage la permission (managerOrAdmin) à chaque carte. */
   canTreatPoint?: boolean
 }) {
@@ -35,7 +42,7 @@ export function PlannedEngagementSections({
             </div>
             <ul className={gridClassName}>
               {group.engagements.map((e) => (
-                <PlannedEngagementCard key={e.id} engagement={e} showStatusBadge={!homogeneousStatus} canActivate={canActivate} canTreatPoint={canTreatPoint} />
+                <PlannedEngagementCard key={e.id} engagement={e} showStatusBadge={!homogeneousStatus} siteId={siteId} canActivate={canActivate} canPlan={canPlan} canTreatPoint={canTreatPoint} />
               ))}
             </ul>
           </section>

@@ -8,23 +8,36 @@
 // extrait/preuves additionnelles vont dans un détail dépliable unique —
 // aucune information du read-model n'est supprimée, seulement déplacée.
 
+import Link from 'next/link'
+import { CalendarPlus } from 'lucide-react'
 import { categoryLabel, plannedEngagementStatusLabel } from '@/lib/engagements/labels'
 import { KIND_META, kindLabel } from '@/lib/engagements/kind'
 import type { PlannedEngagement } from '@/lib/db/engagements'
 import { ActivateEngagementButton } from '@/components/engagements/ActivateEngagementButton'
 import { EngagementTreatPointButton } from '@/components/engagements/EngagementTreatPointButton'
+import { buttonVariants } from '@/components/ui/button'
 
 export function PlannedEngagementCard({
   engagement: e,
   showStatusBadge,
+  siteId,
   canActivate = false,
+  canPlan = false,
   canTreatPoint = false,
 }: {
   engagement: PlannedEngagement
   showStatusBadge: boolean
+  /** P0-3.5B — requis pour construire le lien « Planifier » (route site-first,
+   *  jamais un contrat forgé). */
+  siteId: string
   /** P0-3.2 — CTA « Mettre en vigueur » réservé à managerOrAdmin ; la garde
    *  autoritaire reste côté serveur, ceci n'évite qu'un bouton voué à échouer. */
   canActivate?: boolean
+  /** « Planifier » (P0-3.5B, mandat Vincent 2026-09-26) — organise l'exécution
+   *  normale (création de Mission), distinct de « Traiter un point » (situation
+   *  ponctuelle). Même politique managerOrAdmin ; garde autoritaire côté
+   *  serveur (createMissionAction / resolveEngagementAuthorization). */
+  canPlan?: boolean
   /** « Traiter un point » (mandat Vincent 2026-09-25) — même politique
    *  managerOrAdmin que canActivate ; garde autoritaire côté serveur. */
   canTreatPoint?: boolean
@@ -69,9 +82,17 @@ export function PlannedEngagementCard({
         </div>
       )}
 
-      {e.status === 'active' && canTreatPoint && (
-        <div className="flex justify-end">
-          <EngagementTreatPointButton engagementId={e.id} />
+      {e.status === 'active' && (canPlan || canTreatPoint) && (
+        <div className="flex justify-end gap-1.5">
+          {canPlan && (
+            <Link
+              href={`/sites/${siteId}/missions/new?engagement=${e.id}`}
+              className={buttonVariants({ variant: 'outline', size: 'sm', className: 'gap-1.5' })}
+            >
+              <CalendarPlus className="h-3.5 w-3.5" /> Planifier
+            </Link>
+          )}
+          {canTreatPoint && <EngagementTreatPointButton engagementId={e.id} />}
         </div>
       )}
 

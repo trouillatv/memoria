@@ -61,7 +61,7 @@ export default async function SitePrestationsMobilePage({
           <p className="text-sm text-muted-foreground">Aucun engagement validé pour ce chantier.</p>
         </div>
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="space-y-3" canActivate={canActivate} canTreatPoint={canActivate} />
+        <PlannedEngagementSections groups={sections} gridClassName="space-y-3" siteId={siteId} canActivate={canActivate} canPlan={canActivate} canTreatPoint={canActivate} />
       )}
     </div>
   )
