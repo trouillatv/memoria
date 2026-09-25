@@ -10,6 +10,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp, CheckCircle2, HelpCircle, Clock3, Users } from 'lucide-react'
 import type { VisitOutcomeSummary } from '@/lib/db/visit-outcome-summary'
+import type { SiteReportStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
 
 const KIND_LABEL: Record<string, string> = {
@@ -19,6 +20,22 @@ const KIND_LABEL: Record<string, string> = {
   vigilance: 'Vigilance',
   knowledge: 'Mémoire',
   stakeholder: 'Intervenant',
+}
+
+// Même wording que app/(dashboard)/meetings/[id]/page.tsx#statusLabel — un CR
+// non `curated`/`archived` n'a pas franchi la validation humaine.
+function crStatusLabel(status: SiteReportStatus): string {
+  switch (status) {
+    case 'curated':
+    case 'archived':
+      return 'Validé'
+    case 'proposed':
+      return 'Analysé — à valider'
+    case 'failed':
+      return 'Échec'
+    default:
+      return 'Brouillon — à valider'
+  }
 }
 
 export function VisitOutcomeSummaryCard({ summary }: { summary: VisitOutcomeSummary | null }) {
@@ -76,7 +93,7 @@ export function VisitOutcomeSummaryCard({ summary }: { summary: VisitOutcomeSumm
           )}
 
           {orphanedCount > 0 && (
-            <OutcomeGroup icon={HelpCircle} iconCls="text-amber-600" title="Jamais rattaché à un sujet suivi">
+            <OutcomeGroup icon={HelpCircle} iconCls="text-amber-600" title="À rattacher à un sujet">
               <ul className="space-y-1.5">
                 {summary.unresolved.orphanedProposals.map((p) => (
                   <li key={p.ref.id} className="text-[12px] leading-snug">
@@ -116,9 +133,13 @@ export function VisitOutcomeSummaryCard({ summary }: { summary: VisitOutcomeSumm
             </OutcomeGroup>
           )}
 
-          <p className="text-[11px] text-muted-foreground">
-            {summary.memoryIndexed ? 'Indexée dans la mémoire du chantier.' : 'Pas encore indexée dans la mémoire du chantier.'}
-          </p>
+          <div>
+            <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">État de la visite</p>
+            <ul className="space-y-0.5 text-[12px] text-muted-foreground">
+              <li>Compte-rendu : <span className="font-medium text-foreground">{crStatusLabel(summary.crStatus)}</span></li>
+              <li>Mémoire : <span className="font-medium text-foreground">{summary.memoryIndexed ? 'Indexée' : 'Pas encore indexée'}</span></li>
+            </ul>
+          </div>
         </div>
       )}
     </div>
