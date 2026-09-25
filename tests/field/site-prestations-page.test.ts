@@ -15,6 +15,22 @@ vi.mock('@/lib/field/site-access', () => ({
   requireSiteAccess: (...a: unknown[]) => mockRequireSiteAccess(...a),
 }))
 
+// P0-3.2 FIX (revue ChatGPT 2026-09-25) — le gating du CTA « Mettre en
+// vigueur » doit venir de requireSiteWriteAccess (rôle DANS l'organisation du
+// chantier), jamais de user.role (rôle plateforme, divergent en multi-org).
+type SiteWriteAccessResult =
+  | { ok: true; organizationId: string; userId: string; role: string }
+  | { ok: false; error: string }
+const mockRequireSiteWriteAccess = vi.fn(async (..._a: unknown[]): Promise<SiteWriteAccessResult> => ({
+  ok: true,
+  organizationId: 'org-1',
+  userId: 'user-1',
+  role: 'manager',
+}))
+vi.mock('@/lib/auth/site-write-access', () => ({
+  requireSiteWriteAccess: (...a: unknown[]) => mockRequireSiteWriteAccess(...a),
+}))
+
 const mockListPlannedEngagements = vi.fn(async (..._a: unknown[]) => [] as unknown[])
 vi.mock('@/lib/db/engagements', () => ({
   listPlannedEngagementsForSite: (...a: unknown[]) => mockListPlannedEngagements(...a),
@@ -63,6 +79,28 @@ function treeContainsText(node: unknown, text: string): boolean {
     }
   }
   return el.props ? treeContainsText(el.props.children, text) : false
+}
+
+/**
+ * Vérifie la PRÉSENCE d'un composant fonction dans l'arbre par référence de
+ * type, sans l'invoquer s'il s'agit du composant recherché (à hooks) — même
+ * pattern que tests/components/planned-engagement-card-activate.test.ts.
+ */
+function treeContainsComponent(node: unknown, componentName: string): boolean {
+  if (node == null || typeof node === 'boolean') return false
+  if (typeof node === 'string') return false
+  if (Array.isArray(node)) return node.some((n) => treeContainsComponent(n, componentName))
+  const el = node as { type?: unknown; props?: { children?: unknown } }
+  if (typeof el.type === 'function') {
+    const name = (el.type as { name?: string }).name
+    if (name === componentName) return true
+    try {
+      return treeContainsComponent((el.type as (props: unknown) => unknown)(el.props), componentName)
+    } catch {
+      return false
+    }
+  }
+  return el.props ? treeContainsComponent(el.props.children, componentName) : false
 }
 
 function plannedEngagement(overrides: Record<string, unknown> = {}) {
@@ -123,5 +161,40 @@ describe('/m/site/[siteId]/prestations — état vide et badge Mesurable', () =>
     const accessOrder = mockRequireSiteAccess.mock.invocationCallOrder[0]
     const listOrder = mockListPlannedEngagements.mock.invocationCallOrder[0]
     expect(accessOrder).toBeLessThan(listOrder)
+  })
+})
+
+describe('/m/site/[siteId]/prestations — CTA « Mettre en vigueur » (P0-3.2 FIX gating multi-org)', () => {
+  it('membership managerOrAdmin sur ce chantier : CTA présent sur un Engagement curated', async () => {
+    mockRequireSiteWriteAccess.mockResolvedValueOnce({ ok: true, organizationId: 'org-1', userId: 'user-1', role: 'manager' })
+    mockListPlannedEngagements.mockResolvedValueOnce([plannedEngagement({ status: 'curated' })])
+    const tree = await SitePrestationsMobilePage({ params: Promise.resolve({ siteId: 'site-1' }) })
+
+    expect(treeContainsComponent(tree, 'ActivateEngagementButton')).toBe(true)
+  })
+
+  it('accès refusé (chef_equipe ou autre organisation) : CTA absent même si le profil plateforme est admin', async () => {
+    mockRequireSiteAccess.mockResolvedValueOnce({ siteId: 'site-1', user: { id: 'u1', role: 'admin' } })
+    mockRequireSiteWriteAccess.mockResolvedValueOnce({ ok: false, error: 'Accès refusé' })
+    mockListPlannedEngagements.mockResolvedValueOnce([plannedEngagement({ status: 'curated' })])
+    const tree = await SitePrestationsMobilePage({ params: Promise.resolve({ siteId: 'site-1' }) })
+
+    expect(treeContainsComponent(tree, 'ActivateEngagementButton')).toBe(false)
+  })
+
+  it('profil plateforme chef_equipe mais membership manager sur ce chantier : CTA présent (le rôle vient de l’organisation, pas du profil)', async () => {
+    mockRequireSiteAccess.mockResolvedValueOnce({ siteId: 'site-1', user: { id: 'u1', role: 'chef_equipe' } })
+    mockRequireSiteWriteAccess.mockResolvedValueOnce({ ok: true, organizationId: 'org-1', userId: 'user-1', role: 'manager' })
+    mockListPlannedEngagements.mockResolvedValueOnce([plannedEngagement({ status: 'curated' })])
+    const tree = await SitePrestationsMobilePage({ params: Promise.resolve({ siteId: 'site-1' }) })
+
+    expect(treeContainsComponent(tree, 'ActivateEngagementButton')).toBe(true)
+  })
+
+  it('sécurité : requireSiteWriteAccess reçoit le siteId de la route et la politique managerOrAdmin', async () => {
+    mockListPlannedEngagements.mockResolvedValueOnce([])
+    await SitePrestationsMobilePage({ params: Promise.resolve({ siteId: 'site-1' }) })
+
+    expect(mockRequireSiteWriteAccess).toHaveBeenCalledWith('site-1', 'managerOrAdmin')
   })
 })

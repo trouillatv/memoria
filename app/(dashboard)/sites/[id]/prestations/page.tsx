@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { ClipboardList } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { listPlannedEngagementsForSite } from '@/lib/db/engagements'
 import { findPendingEngagementFinalizationForSite } from '@/lib/db/materialize-engagement'
@@ -40,11 +41,14 @@ export default async function SitePrestationsPage({ params }: PageProps) {
   const sorted = [...engagements].sort((a, b) => kindRank(a.kind) - kindRank(b.kind) || b.createdAt.localeCompare(a.createdAt))
   const sections = groupPlannedEngagementsBySection(sorted)
   const pendingFinalization = sorted.length === 0 ? await findPendingEngagementFinalizationForSite(id) : null
-  // P0-3.2 — CTA « Mettre en vigueur » réservé à managerOrAdmin (pas
-  // chef_equipe, déjà exclu de cette page par le redirect ci-dessus). La
-  // garde autoritaire reste requireSiteWriteAccess côté serveur ; ceci
-  // n'évite qu'un bouton voué à échouer.
-  const canActivate = user.role === 'admin' || user.role === 'manager'
+  // P0-3.2 FIX (mandat Vincent 2026-09-25) — le gating d'affichage doit parler
+  // le même langage que la mutation autoritaire : le rôle DANS l'organisation
+  // du chantier (requireSiteWriteAccess), pas users.role (rôle plateforme,
+  // qui peut diverger en multi-org). La garde autoritaire reste côté serveur
+  // dans activatePlannedEngagementAction ; ceci n'évite qu'un bouton voué à
+  // échouer ou, symétriquement, caché à tort.
+  const activationAccess = await requireSiteWriteAccess(id, 'managerOrAdmin')
+  const canActivate = activationAccess.ok
 
   return (
     <div className="mx-auto w-full max-w-[1180px] space-y-5 px-1 pb-10">

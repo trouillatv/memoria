@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation'
 import { requireSiteAccess } from '@/lib/field/site-access'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listPlannedEngagementsForSite } from '@/lib/db/engagements'
 import { KIND_ORDER } from '@/lib/engagements/kind'
@@ -26,10 +27,12 @@ export default async function SitePrestationsMobilePage({
   const { siteId } = await params
   // Un chantier d'une autre organisation doit être indiscernable d'un chantier
   // inexistant : la garde rend 404, jamais « accès refusé ».
-  const { user } = await requireSiteAccess(siteId)
-  // P0-3.2 — même gating côté rendu que le miroir desktop : la garde
-  // autoritaire reste requireSiteWriteAccess côté serveur.
-  const canActivate = user.role === 'admin' || user.role === 'manager'
+  await requireSiteAccess(siteId)
+  // P0-3.2 FIX (mandat Vincent 2026-09-25) — même primitive que la mutation
+  // autoritaire (requireSiteWriteAccess, rôle DANS l'organisation du
+  // chantier), pas user.role (rôle plateforme, divergent en multi-org).
+  const activationAccess = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
+  const canActivate = activationAccess.ok
 
   const supabase = createAdminClient()
   const { data: site } = await supabase
