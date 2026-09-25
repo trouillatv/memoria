@@ -23,7 +23,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { CATEGORY_LABELS } from '@/lib/engagements/labels'
+import { CATEGORY_LABELS, categoryLabel } from '@/lib/engagements/labels'
 import { KIND_ORDER, kindLabel } from '@/lib/engagements/kind'
 import type { EngagementCategory, EngagementKind } from '@/types/db'
 import { createPlannedEngagementManualAction } from '@/app/(dashboard)/sites/[id]/prestations/actions'
@@ -115,7 +115,12 @@ export function AddPlannedEngagementDialog({ siteId }: { siteId: string }) {
             <Label>Catégorie</Label>
             <Select value={category} onValueChange={(v) => setCategory(v as EngagementCategory)}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Choisir…" />
+                {/* base-ui SelectValue n'affiche le libellé traduit que si on le
+                    lui fournit explicitement (sinon il retombe sur la valeur
+                    brute stockée, ex. "frequency" au lieu de "Fréquence"). */}
+                <SelectValue>
+                  {(v: EngagementCategory | '') => (v ? categoryLabel(v) : 'Choisir…')}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {(Object.keys(CATEGORY_LABELS) as EngagementCategory[]).map((c) => (
@@ -129,7 +134,9 @@ export function AddPlannedEngagementDialog({ siteId }: { siteId: string }) {
             <Label>Nature</Label>
             <Select value={kind} onValueChange={(v) => setKind(v as EngagementKind | 'none')}>
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue>
+                  {(v: EngagementKind | 'none') => kindLabel(v === 'none' ? null : v)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Non typé</SelectItem>
