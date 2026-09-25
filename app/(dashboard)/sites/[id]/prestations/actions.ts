@@ -9,7 +9,9 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { createSiteEngagementManual, getEngagementAuthContext, activateEngagement } from '@/lib/db/engagements'
-import type { EngagementCategory, EngagementKind } from '@/types/db'
+import { createSiteAction } from '@/lib/db/site-actions'
+import { createSiteActionEngagementLink, addEngagementLinkQualification } from '@/lib/db/site-action-engagement-links'
+import type { EngagementCategory, EngagementKind, EngagementLinkQualification } from '@/types/db'
 
 const CATEGORY_VALUES = ['frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other'] as const
 const KIND_VALUES = ['objectif', 'obligation', 'livrable', 'controle', 'penalite'] as const
@@ -92,4 +94,76 @@ export async function activatePlannedEngagementAction(
   revalidatePath(`/sites/${engagement.site_id}/prestations`)
   revalidatePath(`/m/site/${engagement.site_id}/prestations`)
   return { ok: true }
+}
+
+// « Traiter un point » (mandat Vincent 2026-09-25) — assistant de création
+// d'Action depuis un Engagement ACTIF. « MemorIA peut proposer d'agir ;
+// l'utilisateur décide qu'une Action est nécessaire » : ceci ne crée rien tant
+// que l'humain n'a pas rempli motif + description et cliqué « Créer
+// l'action ». Un seul clic crée, dans la même opération logique, le
+// site_action, le rapprochement P0-4B et la qualification P0-4C — jamais de
+// nouvelle taxonomie, jamais de nouvel objet « fait terrain » persistant :
+// les 4 qualifications et le champ note existants sont réutilisés tels quels
+// (motif → qualification, description → titre de l'Action, origine
+// facultative → note de la qualification). Même ordre fail-closed que
+// activatePlannedEngagementAction : Engagement inexistant/sans site/non actif
+// → refus, PUIS requireSiteWriteAccess(site_id, 'managerOrAdmin'). En cas
+// d'échec du rapprochement ou de la qualification après création de l'Action,
+// celle-ci reste (aucune primitive de suppression de site_action n'existe,
+// par doctrine) : l'humain peut alors la rapprocher/qualifier manuellement
+// depuis sa fiche (mécanisme P0-4B/P0-4C déjà en place) — aucune perte.
+const QUALIFICATIONS = ['demande_evolution', 'mise_en_oeuvre', 'ecart_a_examiner', 'clarification'] as const
+
+const CreateActionFromEngagementSchema = z.object({
+  engagement_id: z.string().uuid(),
+  qualification: z.enum(QUALIFICATIONS),
+  description: z.string().trim().min(1, 'La description est requise').max(2000),
+  origin: z.string().trim().max(500).optional().nullable(),
+})
+
+const TREAT_POINT_REFUS = 'Impossible de créer cette Action' as const
+
+export async function createActionFromEngagementAction(
+  input: z.input<typeof CreateActionFromEngagementSchema>,
+): Promise<{ ok: true; actionId: string } | { ok: false; error: string }> {
+  const parsed = CreateActionFromEngagementSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? 'Paramètres invalides' }
+  const { engagement_id, qualification, description, origin } = parsed.data
+
+  const engagement = await getEngagementAuthContext(engagement_id)
+  if (!engagement) return { ok: false, error: TREAT_POINT_REFUS }
+  if (!engagement.site_id) return { ok: false, error: TREAT_POINT_REFUS }
+  if (engagement.status !== 'active') return { ok: false, error: TREAT_POINT_REFUS }
+
+  const access = await requireSiteWriteAccess(engagement.site_id, 'managerOrAdmin')
+  if (!access.ok) return access
+
+  const actionId = await createSiteAction({
+    site_id: engagement.site_id,
+    title: description,
+    created_by: access.userId,
+    created_from: 'engagement_treat_point',
+  })
+
+  const linkResult = await createSiteActionEngagementLink({
+    siteActionId: actionId,
+    engagementId: engagement.id,
+    organizationId: access.organizationId,
+    createdBy: access.userId,
+  })
+  if (!linkResult.ok) return linkResult
+
+  const qualifyResult = await addEngagementLinkQualification({
+    linkId: linkResult.id,
+    qualification: qualification as EngagementLinkQualification,
+    note: origin || null,
+    organizationId: access.organizationId,
+    createdBy: access.userId,
+  })
+  if (!qualifyResult.ok) return qualifyResult
+
+  revalidatePath(`/sites/${engagement.site_id}/prestations`)
+  revalidatePath(`/m/site/${engagement.site_id}/prestations`)
+  revalidatePath(`/sites/${engagement.site_id}/actions`)
+  return { ok: true, actionId }
 }

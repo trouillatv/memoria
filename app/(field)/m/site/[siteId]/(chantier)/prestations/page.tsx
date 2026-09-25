@@ -14,10 +14,12 @@ export const dynamic = 'force-dynamic'
 /**
  * Prestations prévues d'un chantier (mobile) — ce que MemorIA sait devoir être
  * vrai/réalisé sur ce chantier (engagements Porte B validés), distinct de
- * l'onglet Documents (ce que MemorIA peut consulter). Sinon lecture seule :
- * aucune activation, édition, calendrier, occurrence, comparaison terrain ou
- * Action n'est proposée depuis cette vue (P0-3, hors scope explicite). Seul
- * ajout P0-3.1A : créer manuellement un Engagement Porte B, sans document.
+ * l'onglet Documents (ce que MemorIA peut consulter). Édition/calendrier/
+ * occurrence/comparaison terrain restent hors scope (P0-3). Ajouts depuis :
+ * P0-3.1A (créer manuellement un Engagement Porte B sans document), P0-3.2
+ * (mettre un engagement curated en vigueur), « Traiter un point » (créer une
+ * Action depuis un engagement actif, jamais automatique — cf.
+ * EngagementTreatPointButton).
  */
 export default async function SitePrestationsMobilePage({
   params,
@@ -59,7 +61,7 @@ export default async function SitePrestationsMobilePage({
           <p className="text-sm text-muted-foreground">Aucun engagement validé pour ce chantier.</p>
         </div>
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="space-y-3" canActivate={canActivate} />
+        <PlannedEngagementSections groups={sections} gridClassName="space-y-3" canActivate={canActivate} canTreatPoint={canActivate} />
       )}
     </div>
   )

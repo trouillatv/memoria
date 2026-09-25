@@ -22,8 +22,12 @@ interface PageProps {
  * /m/site/[siteId]/prestations (P0-3, réouvert par Vincent 2026-09-25 : ce
  * point de suivi n'existait que côté mobile). Ce que MemorIA sait devoir être
  * vrai/réalisé sur ce chantier (engagements Porte B validés), distinct de
- * l'onglet Documents. Lecture seule : aucune activation, édition, calendrier,
- * occurrence, comparaison terrain ou Action n'est proposée depuis cette vue.
+ * l'onglet Documents. Édition/calendrier/occurrence/comparaison terrain
+ * restent hors scope. P0-3.2 (même jour) a ouvert l'activation d'un
+ * engagement curated ; « Traiter un point » (même jour) ouvre la création
+ * d'une Action depuis un engagement actif — jamais automatique, seulement sur
+ * confirmation humaine explicite (motif + description), cf.
+ * EngagementTreatPointButton.
  */
 export default async function SitePrestationsPage({ params }: PageProps) {
   const user = await getCurrentUserWithProfile()
@@ -95,7 +99,7 @@ export default async function SitePrestationsPage({ params }: PageProps) {
           </div>
         )
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" canActivate={canActivate} />
+        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" canActivate={canActivate} canTreatPoint={canActivate} />
       )}
     </div>
   )

@@ -11,11 +11,14 @@ export function PlannedEngagementSections({
   groups,
   gridClassName,
   canActivate = false,
+  canTreatPoint = false,
 }: {
   groups: PlannedEngagementSectionGroup[]
   gridClassName: string
   /** P0-3.2 — propage la permission d'activation (managerOrAdmin) à chaque carte. */
   canActivate?: boolean
+  /** « Traiter un point » — propage la permission (managerOrAdmin) à chaque carte. */
+  canTreatPoint?: boolean
 }) {
   return (
     <div className="space-y-6">
@@ -32,7 +35,7 @@ export function PlannedEngagementSections({
             </div>
             <ul className={gridClassName}>
               {group.engagements.map((e) => (
-                <PlannedEngagementCard key={e.id} engagement={e} showStatusBadge={!homogeneousStatus} canActivate={canActivate} />
+                <PlannedEngagementCard key={e.id} engagement={e} showStatusBadge={!homogeneousStatus} canActivate={canActivate} canTreatPoint={canTreatPoint} />
               ))}
             </ul>
           </section>

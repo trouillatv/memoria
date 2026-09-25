@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Link2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { createEngagementLinkAction, removeEngagementLinkAction, qualifyEngagementLinkAction } from '@/app/(dashboard)/actions/actions'
+import { QUALIFICATION_OPTIONS, QUALIFICATION_LABEL } from '@/lib/engagements/qualification-labels'
 import type { DbEngagement, EngagementLinkQualification } from '@/types/db'
 import type { SiteActionEngagementLinkView } from '@/lib/db/site-action-engagement-links'
 
@@ -21,17 +22,6 @@ const STATUS_LABEL: Record<string, string> = {
   completed: 'Terminé',
   archived: 'Archivé',
 }
-
-// P0-4C — qualification humaine du POURQUOI de ce lien. Jamais une conformité :
-// ces 4 valeurs répondent à « pourquoi cette Action concerne cet Engagement »,
-// jamais à « est-ce respecté ? ».
-const QUALIFICATION_OPTIONS: Array<{ value: EngagementLinkQualification; label: string }> = [
-  { value: 'demande_evolution', label: "Demande d'évolution" },
-  { value: 'mise_en_oeuvre', label: 'Mise en œuvre' },
-  { value: 'ecart_a_examiner', label: 'Écart à examiner' },
-  { value: 'clarification', label: 'À clarifier' },
-]
-const QUALIFICATION_LABEL: Record<string, string> = Object.fromEntries(QUALIFICATION_OPTIONS.map((o) => [o.value, o.label]))
 
 function formatQualifiedAt(iso: string): string {
   const d = new Date(iso)

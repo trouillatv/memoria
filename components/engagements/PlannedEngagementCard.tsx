@@ -12,17 +12,22 @@ import { categoryLabel, plannedEngagementStatusLabel } from '@/lib/engagements/l
 import { KIND_META, kindLabel } from '@/lib/engagements/kind'
 import type { PlannedEngagement } from '@/lib/db/engagements'
 import { ActivateEngagementButton } from '@/components/engagements/ActivateEngagementButton'
+import { EngagementTreatPointButton } from '@/components/engagements/EngagementTreatPointButton'
 
 export function PlannedEngagementCard({
   engagement: e,
   showStatusBadge,
   canActivate = false,
+  canTreatPoint = false,
 }: {
   engagement: PlannedEngagement
   showStatusBadge: boolean
   /** P0-3.2 — CTA « Mettre en vigueur » réservé à managerOrAdmin ; la garde
    *  autoritaire reste côté serveur, ceci n'évite qu'un bouton voué à échouer. */
   canActivate?: boolean
+  /** « Traiter un point » (mandat Vincent 2026-09-25) — même politique
+   *  managerOrAdmin que canActivate ; garde autoritaire côté serveur. */
+  canTreatPoint?: boolean
 }) {
   const statusBadge = e.status === 'active'
     ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
@@ -61,6 +66,12 @@ export function PlannedEngagementCard({
       {e.status === 'curated' && canActivate && (
         <div className="flex justify-end">
           <ActivateEngagementButton engagementId={e.id} />
+        </div>
+      )}
+
+      {e.status === 'active' && canTreatPoint && (
+        <div className="flex justify-end">
+          <EngagementTreatPointButton engagementId={e.id} />
         </div>
       )}
 
