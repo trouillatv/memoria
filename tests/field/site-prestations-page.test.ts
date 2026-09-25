@@ -133,7 +133,7 @@ describe('/m/site/[siteId]/prestations — état vide et badge Mesurable', () =>
     mockListPlannedEngagements.mockResolvedValueOnce([])
     const tree = await SitePrestationsMobilePage({ params: Promise.resolve({ siteId: 'site-1' }) })
 
-    expect(treeContainsText(tree, 'Aucun engagement contractuel validé pour ce chantier.')).toBe(true)
+    expect(treeContainsText(tree, 'Aucun engagement validé pour ce chantier.')).toBe(true)
     expect(treeContainsText(tree, 'Aucune prestation validée sur ce chantier.')).toBe(false)
   })
 

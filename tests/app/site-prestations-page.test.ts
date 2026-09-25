@@ -146,7 +146,7 @@ describe('/sites/[id]/prestations — état vide, badge Mesurable, sécurité', 
     mockListPlannedEngagements.mockResolvedValueOnce([])
     const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
 
-    expect(treeContainsText(tree, 'Aucun engagement contractuel validé pour ce chantier.')).toBe(true)
+    expect(treeContainsText(tree, 'Aucun engagement validé pour ce chantier.')).toBe(true)
   })
 
   it('zéro Engagement mais propositions acceptées non finalisées : état vide intelligent avec CTA', async () => {
@@ -156,7 +156,7 @@ describe('/sites/[id]/prestations — état vide, badge Mesurable, sécurité', 
     })
     const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
 
-    expect(treeContainsText(tree, 'Aucun engagement contractuel validé pour ce chantier.')).toBe(false)
+    expect(treeContainsText(tree, 'Aucun engagement validé pour ce chantier.')).toBe(false)
     expect(treeContainsText(tree, 'Finaliser les 43 Engagements')).toBe(true)
   })
 

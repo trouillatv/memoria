@@ -24,7 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { CATEGORY_LABELS, categoryLabel } from '@/lib/engagements/labels'
-import { KIND_ORDER, kindLabel } from '@/lib/engagements/kind'
+import { KIND_ORDER, KIND_META, kindLabel } from '@/lib/engagements/kind'
 import type { EngagementCategory, EngagementKind } from '@/types/db'
 import { createPlannedEngagementManualAction } from '@/app/(dashboard)/sites/[id]/prestations/actions'
 
@@ -113,6 +113,7 @@ export function AddPlannedEngagementDialog({ siteId }: { siteId: string }) {
 
           <div className="space-y-1.5">
             <Label>Catégorie</Label>
+            <p className="text-xs text-muted-foreground">Ce que concerne l&apos;engagement</p>
             <Select value={category} onValueChange={(v) => setCategory(v as EngagementCategory)}>
               <SelectTrigger className="w-full">
                 {/* base-ui SelectValue n'affiche le libellé traduit que si on le
@@ -132,6 +133,7 @@ export function AddPlannedEngagementDialog({ siteId }: { siteId: string }) {
 
           <div className="space-y-1.5">
             <Label>Nature</Label>
+            <p className="text-xs text-muted-foreground">Le rôle de cet engagement</p>
             <Select value={kind} onValueChange={(v) => setKind(v as EngagementKind | 'none')}>
               <SelectTrigger className="w-full">
                 <SelectValue>
@@ -145,11 +147,19 @@ export function AddPlannedEngagementDialog({ siteId }: { siteId: string }) {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              {kind === 'none'
+                ? "À utiliser seulement si la nature n'est pas encore connue."
+                : KIND_META[kind].description}
+            </p>
           </div>
 
-          <div className="flex items-center justify-between">
-            <Label htmlFor="engagement-measurable">Mesurable</Label>
-            <Switch id="engagement-measurable" checked={measurable} onCheckedChange={(v) => setMeasurable(!!v)} />
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="engagement-measurable">Mesurable</Label>
+              <Switch id="engagement-measurable" checked={measurable} onCheckedChange={(v) => setMeasurable(!!v)} />
+            </div>
+            <p className="text-xs text-muted-foreground">Peut-on vérifier objectivement que cette règle est respectée ?</p>
           </div>
 
           {error && <p className="text-[12px] text-rose-600">{error}</p>}

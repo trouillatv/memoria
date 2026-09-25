@@ -56,7 +56,7 @@ export default async function SitePrestationsMobilePage({
 
       {sorted.length === 0 ? (
         <div className="rounded-xl border border-dashed p-6 text-center">
-          <p className="text-sm text-muted-foreground">Aucun engagement contractuel validé pour ce chantier.</p>
+          <p className="text-sm text-muted-foreground">Aucun engagement validé pour ce chantier.</p>
         </div>
       ) : (
         <PlannedEngagementSections groups={sections} gridClassName="space-y-3" canActivate={canActivate} />

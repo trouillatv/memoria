@@ -91,7 +91,7 @@ export default async function SitePrestationsPage({ params }: PageProps) {
           </div>
         ) : (
           <div className="rounded-xl border border-dashed p-8 text-center">
-            <p className="text-sm text-muted-foreground">Aucun engagement contractuel validé pour ce chantier.</p>
+            <p className="text-sm text-muted-foreground">Aucun engagement validé pour ce chantier.</p>
           </div>
         )
       ) : (
