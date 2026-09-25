@@ -4,7 +4,7 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
 import { DynamicCrumb, BreadcrumbPrefix } from '@/components/layout/BreadcrumbProvider'
 import { readSiteActionSummaries, groupActionsByThread } from '@/lib/knowledge/repository'
-import { getSitePendingActionProposals } from '@/lib/knowledge/site-pending-proposals'
+import { getSitePendingActionProposals, getSitePendingDeadlineProposals } from '@/lib/knowledge/site-pending-proposals'
 import { getSiteActionsPilotage } from '@/lib/knowledge/actions-pilotage'
 import { getSiteReservesPilotage } from '@/lib/knowledge/reserves-pilotage'
 import { listSiteDeadlines } from '@/lib/db/site-deadlines'
@@ -34,18 +34,26 @@ export default async function SiteActionsHub({ params }: { params: Promise<{ id:
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const [identity, actionRows, pendingProposals, responsibleCandidates, companies] = await Promise.all([
+  const [identity, actionRows, pendingActionProposals, pendingDeadlineProposals, responsibleCandidates, companies] = await Promise.all([
     getSiteIdentity(id),
     readSiteActionSummaries(id),
     // #231 — population AGRÉGÉE des propositions d'action en attente (toutes visites).
     // C'est la destination du compteur « N proposées » de l'Aperçu.
     getSitePendingActionProposals(id).catch(() => []),
+    // SUIVI-2A — même mécanique pour les échéances proposées : combler le trou
+    // UI (elles n'apparaissaient nulle part avant confirmation), sans toucher
+    // au compteur « N proposées » (actions-only, #231).
+    getSitePendingDeadlineProposals(id).catch(() => []),
     // Lot normalisation 3 points d'entrée (Vincent 2026-09-15) — mêmes candidats que
     // Point/ActionFiche pour le panneau d'affectation partagé.
     listSiteActionResponsibleCandidates(id).catch(() => []),
     listSiteCandidateCompanies(id).catch(() => []),
   ])
   if (!identity) notFound()
+
+  const pendingProposals = [...pendingActionProposals, ...pendingDeadlineProposals].sort((a, b) =>
+    (a.reportHref ?? '').localeCompare(b.reportHref ?? '') || a.createdAt.localeCompare(b.createdAt),
+  )
 
   const today = todayLocalIso()
   const weekEnd = addDays(today, 7)

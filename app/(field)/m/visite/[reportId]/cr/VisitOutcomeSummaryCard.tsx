@@ -8,7 +8,8 @@
 // disparaît plutôt que d'afficher un zéro qui n'apprend rien.
 
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, CheckCircle2, HelpCircle, Clock3, Users } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronDown, ChevronUp, ChevronRight, CheckCircle2, HelpCircle, Clock3, Users } from 'lucide-react'
 import type { VisitOutcomeSummary } from '@/lib/db/visit-outcome-summary'
 import type { SiteReportStatus } from '@/types/db'
 import { cn } from '@/lib/utils'
@@ -102,6 +103,7 @@ export function VisitOutcomeSummaryCard({ summary }: { summary: VisitOutcomeSumm
                   </li>
                 ))}
               </ul>
+              <OutcomeCta href={`/sites/${summary.siteId}/actions#propositions`}>Ouvrir les propositions</OutcomeCta>
             </OutcomeGroup>
           )}
 
@@ -115,6 +117,7 @@ export function VisitOutcomeSummaryCard({ summary }: { summary: VisitOutcomeSumm
                   </li>
                 ))}
               </ul>
+              <OutcomeCta href={`/sites/${summary.siteId}/besoin-de-toi`}>Ouvrir Besoin de toi</OutcomeCta>
             </OutcomeGroup>
           )}
 
@@ -130,6 +133,7 @@ export function VisitOutcomeSummaryCard({ summary }: { summary: VisitOutcomeSumm
                   </li>
                 ))}
               </ul>
+              <OutcomeCta href={`/m/visite/${summary.visitId}/comprehension`}>Identifier l'intervenant</OutcomeCta>
             </OutcomeGroup>
           )}
 
@@ -143,6 +147,19 @@ export function VisitOutcomeSummaryCard({ summary }: { summary: VisitOutcomeSumm
         </div>
       )}
     </div>
+  )
+}
+
+// SUIVI-2A — navigation PURE vers l'écran où le geste existe déjà : aucune
+// action métier n'est dupliquée ici, la carte reste un hub de navigation.
+function OutcomeCta({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="mt-1.5 inline-flex items-center gap-0.5 text-[11.5px] font-medium text-foreground/80 hover:text-foreground hover:underline"
+    >
+      {children} <ChevronRight className="h-3 w-3" aria-hidden />
+    </Link>
   )
 }
 

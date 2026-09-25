@@ -105,3 +105,28 @@ describe('VisitOutcomeSummaryCard — témoin Sextant', () => {
     expect(screen.getByText('Monsieur Cope')).toBeInTheDocument()
   })
 })
+
+// SUIVI-2A — la carte devient un hub de NAVIGATION vers les surfaces où le
+// geste métier existe déjà. Aucun bouton d'action ici : uniquement des liens.
+describe('VisitOutcomeSummaryCard — CTA de découvrabilité (SUIVI-2A)', () => {
+  it('les 2 actions + 1 échéance orphelines renvoient vers /actions#propositions', () => {
+    render(<VisitOutcomeSummaryCard summary={SEXTANT_SUMMARY} />)
+    fireEvent.click(screen.getByRole('button'))
+    const link = screen.getByRole('link', { name: /Ouvrir les propositions/ })
+    expect(link).toHaveAttribute('href', '/sites/90bdfbd3-d4bb-44c4-bf61-28ade78b4df2/actions#propositions')
+  })
+
+  it('la trace Live Writer en attente renvoie vers Besoin de toi', () => {
+    render(<VisitOutcomeSummaryCard summary={SEXTANT_SUMMARY} />)
+    fireEvent.click(screen.getByRole('button'))
+    const link = screen.getByRole('link', { name: /Ouvrir Besoin de toi/ })
+    expect(link).toHaveAttribute('href', '/sites/90bdfbd3-d4bb-44c4-bf61-28ade78b4df2/besoin-de-toi')
+  })
+
+  it('Monsieur Cope renvoie vers la page de compréhension de la visite', () => {
+    render(<VisitOutcomeSummaryCard summary={SEXTANT_SUMMARY} />)
+    fireEvent.click(screen.getByRole('button'))
+    const link = screen.getByRole('link', { name: /Identifier l'intervenant/ })
+    expect(link).toHaveAttribute('href', '/m/visite/ad4abcd2-18e5-4b7f-9f52-e8617a1b764f/comprehension')
+  })
+})

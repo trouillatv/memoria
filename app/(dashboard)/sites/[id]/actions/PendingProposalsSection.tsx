@@ -7,6 +7,10 @@ import { Check, X, Pencil, ChevronRight, Sparkles, Loader2 } from 'lucide-react'
 import type { PendingActionProposal } from '@/lib/knowledge/site-pending-proposals'
 import { confirmActionProposalAction, dismissActionProposalAction } from '@/app/(dashboard)/actions/actions'
 
+// SUIVI-2A — la liste est désormais mixte (action + deadline) : le kind se lit
+// sur chaque ligne, jamais deviné depuis le libellé.
+const KIND_LABEL: Record<string, string> = { action: 'Action', deadline: 'Échéance' }
+
 /**
  * Propositions d'action détectées par MemorIA — gérées SUR PLACE (P0-1).
  *
@@ -126,6 +130,9 @@ function ProposalRow({
         </div>
       ) : (
         <>
+          <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            {KIND_LABEL[proposal.kind] ?? proposal.kind}
+          </span>
           <p className="text-sm font-medium text-foreground/90">{proposal.title}</p>
           {proposal.body && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{proposal.body}</p>}
         </>
