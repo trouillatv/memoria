@@ -40,6 +40,11 @@ export default async function SitePrestationsPage({ params }: PageProps) {
   const sorted = [...engagements].sort((a, b) => kindRank(a.kind) - kindRank(b.kind) || b.createdAt.localeCompare(a.createdAt))
   const sections = groupPlannedEngagementsBySection(sorted)
   const pendingFinalization = sorted.length === 0 ? await findPendingEngagementFinalizationForSite(id) : null
+  // P0-3.2 — CTA « Mettre en vigueur » réservé à managerOrAdmin (pas
+  // chef_equipe, déjà exclu de cette page par le redirect ci-dessus). La
+  // garde autoritaire reste requireSiteWriteAccess côté serveur ; ceci
+  // n'évite qu'un bouton voué à échouer.
+  const canActivate = user.role === 'admin' || user.role === 'manager'
 
   return (
     <div className="mx-auto w-full max-w-[1180px] space-y-5 px-1 pb-10">
@@ -86,7 +91,7 @@ export default async function SitePrestationsPage({ params }: PageProps) {
           </div>
         )
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" />
+        <PlannedEngagementSections groups={sections} gridClassName="grid gap-3 md:grid-cols-2" canActivate={canActivate} />
       )}
     </div>
   )

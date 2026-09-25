@@ -26,7 +26,10 @@ export default async function SitePrestationsMobilePage({
   const { siteId } = await params
   // Un chantier d'une autre organisation doit être indiscernable d'un chantier
   // inexistant : la garde rend 404, jamais « accès refusé ».
-  await requireSiteAccess(siteId)
+  const { user } = await requireSiteAccess(siteId)
+  // P0-3.2 — même gating côté rendu que le miroir desktop : la garde
+  // autoritaire reste requireSiteWriteAccess côté serveur.
+  const canActivate = user.role === 'admin' || user.role === 'manager'
 
   const supabase = createAdminClient()
   const { data: site } = await supabase
@@ -53,7 +56,7 @@ export default async function SitePrestationsMobilePage({
           <p className="text-sm text-muted-foreground">Aucun engagement contractuel validé pour ce chantier.</p>
         </div>
       ) : (
-        <PlannedEngagementSections groups={sections} gridClassName="space-y-3" />
+        <PlannedEngagementSections groups={sections} gridClassName="space-y-3" canActivate={canActivate} />
       )}
     </div>
   )

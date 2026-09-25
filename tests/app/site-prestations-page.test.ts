@@ -48,7 +48,8 @@ const { default: SitePrestationsPage } = await import(
  * (useState/useTransition/useRouter) au header : même traitement (skip), ce
  * marcheur ne teste pas son contenu.
  */
-const SKIP_COMPONENTS = new Set(['DynamicCrumb', 'BreadcrumbPrefix', 'AddPlannedEngagementDialog'])
+// P0-3.2 ajoute ActivateEngagementButton (mêmes hooks) sur les cartes curated : même traitement.
+const SKIP_COMPONENTS = new Set(['DynamicCrumb', 'BreadcrumbPrefix', 'AddPlannedEngagementDialog', 'ActivateEngagementButton'])
 const UNWRAP_COMPONENTS = new Set(['ScrollActiveRail'])
 
 function treeContainsText(node: unknown, text: string): boolean {

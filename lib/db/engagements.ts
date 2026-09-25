@@ -480,6 +480,25 @@ export async function activateEngagementsForContract(
   return data?.length ?? 0
 }
 
+/**
+ * Contexte minimal d'un Engagement pour une décision d'autorisation serveur
+ * (P0-3.2) : jamais un site_id fourni par le client, toujours celui de la
+ * ligne elle-même. Ne renvoie que ce qui est nécessaire pour distinguer Porte
+ * A/B et vérifier le statut — pas un DbEngagement complet.
+ */
+export async function getEngagementAuthContext(
+  id: string
+): Promise<{ id: string; site_id: string | null; tender_id: string | null; status: EngagementStatus } | null> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('engagements')
+    .select('id, site_id, tender_id, status')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? null
+}
+
 // P0-2A FIX_REQUIRED (mandat Vincent 2026-09-24, migration 437) — activation
 // d'un engagement UNIQUE, indépendante d'un contrat/tender. Porte B (chantier)
 // n'a pas d'équivalent « marché gagné » : materialize_engagement_create_new

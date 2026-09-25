@@ -11,13 +11,18 @@
 import { categoryLabel, plannedEngagementStatusLabel } from '@/lib/engagements/labels'
 import { KIND_META, kindLabel } from '@/lib/engagements/kind'
 import type { PlannedEngagement } from '@/lib/db/engagements'
+import { ActivateEngagementButton } from '@/components/engagements/ActivateEngagementButton'
 
 export function PlannedEngagementCard({
   engagement: e,
   showStatusBadge,
+  canActivate = false,
 }: {
   engagement: PlannedEngagement
   showStatusBadge: boolean
+  /** P0-3.2 — CTA « Mettre en vigueur » réservé à managerOrAdmin ; la garde
+   *  autoritaire reste côté serveur, ceci n'évite qu'un bouton voué à échouer. */
+  canActivate?: boolean
 }) {
   const statusBadge = e.status === 'active'
     ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
@@ -52,6 +57,12 @@ export function PlannedEngagementCard({
           </span>
         )}
       </div>
+
+      {e.status === 'curated' && canActivate && (
+        <div className="flex justify-end">
+          <ActivateEngagementButton engagementId={e.id} />
+        </div>
+      )}
 
       <details className="text-xs">
         <summary className="cursor-pointer text-muted-foreground hover:text-foreground">

@@ -8,7 +8,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
-import { createSiteEngagementManual } from '@/lib/db/engagements'
+import { createSiteEngagementManual, getEngagementAuthContext, activateEngagement } from '@/lib/db/engagements'
 import type { EngagementCategory, EngagementKind } from '@/types/db'
 
 const CATEGORY_VALUES = ['frequency', 'quality', 'compliance', 'delivery', 'sla', 'reporting', 'other'] as const
@@ -49,4 +49,47 @@ export async function createPlannedEngagementManualAction(
   } catch {
     return { ok: false, error: 'Échec de la création' }
   }
+}
+
+// P0-3.2 (mandat Vincent 2026-09-25) — mettre un Engagement Porte B curated en
+// vigueur (curated → active). Entrée client minimale : engagement_id. Le
+// site_id d'autorisation n'est JAMAIS pris sur le client — il est dérivé
+// côté serveur de l'Engagement lui-même, pour empêcher un client de fournir
+// un site A qu'il contrôle avec l'Engagement B d'un chantier étranger.
+// Ordre fail-closed : Engagement inexistant → refus ; site_id absent → refus ;
+// non Porte B (tender_id renseigné) → refus ; statut ≠ curated → refus ;
+// SEULEMENT ENSUITE requireSiteWriteAccess(site_id, 'managerOrAdmin') ; puis
+// activateEngagement. Réservé à managerOrAdmin (pas chef_equipe) : curated =
+// contenu validé, active = règle désormais applicable — geste de poids
+// supérieur à la simple création manuelle (policy 'operator').
+const ActivatePlannedEngagementSchema = z.object({
+  engagement_id: z.string().uuid(),
+})
+
+const ACTIVATION_REFUS = 'Impossible de mettre cet engagement en vigueur' as const
+
+export async function activatePlannedEngagementAction(
+  input: z.input<typeof ActivatePlannedEngagementSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = ActivatePlannedEngagementSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Paramètres invalides' }
+
+  const engagement = await getEngagementAuthContext(parsed.data.engagement_id)
+  if (!engagement) return { ok: false, error: ACTIVATION_REFUS }
+  if (!engagement.site_id) return { ok: false, error: ACTIVATION_REFUS }
+  if (engagement.tender_id) return { ok: false, error: ACTIVATION_REFUS }
+  if (engagement.status !== 'curated') return { ok: false, error: ACTIVATION_REFUS }
+
+  const access = await requireSiteWriteAccess(engagement.site_id, 'managerOrAdmin')
+  if (!access.ok) return access
+
+  try {
+    await activateEngagement(engagement.id)
+  } catch {
+    return { ok: false, error: 'Échec de la mise en vigueur' }
+  }
+
+  revalidatePath(`/sites/${engagement.site_id}/prestations`)
+  revalidatePath(`/m/site/${engagement.site_id}/prestations`)
+  return { ok: true }
 }
