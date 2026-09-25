@@ -63,7 +63,7 @@ export default async function SitePrestationsPage({ params }: PageProps) {
           <AddPlannedEngagementDialog siteId={id} />
         </div>
         <p className="text-sm text-muted-foreground">
-          Ce que MemorIA sait devoir être vrai sur ce chantier — engagements contractuels validés (CCTP/CCAP).
+          Ce que MemorIA sait devoir être vrai sur ce chantier — engagements validés, issus des documents contractuels ou ajoutés manuellement.
         </p>
       </header>
 
