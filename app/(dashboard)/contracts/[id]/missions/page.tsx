@@ -5,7 +5,7 @@ import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getContract } from '@/lib/db/contracts'
 import { listSitesByContract } from '@/lib/db/sites'
 import { listMissionsByContract } from '@/lib/db/missions'
-import { listEngagementsByContract } from '@/lib/db/engagements'
+import { listEngagementsByContract, listActiveEngagementsBySites } from '@/lib/db/engagements'
 import { ContractTabs } from '../contract-tabs'
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 
@@ -35,9 +35,17 @@ export default async function ContractMissionsPage({
     listMissionsByContract(id),
     listEngagementsByContract(id),
   ])
+  // listMissionsByContract ne retient que les missions dont le site
+  // appartient à CE contrat (jointure via sites.contract_id) : batcher les
+  // Engagements Porte B sur exactement `sites` est donc complet, sans risque
+  // de fuite cross-contrat (P0-3.5A).
+  const engagementsBySite = await listActiveEngagementsBySites(sites.map((s) => s.id))
 
   const siteById = new Map(sites.map((s) => [s.id, s]))
   const engagementById = new Map(engagements.map((e) => [e.id, e]))
+  for (const list of engagementsBySite.values()) {
+    for (const e of list) engagementById.set(e.id, e)
+  }
 
   const missions = filterSiteId
     ? allMissions.filter((m) => m.site_id === filterSiteId)

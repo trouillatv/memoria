@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X, GripVertical } from 'lucide-react'
 import { toast } from 'sonner'
@@ -14,8 +14,15 @@ interface MissionEditorProps {
   sites: DbSite[]
   /** Sites du tenant rattachés à d'autres contrats — permet la réutilisation
    *  cross-contrat (ex. un site historique sans nouveau contrat). Optionnel. */
-  otherSites?: Array<{ id: string; name: string; contract_name: string | null }>
-  engagements: DbEngagement[]
+  otherSites?: Array<{ id: string; name: string; contract_name: string | null; contract_id?: string | null }>
+  /** Engagements Porte A actifs/complétés, groupés par contract_id (P0-3.5A). */
+  contractEngagements: Record<string, DbEngagement[]>
+  /** Engagements Porte B actifs/complétés, groupés par site_id (P0-3.5A). */
+  siteEngagements: Record<string, DbEngagement[]>
+  /** Engagements déjà liés à la mission mais sortis de la population cible
+   *  courante — affichés pour préserver l'existant, jamais pour permettre un
+   *  nouveau rattachement en dehors de la population courante (P0-3.5A). */
+  preservedEngagements?: DbEngagement[]
   initialMission?: DbMission
   defaultSiteId?: string
 }
@@ -28,7 +35,7 @@ const CADENCE_OPTIONS: { value: MissionCadence; label: string }[] = [
   { value: 'on_demand', label: 'À la demande' },
 ]
 
-export function MissionEditor({ mode, contractId, sites, otherSites, engagements, initialMission, defaultSiteId }: MissionEditorProps) {
+export function MissionEditor({ mode, contractId, sites, otherSites, contractEngagements, siteEngagements, preservedEngagements, initialMission, defaultSiteId }: MissionEditorProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
@@ -40,6 +47,37 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
   const [checklist, setChecklist] = useState<ChecklistTemplateItem[]>(
     initialMission?.default_checklist ?? []
   )
+
+  // Population cible pour le site sélectionné : Engagements Porte A actifs du
+  // contrat de ce site ∪ Engagements Porte B actifs de ce site lui-même
+  // (P0-3.5A). Recalculée à chaque changement de site (SiteSelector, y
+  // compris "otherSites" cross-contrat).
+  const allSitesById = useMemo(() => {
+    const m = new Map<string, { id: string; contract_id?: string | null }>()
+    for (const s of sites) m.set(s.id, s)
+    for (const s of otherSites ?? []) m.set(s.id, s)
+    return m
+  }, [sites, otherSites])
+
+  const visibleEngagements = useMemo(() => {
+    const site = allSitesById.get(siteId)
+    const byId = new Map<string, DbEngagement>()
+    if (site?.contract_id) {
+      for (const e of contractEngagements[site.contract_id] ?? []) byId.set(e.id, e)
+    }
+    for (const e of siteEngagements[siteId] ?? []) byId.set(e.id, e)
+    return Array.from(byId.values())
+  }, [siteId, allSitesById, contractEngagements, siteEngagements])
+
+  // Union avec les Engagements déjà liés mais hors population courante : on
+  // les préserve à l'affichage sans permettre de nouveau rattachement en
+  // dehors de la population cible (eux seuls comblent l'écart).
+  const displayEngagements = useMemo(() => {
+    const byId = new Map<string, DbEngagement>()
+    for (const e of visibleEngagements) byId.set(e.id, e)
+    for (const e of preservedEngagements ?? []) byId.set(e.id, e)
+    return Array.from(byId.values())
+  }, [visibleEngagements, preservedEngagements])
 
   function toggleEngagement(id: string) {
     setEngagementIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id])
@@ -101,7 +139,7 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
         <div className="space-y-1.5">
           <label className="text-xs text-muted-foreground">Chantier *</label>
           <SiteSelector
-            sites={sites.map((s) => ({ id: s.id, name: s.name }))}
+            sites={sites.map((s) => ({ id: s.id, name: s.name, contract_id: s.contract_id }))}
             otherSites={otherSites}
             value={siteId}
             onChange={setSiteId}
@@ -144,11 +182,11 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
           </p>
         </div>
 
-        {engagements.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">Aucune promesse active sur ce contrat.</p>
+        {displayEngagements.length === 0 ? (
+          <p className="text-xs text-muted-foreground italic">Aucune promesse active sur ce chantier.</p>
         ) : (
           <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {engagements.map((e) => {
+            {displayEngagements.map((e) => {
               const checked = engagementIds.includes(e.id)
               return (
                 <label key={e.id} className="flex items-start gap-2 p-2 rounded border bg-background hover:bg-muted/30 cursor-pointer">
@@ -230,7 +268,7 @@ export function MissionEditor({ mode, contractId, sites, otherSites, engagements
                       className="rounded border p-1 text-xs bg-background"
                     >
                       <option value="">— pas d&apos;engagement lié —</option>
-                      {engagements.map((eng) => (
+                      {displayEngagements.map((eng) => (
                         <option key={eng.id} value={eng.id}>{eng.short_label}</option>
                       ))}
                     </select>

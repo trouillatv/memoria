@@ -15,6 +15,7 @@ interface SiteOption {
   id: string
   name: string
   contract_name?: string | null
+  contract_id?: string | null
 }
 
 interface Props {

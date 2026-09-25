@@ -2,8 +2,12 @@ import { notFound } from 'next/navigation'
 import { requireDeskUser } from '@/lib/auth/page-guard'
 import { getContract } from '@/lib/db/contracts'
 import { getMission } from '@/lib/db/missions'
-import { listSitesByContract } from '@/lib/db/sites'
-import { listEngagementsByContract } from '@/lib/db/engagements'
+import { listSitesByContract, getSiteById } from '@/lib/db/sites'
+import {
+  listActiveEngagementsByContracts,
+  listActiveEngagementsBySites,
+  listEngagementsByIds,
+} from '@/lib/db/engagements'
 import {
   getTemplateStatsBatch,
   listTemplatesForMission,
@@ -38,11 +42,32 @@ export default async function EditMissionPage({
   ])
   if (!contract || !mission) notFound()
 
-  const [sites, engagements, templates] = await Promise.all([
+  const [sites, missionSite, templates] = await Promise.all([
     listSitesByContract(id),
-    listEngagementsByContract(id),
+    getSiteById(mission.site_id),
     listTemplatesForMission(missionId),
   ])
+
+  // Le site réel de la mission peut appartenir à un AUTRE contrat que la
+  // route (réutilisation cross-contrat) — jamais présumer qu'il fait partie
+  // de `sites` (P0-3.5A). On résout sa vraie population cible en conséquence.
+  const missionSiteContractId = missionSite?.contract_id ?? null
+  const relevantContractIds = Array.from(
+    new Set([id, missionSiteContractId].filter((cid): cid is string => !!cid))
+  )
+  const [contractEngagementsMap, siteEngagementsMap, preservedEngagements] = await Promise.all([
+    listActiveEngagementsByContracts(relevantContractIds),
+    listActiveEngagementsBySites([mission.site_id]),
+    listEngagementsByIds(mission.engagement_ids),
+  ])
+  const contractEngagements = Object.fromEntries(contractEngagementsMap)
+  const siteEngagements = Object.fromEntries(siteEngagementsMap)
+  // N'injecter le site de la mission dans otherSites que s'il manque de
+  // `sites` (sinon allSitesById ne résoudrait pas son contract_id côté client).
+  const otherSites =
+    missionSite && !sites.some((s) => s.id === missionSite.id)
+      ? [{ id: missionSite.id, name: missionSite.name, contract_name: null, contract_id: missionSite.contract_id }]
+      : undefined
 
   const activeTemplates = templates.filter((t) => t.active)
   const stats = await getTemplateStatsBatch(activeTemplates.map((t) => t.id))
@@ -65,7 +90,10 @@ export default async function EditMissionPage({
         mode="edit"
         contractId={id}
         sites={sites}
-        engagements={engagements}
+        otherSites={otherSites}
+        contractEngagements={contractEngagements}
+        siteEngagements={siteEngagements}
+        preservedEngagements={preservedEngagements}
         initialMission={mission}
       />
 

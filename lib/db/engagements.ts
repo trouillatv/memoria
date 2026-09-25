@@ -243,6 +243,72 @@ export async function countEngagementsByContracts(
   return counts
 }
 
+/**
+ * Engagements Porte A actifs/complétés de plusieurs contrats — un seul appel,
+ * groupé par contract_id. Modèle : countEngagementsByContracts (P0-3.5A).
+ */
+export async function listActiveEngagementsByContracts(
+  contractIds: string[]
+): Promise<Map<string, DbEngagement[]>> {
+  if (contractIds.length === 0) return new Map()
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('engagements')
+    .select('*')
+    .in('contract_id', contractIds)
+    .in('status', ['active', 'completed'])
+  if (error) throw error
+  const byContract = new Map<string, DbEngagement[]>()
+  for (const e of data ?? []) {
+    if (!e.contract_id) continue
+    const list = byContract.get(e.contract_id) ?? []
+    list.push(e)
+    byContract.set(e.contract_id, list)
+  }
+  return byContract
+}
+
+/**
+ * Engagements Porte B actifs/complétés de plusieurs chantiers — un seul appel,
+ * groupé par site_id. Modèle : countEngagementsByContracts (P0-3.5A).
+ */
+export async function listActiveEngagementsBySites(
+  siteIds: string[]
+): Promise<Map<string, DbEngagement[]>> {
+  if (siteIds.length === 0) return new Map()
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('engagements')
+    .select('*')
+    .in('site_id', siteIds)
+    .in('status', ['active', 'completed'])
+  if (error) throw error
+  const bySite = new Map<string, DbEngagement[]>()
+  for (const e of data ?? []) {
+    if (!e.site_id) continue
+    const list = bySite.get(e.site_id) ?? []
+    list.push(e)
+    bySite.set(e.site_id, list)
+  }
+  return bySite
+}
+
+/**
+ * Résout des Engagements par id, sans filtre de statut — sert à préserver
+ * l'affichage d'Engagements déjà liés à une Mission même s'ils sont sortis de
+ * la population cible courante (P0-3.5A).
+ */
+export async function listEngagementsByIds(ids: string[]): Promise<DbEngagement[]> {
+  if (ids.length === 0) return []
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('engagements')
+    .select('*')
+    .in('id', ids)
+  if (error) throw error
+  return data ?? []
+}
+
 export async function bulkInsertEngagements(input: {
   tender_id: string
   created_by: string | null

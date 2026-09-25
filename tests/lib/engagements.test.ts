@@ -18,6 +18,12 @@ import {
   findSimilarEngagements,
   getEvidenceForEngagement,
   getEvidenceForEngagements,
+  listActiveEngagementsByContracts,
+  listActiveEngagementsBySites,
+  listEngagementsByIds,
+  createEngagementManual,
+  createSiteEngagementManual,
+  activateEngagement,
 } from '@/lib/db/engagements'
 import { createContract } from '@/lib/db/contracts'
 import { createSite } from '@/lib/db/sites'
@@ -645,6 +651,164 @@ describe('getEvidenceForEngagements (batch)', () => {
       expect(evidence.get(eng2)!.interventionsExecuted).toBe(0)
     } finally {
       await cleanupTender(tenderId)
+    }
+  })
+})
+
+// ============================================================================
+// P0-3.5A — population batchée Porte A/B (Missions/Engagements)
+// ============================================================================
+//
+// Témoin réel en prod (site "OCEF Compostage", sans contrat) : Engagement
+// Porte B actif "Nettoyage Carrelage hebdomadaire" + 5 Engagements Porte B
+// encore curated sur le même site — exactement le cas d'exclusion couvert
+// ci-dessous (Porte B curated jamais retournée par listActiveEngagementsBySites).
+
+describe('P0-3.5A — population batchée Porte A/B', () => {
+  it('listActiveEngagementsByContracts/listActiveEngagementsBySites/listEngagementsByIds retournent vide sans appel DB pour un tableau vide', async () => {
+    expect((await listActiveEngagementsByContracts([])).size).toBe(0)
+    expect((await listActiveEngagementsBySites([])).size).toBe(0)
+    expect(await listEngagementsByIds([])).toEqual([])
+  })
+
+  it('groupe par contrat, exclut le statut curated, sans fuite cross-contrat (Porte A)', { timeout: 20_000 }, async () => {
+    const { id: tenderX } = await ensureTenderExists('p035a-contract-x')
+    const { id: tenderY } = await ensureTenderExists('p035a-contract-y')
+    let contractX: string | null = null
+    let contractY: string | null = null
+
+    try {
+      contractX = await createContract({
+        tender_id: tenderX,
+        name: 'P0-3.5A contract X',
+        client_name: 'Client X',
+        start_date: '2026-06-01',
+        created_by: null,
+      })
+      contractY = await createContract({
+        tender_id: tenderY,
+        name: 'P0-3.5A contract Y',
+        client_name: 'Client Y',
+        start_date: '2026-06-01',
+        created_by: null,
+      })
+
+      const engXActive = await createEngagementManual({
+        tender_id: tenderX,
+        contract_id: contractX,
+        short_label: 'X active',
+        category: 'other',
+        created_by: null,
+      })
+      const engXCurated = await createEngagementManual({
+        tender_id: tenderX,
+        contract_id: contractX,
+        short_label: 'X curated (doit être exclue)',
+        category: 'other',
+        created_by: null,
+      })
+      const engYActive = await createEngagementManual({
+        tender_id: tenderY,
+        contract_id: contractY,
+        short_label: 'Y active',
+        category: 'other',
+        created_by: null,
+      })
+
+      const supabase = createAdminClient()
+      const { error: updErr } = await supabase
+        .from('engagements')
+        .update({ status: 'curated' })
+        .eq('id', engXCurated.id)
+      if (updErr) throw updErr
+
+      const map = await listActiveEngagementsByContracts([contractX, contractY])
+      const idsX = (map.get(contractX) ?? []).map((e) => e.id)
+      const idsY = (map.get(contractY) ?? []).map((e) => e.id)
+
+      expect(idsX).toContain(engXActive.id)
+      expect(idsX).not.toContain(engXCurated.id)
+      expect(idsX).not.toContain(engYActive.id) // pas de fuite cross-contrat
+      expect(idsY).toEqual([engYActive.id])
+    } finally {
+      // cleanupTender supprime déjà les engagements par tender_id (Porte A
+      // créée ici avec tender_id + contract_id tous deux renseignés).
+      await cleanupTender(tenderX)
+      await cleanupTender(tenderY)
+    }
+  })
+
+  it('groupe par site, exclut le Porte B curated (témoin réel OCEF), sans fuite cross-site', async () => {
+    const supabase = createAdminClient()
+    const admin = await getAdminFixture()
+    const { data: client } = await supabase.from('clients').select('id').limit(1).single()
+    const siteX = await createSite({ client_id: client!.id, contract_id: null, name: '__test_p035a_site_x__', organization_id: admin.organization_id })
+    const siteZ = await createSite({ client_id: client!.id, contract_id: null, name: '__test_p035a_site_z__', organization_id: admin.organization_id })
+
+    try {
+      const engXPorteB = await createSiteEngagementManual({
+        site_id: siteX,
+        short_label: 'Site X — Porte B active',
+        category: 'other',
+        measurable: false,
+        created_by: null,
+      })
+      await activateEngagement(engXPorteB.id)
+
+      const engZActive = await createSiteEngagementManual({
+        site_id: siteZ,
+        short_label: 'Site Z — Porte B active',
+        category: 'other',
+        measurable: false,
+        created_by: null,
+      })
+      await activateEngagement(engZActive.id)
+
+      const engZCurated = await createSiteEngagementManual({
+        site_id: siteZ,
+        short_label: 'Site Z — Porte B curated (doit être exclue)',
+        category: 'other',
+        measurable: false,
+        created_by: null,
+      })
+
+      const map = await listActiveEngagementsBySites([siteX, siteZ])
+      const idsX = (map.get(siteX) ?? []).map((e) => e.id)
+      const idsZ = (map.get(siteZ) ?? []).map((e) => e.id)
+
+      expect(idsX).toEqual([engXPorteB.id])
+      expect(idsZ).toContain(engZActive.id)
+      expect(idsZ).not.toContain(engZCurated.id)
+      expect(idsZ).not.toContain(engXPorteB.id) // pas de fuite cross-site
+    } finally {
+      await supabase.from('engagements').delete().eq('site_id', siteX)
+      await supabase.from('engagements').delete().eq('site_id', siteZ)
+      await supabase.from('sites').delete().eq('id', siteX)
+      await supabase.from('sites').delete().eq('id', siteZ)
+    }
+  })
+
+  it('listEngagementsByIds résout un Engagement quel que soit son statut (préservation)', async () => {
+    const supabase = createAdminClient()
+    const admin = await getAdminFixture()
+    const { data: client } = await supabase.from('clients').select('id').limit(1).single()
+    const siteId = await createSite({ client_id: client!.id, contract_id: null, name: '__test_p035a_preserve__', organization_id: admin.organization_id })
+
+    try {
+      const curated = await createSiteEngagementManual({
+        site_id: siteId,
+        short_label: 'Préservée bien que curated',
+        category: 'other',
+        measurable: false,
+        created_by: null,
+      })
+
+      const resolved = await listEngagementsByIds([curated.id])
+      expect(resolved.map((e) => e.id)).toEqual([curated.id])
+      expect(resolved[0].status).toBe('curated')
+    } finally {
+      await supabase.from('engagements').delete().eq('site_id', siteId)
+      await supabase.from('sites').delete().eq('id', siteId)
     }
   })
 })
