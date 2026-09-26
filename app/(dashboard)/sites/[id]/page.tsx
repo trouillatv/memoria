@@ -14,7 +14,7 @@ import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { listSiteDeadlines, listSiteDeadlineHistory } from '@/lib/db/site-deadlines'
 import { getDeadlineFieldEvidenceBatch, type DeadlineFieldEvidence } from '@/lib/db/deadline-field-evidence'
 import { listMaskedDeadlineProposals } from '@/lib/db/knowledge-proposals'
-import { listTeams } from '@/lib/db/teams'
+import { listTeamsForSite } from '@/lib/db/teams'
 import {
   getLastEndedVisitForSite,
   listSiteVisitsWithCounts,
@@ -495,7 +495,7 @@ async function PlanningView({ siteId, plantab }: { siteId: string; plantab: Plan
     listSiteDeadlines(siteId).catch(() => []),
     listSiteDeadlineHistory(siteId).catch(() => []),
     listMaskedDeadlineProposals(siteId).catch(() => []),
-    listTeams().catch(() => []),
+    listTeamsForSite(siteId).catch(() => []),
     getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
     listScheduledEvents(siteId, { from: new Date().toISOString() }).catch((): ScheduledEvent[] => []),
     listSitePlanningItems(siteId).catch(() => []),

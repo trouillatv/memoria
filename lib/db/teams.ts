@@ -89,6 +89,25 @@ export async function listTeams(): Promise<DbTeam[]> {
   return data ?? []
 }
 
+/**
+ * Équipes affectables à CE chantier (PLAN-SEC-1, mandat Vincent 2026-09-26) —
+ * jamais l'agrégat multi-org de `listTeams`. Un sélecteur qui propose une
+ * équipe pour un chantier donné ne doit jamais lister une équipe d'une autre
+ * organisation : ce n'est plus le point de blocage réel (chaque écriture
+ * `assigned_team_id` revalide via `requireTeamCompatibleWithOrg`), mais
+ * afficher l'option invite au clic-puis-refus. Fail-closed : chantier
+ * introuvable → liste vide.
+ */
+export async function listTeamsForSite(siteId: string): Promise<DbTeam[]> {
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', siteId).maybeSingle()
+  if (!site) return []
+  const { data, error } = await supabase.from('teams').select('*').is('deleted_at', null)
+    .eq('organization_id', site.organization_id).order('name', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
 /** Récupère une team par id (non archivée). */
 export async function getTeam(id: string): Promise<DbTeam | null> {
   const supabase = createAdminClient()
@@ -256,6 +275,16 @@ export async function archiveTeam(id: string): Promise<void> {
     .update({ assigned_team_id: null })
     .eq('assigned_team_id', id)
   if (tplErr) throw tplErr
+
+  // NOTE PLAN-SEC-1 (mandat Vincent 2026-09-26) — `planning_cycle_slots.team_id`
+  // est NOT NULL en base : impossible de le désaffecter comme mission/template
+  // ci-dessus. Une case de grille peut donc continuer à CITER cette équipe après
+  // son archivage. Ce n'est plus un trou de sécurité : `regenerateTemplates`
+  // (choke-point unique, cf. lib/db/planning-cycles.ts) REFUSE désormais
+  // explicitement de régénérer tant que Guillaume n'a pas réenregistré le
+  // roulement avec une équipe valide — jamais de réinjection silencieuse.
+  // Reste une limite produit : la grille affichée peut montrer une équipe
+  // archivée jusqu'à cette correction manuelle.
 
   // 3) Soft-delete de la team
   const { error: tErr } = await supabase

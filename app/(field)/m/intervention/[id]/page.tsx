@@ -24,7 +24,7 @@ import { ChecklistMobile } from './checklist-mobile'
 import { EditChecklistSheet } from './EditChecklistSheet'
 import { StartInterventionButton } from './start-intervention-button'
 import { AssignTeamMobile } from './AssignTeamMobile'
-import { listTeams, listActiveTeamIdsForUser } from '@/lib/db/teams'
+import { listTeamsForSite, listActiveTeamIdsForUser } from '@/lib/db/teams'
 import { AnomalyTrigger } from './anomaly-trigger'
 import { CompleteButton } from './complete-button'
 import { SkipInterventionTrigger } from './skip-modal'
@@ -113,7 +113,12 @@ export default async function FieldInterventionPage({
   const canManage = isAdmin
   let assignableTeams: Array<{ id: string; name: string }> = []
   if (!intervention.assigned_team_id && intervention.status === 'planned') {
-    const allTeams = await listTeams()
+    const { data: interventionMission } = await createAdminClient()
+      .from('missions')
+      .select('site_id')
+      .eq('id', intervention.mission_id)
+      .maybeSingle()
+    const allTeams = interventionMission ? await listTeamsForSite(interventionMission.site_id) : []
     if (canManage) {
       assignableTeams = allTeams.map((t) => ({ id: t.id, name: t.name }))
     } else {

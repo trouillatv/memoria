@@ -31,6 +31,7 @@ import { findTeamSiteConflict } from '@/lib/scheduling/team-conflict'
 import { buildScheduledAt, isPlannedStartPrecise, extractHHMM, slotFromUtcHour } from '@/lib/time/prestation-slot'
 import { getMission } from '@/lib/db/missions'
 import { requireOwned, type OwnedTable } from '@/lib/auth/ownership'
+import { requireTeamCompatibleWithOrg } from '@/lib/auth/team-compatibility'
 import type { ChecklistTemplateItem, InterventionSlot, UserRole } from '@/types/db'
 
 // ----------------------------------------------------------------------------
@@ -441,23 +442,19 @@ export async function createInterventionFromWeekAction(
   } else if (teamFromInput === null) {
     finalTeamId = null
   } else {
-    // L'équipe doit être de MON organisation. L'écran ne propose jamais celle
-    // d'un autre tenant — mais teamId arrive du client, et le service role
-    // contourne la RLS : sans ce contrôle, une équipe Servinor pouvait être
-    // affectée à un chantier AGP. La mission est déjà gardée ci-dessus ; il
-    // faut garder les DEUX objets, pas un seul.
+    // L'équipe doit être de la MÊME organisation que le chantier RÉEL de la
+    // mission (PLAN-SEC-1). L'écran ne propose jamais celle d'un autre tenant —
+    // mais teamId arrive du client, et le service role contourne la RLS : sans
+    // ce contrôle, une équipe Servinor pouvait être affectée à un chantier AGP.
+    // `guardOwned` (caller-vs-équipe) ne suffit pas pour un appelant
+    // multi-organisation ; il faut comparer l'équipe au chantier lui-même.
     const deniedTeam = await guardOwned(auth.role, 'teams', teamFromInput)
     if (deniedTeam) return { ok: false, error: deniedTeam }
 
-    const { data: team, error: tErr } = await admin
-      .from('teams')
-      .select('id, active, deleted_at')
-      .eq('id', teamFromInput)
-      .maybeSingle()
-    if (tErr) return { ok: false, error: tErr.message }
-    if (!team || team.deleted_at !== null || team.active === false) {
-      return { ok: false, error: 'Équipe inconnue ou archivée' }
-    }
+    const { data: site } = await admin.from('sites').select('organization_id').eq('id', mission.site_id).maybeSingle()
+    if (!site) return { ok: false, error: 'Chantier introuvable' }
+    const compatibleTeam = await requireTeamCompatibleWithOrg(teamFromInput, site.organization_id)
+    if (!compatibleTeam.allowed) return { ok: false, error: compatibleTeam.error }
     finalTeamId = teamFromInput
   }
 
@@ -600,17 +597,16 @@ export async function reassignInterventionTeamAction(
     return { ok: false, error: 'Intervention déjà démarrée — réassignation refusée' }
   }
 
-  // Vérifie l'équipe cible si non nulle
+  // Vérifie l'équipe cible si non nulle : même organisation que le chantier
+  // RÉEL de l'intervention (via sa mission), pas seulement accessible à
+  // l'appelant (PLAN-SEC-1 — resource-vs-resource).
   if (parsed.data.newTeamId !== null) {
-    const { data: team, error: tErr } = await admin
-      .from('teams')
-      .select('id, active, deleted_at')
-      .eq('id', parsed.data.newTeamId)
-      .maybeSingle()
-    if (tErr) return { ok: false, error: tErr.message }
-    if (!team || team.deleted_at !== null || team.active === false) {
-      return { ok: false, error: 'Équipe inconnue ou archivée' }
-    }
+    const { data: mission } = await admin.from('missions').select('site_id').eq('id', existing.mission_id).maybeSingle()
+    if (!mission) return { ok: false, error: 'Mission introuvable' }
+    const { data: site } = await admin.from('sites').select('organization_id').eq('id', mission.site_id).maybeSingle()
+    if (!site) return { ok: false, error: 'Chantier introuvable' }
+    const compatibleTeam = await requireTeamCompatibleWithOrg(parsed.data.newTeamId, site.organization_id)
+    if (!compatibleTeam.allowed) return { ok: false, error: compatibleTeam.error }
   }
 
   if (existing.assigned_team_id === parsed.data.newTeamId) {

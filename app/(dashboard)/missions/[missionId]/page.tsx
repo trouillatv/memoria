@@ -20,7 +20,7 @@ import { ArrowLeft, MapPin, Repeat } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getMission } from '@/lib/db/missions'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
-import { listTeams } from '@/lib/db/teams'
+import { listTeamsForSite } from '@/lib/db/teams'
 import {
   getTemplateStatsBatch,
   listTemplatesForMission,
@@ -51,7 +51,7 @@ export default async function MissionPage({
 
   const [identity, allTeams, templates] = await Promise.all([
     getSiteIdentity(mission.site_id).catch(() => null),
-    listTeams().catch(() => []),
+    listTeamsForSite(mission.site_id).catch(() => []),
     listTemplatesForMission(missionId).catch(() => []),
   ])
 

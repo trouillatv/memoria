@@ -48,12 +48,22 @@ export function InterventionLauncher() {
   useEffect(() => {
     if (!open) return
     if (sites === null) listMeetingSitesAction().then(setSites).catch(() => setSites([]))
-    if (teams === null) listFieldTeamsAction().then(setTeams).catch(() => setTeams([]))
-  }, [open, sites, teams])
+  }, [open, sites])
+
+  // Équipes affectables à CE chantier uniquement (PLAN-SEC-1) — rechargées à
+  // chaque changement de chantier, jamais l'agrégat multi-org une fois pour toutes.
+  useEffect(() => {
+    if (!site) return
+    listFieldTeamsAction(site.id).then(setTeams).catch(() => setTeams([]))
+  }, [site])
+
+  function backToSites() {
+    setSite(null); setTeams(null)
+  }
 
   function close() {
     setOpen(false)
-    setSite(null); setTeamId(''); setDate(todayIso()); setSlot('morning')
+    setSite(null); setTeams(null); setTeamId(''); setDate(todayIso()); setSlot('morning')
     setUseTime(false); setHhmm('08:00'); setLabel(''); setComment('')
   }
 
@@ -134,7 +144,7 @@ export function InterventionLauncher() {
             ) : (
               /* Étape 2 — le formulaire terrain. */
               <div className="space-y-3.5">
-                <button type="button" onClick={() => setSite(null)} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <button type="button" onClick={backToSites} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                   <ArrowLeft className="h-3.5 w-3.5" /> {site.name}
                 </button>
 

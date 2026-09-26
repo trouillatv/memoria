@@ -15,6 +15,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { slotFromUtcHour } from '@/lib/time/prestation-slot'
 import { previousDayIso } from '@/lib/planning/cycle-effect'
+import { requireTeamCompatibleWithOrg } from '@/lib/auth/team-compatibility'
 
 export type CycleStatus = 'draft' | 'published' | 'stopped'
 export type SlotState = 'work' | 'rest'
@@ -262,7 +263,7 @@ export async function createCycle(input: SaveCycleInput): Promise<string> {
   if (error || !data) throw new Error(error?.message ?? 'Création du roulement impossible')
 
   const cycleId = (data as { id: string }).id
-  await replaceSlots(cycleId, input.slots)
+  await replaceSlots(cycleId, input.slots, input.organizationId)
   await regenerateTemplates(cycleId, input)
   return cycleId
 }
@@ -287,7 +288,7 @@ export async function updateCycle(cycleId: string, input: SaveCycleInput): Promi
     .is('deleted_at', null)
   if (error) throw new Error(error.message)
 
-  await replaceSlots(cycleId, input.slots)
+  await replaceSlots(cycleId, input.slots, input.organizationId)
   await regenerateTemplates(cycleId, input)
 }
 
@@ -400,8 +401,27 @@ export async function softDeleteCycle(cycleId: string): Promise<void> {
 
 // ── Interne ─────────────────────────────────────────────────────────────────
 
+/**
+ * PLAN-SEC-1 — REJET EXPLICITE (jamais un skip/null silencieux) si une équipe
+ * citée dans la grille n'appartient plus (ou n'a jamais appartenu) à
+ * l'organisation RÉELLE du cycle : introuvable, supprimée, archivée, ou d'une
+ * autre organisation. Choke-point unique pour `planning_cycle_slots.team_id`
+ * ET `intervention_templates.assigned_team_id` — protège aussi les régénérations
+ * indirectes (`supersedeCycle`/`endCycle`) qui rejouent une grille ancienne.
+ */
+async function assertTeamsCompatible(teamIds: string[], organizationId: string | null): Promise<void> {
+  if (!organizationId) throw new Error('Organisation du roulement inconnue — impossible de valider les équipes')
+  for (const teamId of new Set(teamIds)) {
+    const compatible = await requireTeamCompatibleWithOrg(teamId, organizationId)
+    if (!compatible.allowed) throw new Error(compatible.error)
+  }
+}
+
 /** La grille est remplacée en bloc : le cycle est la seule vérité. */
-async function replaceSlots(cycleId: string, slots: CycleSlot[]): Promise<void> {
+async function replaceSlots(cycleId: string, slots: CycleSlot[], organizationId: string | null): Promise<void> {
+  if (slots.length > 0) {
+    await assertTeamsCompatible(slots.map((s) => s.teamId), organizationId)
+  }
   const db = createAdminClient()
   // Les cases n'ont aucune descendance : les effacer ne détruit AUCUNE preuve.
   await db.from('planning_cycle_slots').delete().eq('cycle_id', cycleId)
@@ -454,6 +474,11 @@ async function regenerateTemplates(cycleId: string, input: SaveCycleInput): Prom
 
   const work = input.slots.filter((s) => s.state === 'work')
   if (work.length === 0) return
+
+  // PLAN-SEC-1 : rejet EXPLICITE si une équipe rejouée (cas supersedeCycle /
+  // endCycle, qui régénèrent depuis une grille déjà existante) n'est plus
+  // compatible avec l'organisation du cycle — jamais un null/skip silencieux.
+  await assertTeamsCompatible(work.map((s) => s.teamId), input.organizationId)
 
   const rows = work.map((s) => {
     const start = s.startTime ?? null

@@ -24,6 +24,7 @@ import type { ChecklistTemplateItem } from '@/types/db'
 import { markInterventionSkipped } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
 import { requireOwned } from '@/lib/auth/ownership'
+import { requireTeamCompatibleWithOrg } from '@/lib/auth/team-compatibility'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { listActiveTeamIdsForUser } from '@/lib/db/teams'
@@ -63,10 +64,16 @@ export async function claimInterventionTeamAction(formData: FormData) {
   }
 
   const admin = createAdminClient()
-  const { data: team } = await admin.from('teams').select('id, active, deleted_at').eq('id', parsed.data.teamId).maybeSingle()
-  if (!team || (team as { deleted_at: string | null }).deleted_at || (team as { active: boolean }).active === false) {
-    return { error: 'Équipe inconnue ou archivée.' }
-  }
+
+  // PLAN-SEC-1 : l'équipe doit appartenir à l'organisation RÉELLE de l'intervention
+  // (via sa mission → son chantier), pas seulement être accessible à l'appelant —
+  // insuffisant pour un appelant multi-organisation.
+  const mission = await getMission(intervention.mission_id)
+  if (!mission) return { error: 'Mission introuvable' }
+  const { data: site } = await admin.from('sites').select('organization_id').eq('id', mission.site_id).maybeSingle()
+  if (!site) return { error: 'Chantier introuvable' }
+  const compatibleTeam = await requireTeamCompatibleWithOrg(parsed.data.teamId, site.organization_id)
+  if (!compatibleTeam.allowed) return { error: compatibleTeam.error }
 
   if (intervention.slot && intervention.scheduled_for) {
     const conflict = await findTeamSiteConflict({

@@ -14,7 +14,7 @@ import { listParticipantsForIntervention } from '@/lib/db/intervention-participa
 import { listCompaniesForIntervention } from '@/lib/db/intervention-companies'
 import { listAllTokensForIntervention, listExternalPhotosByIntervention, listDelegatedItemIds, listTokenItemCounts } from '@/lib/db/intervention-tokens'
 import { getMission } from '@/lib/db/missions'
-import { listTeams } from '@/lib/db/teams'
+import { listTeamsForSite } from '@/lib/db/teams'
 import { getTeamIdsKnowingSite } from '@/lib/db/site-team-knowledge'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { formatInterventionTimeLabel, extractHHMM } from '@/lib/time/prestation-slot'
@@ -169,7 +169,7 @@ export default async function InterventionPage({ params }: { params: Promise<{ i
 
   // Liste des équipes pour le bouton Affecter/Réassigner (visible tant que
   // l'intervention est planned — immuabilité preuve après).
-  const allTeams = await listTeams()
+  const allTeams = mission ? await listTeamsForSite(mission.site_id) : []
 
   // Pré-calcul des conflits par équipe : pour chaque équipe, est-elle déjà
   // affectée à un AUTRE site sur des horaires qui CHEVAUCHENT ceux de cette

@@ -13,7 +13,7 @@ import { z } from 'zod'
 import { requireFieldAgent } from '@/lib/field/auth'
 import { requireOrganizationMembership } from '@/lib/auth/memberships'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listTeams } from '@/lib/db/teams'
+import { listTeamsForSite } from '@/lib/db/teams'
 import { ensurePonctuelMission } from '@/lib/db/system-missions'
 import { createIntervention } from '@/lib/db/interventions'
 
@@ -23,11 +23,17 @@ export interface FieldTeamOption {
   color: string | null
 }
 
-/** Équipes de l'organisation, pour le sélecteur du bottom sheet. */
-export async function listFieldTeamsAction(): Promise<FieldTeamOption[]> {
+/**
+ * Équipes affectables à CE chantier, pour le sélecteur du bottom sheet.
+ * PLAN-SEC-1 (mandat Vincent 2026-09-26) : jamais l'agrégat multi-org — un
+ * conducteur qui gère plusieurs organisations ne doit pas voir l'équipe d'un
+ * autre chantier proposée ici.
+ */
+export async function listFieldTeamsAction(siteId: string): Promise<FieldTeamOption[]> {
   const auth = await requireFieldAgent()
   if ('error' in auth) return []
-  const teams = await listTeams().catch(() => [])
+  if (!z.string().uuid().safeParse(siteId).success) return []
+  const teams = await listTeamsForSite(siteId).catch(() => [])
   return teams.map((t) => ({ id: t.id, name: t.name, color: t.color ?? null }))
 }
 

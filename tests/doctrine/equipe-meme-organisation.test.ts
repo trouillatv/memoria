@@ -22,6 +22,15 @@ import { join, relative, sep } from 'node:path'
  * Ce test lit tout fichier de server actions qui ÉCRIT `assigned_team_id` et
  * exige qu'il garde l'équipe. Garder la mission ou l'intervention ne suffit pas :
  * il faut garder les DEUX bouts du lien.
+ *
+ * PLAN-SEC-1 (mandat Vincent 2026-09-26) : `requireOwned(role, 'teams', id)` ou
+ * une comparaison inline `.organization_id !==` ne prouvent que « l'appelant a
+ * accès à cette équipe » (caller-vs-resource) — pas « cette équipe appartient à
+ * l'organisation du CHANTIER RÉEL ciblé » (resource-vs-resource). Un appelant
+ * multi-organisation passe les deux premiers contrôles avec l'équipe d'un
+ * mauvais tenant. `requireTeamCompatibleWithOrg(teamId, targetOrganizationId)`
+ * (lib/auth/team-compatibility.ts) est désormais le garde canonique : il compare
+ * l'équipe à l'organisation du chantier, jamais à celle de l'appelant.
  */
 
 const APP = join(process.cwd(), 'app')
@@ -31,6 +40,9 @@ const WRITES_ASSIGNMENT = /assigned_team_id\s*:/
 
 /** Le contrôle d'appartenance de l'ÉQUIPE, sous ses formes réelles. */
 const GUARDS_TEAM = [
+  // Canonique (PLAN-SEC-1) — compare l'équipe à l'organisation du chantier
+  // réel, pas à celle de l'appelant.
+  /requireTeamCompatibleWithOrg\(/,
   /guardOwned\([^)]*['"]teams['"]/,
   /requireOwned\([^)]*['"]teams['"]/,
   /tenantOwns\([^)]*['"]teams['"]/,

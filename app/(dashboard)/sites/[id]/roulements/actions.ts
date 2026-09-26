@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireManagerOrAdmin } from '@/lib/auth/require'
 import { requireOwned } from '@/lib/auth/ownership'
+import { requireTeamCompatibleWithOrg } from '@/lib/auth/team-compatibility'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { findOrCreateMissionByName } from '@/lib/db/missions'
 import {
@@ -137,9 +138,12 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     }
   }
 
+  // PLAN-SEC-1 : chaque équipe citée doit appartenir à l'organisation RÉELLE
+  // du chantier (pas seulement être accessible à l'appelant, cf. `requireOwned`
+  // caller-vs-ressource — insuffisant pour un appelant multi-organisation).
   for (const teamId of new Set(d.slots.map((s) => s.teamId))) {
-    const ownedTeam = await requireOwned(auth.role, 'teams', teamId)
-    if (!ownedTeam.allowed) return { error: 'Équipe inconnue' }
+    const compatibleTeam = await requireTeamCompatibleWithOrg(teamId, siteRow.organization_id)
+    if (!compatibleTeam.allowed) return { error: compatibleTeam.error }
   }
 
   const slots: CycleSlot[] = d.slots.map((s) => ({
