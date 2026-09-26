@@ -23,14 +23,19 @@ import { join, relative, sep } from 'node:path'
  * exige qu'il garde l'équipe. Garder la mission ou l'intervention ne suffit pas :
  * il faut garder les DEUX bouts du lien.
  *
- * PLAN-SEC-1 (mandat Vincent 2026-09-26) : `requireOwned(role, 'teams', id)` ou
- * une comparaison inline `.organization_id !==` ne prouvent que « l'appelant a
+ * PLAN-SEC-1 (mandat Vincent 2026-09-26) : `requireOwned(role, 'teams', id)`
+ * (et ses variantes `guardOwned`/`tenantOwns`) ne prouvent que « l'appelant a
  * accès à cette équipe » (caller-vs-resource) — pas « cette équipe appartient à
  * l'organisation du CHANTIER RÉEL ciblé » (resource-vs-resource). Un appelant
- * multi-organisation passe les deux premiers contrôles avec l'équipe d'un
- * mauvais tenant. `requireTeamCompatibleWithOrg(teamId, targetOrganizationId)`
- * (lib/auth/team-compatibility.ts) est désormais le garde canonique : il compare
- * l'équipe à l'organisation du chantier, jamais à celle de l'appelant.
+ * multi-organisation passe ce contrôle avec l'équipe d'un mauvais tenant : ce
+ * n'est DONC PAS une preuve suffisante et ce test ne l'accepte plus seule.
+ * `requireTeamCompatibleWithOrg(teamId, targetOrganizationId)`
+ * (lib/auth/team-compatibility.ts) est le garde canonique : il compare
+ * l'équipe à l'organisation du chantier, jamais à celle de l'appelant. Une
+ * comparaison inline `team....organization_id !==` reste acceptée UNIQUEMENT
+ * quand le second membre est prouvé être l'organisation de la ressource réelle
+ * (site/mission/action), jamais celle — ou l'union — des appartenances de
+ * l'appelant ; vérifier au cas par cas à chaque nouveau fichier detecté ici.
  */
 
 const APP = join(process.cwd(), 'app')
@@ -41,13 +46,14 @@ const WRITES_ASSIGNMENT = /assigned_team_id\s*:/
 /** Le contrôle d'appartenance de l'ÉQUIPE, sous ses formes réelles. */
 const GUARDS_TEAM = [
   // Canonique (PLAN-SEC-1) — compare l'équipe à l'organisation du chantier
-  // réel, pas à celle de l'appelant.
+  // réel, pas à celle de l'appelant. `requireOwned/guardOwned/tenantOwns`
+  // SEULS ne sont plus acceptés : ils ne prouvent que l'accès de l'appelant à
+  // l'équipe (caller-vs-resource), pas la compatibilité équipe/ressource réelle.
   /requireTeamCompatibleWithOrg\(/,
-  /guardOwned\([^)]*['"]teams['"]/,
-  /requireOwned\([^)]*['"]teams['"]/,
-  /tenantOwns\([^)]*['"]teams['"]/,
   // Comparaison explicite des orgs — y compris à travers un cast TypeScript,
   // comme dans /m/ponctuel-actions.ts : `(team as {...}).organization_id !== orgId`.
+  // Accepté seulement si le second membre est l'org d'une ressource réelle déjà
+  // vérifiée (site/mission/action) — à contrôler manuellement à chaque ajout.
   /team[^\n]*\.organization_id\s*!==/,
 ]
 

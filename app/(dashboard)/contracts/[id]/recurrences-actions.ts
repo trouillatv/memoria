@@ -7,8 +7,8 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { createClient as createServerClient } from '@/lib/supabase/server'
-import { getUserRoleById } from '@/lib/db/users'
+import { requireManagerOrAdmin } from '@/lib/auth/require'
+import { requireOwned } from '@/lib/auth/ownership'
 import { getMission } from '@/lib/db/missions'
 import { slotFromUtcHour } from '@/lib/time/prestation-slot'
 import {
@@ -18,15 +18,6 @@ import {
   updateTemplate,
 } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
-
-async function requireManagerOrAdmin(): Promise<{ userId: string } | { error: string }> {
-  const supabase = await createServerClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { error: 'Not authenticated' }
-  const role = await getUserRoleById(user.id)
-  if (role !== 'admin' && role !== 'manager') return { error: 'Forbidden' }
-  return { userId: user.id }
-}
 
 const frequencySchema = z.enum(['daily', 'weekdays', 'weekly', 'monthly', 'one_shot'])
 const slotSchema = z.enum(['morning', 'afternoon', 'evening'])
@@ -115,6 +106,13 @@ export async function createRecurrenceAction(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
+
+  // Garde d'appartenance (PLAN-SEC-1, mandat Vincent 2026-09-26) : jamais la
+  // mission d'un autre tenant — `requireManagerOrAdmin` ne vérifie qu'un rôle
+  // global, pas l'organisation de la mission ciblée par `mission_id` (venu du
+  // client).
+  const owned = await requireOwned(auth.role, 'missions', parsed.data.mission_id)
+  if (!owned.allowed) return { ok: false, error: owned.error }
 
   // Garantit que la mission existe (et défaut titre)
   const mission = await getMission(parsed.data.mission_id)
@@ -248,6 +246,11 @@ export async function updateRecurrenceAction(
   const existing = await getTemplate(parsed.data.templateId)
   if (!existing) return { ok: false, error: 'Récurrence introuvable' }
 
+  // Garde d'appartenance (PLAN-SEC-1) : la récurrence hérite l'organisation de
+  // SA mission — jamais de celle de l'appelant.
+  const owned = await requireOwned(auth.role, 'missions', existing.mission_id)
+  if (!owned.allowed) return { ok: false, error: owned.error }
+
   const title = (parsed.data.title?.trim() || existing.title).slice(0, 200)
 
   try {
@@ -328,6 +331,11 @@ export async function archiveRecurrenceAction(
 
   const existing = await getTemplate(parsed.data.templateId)
   if (!existing) return { ok: false, error: 'Récurrence introuvable' }
+
+  // Garde d'appartenance (PLAN-SEC-1) : la récurrence hérite l'organisation de
+  // SA mission — jamais de celle de l'appelant.
+  const owned = await requireOwned(auth.role, 'missions', existing.mission_id)
+  if (!owned.allowed) return { ok: false, error: owned.error }
 
   try {
     await archiveTemplate(parsed.data.templateId)

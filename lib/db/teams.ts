@@ -96,14 +96,15 @@ export async function listTeams(): Promise<DbTeam[]> {
  * organisation : ce n'est plus le point de blocage réel (chaque écriture
  * `assigned_team_id` revalide via `requireTeamCompatibleWithOrg`), mais
  * afficher l'option invite au clic-puis-refus. Fail-closed : chantier
- * introuvable → liste vide.
+ * introuvable → liste vide. Une équipe désactivée (`active = false`) reste en
+ * base pour son historique mais ne doit plus être proposée à un nouveau choix.
  */
 export async function listTeamsForSite(siteId: string): Promise<DbTeam[]> {
   const supabase = createAdminClient()
   const { data: site } = await supabase.from('sites').select('organization_id').eq('id', siteId).maybeSingle()
   if (!site) return []
   const { data, error } = await supabase.from('teams').select('*').is('deleted_at', null)
-    .eq('organization_id', site.organization_id).order('name', { ascending: true })
+    .eq('organization_id', site.organization_id).eq('active', true).order('name', { ascending: true })
   if (error) throw error
   return data ?? []
 }

@@ -27,12 +27,21 @@ export interface FieldTeamOption {
  * Équipes affectables à CE chantier, pour le sélecteur du bottom sheet.
  * PLAN-SEC-1 (mandat Vincent 2026-09-26) : jamais l'agrégat multi-org — un
  * conducteur qui gère plusieurs organisations ne doit pas voir l'équipe d'un
- * autre chantier proposée ici.
+ * autre chantier proposée ici. `siteId` vient du client : sans preuve que
+ * l'appelant appartient à l'organisation de CE chantier, un UUID étranger
+ * exposerait les équipes d'un autre tenant (même refusées à l'écriture).
  */
 export async function listFieldTeamsAction(siteId: string): Promise<FieldTeamOption[]> {
   const auth = await requireFieldAgent()
   if ('error' in auth) return []
   if (!z.string().uuid().safeParse(siteId).success) return []
+
+  const supabase = createAdminClient()
+  const { data: site } = await supabase.from('sites').select('organization_id').eq('id', siteId).is('deleted_at', null).maybeSingle()
+  if (!site?.organization_id) return []
+  const membership = await requireOrganizationMembership(site.organization_id)
+  if (!membership.ok) return []
+
   const teams = await listTeamsForSite(siteId).catch(() => [])
   return teams.map((t) => ({ id: t.id, name: t.name, color: t.color ?? null }))
 }
