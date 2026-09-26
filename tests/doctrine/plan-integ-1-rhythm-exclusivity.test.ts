@@ -15,8 +15,41 @@ function extractBlock(src: string, marker: string): string {
 
 describe('PLAN-INTEG-1 - source active SIMPLE XOR ROULEMENT', () => {
   const migration = read('supabase/migrations/442_plan_integ_1_rhythm_exclusivity.sql')
+  const securityMigration = read('supabase/migrations/443_plan_integ_1_lock_internal_rpc_privileges.sql')
   const recurrences = read('app/(dashboard)/contracts/[id]/recurrences-actions.ts')
   const cycles = read('app/(dashboard)/sites/[id]/roulements/actions.ts')
+  const internalRpcSignatures = [
+    'public.fn_plan_regenerate_cycle_templates(uuid, uuid)',
+    'public.fn_plan_publish_cycle_exclusive(uuid, boolean, uuid)',
+    `public.fn_plan_create_simple_template_exclusive(
+  uuid,
+  text,
+  text,
+  text[],
+  smallint,
+  smallint,
+  text,
+  text,
+  date,
+  date,
+  uuid,
+  boolean
+)`,
+    `public.fn_plan_update_simple_template_exclusive(
+  uuid,
+  text,
+  text,
+  text[],
+  smallint,
+  smallint,
+  text,
+  text,
+  date,
+  date,
+  uuid,
+  boolean
+)`,
+  ]
 
   it('definit le simple actif par intervention_templates actif, non supprime, cycle_id null', () => {
     expect(migration).toContain("t.deleted_at is null")
@@ -68,5 +101,16 @@ describe('PLAN-INTEG-1 - source active SIMPLE XOR ROULEMENT', () => {
     expect(regenerate).toContain('set deleted_at = now()')
     expect(regenerate).toContain('from public.planning_cycle_slots s')
     expect(regenerate).toContain("s.state = 'work'")
+  })
+
+  it('reserve les RPC internes PLAN-INTEG au service_role uniquement', () => {
+    for (const signature of internalRpcSignatures) {
+      expect(securityMigration).toContain(`revoke execute on function ${signature} from public;`)
+      expect(securityMigration).toContain(`revoke execute on function ${signature} from anon;`)
+      expect(securityMigration).toContain(`revoke execute on function ${signature} from authenticated;`)
+      expect(securityMigration).toContain(`grant execute on function ${signature} to service_role;`)
+    }
+    expect(securityMigration).not.toContain(' to authenticated')
+    expect(securityMigration).not.toContain(' to anon')
   })
 })
