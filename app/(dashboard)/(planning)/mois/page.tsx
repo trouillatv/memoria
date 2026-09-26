@@ -57,6 +57,7 @@ import { MonthViewModeToggle } from './MonthViewModeToggle'
 import { MonthFilters } from './MonthFilters'
 import { WeekGridClient } from '../semaine/WeekGridClient'
 import { MonthCalendarGrid } from './MonthCalendarGrid'
+import { MonthPlanningClient } from './MonthPlanningClient'
 import { LecturePanel } from '../LecturePanel'
 import { DayFocusPanel } from '../DayFocusPanel'
 import { buildPlanningLectureInput } from '@/lib/planning/lecture-adapter'
@@ -518,6 +519,31 @@ export default async function MoisPage({
       {/* ── LA GRILLE ────────────────────────────────────────────────────
           Chantier : la grille UNIQUE (PlanningGrid), le MÊME tiroir. Équipe :
           la même projection, regroupée sur l'axe équipe (T/R). ─────────────── */}
+      {view === 'site' ? (
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
+          <MonthPlanningClient
+            gridRows={gridRows}
+            siteRows={filteredSiteRows}
+            month={month}
+            todayIso={todayIso}
+            initialFocusDate={focusDate}
+            teams={teams}
+            conflictsBySite={conflictsBySite}
+            closuresBySite={closuresBySite}
+            decisions={decisions}
+            optionsBySite={optionsBySite}
+            exceptionsById={exceptionsById}
+            initialCellKey={sp.cell ?? null}
+            lecture={lecture}
+            lectureLinks={lectureLinks ?? { rotation: '/roulements', gaps: `/mois?m=${month}`, missions: [] }}
+            emptyContextLabel={`Planning · ${monthLabel(month)}`}
+            rotationCount={rotationOptions.length}
+            interventionCount={monthCells.length}
+            assignmentCount={monthCells.filter((cell) => Boolean(cell.assigned_team_id)).length}
+            emptyMonth={rows.length === 0}
+          />
+        </div>
+      ) : (
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
       <div>
       {rows.length === 0 ? (
@@ -705,6 +731,7 @@ export default async function MoisPage({
         />
       )}
       </div>
+      )}
     </div>
   )
 }

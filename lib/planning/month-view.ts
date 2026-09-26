@@ -41,6 +41,20 @@ export interface DayFacts {
   /** Le chantier a un roulement publié qui COUVRE ce jour — c'est lui qui rend
    *  un jour vide anormal. Sans roulement, un jour vide est juste un jour vide. */
   cycleCovers: boolean
+  /** Detail optionnel des projections non materialisees, pour le panneau Jour. */
+  projectedOccurrences?: ProjectedDayOccurrence[]
+}
+
+export interface ProjectedDayOccurrence {
+  templateId: string
+  missionId: string
+  missionName: string | null
+  plannedStart: string | null
+  plannedEnd: string | null
+  slot: string | null
+  assignedTeamId: string | null
+  assignedTeamName: string | null
+  assignedTeamColor: string | null
 }
 
 /**

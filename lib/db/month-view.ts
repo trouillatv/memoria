@@ -103,7 +103,7 @@ export async function buildMonthRows(params: {
   const { data: tplRows } = await db
     .from('intervention_templates')
     .select(
-      'id, frequency, slots, day_of_week, day_of_month, planned_start_hhmm, planned_end_hhmm, starts_on, ends_on, cycle_length_weeks, anchor_date, week_index, assigned_team_id, cycle_id, missions!inner(id, site_id, sites!inner(id, name, organization_id, client:clients(name)))',
+      'id, frequency, slots, day_of_week, day_of_month, planned_start_hhmm, planned_end_hhmm, starts_on, ends_on, cycle_length_weeks, anchor_date, week_index, assigned_team_id, cycle_id, missions!inner(id, name, site_id, sites!inner(id, name, organization_id, client:clients(name))), team:teams(id, name, color)',
     )
     .eq('active', true)
     .is('deleted_at', null)
@@ -111,7 +111,8 @@ export async function buildMonthRows(params: {
   type RawTpl = ProjectableTemplate & {
     assigned_team_id: string | null
     cycle_id: string | null
-    missions?: { id?: string; site_id?: string; sites?: { id?: string; name?: string; organization_id?: string | null; client?: { name?: string } | Array<{ name?: string }> | null } }
+    missions?: { id?: string; name?: string | null; site_id?: string; sites?: { id?: string; name?: string; organization_id?: string | null; client?: { name?: string } | Array<{ name?: string }> | null } }
+    team?: { id?: string; name?: string; color?: string | null } | Array<{ id?: string; name?: string; color?: string | null }> | null
   }
 
   const templatesBySite = new Map<string, RawTpl[]>()
@@ -168,10 +169,26 @@ export async function buildMonthRows(params: {
       ? projectOccurrences({ templates: siteTemplates, from, to })
       : []
     const projectedByDay = new Map<string, Set<string>>()
+    const projectedDetailsByDay = new Map<string, NonNullable<DayFacts['projectedOccurrences']>>()
     for (const o of projected) {
       const set = projectedByDay.get(o.scheduledFor) ?? new Set<string>()
       set.add(o.templateId)
       projectedByDay.set(o.scheduledFor, set)
+      const tpl = templatesById.get(o.templateId)
+      const team = Array.isArray(tpl?.team) ? tpl.team[0] : tpl?.team
+      const list = projectedDetailsByDay.get(o.scheduledFor) ?? []
+      list.push({
+        templateId: o.templateId,
+        missionId: o.missionId,
+        missionName: tpl?.missions?.name ?? null,
+        plannedStart: o.plannedStart,
+        plannedEnd: o.plannedEnd,
+        slot: o.slot,
+        assignedTeamId: tpl?.assigned_team_id ?? null,
+        assignedTeamName: team?.name ?? null,
+        assignedTeamColor: team?.color ?? null,
+      })
+      projectedDetailsByDay.set(o.scheduledFor, list)
     }
 
     const dayFacts: Record<string, DayFacts> = {}
@@ -195,6 +212,7 @@ export async function buildMonthRows(params: {
       )
       const projTpl = projectedByDay.get(day) ?? new Set<string>()
       const projectedCount = [...projTpl].filter((id) => !materializedTpl.has(id)).length
+      const projectedOccurrences = (projectedDetailsByDay.get(day) ?? []).filter((o) => !materializedTpl.has(o.templateId))
 
       // Exceptions : une occurrence matÃ©rialisÃ©e qui dÃ©vie de son rythme.
       const hasException = todays.some((i) => {
@@ -223,6 +241,7 @@ export async function buildMonthRows(params: {
         closed: findClosureForDate(closures, day) !== null,
         hasException,
         cycleCovers: projTpl.size > 0,
+        projectedOccurrences,
       }
     }
 
