@@ -21,8 +21,7 @@ const mocks = vi.hoisted(() => ({
   requireSiteWriteAccess: vi.fn(),
   getMission: vi.fn(),
   getTemplate: vi.fn(),
-  createTemplate: vi.fn(),
-  updateTemplate: vi.fn(),
+  rpc: vi.fn(),
   archiveTemplate: vi.fn(),
   logAuditEvent: vi.fn(),
   revalidatePath: vi.fn(),
@@ -33,9 +32,10 @@ vi.mock('@/lib/auth/site-write-access', () => ({ requireSiteWriteAccess: mocks.r
 vi.mock('@/lib/db/missions', () => ({ getMission: mocks.getMission }))
 vi.mock('@/lib/db/intervention-templates', () => ({
   getTemplate: mocks.getTemplate,
-  createTemplate: mocks.createTemplate,
-  updateTemplate: mocks.updateTemplate,
   archiveTemplate: mocks.archiveTemplate,
+}))
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({ rpc: mocks.rpc }),
 }))
 vi.mock('@/lib/audit/log', () => ({ logAuditEvent: mocks.logAuditEvent }))
 
@@ -83,8 +83,7 @@ beforeEach(() => {
   })
   mocks.getMission.mockResolvedValue({ id: missionId, site_id: siteId, name: 'Nettoyage magasin' })
   mocks.getTemplate.mockResolvedValue({ id: templateId, mission_id: missionId, title: 'Nettoyage magasin' })
-  mocks.createTemplate.mockResolvedValue({ id: templateId })
-  mocks.updateTemplate.mockResolvedValue({ id: templateId })
+  mocks.rpc.mockResolvedValue({ data: { template_id: templateId }, error: null })
 })
 
 describe('createRecurrenceAction — autorisation M2C via requireSiteWriteAccess (PLAN-SEC-1 FINAL)', () => {
@@ -98,8 +97,8 @@ describe('createRecurrenceAction — autorisation M2C via requireSiteWriteAccess
   it('utilise access.userId (résolu par requireSiteWriteAccess) comme created_by, jamais un id client', async () => {
     await createRecurrenceAction(makeCreateInput())
 
-    const payload = mocks.createTemplate.mock.calls[0][0]
-    expect(payload.created_by).toBe(userId)
+    const [, payload] = mocks.rpc.mock.calls[0]
+    expect(payload.p_created_by).toBe(userId)
   })
 
   it('renvoie le refus uniforme si la Mission est introuvable — aucun oracle, requireSiteWriteAccess jamais appelé', async () => {
@@ -109,7 +108,7 @@ describe('createRecurrenceAction — autorisation M2C via requireSiteWriteAccess
 
     expect(result).toEqual({ ok: false, error: REFUS })
     expect(mocks.requireSiteWriteAccess).not.toHaveBeenCalled()
-    expect(mocks.createTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('users.role=manager + membershipRole=manager sur le site de la Mission → autorisé', async () => {
@@ -118,7 +117,7 @@ describe('createRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     const result = await createRecurrenceAction(makeCreateInput())
 
     expect(result).toEqual({ ok: true, templateId })
-    expect(mocks.createTemplate).toHaveBeenCalledTimes(1)
+    expect(mocks.rpc).toHaveBeenCalledWith('fn_plan_create_simple_template_exclusive', expect.objectContaining({ p_mission_id: missionId }))
   })
 
   it('users.role=manager + membershipRole insuffisant (non manager/admin) sur le site de la Mission → refus uniforme', async () => {
@@ -129,7 +128,7 @@ describe('createRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     const result = await createRecurrenceAction(makeCreateInput())
 
     expect(result).toEqual({ ok: false, error: REFUS })
-    expect(mocks.createTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('membership absente sur l’organisation du site de la Mission → refus uniforme', async () => {
@@ -138,7 +137,7 @@ describe('createRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     const result = await createRecurrenceAction(makeCreateInput())
 
     expect(result).toEqual({ ok: false, error: REFUS })
-    expect(mocks.createTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('Mission appartenant à un autre tenant (site d’une autre organisation) → refus uniforme', async () => {
@@ -147,7 +146,7 @@ describe('createRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     const result = await createRecurrenceAction(makeCreateInput())
 
     expect(result).toEqual({ ok: false, error: REFUS })
-    expect(mocks.createTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('ne fait jamais confiance à contract_id client pour l’autorisation (site vient uniquement de la Mission)', async () => {
@@ -182,7 +181,7 @@ describe('updateRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     expect(result).toEqual({ ok: false, error: REFUS })
     expect(mocks.getMission).not.toHaveBeenCalled()
     expect(mocks.requireSiteWriteAccess).not.toHaveBeenCalled()
-    expect(mocks.updateTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('renvoie le refus uniforme si la Mission du template est introuvable — même message que template introuvable', async () => {
@@ -192,7 +191,7 @@ describe('updateRecurrenceAction — autorisation M2C via requireSiteWriteAccess
 
     expect(result).toEqual({ ok: false, error: REFUS })
     expect(mocks.requireSiteWriteAccess).not.toHaveBeenCalled()
-    expect(mocks.updateTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('users.role=manager + membershipRole=manager sur le site de la Mission du template → autorisé', async () => {
@@ -201,7 +200,7 @@ describe('updateRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     const result = await updateRecurrenceAction(makeUpdateInput())
 
     expect(result).toEqual({ ok: true, templateId })
-    expect(mocks.updateTemplate).toHaveBeenCalledTimes(1)
+    expect(mocks.rpc).toHaveBeenCalledWith('fn_plan_update_simple_template_exclusive', expect.objectContaining({ p_template_id: templateId }))
   })
 
   it('users.role=manager + membershipRole insuffisant sur le site de la Mission du template → refus uniforme (fail-closed)', async () => {
@@ -210,7 +209,7 @@ describe('updateRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     const result = await updateRecurrenceAction(makeUpdateInput())
 
     expect(result).toEqual({ ok: false, error: REFUS })
-    expect(mocks.updateTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('membership absente sur l’organisation du site → refus uniforme', async () => {
@@ -219,7 +218,7 @@ describe('updateRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     const result = await updateRecurrenceAction(makeUpdateInput())
 
     expect(result).toEqual({ ok: false, error: REFUS })
-    expect(mocks.updateTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('template dont la Mission appartient à un autre tenant → refus uniforme', async () => {
@@ -228,7 +227,7 @@ describe('updateRecurrenceAction — autorisation M2C via requireSiteWriteAccess
     const result = await updateRecurrenceAction(makeUpdateInput())
 
     expect(result).toEqual({ ok: false, error: REFUS })
-    expect(mocks.updateTemplate).not.toHaveBeenCalled()
+    expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
   it('ne fait jamais confiance à contract_id client pour l’autorisation', async () => {

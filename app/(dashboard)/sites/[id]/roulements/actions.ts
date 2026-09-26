@@ -32,7 +32,9 @@ import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-clos
 import { previewCycle, type PreviewResult } from '@/lib/planning/cycle-preview'
 import { logAuditEvent } from '@/lib/audit/log'
 
-type Result = { ok: true; cycleId: string } | { error: string }
+type Result =
+  | { ok: true; cycleId: string }
+  | { error: string; conflict?: 'replace_simple_with_cycle' }
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Heure invalide')
 const dateIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide')
@@ -71,6 +73,7 @@ const cycleSchema = z
      *  VERSION démarre à la date d'effet. */
     effect: z.enum(['rewrite', 'immediate', 'next_monday', 'date']).optional(),
     effectDate: dateIso.nullable().optional(),
+    confirmReplaceRhythm: z.boolean().optional(),
   })
   .superRefine((d, ctx) => {
     // Il faut une prestation : choisie, ou écrite. Sans elle, le roulement ne
@@ -155,6 +158,26 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     endTime: s.endTime,
   }))
 
+  if (d.status === 'published' && !d.confirmReplaceRhythm) {
+    const { data: conflictingSimple, error: conflictErr } = await supabase
+      .from('intervention_templates')
+      .select('id')
+      .eq('mission_id', missionId)
+      .eq('active', true)
+      .is('deleted_at', null)
+      .is('cycle_id', null)
+      .lte('starts_on', d.endsOn ?? '9999-12-31')
+      .or(`ends_on.is.null,ends_on.gte.${d.startsOn}`)
+      .limit(1)
+    if (conflictErr) return { error: conflictErr.message }
+    if ((conflictingSimple ?? []).length > 0) {
+      return {
+        error: 'Cette mission utilise déjà un rythme simple. Confirmez le remplacement pour publier ce roulement.',
+        conflict: 'replace_simple_with_cycle',
+      }
+    }
+  }
+
   const payload = {
     siteId: d.siteId,
     missionId,
@@ -170,12 +193,14 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
   }
 
   let cycleId: string
+  let shouldPublishViaRpc = d.status === 'published' && !d.cycleId
   if (d.cycleId) {
     // On ne modifie pas le roulement d'un autre tenant : on remonte à son site.
     const existing = await getCycle(d.cycleId)
     if (!existing) return { error: 'Objet introuvable' }
     const ownedCycleSite = await requireOwned(auth.role, 'sites', existing.siteId)
     if (!ownedCycleSite.allowed) return { error: ownedCycleSite.error }
+    shouldPublishViaRpc = d.status === 'published' && existing.status !== 'published'
 
     // LA DATE D'EFFET. Un roulement PUBLIÉ a un passé : il a produit des
     // interventions et des preuves. Le modifier « à partir de » ne réécrit
@@ -189,11 +214,33 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     } else {
       // Effet avant le premier jour = il n'y a rien à découper : c'est une
       // réécriture qui ne dit pas son nom, on la traite comme telle.
-      await updateCycle(d.cycleId, payload)
+      await updateCycle(d.cycleId, shouldPublishViaRpc ? { ...payload, status: 'draft' } : payload)
       cycleId = d.cycleId
     }
   } else {
-    cycleId = await createCycle(payload)
+    cycleId = await createCycle(shouldPublishViaRpc ? { ...payload, status: 'draft' } : payload)
+  }
+
+  if (shouldPublishViaRpc) {
+    const { error } = await (createAdminClient() as unknown as {
+      rpc: (
+        name: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ error: { message: string } | null }>
+    }).rpc('fn_plan_publish_cycle_exclusive', {
+      p_cycle_id: cycleId,
+      p_confirm_replace_simple: d.confirmReplaceRhythm ?? false,
+      p_actor_id: auth.userId,
+    })
+    if (error) {
+      if (error.message.includes('PLAN_INTEG_REPLACE_SIMPLE_REQUIRED')) {
+        return {
+          error: 'Cette mission utilise déjà un rythme simple. Confirmez le remplacement pour publier ce roulement.',
+          conflict: 'replace_simple_with_cycle',
+        }
+      }
+      return { error: error.message }
+    }
   }
 
   await logAuditEvent({

@@ -10,11 +10,10 @@ import { revalidatePath } from 'next/cache'
 import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { getMission } from '@/lib/db/missions'
 import { slotFromUtcHour } from '@/lib/time/prestation-slot'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   archiveTemplate,
-  createTemplate,
   getTemplate,
-  updateTemplate,
 } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
 
@@ -35,6 +34,17 @@ const REFUS = 'Accès refusé' as const
 const frequencySchema = z.enum(['daily', 'weekdays', 'weekly', 'monthly', 'one_shot'])
 const slotSchema = z.enum(['morning', 'afternoon', 'evening'])
 const hhmmRe = /^([01]\d|2[0-3]):[0-5]\d$/
+
+type RpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message: string } | null }>
+}
+
+function isReplaceCycleRequired(message: string): boolean {
+  return message.includes('PLAN_INTEG_REPLACE_CYCLE_REQUIRED')
+}
 
 /** Dérive slot + heures depuis l'heure précise (si fournie). Le slot reste
  *  utile à la grille et à l'index d'unicité ; l'heure exacte vit dans le template. */
@@ -67,6 +77,7 @@ const createRecurrenceSchema = z
     // « Jusqu'à quand ? » — la colonne existait depuis la mig 021 et n'était
     // écrite NULLE PART. Un rythme sans fin est un rythme qu'on n'ose pas créer.
     ends_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis').nullable().optional(),
+    confirm_replace_cycle: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.ends_on && data.ends_on < data.starts_on) {
@@ -103,11 +114,12 @@ export interface CreateRecurrenceInput {
   planned_end_hhmm?: string
   starts_on: string
   ends_on?: string | null
+  confirm_replace_cycle?: boolean
 }
 
 export type CreateRecurrenceResult =
   | { ok: true; templateId: string }
-  | { ok: false; error: string }
+  | { ok: false; error: string; conflict?: 'replace_cycle_with_simple' }
 
 export async function createRecurrenceAction(
   input: CreateRecurrenceInput
@@ -132,21 +144,28 @@ export async function createRecurrenceAction(
   const t = deriveTimeFields(parsed.data.planned_start_hhmm, parsed.data.planned_end_hhmm, parsed.data.slots)
 
   try {
-    const tpl = await createTemplate({
-      mission_id: parsed.data.mission_id,
-      title,
-      frequency: parsed.data.frequency,
-      slots: t.slots,
-      planned_start_hhmm: t.planned_start_hhmm,
-      planned_end_hhmm: t.planned_end_hhmm,
-      day_of_week:
-        parsed.data.frequency === 'weekly' ? (parsed.data.day_of_week ?? null) : null,
-      day_of_month:
-        parsed.data.frequency === 'monthly' ? (parsed.data.day_of_month ?? null) : null,
-      starts_on: parsed.data.starts_on,
-      ends_on: parsed.data.ends_on ?? null,
-      created_by: access.userId,
-    })
+    const { data, error } = await (createAdminClient() as unknown as RpcClient).rpc(
+      'fn_plan_create_simple_template_exclusive',
+      {
+        p_mission_id: parsed.data.mission_id,
+        p_title: title,
+        p_frequency: parsed.data.frequency,
+        p_slots: t.slots,
+        p_planned_start_hhmm: t.planned_start_hhmm,
+        p_planned_end_hhmm: t.planned_end_hhmm,
+        p_day_of_week:
+          parsed.data.frequency === 'weekly' ? (parsed.data.day_of_week ?? null) : null,
+        p_day_of_month:
+          parsed.data.frequency === 'monthly' ? (parsed.data.day_of_month ?? null) : null,
+        p_starts_on: parsed.data.starts_on,
+        p_ends_on: parsed.data.ends_on ?? null,
+        p_created_by: access.userId,
+        p_confirm_replace_cycle: parsed.data.confirm_replace_cycle ?? false,
+      },
+    )
+    if (error) throw new Error(error.message)
+    const templateId = (data as { template_id?: string } | null)?.template_id
+    if (!templateId) throw new Error('Création de récurrence impossible')
 
     await logAuditEvent({
       userId: access.userId,
@@ -155,9 +174,10 @@ export async function createRecurrenceAction(
       action: 'created',
       metadata: {
         kind: 'intervention_template',
-        template_id: tpl.id,
+        template_id: templateId,
         frequency: parsed.data.frequency,
         slots: parsed.data.slots,
+        replaced_cycle: parsed.data.confirm_replace_cycle ?? false,
       },
     })
 
@@ -169,9 +189,16 @@ export async function createRecurrenceAction(
       revalidatePath(`/contracts/${parsed.data.contract_id}/missions/${parsed.data.mission_id}/edit`)
     }
 
-    return { ok: true, templateId: tpl.id }
+    return { ok: true, templateId }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur création récurrence'
+    if (isReplaceCycleRequired(msg)) {
+      return {
+        ok: false,
+        error: 'Cette mission utilise déjà un roulement. Confirmez le remplacement pour créer ce rythme simple.',
+        conflict: 'replace_cycle_with_simple',
+      }
+    }
     return { ok: false, error: msg }
   }
 }
@@ -195,6 +222,7 @@ const updateRecurrenceSchema = z
     // « Jusqu'à quand ? » — la colonne existait depuis la mig 021 et n'était
     // écrite NULLE PART. Un rythme sans fin est un rythme qu'on n'ose pas créer.
     ends_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format YYYY-MM-DD requis').nullable().optional(),
+    confirm_replace_cycle: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.ends_on && data.ends_on < data.starts_on) {
@@ -231,11 +259,12 @@ export interface UpdateRecurrenceInput {
   planned_end_hhmm?: string
   starts_on: string
   ends_on?: string | null
+  confirm_replace_cycle?: boolean
 }
 
 export type UpdateRecurrenceResult =
   | { ok: true; templateId: string }
-  | { ok: false; error: string }
+  | { ok: false; error: string; conflict?: 'replace_cycle_with_simple' }
 
 /**
  * Modifie une récurrence existante. Les interventions déjà générées par
@@ -267,19 +296,26 @@ export async function updateRecurrenceAction(
 
   try {
     const t = deriveTimeFields(parsed.data.planned_start_hhmm, parsed.data.planned_end_hhmm, parsed.data.slots)
-    const updated = await updateTemplate(parsed.data.templateId, {
-      title,
-      frequency: parsed.data.frequency,
-      slots: t.slots,
-      planned_start_hhmm: t.planned_start_hhmm,
-      planned_end_hhmm: t.planned_end_hhmm,
-      day_of_week:
-        parsed.data.frequency === 'weekly' ? (parsed.data.day_of_week ?? null) : null,
-      day_of_month:
-        parsed.data.frequency === 'monthly' ? (parsed.data.day_of_month ?? null) : null,
-      starts_on: parsed.data.starts_on,
-      ends_on: parsed.data.ends_on ?? null,
-    })
+    const { error } = await (createAdminClient() as unknown as RpcClient).rpc(
+      'fn_plan_update_simple_template_exclusive',
+      {
+        p_template_id: parsed.data.templateId,
+        p_title: title,
+        p_frequency: parsed.data.frequency,
+        p_slots: t.slots,
+        p_planned_start_hhmm: t.planned_start_hhmm,
+        p_planned_end_hhmm: t.planned_end_hhmm,
+        p_day_of_week:
+          parsed.data.frequency === 'weekly' ? (parsed.data.day_of_week ?? null) : null,
+        p_day_of_month:
+          parsed.data.frequency === 'monthly' ? (parsed.data.day_of_month ?? null) : null,
+        p_starts_on: parsed.data.starts_on,
+        p_ends_on: parsed.data.ends_on ?? null,
+        p_actor_id: access.userId,
+        p_confirm_replace_cycle: parsed.data.confirm_replace_cycle ?? false,
+      },
+    )
+    if (error) throw new Error(error.message)
 
     await logAuditEvent({
       userId: access.userId,
@@ -288,9 +324,10 @@ export async function updateRecurrenceAction(
       action: 'updated',
       metadata: {
         kind: 'intervention_template',
-        template_id: updated.id,
+        template_id: parsed.data.templateId,
         frequency: parsed.data.frequency,
         slots: parsed.data.slots,
+        replaced_cycle: parsed.data.confirm_replace_cycle ?? false,
       },
     })
 
@@ -300,9 +337,16 @@ export async function updateRecurrenceAction(
       revalidatePath(`/contracts/${parsed.data.contract_id}/missions/${existing.mission_id}/edit`)
     }
 
-    return { ok: true, templateId: updated.id }
+    return { ok: true, templateId: parsed.data.templateId }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Erreur modification récurrence'
+    if (isReplaceCycleRequired(msg)) {
+      return {
+        ok: false,
+        error: 'Cette mission utilise déjà un roulement. Confirmez le remplacement pour enregistrer ce rythme simple.',
+        conflict: 'replace_cycle_with_simple',
+      }
+    }
     return { ok: false, error: msg }
   }
 }

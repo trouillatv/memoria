@@ -99,6 +99,7 @@ export function RecurrenceModal({
   // créer. Vide = sans date de fin (le comportement d'avant, préservé).
   const [endsOn, setEndsOn] = useState<string>(template?.ends_on ?? '')
   const [error, setError] = useState<string | null>(null)
+  const [replaceCycleConflict, setReplaceCycleConflict] = useState(false)
 
   // Resync quand template change (passage d'un template à un autre sans démontage)
   useEffect(() => {
@@ -112,6 +113,7 @@ export function RecurrenceModal({
       setStartsOn(template.starts_on)
       setEndsOn(template.ends_on ?? '')
       setError(null)
+      setReplaceCycleConflict(false)
     } else {
       setFrequency('daily')
       setDayOfWeek(null)
@@ -120,6 +122,7 @@ export function RecurrenceModal({
       setEndTime('')
       setStartsOn(todayIso())
       setError(null)
+      setReplaceCycleConflict(false)
     }
   }, [open, template])
 
@@ -135,6 +138,7 @@ export function RecurrenceModal({
       setStartsOn(todayIso())
     }
     setError(null)
+    setReplaceCycleConflict(false)
   }
 
   function close() {
@@ -151,7 +155,7 @@ export function RecurrenceModal({
     (frequency !== 'weekly' || dayOfWeek !== null) &&
     (frequency !== 'monthly' || (dayOfMonth !== null && dayOfMonth >= 1 && dayOfMonth <= 28))
 
-  async function submit() {
+  async function submit(confirmReplaceCycle = false) {
     setError(null)
     if (!isValid) return
 
@@ -167,10 +171,16 @@ export function RecurrenceModal({
         planned_end_hhmm: endTime,
         starts_on: startsOn,
         ends_on: endsOn || null,
+        ...(confirmReplaceCycle ? { confirm_replace_cycle: true } : {}),
       }
       startTransition(async () => {
         const r = await updateRecurrenceAction(payload)
         if (!r.ok) {
+          if (r.conflict === 'replace_cycle_with_simple' || r.error.includes('PLAN_INTEG_REPLACE_CYCLE_REQUIRED')) {
+            setReplaceCycleConflict(true)
+            setError(null)
+            return
+          }
           setError(r.error)
           toast.error(r.error)
           return
@@ -193,11 +203,17 @@ export function RecurrenceModal({
       planned_end_hhmm: endTime,
       starts_on: startsOn,
       ends_on: endsOn || null,
+      ...(confirmReplaceCycle ? { confirm_replace_cycle: true } : {}),
     }
 
     startTransition(async () => {
       const r = await createRecurrenceAction(payload)
       if (!r.ok) {
+        if (r.conflict === 'replace_cycle_with_simple' || r.error.includes('PLAN_INTEG_REPLACE_CYCLE_REQUIRED')) {
+          setReplaceCycleConflict(true)
+          setError(null)
+          return
+        }
         setError(r.error)
         toast.error(r.error)
         return
@@ -388,7 +404,7 @@ export function RecurrenceModal({
           </button>
           <button
             type="button"
-            onClick={submit}
+            onClick={() => submit()}
             disabled={pending || !isValid}
             data-testid="recurrence-submit"
             className="px-3 py-1.5 rounded border bg-foreground text-background text-sm disabled:opacity-50"
@@ -396,6 +412,33 @@ export function RecurrenceModal({
             {submitLabel}
           </button>
         </div>
+
+        {replaceCycleConflict && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+            <p className="font-medium">Cette mission utilise déjà un roulement.</p>
+            <p className="mt-1 text-xs">
+              Créer ce rythme simple remplacera le roulement actuel. Le roulement précédent restera dans l&apos;historique.
+            </p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setReplaceCycleConflict(false)}
+                disabled={pending}
+                className="rounded border bg-background px-3 py-1.5 text-xs"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => submit(true)}
+                disabled={pending}
+                className="rounded border bg-foreground px-3 py-1.5 text-xs text-background disabled:opacity-50"
+              >
+                Remplacer par ce rythme simple
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

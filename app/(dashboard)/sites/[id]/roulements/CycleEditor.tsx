@@ -15,6 +15,14 @@ import { useRouter } from 'next/navigation'
 import { Loader2, Plus, X, CalendarRange, Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { suggestExisting, samePrestation } from '@/lib/planning/prestation-name'
 import type { PreviewResult } from '@/lib/planning/cycle-preview'
@@ -101,6 +109,7 @@ export function CycleEditor({
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
+  const [replaceSimpleConflict, setReplaceSimpleConflict] = useState<'draft' | 'published' | null>(null)
 
   const [name, setName] = useState(
     initial?.name ? (isCopy ? `${initial.name} (copie)` : initial.name) : '',
@@ -270,7 +279,7 @@ export function CycleEditor({
     void loadPreview(m)
   }
 
-  function save(status: 'draft' | 'published') {
+  function save(status: 'draft' | 'published', confirmReplaceRhythm = false) {
     if (pending) return
     if (!valid()) return
 
@@ -282,11 +291,16 @@ export function CycleEditor({
         ...cycleShape(),
         name: name.trim(),
         status,
+        ...(confirmReplaceRhythm ? { confirmReplaceRhythm: true } : {}),
         // La date d'effet n'a de sens que sur un roulement PUBLIÉ : un
         // brouillon n'a pas d'histoire à protéger.
         ...(askEffect ? { effect, effectDate: effect === 'date' ? effectDate || null : null } : {}),
       })
       if ('error' in r) {
+        if (r.conflict === 'replace_simple_with_cycle' && status === 'published') {
+          setReplaceSimpleConflict(status)
+          return
+        }
         toast.error(r.error)
         return
       }
@@ -306,29 +320,62 @@ export function CycleEditor({
 
   if (view === 'preview' && preview) {
     return (
-      <CyclePreview
-        preview={preview}
-        effectPicker={
-          askEffect ? (
-            <EffectPicker
-              effect={effect}
-              onEffect={setEffect}
-              effectDate={effectDate}
-              onEffectDate={setEffectDate}
-              disabled={pending}
-            />
-          ) : null
-        }
-        month={month}
-        labelOf={labelOf}
-        loading={loadingPreview}
-        onMonth={changeMonth}
-        onBack={() => setView('grid')}
-        onDraft={() => save('draft')}
-        onPublish={() => save('published')}
-        saving={pending}
-        isEdit={Boolean(initial)}
-      />
+      <>
+        <CyclePreview
+          preview={preview}
+          effectPicker={
+            askEffect ? (
+              <EffectPicker
+                effect={effect}
+                onEffect={setEffect}
+                effectDate={effectDate}
+                onEffectDate={setEffectDate}
+                disabled={pending}
+              />
+            ) : null
+          }
+          month={month}
+          labelOf={labelOf}
+          loading={loadingPreview}
+          onMonth={changeMonth}
+          onBack={() => setView('grid')}
+          onDraft={() => save('draft')}
+          onPublish={() => save('published')}
+          saving={pending}
+          isEdit={Boolean(initial)}
+        />
+        <Dialog
+          open={replaceSimpleConflict !== null}
+          onOpenChange={(open) => {
+            if (!open && !pending) setReplaceSimpleConflict(null)
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Remplacer le rythme simple ?</DialogTitle>
+              <DialogDescription>
+                Cette mission utilise déjà un rythme simple. Publier ce roulement remplacera le rythme actuel. Le rythme précédent restera dans l&apos;historique.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={pending} onClick={() => setReplaceSimpleConflict(null)}>
+                Annuler
+              </Button>
+              <Button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setReplaceSimpleConflict(null)
+                  save('published', true)
+                }}
+              >
+                {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+                Remplacer par ce roulement
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
     )
   }
 
@@ -628,6 +675,42 @@ export function CycleEditor({
             : `${workedCount} jour${workedCount > 1 ? 's' : ''} travaillé${workedCount > 1 ? 's' : ''} sur le cycle.`}
         </p>
       </div>
+      <Dialog
+        open={replaceSimpleConflict !== null}
+        onOpenChange={(open) => {
+          if (!open && !pending) setReplaceSimpleConflict(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Remplacer le rythme simple ?</DialogTitle>
+            <DialogDescription>
+              Cette mission utilise déjà un rythme simple. Publier ce roulement remplacera le rythme actuel. Le rythme précédent restera dans l&apos;historique.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => setReplaceSimpleConflict(null)}
+            >
+              Annuler
+            </Button>
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setReplaceSimpleConflict(null)
+                save('published', true)
+              }}
+            >
+              {pending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : null}
+              Remplacer par ce roulement
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
