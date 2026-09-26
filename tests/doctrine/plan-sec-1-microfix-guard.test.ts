@@ -11,6 +11,19 @@
 //   3. listFieldTeamsAction(siteId) ne prouvait pas que l'appelant appartient
 //      à l'organisation du chantier ciblé avant de lister ses équipes.
 //
+// PLAN-SEC-1 FINAL (mandat Vincent 2026-09-26, review du SHA e8a94b8f) :
+// le trou cross-tenant brut de recurrences-actions.ts était fermé par le
+// premier micro-fix (1. ci-dessus), mais la politique de rôle restait
+// incorrecte : requireOwned(auth.role, ...) ne vérifie que l'appartenance de
+// l'appelant à l'organisation de la mission, jamais son rôle DANS cette
+// organisation — auth.role vient de users.role (profil global). Un compte
+// manager au niveau plateforme mais chef_equipe (ou autre rôle non habilité)
+// sur l'organisation propriétaire du chantier ciblé passait quand même les
+// deux contrôles. Remplacé par requireSiteWriteAccess(mission.site_id,
+// 'managerOrAdmin'), qui résout l'organisation ET le rôle dans cette même
+// organisation. Couverture comportementale (mock du contexte organisationnel,
+// pas un simple source-scan) : tests/actions/recurrences-actions.test.ts.
+//
 // Tripwires structurels (pas de DB, pas de mock d'auth — cohérent avec
 // tests/doctrine/document-actions-guard.test.ts et
 // tests/doctrine/m3-mobile-multi-org.doctrine.test.ts) : si un futur refactor
@@ -31,26 +44,34 @@ function extractBlock(src: string, name: string): string {
   return next === -1 ? tail : tail.slice(0, name.length + next)
 }
 
-describe('PLAN-SEC-1 micro-fix — recurrences-actions.ts garde la mission RÉELLE', () => {
+describe('PLAN-SEC-1 FINAL — recurrences-actions.ts résout le rôle dans l’organisation DU CHANTIER', () => {
   const src = read('app/(dashboard)/contracts/[id]/recurrences-actions.ts')
 
-  it('createRecurrenceAction : requireOwned sur mission_id fourni par le client', () => {
+  it('createRecurrenceAction : requireSiteWriteAccess sur le site DE LA MISSION persistée, police managerOrAdmin', () => {
     const block = extractBlock(src, 'export async function createRecurrenceAction')
-    expect(block).toMatch(/requireOwned\(auth\.role,\s*'missions',\s*parsed\.data\.mission_id\)/)
+    expect(block).toMatch(/requireSiteWriteAccess\(mission\.site_id,\s*'managerOrAdmin'\)/)
   })
 
-  it('updateRecurrenceAction : requireOwned sur la mission DU TEMPLATE existant', () => {
+  it('updateRecurrenceAction : requireSiteWriteAccess sur le site de la mission DU TEMPLATE existant', () => {
     const block = extractBlock(src, 'export async function updateRecurrenceAction')
-    expect(block).toMatch(/requireOwned\(auth\.role,\s*'missions',\s*existing\.mission_id\)/)
+    expect(block).toMatch(/requireSiteWriteAccess\(mission\.site_id,\s*'managerOrAdmin'\)/)
   })
 
-  it('archiveRecurrenceAction : requireOwned sur la mission DU TEMPLATE existant', () => {
+  it('archiveRecurrenceAction : requireSiteWriteAccess sur le site de la mission DU TEMPLATE existant', () => {
     const block = extractBlock(src, 'export async function archiveRecurrenceAction')
-    expect(block).toMatch(/requireOwned\(auth\.role,\s*'missions',\s*existing\.mission_id\)/)
+    expect(block).toMatch(/requireSiteWriteAccess\(mission\.site_id,\s*'managerOrAdmin'\)/)
   })
 
-  it('les trois mutations importent bien requireOwned depuis lib/auth/ownership', () => {
-    expect(src).toMatch(/import \{ requireOwned \} from '@\/lib\/auth\/ownership'/)
+  it('les trois mutations importent requireSiteWriteAccess, plus jamais requireManagerOrAdmin/requireOwned comme politique de rôle', () => {
+    expect(src).toMatch(/import \{ requireSiteWriteAccess \} from '@\/lib\/auth\/site-write-access'/)
+    expect(src).not.toMatch(/requireManagerOrAdmin\(\)/)
+    expect(src).not.toMatch(/requireOwned\(/)
+  })
+
+  it('ne fait jamais confiance à contract_id client pour l’autorisation', () => {
+    // contract_id n'apparaît que dans les schémas Zod et les revalidatePath —
+    // jamais passé à requireSiteWriteAccess ni à une fonction de garde.
+    expect(src).not.toMatch(/requireSiteWriteAccess\([^)]*contract_id/)
   })
 })
 

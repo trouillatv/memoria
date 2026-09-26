@@ -7,8 +7,7 @@
 
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
-import { requireManagerOrAdmin } from '@/lib/auth/require'
-import { requireOwned } from '@/lib/auth/ownership'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { getMission } from '@/lib/db/missions'
 import { slotFromUtcHour } from '@/lib/time/prestation-slot'
 import {
@@ -18,6 +17,20 @@ import {
   updateTemplate,
 } from '@/lib/db/intervention-templates'
 import { logAuditEvent } from '@/lib/audit/log'
+
+// PLAN-SEC-1 FINAL — le rôle métier vient du membership dans l'organisation
+// DU CHANTIER (doctrine M2C), jamais de users.role : un compte manager sur
+// son profil mais chef_equipe sur l'organisation propriétaire du site ne
+// doit pas pouvoir créer/modifier/archiver une récurrence de ce chantier.
+// requireSiteWriteAccess résout à la fois l'appartenance et le rôle dans
+// l'organisation du site — remplace l'ancienne paire de gardes qui vérifiait
+// ces deux dimensions séparément, l'une sur le mauvais référentiel
+// (rôle global de l'utilisateur). Le site vient
+// TOUJOURS de la Mission persistée (jamais de contract_id client, jamais
+// d'un site_id client), et le refus est identique que la Mission/le
+// template soit introuvable ou appartienne à une autre organisation : aucun
+// oracle ne doit permettre de distinguer les deux cas.
+const REFUS = 'Accès refusé' as const
 
 const frequencySchema = z.enum(['daily', 'weekdays', 'weekly', 'monthly', 'one_shot'])
 const slotSchema = z.enum(['morning', 'afternoon', 'evening'])
@@ -99,24 +112,21 @@ export type CreateRecurrenceResult =
 export async function createRecurrenceAction(
   input: CreateRecurrenceInput
 ): Promise<CreateRecurrenceResult> {
-  const auth = await requireManagerOrAdmin()
-  if ('error' in auth) return { ok: false, error: auth.error }
-
   const parsed = createRecurrenceSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
 
-  // Garde d'appartenance (PLAN-SEC-1, mandat Vincent 2026-09-26) : jamais la
-  // mission d'un autre tenant — `requireManagerOrAdmin` ne vérifie qu'un rôle
-  // global, pas l'organisation de la mission ciblée par `mission_id` (venu du
-  // client).
-  const owned = await requireOwned(auth.role, 'missions', parsed.data.mission_id)
-  if (!owned.allowed) return { ok: false, error: owned.error }
-
-  // Garantit que la mission existe (et défaut titre)
+  // PLAN-SEC-1 FINAL : la mission RÉELLE est chargée d'abord (jamais de
+  // confiance dans un mission_id client sans preuve) ; le site — donc
+  // l'organisation et le rôle métier de l'appelant — est dérivé de cette
+  // mission persistée, jamais d'un contract_id ou site_id client. Mission
+  // introuvable ou accès refusé renvoient le MÊME message.
   const mission = await getMission(parsed.data.mission_id)
-  if (!mission) return { ok: false, error: 'Mission introuvable' }
+  if (!mission) return { ok: false, error: REFUS }
+
+  const access = await requireSiteWriteAccess(mission.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: REFUS }
 
   const title = (parsed.data.title?.trim() || mission.name).slice(0, 200)
   const t = deriveTimeFields(parsed.data.planned_start_hhmm, parsed.data.planned_end_hhmm, parsed.data.slots)
@@ -135,11 +145,11 @@ export async function createRecurrenceAction(
         parsed.data.frequency === 'monthly' ? (parsed.data.day_of_month ?? null) : null,
       starts_on: parsed.data.starts_on,
       ends_on: parsed.data.ends_on ?? null,
-      created_by: auth.userId,
+      created_by: access.userId,
     })
 
     await logAuditEvent({
-      userId: auth.userId,
+      userId: access.userId,
       entityType: 'mission',
       entityId: parsed.data.mission_id,
       action: 'created',
@@ -235,21 +245,23 @@ export type UpdateRecurrenceResult =
 export async function updateRecurrenceAction(
   input: UpdateRecurrenceInput
 ): Promise<UpdateRecurrenceResult> {
-  const auth = await requireManagerOrAdmin()
-  if ('error' in auth) return { ok: false, error: auth.error }
-
   const parsed = updateRecurrenceSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
 
   const existing = await getTemplate(parsed.data.templateId)
-  if (!existing) return { ok: false, error: 'Récurrence introuvable' }
+  if (!existing) return { ok: false, error: REFUS }
 
-  // Garde d'appartenance (PLAN-SEC-1) : la récurrence hérite l'organisation de
-  // SA mission — jamais de celle de l'appelant.
-  const owned = await requireOwned(auth.role, 'missions', existing.mission_id)
-  if (!owned.allowed) return { ok: false, error: owned.error }
+  // PLAN-SEC-1 FINAL : le template ne porte pas de site_id — la mission
+  // RÉELLE de CE template persisté est chargée pour le dériver, jamais un
+  // contract_id client. Template/Mission introuvable ou accès refusé
+  // renvoient le MÊME message.
+  const mission = await getMission(existing.mission_id)
+  if (!mission) return { ok: false, error: REFUS }
+
+  const access = await requireSiteWriteAccess(mission.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: REFUS }
 
   const title = (parsed.data.title?.trim() || existing.title).slice(0, 200)
 
@@ -270,7 +282,7 @@ export async function updateRecurrenceAction(
     })
 
     await logAuditEvent({
-      userId: auth.userId,
+      userId: access.userId,
       entityType: 'mission',
       entityId: existing.mission_id,
       action: 'updated',
@@ -321,27 +333,29 @@ export type ArchiveRecurrenceResult =
 export async function archiveRecurrenceAction(
   input: ArchiveRecurrenceInput
 ): Promise<ArchiveRecurrenceResult> {
-  const auth = await requireManagerOrAdmin()
-  if ('error' in auth) return { ok: false, error: auth.error }
-
   const parsed = archiveRecurrenceSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
   }
 
   const existing = await getTemplate(parsed.data.templateId)
-  if (!existing) return { ok: false, error: 'Récurrence introuvable' }
+  if (!existing) return { ok: false, error: REFUS }
 
-  // Garde d'appartenance (PLAN-SEC-1) : la récurrence hérite l'organisation de
-  // SA mission — jamais de celle de l'appelant.
-  const owned = await requireOwned(auth.role, 'missions', existing.mission_id)
-  if (!owned.allowed) return { ok: false, error: owned.error }
+  // PLAN-SEC-1 FINAL : le template ne porte pas de site_id — la mission
+  // RÉELLE de CE template persisté est chargée pour le dériver, jamais un
+  // contract_id client. Template/Mission introuvable ou accès refusé
+  // renvoient le MÊME message.
+  const mission = await getMission(existing.mission_id)
+  if (!mission) return { ok: false, error: REFUS }
+
+  const access = await requireSiteWriteAccess(mission.site_id, 'managerOrAdmin')
+  if (!access.ok) return { ok: false, error: REFUS }
 
   try {
     await archiveTemplate(parsed.data.templateId)
 
     await logAuditEvent({
-      userId: auth.userId,
+      userId: access.userId,
       entityType: 'mission',
       entityId: existing.mission_id,
       action: 'soft_deleted',
