@@ -97,12 +97,13 @@ describe('PlannedEngagementCard — CTA « Planifier » (P0-3.5B)', () => {
 })
 
 // ENG-UX-1 LOT E (mandat Vincent 2026-09-26), renommé PLAN-UX-1A+B (mandat
-// Vincent 2026-09-27) — une fois une Mission créée, le CTA « Créer une
-// mission » disparaît au profit de liens PAR Mission : « Voir la mission »
-// (toujours, dès qu'une Mission existe), puis soit « Voir le planning »
-// (Mission avec rythme actif — simple ou roulement), soit « Définir le
-// rythme » (Mission sans rythme, seulement si canPlan) — jamais les deux à
-// la fois, jamais un second lien vers la même fiche que « Voir la mission ».
+// Vincent 2026-09-27), CTA dédupliqué UX-CONTINUITY-1 (constat recette E2E
+// Vincent 2026-09-28) — une fois une Mission créée, le CTA « Créer une
+// mission » disparaît au profit du nom de la Mission, cliquable vers sa
+// fiche (accès générique, toujours présent), puis d'un unique CTA
+// contextuel : soit « Voir le planning » (Mission avec rythme actif —
+// simple ou roulement), soit « Définir le rythme » (Mission sans rythme,
+// seulement si canPlan) — jamais les deux à la fois.
 function mission(overrides: Partial<EngagementMission> = {}): EngagementMission {
   const base: EngagementMission = {
     missionId: 'mission-1',
@@ -168,15 +169,15 @@ describe('PlannedEngagementCard — liens par Mission (PLAN-UX-1A+B)', () => {
     expect(containsPlanifierLink(tree, '/sites/site-1/missions/new?engagement=eng-42')).toBe(false)
   })
 
-  it('Mission existante : « Voir la mission » est présent, indépendamment de canPlan', () => {
+  it('Mission existante : le nom de la Mission est un lien direct vers sa fiche, indépendamment de canPlan', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
       canPlan: false,
-      missions: [mission({ missionId: 'mission-9' })],
+      missions: [mission({ missionId: 'mission-9', missionName: 'Nettoyage Z2' })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-9', 'Voir la mission')).toBe(true)
+    expect(containsLinkWithText(tree, '/missions/mission-9', 'Nettoyage Z2')).toBe(true)
   })
 
   it('canPlan=true + sans rythme actif : « Définir le rythme » est présent, « Voir le planning » est absent', () => {
@@ -251,14 +252,14 @@ describe('PlannedEngagementCard — Mission inactive (ENG-UX-1 MICRO-FIX)', () =
     expect(containsLinkWithText(tree, '/missions/mission-old#rythme', 'Définir le rythme')).toBe(false)
   })
 
-  it('Mission inactive : « Voir la mission » reste présent (historique visible, compact)', () => {
+  it('Mission inactive : le nom de la Mission reste un lien (historique visible, compact)', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
-      missions: [mission({ missionId: 'mission-old', active: false })],
+      missions: [mission({ missionId: 'mission-old', active: false, missionName: 'Ancienne mission' })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-old', 'Voir la mission')).toBe(true)
+    expect(containsLinkWithText(tree, '/missions/mission-old', 'Ancienne mission')).toBe(true)
   })
 
   it('Mission inactive + Mission active : le CTA « Créer une mission » reste absent (une organisation actuelle existe déjà)', () => {

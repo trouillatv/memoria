@@ -135,9 +135,17 @@ export function PlannedEngagementCard({
             <div className="space-y-1">
               {missions.map((m) => (
                 <div key={m.missionId} className="flex flex-wrap items-center gap-1.5">
-                  <span className={`text-[11px] font-medium ${m.active ? 'text-foreground' : 'text-muted-foreground'}`}>
+                  {/* RECETTE E2E dette UX (constat Vincent 2026-09-28) — "Voir la
+                      mission" et "Définir le rythme" pointaient vers la même fiche
+                      sans effet perceptible de l'ancre #rythme sur une fiche courte.
+                      Le nom devient l'accès générique ; un seul CTA contextuel
+                      subsiste selon l'état du rythme. */}
+                  <Link
+                    href={`/missions/${m.missionId}`}
+                    className={`text-[11px] font-medium hover:underline ${m.active ? 'text-foreground' : 'text-muted-foreground'}`}
+                  >
                     {m.missionName}
-                  </span>
+                  </Link>
                   {!m.active && (
                     <span className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                       Inactive
@@ -148,9 +156,6 @@ export function PlannedEngagementCard({
                       {chip.label}
                     </span>
                   ))}
-                  <Link href={`/missions/${m.missionId}`} className="text-[11px] font-medium text-primary hover:underline">
-                    Voir la mission
-                  </Link>
                   {m.active && m.hasActiveRhythm && (
                     <Link href={`/sites/${siteId}?tab=planning`} className="text-[11px] font-medium text-primary hover:underline">
                       Voir le planning
