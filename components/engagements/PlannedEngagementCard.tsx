@@ -53,13 +53,15 @@ export function PlannedEngagementCard({
    *  qu'à la création d'une Mission, jamais une intervention datée). Organise
    *  l'exécution normale, distinct de « Traiter un point » (situation
    *  ponctuelle). Une fois une Mission créée, ce CTA disparaît au profit des
-   *  liens par Mission (« Voir la mission » / « Planifier la prochaine
-   *  intervention », cf. section Organisation ci-dessous). Même politique
-   *  managerOrAdmin ; garde autoritaire côté serveur (createMissionAction /
-   *  resolveEngagementAuthorization). */
+   *  liens par Mission (PLAN-UX-1A+B mandat Vincent 2026-09-27 : « Voir la
+   *  mission » + soit « Voir le planning » si un rythme est actif, soit
+   *  « Définir le rythme » sinon — jamais deux liens vers la même fiche).
+   *  Même politique managerOrAdmin ; garde autoritaire côté serveur
+   *  (createMissionAction / resolveEngagementAuthorization). */
   canPlan?: boolean
-  /** « Traiter un point » (mandat Vincent 2026-09-25) — même politique
-   *  managerOrAdmin que canActivate ; garde autoritaire côté serveur. */
+  /** « Créer une action liée » (mandat Vincent 2026-09-25, renommé
+   *  PLAN-UX-1A+B 2026-09-27) — même politique managerOrAdmin que
+   *  canActivate ; garde autoritaire côté serveur. */
   canTreatPoint?: boolean
   /** ENG-UX-1 LOT B/D — Missions organisant cet Engagement, batchées côté page.
    *  Plusieurs Missions possibles ; aucune n'affecte le statut de l'Engagement. */
@@ -149,9 +151,14 @@ export function PlannedEngagementCard({
                   <Link href={`/missions/${m.missionId}`} className="text-[11px] font-medium text-primary hover:underline">
                     Voir la mission
                   </Link>
-                  {canPlan && m.active && !m.nextInterventionDate && (
+                  {m.active && m.hasActiveRhythm && (
+                    <Link href={`/sites/${siteId}?tab=planning`} className="text-[11px] font-medium text-primary hover:underline">
+                      Voir le planning
+                    </Link>
+                  )}
+                  {canPlan && m.active && !m.hasActiveRhythm && (
                     <Link href={`/missions/${m.missionId}`} className="text-[11px] font-medium text-primary hover:underline">
-                      Planifier la prochaine intervention
+                      Définir le rythme
                     </Link>
                   )}
                 </div>

@@ -1,7 +1,9 @@
 'use client'
 
-// « Traiter un point » (mandat Vincent 2026-09-25) — assistant de création
-// d'Action depuis un Engagement ACTIF. « MemorIA peut proposer d'agir ;
+// « Créer une action liée » (mandat Vincent 2026-09-25, renommé PLAN-UX-1A+B
+// 2026-09-27 — "Traiter un point" jamais aligné avec le vocabulaire retenu)
+// — assistant de création d'Action depuis un Engagement ACTIF. « MemorIA
+// peut proposer d'agir ;
 // l'utilisateur décide qu'une Action est nécessaire » : le premier clic
 // n'écrit rien, ce n'est qu'une fois motif + description remplis et
 // « Créer l'action » cliqué que le site_action + le rapprochement P0-4B +
@@ -62,12 +64,12 @@ export function EngagementTreatPointButton({ engagementId }: { engagementId: str
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset() }}>
       <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="gap-1.5">
-        <ClipboardEdit className="h-3.5 w-3.5" /> Traiter un point
+        <ClipboardEdit className="h-3.5 w-3.5" /> Créer une action liée
       </Button>
 
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Traiter un point sur cet engagement</DialogTitle>
+          <DialogTitle>Créer une action liée à cet engagement</DialogTitle>
           <DialogDescription>
             Une Action sera créée et rapprochée de cet engagement avec le motif choisi.
           </DialogDescription>

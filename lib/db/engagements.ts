@@ -228,6 +228,7 @@ export interface EngagementMission {
   nextInterventionDate: string | null
   openAnomalyCount: number
   health: MissionHealth
+  hasActiveRhythm: boolean
 }
 
 /**
@@ -264,6 +265,18 @@ export async function getMissionsForEngagements(
     const { data: teamRows } = await supabase.from('teams').select('id, name, color').in('id', [...teamIdSet])
     for (const t of (teamRows ?? []) as Array<{ id: string; name: string; color: string | null }>) teamById.set(t.id, t)
   }
+
+  // Rythme actif = même vérité que le moteur de projection Mois/Semaine
+  // (buildMonthRows), pas le champ grossier missions.cadence.
+  const { data: activeTemplateRows } = await supabase
+    .from('intervention_templates')
+    .select('mission_id')
+    .in('mission_id', missionIds)
+    .eq('active', true)
+    .is('deleted_at', null)
+  const missionsWithActiveRhythm = new Set(
+    ((activeTemplateRows ?? []) as Array<{ mission_id: string }>).map((t) => t.mission_id),
+  )
 
   const [lastRes, nextRes, inProgressRes] = await Promise.all([
     supabase
@@ -336,6 +349,7 @@ export async function getMissionsForEngagements(
       nextInterventionDate,
       openAnomalyCount,
       health: buildMissionHealth({ active: m.active, cadence: m.cadence, lastInterventionDate, nextInterventionDate, openAnomalyCount, assignedTeam }, today),
+      hasActiveRhythm: missionsWithActiveRhythm.has(m.id),
     }
     for (const eid of engagementOverlap) {
       const list = result.get(eid) ?? []

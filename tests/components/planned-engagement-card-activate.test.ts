@@ -95,11 +95,13 @@ describe('PlannedEngagementCard — CTA « Planifier » (P0-3.5B)', () => {
   })
 })
 
-// ENG-UX-1 LOT E (mandat Vincent 2026-09-26) — une fois une Mission créée, le
-// CTA « Créer une mission » disparaît au profit de liens PAR Mission : « Voir
-// la mission » (toujours, dès qu'une Mission existe) et « Planifier la
-// prochaine intervention » (seulement si canPlan ET aucune prochaine
-// occurrence connue — sinon la Mission tourne déjà, rien à planifier).
+// ENG-UX-1 LOT E (mandat Vincent 2026-09-26), renommé PLAN-UX-1A+B (mandat
+// Vincent 2026-09-27) — une fois une Mission créée, le CTA « Créer une
+// mission » disparaît au profit de liens PAR Mission : « Voir la mission »
+// (toujours, dès qu'une Mission existe), puis soit « Voir le planning »
+// (Mission avec rythme actif — simple ou roulement), soit « Définir le
+// rythme » (Mission sans rythme, seulement si canPlan) — jamais les deux à
+// la fois, jamais un second lien vers la même fiche que « Voir la mission ».
 function mission(overrides: Partial<EngagementMission> = {}): EngagementMission {
   const base: EngagementMission = {
     missionId: 'mission-1',
@@ -110,6 +112,7 @@ function mission(overrides: Partial<EngagementMission> = {}): EngagementMission 
     lastInterventionDate: '2026-08-01',
     nextInterventionDate: null,
     openAnomalyCount: 0,
+    hasActiveRhythm: false,
     health: buildMissionHealth(
       { active: true, cadence: 'monthly', lastInterventionDate: '2026-08-01', nextInterventionDate: null, openAnomalyCount: 0, assignedTeam: { id: 'team-1', name: 'Équipe A', color: null } },
       '2026-09-26',
@@ -152,7 +155,7 @@ function textInChildren(node: unknown, text: string): boolean {
   return el.props ? textInChildren(el.props.children, text) : false
 }
 
-describe('PlannedEngagementCard — liens par Mission (ENG-UX-1 LOT E)', () => {
+describe('PlannedEngagementCard — liens par Mission (PLAN-UX-1A+B)', () => {
   it('Mission existante : le CTA « Créer une mission » disparaît, même si canPlan=true', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
@@ -175,37 +178,50 @@ describe('PlannedEngagementCard — liens par Mission (ENG-UX-1 LOT E)', () => {
     expect(containsLinkWithText(tree, '/missions/mission-9', 'Voir la mission')).toBe(true)
   })
 
-  it('canPlan=true + sans prochaine intervention : « Planifier la prochaine intervention » est présent', () => {
+  it('canPlan=true + sans rythme actif : « Définir le rythme » est présent, « Voir le planning » est absent', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
       canPlan: true,
-      missions: [mission({ missionId: 'mission-9', nextInterventionDate: null })],
+      missions: [mission({ missionId: 'mission-9', hasActiveRhythm: false })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-9', 'Planifier la prochaine intervention')).toBe(true)
+    expect(containsLinkWithText(tree, '/missions/mission-9', 'Définir le rythme')).toBe(true)
+    expect(containsLinkWithText(tree, '/sites/site-1?tab=planning', 'Voir le planning')).toBe(false)
   })
 
-  it('canPlan=true + prochaine intervention déjà connue : « Planifier la prochaine intervention » est absent', () => {
+  it('rythme actif (simple ou roulement) : « Voir le planning » est présent, « Définir le rythme » est absent', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
       canPlan: true,
-      missions: [mission({ missionId: 'mission-9', nextInterventionDate: '2026-10-15' })],
+      missions: [mission({ missionId: 'mission-9', hasActiveRhythm: true })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-9', 'Planifier la prochaine intervention')).toBe(false)
+    expect(containsLinkWithText(tree, '/sites/site-1?tab=planning', 'Voir le planning')).toBe(true)
+    expect(containsLinkWithText(tree, '/missions/mission-9', 'Définir le rythme')).toBe(false)
   })
 
-  it('canPlan=false + sans prochaine intervention : « Planifier la prochaine intervention » est absent (droit d’organiser réservé)', () => {
+  it('rythme actif + canPlan=false : « Voir le planning » reste présent (consultation, pas une action réservée)', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
       canPlan: false,
-      missions: [mission({ missionId: 'mission-9', nextInterventionDate: null })],
+      missions: [mission({ missionId: 'mission-9', hasActiveRhythm: true })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-9', 'Planifier la prochaine intervention')).toBe(false)
+    expect(containsLinkWithText(tree, '/sites/site-1?tab=planning', 'Voir le planning')).toBe(true)
+  })
+
+  it('canPlan=false + sans rythme actif : « Définir le rythme » est absent (droit d’organiser réservé)', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      canPlan: false,
+      missions: [mission({ missionId: 'mission-9', hasActiveRhythm: false })],
+    })
+    expect(containsLinkWithText(tree, '/missions/mission-9', 'Définir le rythme')).toBe(false)
   })
 })
 
@@ -223,15 +239,15 @@ describe('PlannedEngagementCard — Mission inactive (ENG-UX-1 MICRO-FIX)', () =
     expect(containsLinkWithText(tree, '/sites/site-1/missions/new?engagement=eng-42', 'Créer une mission')).toBe(true)
   })
 
-  it('Mission inactive : « Planifier la prochaine intervention » reste absent même sans prochaine occurrence connue', () => {
+  it('Mission inactive : « Définir le rythme » reste absent même sans rythme actif', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
       canPlan: true,
-      missions: [mission({ missionId: 'mission-old', active: false, nextInterventionDate: null })],
+      missions: [mission({ missionId: 'mission-old', active: false, hasActiveRhythm: false })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-old', 'Planifier la prochaine intervention')).toBe(false)
+    expect(containsLinkWithText(tree, '/missions/mission-old', 'Définir le rythme')).toBe(false)
   })
 
   it('Mission inactive : « Voir la mission » reste présent (historique visible, compact)', () => {

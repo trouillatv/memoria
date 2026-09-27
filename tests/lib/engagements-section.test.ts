@@ -195,6 +195,7 @@ function testMission(overrides: Partial<EngagementMission> & { missionId: string
     lastInterventionDate: input.lastInterventionDate,
     nextInterventionDate: input.nextInterventionDate,
     openAnomalyCount: input.openAnomalyCount,
+    hasActiveRhythm: overrides.hasActiveRhythm ?? false,
     health: buildMissionHealth(input, '2026-09-26'),
   }
 }
