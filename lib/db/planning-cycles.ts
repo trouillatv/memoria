@@ -13,7 +13,6 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
-import { slotFromUtcHour } from '@/lib/time/prestation-slot'
 import { previousDayIso } from '@/lib/planning/cycle-effect'
 import { requireTeamCompatibleWithOrg } from '@/lib/auth/team-compatibility'
 
@@ -460,53 +459,28 @@ async function archiveTemplatesOfCycle(cycleId: string): Promise<void> {
  * DÉRIVE les rythmes depuis la grille. Un rythme par case TRAVAILLÉE ; les
  * repos ne génèrent rien (mais restent stockés : Guillaume veut les revoir).
  *
- * Les anciens rythmes sont ARCHIVÉS, jamais supprimés — l'historique déjà
- * généré reste intact et lisible.
+ * PLAN-INTEG-1 : archiver PUIS insérer en deux appels Supabase-JS séparés
+ * n'est PAS atomique — chacun se commit seul. Si l'insertion échoue après
+ * l'archivage, le cycle se retrouve sans AUCUN rythme actif. La RPC
+ * `fn_plan_regenerate_cycle_templates` (mig 442, service_role) fait les deux
+ * dans UNE transaction ; elle relit `planning_cycles`/`planning_cycle_slots`
+ * déjà persistés par l'appelant (insert/update + `replaceSlots`), donc rejoue
+ * exactement la même grille. Les anciens rythmes restent ARCHIVÉS, jamais
+ * supprimés — l'historique déjà généré reste intact et lisible.
  */
 async function regenerateTemplates(cycleId: string, input: SaveCycleInput): Promise<void> {
-  await archiveTemplatesOfCycle(cycleId)
-
-  // Un BROUILLON ne génère aucun rythme : rien n'arrive dans la semaine tant que
-  // Guillaume n'a pas publié. (Et s'il repasse en brouillon, les rythmes déjà
-  // dérivés viennent d'être archivés — les interventions générées, elles,
-  // restent : une preuve n'est jamais détruite par un geste de rangement.)
-  if ((input.status ?? 'published') !== 'published') return
-
   const work = input.slots.filter((s) => s.state === 'work')
-  if (work.length === 0) return
-
   // PLAN-SEC-1 : rejet EXPLICITE si une équipe rejouée (cas supersedeCycle /
   // endCycle, qui régénèrent depuis une grille déjà existante) n'est plus
   // compatible avec l'organisation du cycle — jamais un null/skip silencieux.
-  await assertTeamsCompatible(work.map((s) => s.teamId), input.organizationId)
+  // La RPC ne valide pas les équipes : ce garde-fou reste côté application.
+  if (work.length > 0) {
+    await assertTeamsCompatible(work.map((s) => s.teamId), input.organizationId)
+  }
 
-  const rows = work.map((s) => {
-    const start = s.startTime ?? null
-    return {
-      mission_id: input.missionId,
-      organization_id: input.organizationId,
-      cycle_id: cycleId,
-      title: input.name.slice(0, 200),
-      // Un jour précis d'une semaine précise du cycle.
-      frequency: 'weekly' as const,
-      day_of_week: s.weekday,
-      cycle_length_weeks: input.cycleLengthWeeks,
-      anchor_date: input.anchorDate,
-      week_index: s.weekIndex,
-      // L'équipe de la CASE prime sur celle de la mission : c'est ce qui rend
-      // possible « équipe A le lundi, équipe B le mardi ».
-      assigned_team_id: s.teamId,
-      planned_start_hhmm: start,
-      planned_end_hhmm: s.endTime ?? null,
-      // Le créneau reste dérivé de l'heure (grille + index d'unicité).
-      slots: start ? [slotFromUtcHour(Number(start.slice(0, 2)))] : null,
-      starts_on: input.startsOn,
-      ends_on: input.endsOn,
-      created_by: input.userId,
-      active: true,
-    }
+  const { error } = await createAdminClient().rpc('fn_plan_regenerate_cycle_templates', {
+    p_cycle_id: cycleId,
+    p_actor_id: input.userId,
   })
-
-  const { error } = await createAdminClient().from('intervention_templates').insert(rows)
   if (error) throw new Error(error.message)
 }

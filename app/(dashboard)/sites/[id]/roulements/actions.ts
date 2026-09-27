@@ -15,9 +15,10 @@ import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { requireManagerOrAdmin } from '@/lib/auth/require'
 import { requireOwned } from '@/lib/auth/ownership'
+import { requireSiteWriteAccess } from '@/lib/auth/site-write-access'
 import { requireTeamCompatibleWithOrg } from '@/lib/auth/team-compatibility'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { findOrCreateMissionByName } from '@/lib/db/missions'
+import { findOrCreateMissionByName, getMission } from '@/lib/db/missions'
 import {
   createCycle,
   updateCycle,
@@ -25,6 +26,7 @@ import {
   softDeleteCycle,
   getCycle,
   type CycleSlot,
+  type PlanningCycle,
 } from '@/lib/db/planning-cycles'
 import { resolveEffectiveDate, isRealSplit } from '@/lib/planning/cycle-effect'
 import { todayLocalIso } from '@/lib/time/local-date'
@@ -35,6 +37,11 @@ import { logAuditEvent } from '@/lib/audit/log'
 type Result =
   | { ok: true; cycleId: string }
   | { error: string; conflict?: 'replace_simple_with_cycle' }
+
+// PLAN-INTEG-1 — refus UNIFORME (comme la frontière M2C de recurrences-actions.ts) :
+// ni « n'existe pas » ni « pas le droit », un message unique, aucun oracle sur
+// l'existence d'un roulement ou d'une prestation étrangère.
+const REFUS = 'Accès refusé' as const
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Heure invalide')
 const dateIso = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide')
@@ -106,35 +113,40 @@ const cycleSchema = z
   })
 
 export async function saveCycleAction(input: unknown): Promise<Result> {
-  const auth = await requireManagerOrAdmin()
-  if (!auth.ok) return { error: auth.error }
-
   const parsed = cycleSchema.safeParse(input)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Saisie invalide' }
   const d = parsed.data
 
-  // Garde d'appartenance : le chantier, la mission, et chaque équipe citée.
-  const ownedSite = await requireOwned(auth.role, 'sites', d.siteId)
-  if (!ownedSite.allowed) return { error: ownedSite.error }
+  // PLAN-INTEG-1 : le site RÉEL de la ressource fait foi — jamais le siteId
+  // renvoyé par le client. Un roulement existant l'indique lui-même (son
+  // propre site_id) ; à la création, la ressource ciblée est le chantier visé.
+  let existing: PlanningCycle | null = null
+  if (d.cycleId) {
+    existing = await getCycle(d.cycleId)
+    if (!existing) return { error: REFUS }
+  }
+  const siteId = existing ? existing.siteId : d.siteId
 
-  // Organisation du chantier — lue en base pour ne jamais l'accepter du client.
-  const supabase = createAdminClient()
-  const { data: siteRow } = await supabase.from('sites').select('organization_id').eq('id', d.siteId).maybeSingle()
-  if (!siteRow) return { error: 'Chantier introuvable' }
+  // M2C : l'organisation vient du chantier (résolue serveur), PUIS le rôle DANS
+  // cette organisation — jamais `users.role` (le profil global) combiné à une
+  // simple vérification d'appartenance, qui laissait passer un rôle insuffisant
+  // dans l'organisation réelle de la ressource.
+  const access = await requireSiteWriteAccess(siteId, 'managerOrAdmin')
+  if (!access.ok) return { error: access.error }
 
-  // La prestation : celle qu'il a choisie, ou celle qu'il vient d'écrire.
-  // On la crée sur CE chantier, APRÈS avoir vérifié qu'il lui appartient.
+  // La prestation : celle qu'il a choisie — doit appartenir à CE chantier — ou
+  // celle qu'il vient d'écrire.
   let missionId: string
   if (d.missionId) {
-    const ownedMission = await requireOwned(auth.role, 'missions', d.missionId)
-    if (!ownedMission.allowed) return { error: ownedMission.error }
+    const mission = await getMission(d.missionId)
+    if (!mission || mission.site_id !== siteId) return { error: REFUS }
     missionId = d.missionId
   } else {
     try {
       missionId = await findOrCreateMissionByName({
-        siteId: d.siteId,
+        siteId,
         name: d.missionName!,
-        userId: auth.userId,
+        userId: access.userId,
       })
     } catch (e) {
       return { error: e instanceof Error ? e.message : 'Prestation impossible à créer' }
@@ -142,12 +154,13 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
   }
 
   // PLAN-SEC-1 : chaque équipe citée doit appartenir à l'organisation RÉELLE
-  // du chantier (pas seulement être accessible à l'appelant, cf. `requireOwned`
-  // caller-vs-ressource — insuffisant pour un appelant multi-organisation).
+  // du chantier (pas seulement être accessible à l'appelant).
   for (const teamId of new Set(d.slots.map((s) => s.teamId))) {
-    const compatibleTeam = await requireTeamCompatibleWithOrg(teamId, siteRow.organization_id)
+    const compatibleTeam = await requireTeamCompatibleWithOrg(teamId, access.organizationId)
     if (!compatibleTeam.allowed) return { error: compatibleTeam.error }
   }
+
+  const supabase = createAdminClient()
 
   const slots: CycleSlot[] = d.slots.map((s) => ({
     weekIndex: s.weekIndex,
@@ -179,28 +192,32 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
   }
 
   const payload = {
-    siteId: d.siteId,
+    siteId,
     missionId,
-    organizationId: siteRow.organization_id,
+    organizationId: access.organizationId,
     name: d.name,
     cycleLengthWeeks: d.cycleLengthWeeks,
     anchorDate: d.anchorDate,
     startsOn: d.startsOn,
     endsOn: d.endsOn,
     slots,
-    userId: auth.userId,
+    userId: access.userId,
     status: d.status,
   }
 
   let cycleId: string
   let shouldPublishViaRpc = d.status === 'published' && !d.cycleId
   if (d.cycleId) {
-    // On ne modifie pas le roulement d'un autre tenant : on remonte à son site.
-    const existing = await getCycle(d.cycleId)
-    if (!existing) return { error: 'Objet introuvable' }
-    const ownedCycleSite = await requireOwned(auth.role, 'sites', existing.siteId)
-    if (!ownedCycleSite.allowed) return { error: ownedCycleSite.error }
-    shouldPublishViaRpc = d.status === 'published' && existing.status !== 'published'
+    // `existing` a déjà été chargé plus haut pour résoudre le site réel — il
+    // ne peut pas être null ici (sinon on aurait déjà refusé l'accès).
+    const current = existing!
+    // PLAN-INTEG-1 : toute écriture qui ABOUTIT à 'published' passe par la RPC
+    // exclusive — qu'elle parte d'un brouillon OU d'un roulement déjà publié
+    // (réécriture sur place ou nouvelle version issue d'un supersede). Avant ce
+    // correctif, un roulement déjà publié qui restait publié contournait
+    // entièrement la RPC : verrou de mission, vérification d'exclusivité et
+    // régénération n'étaient plus atomiques.
+    shouldPublishViaRpc = d.status === 'published'
 
     // LA DATE D'EFFET. Un roulement PUBLIÉ a un passé : il a produit des
     // interventions et des preuves. Le modifier « à partir de » ne réécrit
@@ -209,8 +226,14 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     const resolved = resolveEffectiveDate(d.effect ?? 'rewrite', d.effectDate ?? null, todayLocalIso())
     if ('error' in resolved) return { error: resolved.error }
 
-    if (existing.status === 'published' && resolved.date && isRealSplit(resolved.date, existing.startsOn)) {
-      cycleId = await supersedeCycle(d.cycleId, payload, resolved.date)
+    if (current.status === 'published' && resolved.date && isRealSplit(resolved.date, current.startsOn)) {
+      // La nouvelle version est créée en BROUILLON, puis publiée par la RPC
+      // exclusive ci-dessous — jamais insérée déjà publiée hors de son verrou.
+      cycleId = await supersedeCycle(
+        d.cycleId,
+        shouldPublishViaRpc ? { ...payload, status: 'draft' } : payload,
+        resolved.date,
+      )
     } else {
       // Effet avant le premier jour = il n'y a rien à découper : c'est une
       // réécriture qui ne dit pas son nom, on la traite comme telle.
@@ -230,7 +253,7 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     }).rpc('fn_plan_publish_cycle_exclusive', {
       p_cycle_id: cycleId,
       p_confirm_replace_simple: d.confirmReplaceRhythm ?? false,
-      p_actor_id: auth.userId,
+      p_actor_id: access.userId,
     })
     if (error) {
       if (error.message.includes('PLAN_INTEG_REPLACE_SIMPLE_REQUIRED')) {
@@ -244,9 +267,9 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
   }
 
   await logAuditEvent({
-    userId: auth.userId,
+    userId: access.userId,
     entityType: 'site',
-    entityId: d.siteId,
+    entityId: siteId,
     action: d.cycleId ? 'updated' : 'created',
     metadata: {
       kind: 'planning_cycle',
@@ -259,25 +282,23 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     },
   })
 
-  revalidateAll(d.siteId, cycleId)
+  revalidateAll(siteId, cycleId)
   return { ok: true, cycleId }
 }
 
 export async function removeCycleAction(cycleId: string): Promise<{ ok: true } | { error: string }> {
-  const auth = await requireManagerOrAdmin()
-  if (!auth.ok) return { error: auth.error }
   if (!z.string().uuid().safeParse(cycleId).success) return { error: 'Identifiant invalide' }
 
   const existing = await getCycle(cycleId)
-  if (!existing) return { error: 'Objet introuvable' }
-  const owned = await requireOwned(auth.role, 'sites', existing.siteId)
-  if (!owned.allowed) return { error: owned.error }
+  if (!existing) return { error: REFUS }
+  const access = await requireSiteWriteAccess(existing.siteId, 'managerOrAdmin')
+  if (!access.ok) return { error: access.error }
 
   // Les rythmes sont ARCHIVÉS ; les interventions déjà générées RESTENT.
   await softDeleteCycle(cycleId)
 
   await logAuditEvent({
-    userId: auth.userId,
+    userId: access.userId,
     entityType: 'site',
     entityId: existing.siteId,
     action: 'removed',
