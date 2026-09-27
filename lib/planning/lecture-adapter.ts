@@ -28,6 +28,14 @@ interface LectureRotationOption {
   title: string
   label: string
   endsOn?: string | null
+  /**
+   * E2E-FIX-2 dernier correctif (revue ChatGPT du SHA 5d9692fe) — distinction
+   * canonique `intervention_templates.cycle_id` (mig 199) : null = rythme
+   * simple, non-null = projection technique d'un roulement avancé. Sert à
+   * router les cellules MATÉRIALISÉES (voir plus bas), pas seulement les
+   * occurrences projetées.
+   */
+  cycleId?: string | null
 }
 
 export function buildPlanningLectureInput({
@@ -72,8 +80,17 @@ export function buildPlanningLectureInput({
     endsOn: rotation.endsOn ?? null,
   }))
 
+  // E2E-FIX-2 dernier correctif (revue ChatGPT du SHA 5d9692fe) — `rotations`
+  // contient TOUS les intervention_templates actifs de la mission, rythmes
+  // simples compris (voir `fetchRotationOptions`). Une cellule matérialisée
+  // dont le template est un rythme simple (cycle_id NULL) ne doit jamais
+  // matcher contre `rotations` pour produire un `rotation-gap-impact` — même
+  // doctrine que pour les occurrences projetées.
+  const rotationCycleById = new Map(rotations.map((rotation) => [rotation.id, rotation.cycleId ?? null]))
+
   const assignments: LectureAssignment[] = []
   const gaps: LectureGap[] = []
+  const missionGaps: LectureMissionGap[] = []
   for (const row of rows) {
     for (const cells of Object.values(row.days)) {
       for (const cell of cells) {
@@ -86,11 +103,17 @@ export function buildPlanningLectureInput({
           rotationId: cell.template_id,
           assigned,
         })
-        if (!assigned) {
+        if (assigned) continue
+        if (rotationCycleById.get(cell.template_id)) {
           gaps.push({
             date: cell.scheduled_for,
             missionId: cell.mission_id,
             rotationId: cell.template_id,
+          })
+        } else {
+          missionGaps.push({
+            date: cell.scheduled_for,
+            missionId: cell.mission_id,
           })
         }
       }
@@ -101,7 +124,6 @@ export function buildPlanningLectureInput({
   // matérialisée (absente de `rows`), ni couverte par une rotation en gap
   // (aucune cellule n'existe pour elle). Sans ce bloc, `derivePlanningLecture`
   // n'a strictement aucune visibilité sur elle.
-  const missionGaps: LectureMissionGap[] = []
   for (const row of monthRows) {
     for (const [date, facts] of Object.entries(row.days)) {
       for (const occurrence of facts.projectedOccurrences ?? []) {

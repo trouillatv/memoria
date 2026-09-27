@@ -22,6 +22,14 @@ export interface RotationOption {
   label: string
   /** Date de fin du rythme, utilisée par les lectures de planning. */
   endsOn?: string | null
+  /**
+   * E2E-FIX-2 dernier correctif (revue ChatGPT du SHA 5d9692fe) — distinction
+   * canonique déjà portée par `intervention_templates.cycle_id` (mig 199) :
+   * null = rythme simple, non-null = projection technique d'un roulement
+   * avancé. Sans elle, la Lecture ne peut pas savoir si CE template précis
+   * mérite le vocabulaire « roulement ».
+   */
+  cycleId?: string | null
 }
 
 const fr = (a: string, b: string) => a.localeCompare(b, 'fr', { sensitivity: 'base' })

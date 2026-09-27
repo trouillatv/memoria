@@ -144,6 +144,7 @@ export async function fetchRotationOptions(missions: MissionOption[]): Promise<R
       title: template.title,
       label: describeTemplate(template),
       endsOn: template.ends_on ?? null,
+      cycleId: template.cycle_id ?? null,
     }]
   })
 }
