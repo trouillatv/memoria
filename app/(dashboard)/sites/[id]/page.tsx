@@ -78,6 +78,8 @@ import { PlanningSubTabs, type PlanningSubTab } from './views/planning/PlanningS
 import { TravauxSubView } from './views/planning/TravauxSubView'
 import { EcheancesSubView } from './views/planning/EcheancesSubView'
 import { PlanningOverviewSubView } from './views/planning/PlanningOverviewSubView'
+import { MissionsSubView } from './views/planning/MissionsSubView'
+import { RoulementsSubView } from './views/planning/RoulementsSubView'
 import { listSitePlanningItems, getPlanningItemSourceDocuments } from '@/lib/db/site-planning-items'
 import { getPlanningTimeline } from '@/lib/db/planning-timeline'
 import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
@@ -108,7 +110,13 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   // canonique /sites/<id>/memoire — l'ancien point d'entrée ?tab=memoire redirige,
   // aucune deuxième implémentation ne doit subsister.
   if (tab === 'memoire') redirect(`/sites/${id}/memoire`)
-  const plantab: PlanningSubTab = rawPlantab === 'travaux' ? 'travaux' : rawPlantab === 'agenda' ? 'agenda' : rawPlantab === 'echeances' ? 'echeances' : 'apercu'
+  const plantab: PlanningSubTab =
+    rawPlantab === 'travaux' ? 'travaux' :
+    rawPlantab === 'agenda' ? 'agenda' :
+    rawPlantab === 'echeances' ? 'echeances' :
+    rawPlantab === 'missions' ? 'missions' :
+    rawPlantab === 'roulements' ? 'roulements' :
+    'apercu'
 
   // ── ÉTAPE 1 « Réactivité perçue » ──────────────────────────────────────────
   // Il n'y a PLUS de chargement global. Auparavant, 13 requêtes partaient avant
@@ -540,6 +548,10 @@ async function PlanningView({ siteId, plantab }: { siteId: string; plantab: Plan
           maskedProposals={maskedProposals}
           deadlineEvidence={deadlineEvidence}
         />
+      ) : plantab === 'missions' ? (
+        <MissionsSubView missions={missions} teams={teams} />
+      ) : plantab === 'roulements' ? (
+        <RoulementsSubView siteId={siteId} cycles={cycles} />
       ) : (
         <PlanningOverviewSubView siteId={siteId} planningItems={planningItems} nextEvent={nextEvent} deadlines={deadlines} />
       )}

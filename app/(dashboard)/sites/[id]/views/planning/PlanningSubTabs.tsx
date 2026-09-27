@@ -10,7 +10,7 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
 
-export type PlanningSubTab = 'apercu' | 'travaux' | 'agenda' | 'echeances'
+export type PlanningSubTab = 'apercu' | 'missions' | 'roulements' | 'travaux' | 'agenda' | 'echeances'
 
 export function PlanningSubTabs({ active, deadlinesCount }: { active: PlanningSubTab; deadlinesCount: number }) {
   const pathname = usePathname()
@@ -34,6 +34,8 @@ export function PlanningSubTabs({ active, deadlinesCount }: { active: PlanningSu
   return (
     <div className="mb-4 inline-flex gap-1 rounded-xl border bg-card p-1">
       {item('apercu', 'Vue d’ensemble')}
+      {item('missions', 'Missions')}
+      {item('roulements', 'Rythmes & roulements')}
       {item('travaux', 'Travaux')}
       {item('agenda', 'Agenda')}
       {item('echeances', 'Échéances', deadlinesCount)}
