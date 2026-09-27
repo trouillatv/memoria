@@ -35,6 +35,12 @@ interface PlanningWorkspaceProps {
   projectedOccurrences?: Array<ProjectedDayOccurrence & { day: string }>
 }
 
+/** Un item de la « Liste de la semaine » : un événement réel daté, ou une
+ *  occurrence projetée par le rythme — jamais convertie en événement réel. */
+type WeekListItem =
+  | { kind: 'real'; id: string; sortKey: string; event: PlanningTimelineEvent }
+  | { kind: 'projected'; id: string; sortKey: string; occurrence: ProjectedDayOccurrence & { day: string } }
+
 const WEEKDAYS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.']
 
 /** Le mot du conducteur pour chaque type daté. */
@@ -70,6 +76,7 @@ export function PlanningWorkspace({
   })
   const visitesThisWeek = inWeek.filter((e) => e.type === 'visite')
   const reunionsThisWeek = inWeek.filter((e) => e.type === 'reunion' || e.type === 'reunion_a_organiser')
+  const weekProjections = (projectedOccurrences ?? []).filter((occ) => occ.day >= week[0].iso && occ.day <= week[6].iso)
 
   const teamById = new Map(teams.map((team) => [team.id, team]))
   const unassignedInterventions = interventionsThisWeek.filter((intervention) => !intervention.assigned_team_id)
@@ -77,6 +84,18 @@ export function PlanningWorkspace({
   const unpublishedCycles = cycles.filter((cycle) => cycle.status !== 'published')
   const activeBlocages = blocages.filter((blocage) => blocage.dateEnd === null)
   const listEvents = [...inWeek].sort((a, b) => a.start.localeCompare(b.start))
+  // Liste de la semaine = même contenu que la grille, lu dans l'ordre : les
+  // événements réels ET les occurrences projetées (sinon la grille peut montrer
+  // « Prévu par le rythme » pendant que la liste dit « rien de planifié »).
+  const weekListItems: WeekListItem[] = [
+    ...listEvents.map((e): WeekListItem => ({ kind: 'real', id: e.id, sortKey: e.start, event: e })),
+    ...weekProjections.map((occ): WeekListItem => ({
+      kind: 'projected',
+      id: `${occ.templateId}-${occ.day}`,
+      sortKey: occ.plannedStart ?? occ.day,
+      occurrence: occ,
+    })),
+  ].sort((a, b) => a.sortKey.localeCompare(b.sortKey))
   const teamsThisWeek = teamsUsedThisWeek(interventionsThisWeek, teamById)
 
   // « Organisation » (équipes/roulements/contraintes) n'a rien à raconter sur
@@ -190,12 +209,26 @@ export function PlanningWorkspace({
           <div className="rounded-[22px] border bg-card p-5 shadow-sm">
             <SectionTitle icon={ListOrdered} title="Liste de la semaine" detail="Le même contenu, lu dans l'ordre." />
             <div className="mt-4 divide-y rounded-2xl border">
-              {listEvents.length > 0 ? listEvents.map((e) => (
-                <Link key={e.id} href={e.href ?? '#'} className="flex flex-col gap-1 p-3 hover:bg-muted/40 md:flex-row md:items-center md:gap-4">
-                  <span className="w-44 shrink-0 text-sm font-medium">{formatEventStart(e.start)}</span>
-                  <span className="min-w-0 flex-1 text-sm">{e.title}</span>
-                  <span className="shrink-0 text-sm text-muted-foreground">{PLANNING_LABEL[e.type] ?? e.type}</span>
-                </Link>
+              {weekListItems.length > 0 ? weekListItems.map((item) => (
+                item.kind === 'real' ? (
+                  <Link key={item.id} href={item.event.href ?? '#'} className="flex flex-col gap-1 p-3 hover:bg-muted/40 md:flex-row md:items-center md:gap-4">
+                    <span className="w-44 shrink-0 text-sm font-medium">{formatEventStart(item.event.start)}</span>
+                    <span className="min-w-0 flex-1 text-sm">{item.event.title}</span>
+                    <span className="shrink-0 text-sm text-muted-foreground">{PLANNING_LABEL[item.event.type] ?? item.event.type}</span>
+                  </Link>
+                ) : (
+                  <Link
+                    key={item.id}
+                    href={`/missions/${item.occurrence.missionId}`}
+                    className="flex flex-col gap-1 p-3 hover:bg-muted/40 md:flex-row md:items-center md:gap-4"
+                  >
+                    <span className="w-44 shrink-0 text-sm font-medium">{formatEventStart(item.occurrence.plannedStart ?? item.occurrence.day)}</span>
+                    <span className="min-w-0 flex-1 text-sm">{item.occurrence.missionName ?? 'Mission'}</span>
+                    <span className={cn('shrink-0 text-sm font-medium', PLANNING_GRAMMAR.rhythm_planned.textClassName)}>
+                      {PLANNING_GRAMMAR.rhythm_planned.label}
+                    </span>
+                  </Link>
+                )
               )) : (
                 <Empty>Rien de planifié cette semaine.</Empty>
               )}

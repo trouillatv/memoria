@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WorkWorkspace } from '@/app/(dashboard)/sites/[id]/views/work/WorkWorkspace'
 import { ChronologyWorkspace } from '@/app/(dashboard)/sites/[id]/views/chronology/ChronologyWorkspace'
 import { PlanningWorkspace } from '@/app/(dashboard)/sites/[id]/views/planning/PlanningWorkspace'
@@ -12,6 +12,10 @@ import type { VisitWithCounts } from '@/lib/db/visits'
 import type { DbMission, DbTeam } from '@/types/db'
 
 describe('site operational workspaces', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('shows work as operational commitments with origin and destination', () => {
     render(
       <WorkWorkspace
@@ -196,6 +200,45 @@ describe('site operational workspaces', () => {
     expect(screen.getByText('Roulements disponibles')).toBeInTheDocument()
     expect(screen.getByText('Roulement Matin')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Utiliser pour planifier' })).toHaveAttribute('href', '/semaine?site=site-1')
+  })
+
+  // ── SITE-PLAN-PROJ-1 CLOSURE — LA LISTE MONTRE LE MÊME CONTENU QUE LA GRILLE ──
+  // La grille du jour affichait déjà « Prévu par le rythme » pour une occurrence
+  // projetée, mais la Liste de la semaine juste en dessous ne lisait que
+  // `timeline` : elle pouvait dire « rien de planifié » alors que la grille
+  // montrait un passage. La liste doit fusionner les deux sources.
+  it('montre une occurrence projetée dans la Liste de la semaine, pas seulement dans la grille', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-28T10:00:00.000Z'))
+    render(
+      <PlanningWorkspace
+        siteId="site-1"
+        nextEvent={null}
+        interventions={[]}
+        missions={[missionFixture({ id: 'mission-2', name: 'Entretien Carrelage' })]}
+        teams={[]}
+        blocages={[]}
+        cycles={[]}
+        timeline={[]}
+        projectedOccurrences={[{
+          templateId: 'tpl-1',
+          missionId: 'mission-2',
+          missionName: 'Entretien Carrelage',
+          plannedStart: '2026-09-28T07:00:00.000Z',
+          plannedEnd: '2026-09-28T09:00:00.000Z',
+          slot: null,
+          assignedTeamId: null,
+          assignedTeamName: null,
+          assignedTeamColor: null,
+          day: '2026-09-28',
+        }]}
+      />,
+    )
+
+    expect(screen.queryByText('Rien de planifié cette semaine.')).not.toBeInTheDocument()
+    const listItem = screen.getByRole('link', { name: /Entretien Carrelage/ })
+    expect(listItem).toHaveTextContent('Prévu par le rythme')
+    expect(listItem).toHaveAttribute('href', '/missions/mission-2')
   })
 
   // ── L'ÉCHÉANCE CONFIRMÉE ATTERRIT QUELQUE PART ─────────────────────────────
