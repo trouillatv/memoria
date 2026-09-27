@@ -9,6 +9,7 @@ import { PlannedEngagementCard } from '@/components/engagements/PlannedEngagemen
 import type { EngagementMission, PlannedEngagement } from '@/lib/db/engagements'
 import type { EngagementAction } from '@/lib/db/site-action-engagement-links'
 import { buildMissionHealth } from '@/lib/missions/mission-health'
+import { actionFicheHref } from '@/lib/knowledge/actions-dashboard-model'
 
 function engagement(overrides: Partial<PlannedEngagement> = {}): PlannedEngagement {
   return {
@@ -285,29 +286,52 @@ function engagementAction(overrides: Partial<EngagementAction> & { actionId: str
   }
 }
 
-describe('PlannedEngagementCard — trace des Actions terminées (ENG-UX-1 MICRO-FIX)', () => {
-  it('1 ouverte + 2 terminées : « Actions / 1 ouverte · 2 terminées »', () => {
+describe('PlannedEngagementCard — Actions liées identifiables et accessibles (RECETTE E2E point 6)', () => {
+  it('1 ouverte + 2 terminées : le titre de l’Action ouverte est un lien direct vers sa fiche, le compte de terminées reste visible sans lien', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
       actions: [
-        engagementAction({ actionId: 'a1', active: true }),
+        engagementAction({ actionId: 'a1', active: true, title: 'Nettoyer le local poubelles' }),
         engagementAction({ actionId: 'a2', active: false, status: 'done' }),
         engagementAction({ actionId: 'a3', active: false, status: 'cancelled' }),
       ],
     })
-    expect(containsLinkWithText(tree, '/sites/site-1/actions', 'Actions / 1 ouverte · 2 terminées')).toBe(true)
+    expect(containsLinkWithText(tree, actionFicheHref('a1', 'site-1'), 'Nettoyer le local poubelles')).toBe(true)
+    expect(textInChildren(tree, 'Actions ouvertes')).toBe(true)
+    expect(textInChildren(tree, '✓ 2 terminées')).toBe(true)
   })
 
-  it('1 Action ouverte avec qualification connue : la qualification remplace le compte brut', () => {
+  it('1 Action ouverte avec qualification connue : la qualification s’affiche à côté du lien direct vers l’Action', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
-      actions: [engagementAction({ actionId: 'a1', active: true, currentQualification: 'demande_evolution' })],
+      actions: [engagementAction({ actionId: 'a1', active: true, title: 'Reprendre les joints', currentQualification: 'demande_evolution' })],
     })
-    expect(containsLinkWithText(tree, '/sites/site-1/actions', "Actions / 1 ouverte · Demande d'évolution")).toBe(true)
+    expect(containsLinkWithText(tree, actionFicheHref('a1', 'site-1'), 'Reprendre les joints')).toBe(true)
+    expect(textInChildren(tree, "Demande d'évolution")).toBe(true)
+  })
+
+  it('plus de 3 Actions ouvertes : les 3 premières ont un lien direct, le lien global « + N autres » ne remplace jamais les liens individuels', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      actions: [
+        engagementAction({ actionId: 'a1', active: true, title: 'Action A' }),
+        engagementAction({ actionId: 'a2', active: true, title: 'Action B' }),
+        engagementAction({ actionId: 'a3', active: true, title: 'Action C' }),
+        engagementAction({ actionId: 'a4', active: true, title: 'Action D' }),
+        engagementAction({ actionId: 'a5', active: true, title: 'Action E' }),
+      ],
+    })
+    expect(containsLinkWithText(tree, actionFicheHref('a1', 'site-1'), 'Action A')).toBe(true)
+    expect(containsLinkWithText(tree, actionFicheHref('a2', 'site-1'), 'Action B')).toBe(true)
+    expect(containsLinkWithText(tree, actionFicheHref('a3', 'site-1'), 'Action C')).toBe(true)
+    expect(containsLinkWithText(tree, actionFicheHref('a4', 'site-1'), 'Action D')).toBe(false)
+    expect(containsLinkWithText(tree, '/sites/site-1/actions', '+ 2 autres')).toBe(true)
   })
 
   it('toutes les Actions terminées (aucune ouverte) : la trace reste visible, jamais disparue', () => {

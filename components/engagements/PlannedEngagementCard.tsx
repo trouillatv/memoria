@@ -13,6 +13,7 @@ import { CalendarPlus } from 'lucide-react'
 import { categoryLabel, plannedEngagementStatusLabel } from '@/lib/engagements/labels'
 import { KIND_META, kindLabel } from '@/lib/engagements/kind'
 import { QUALIFICATION_LABEL } from '@/lib/engagements/qualification-labels'
+import { actionFicheHref } from '@/lib/knowledge/actions-dashboard-model'
 import type { EngagementMission, PlannedEngagement } from '@/lib/db/engagements'
 import type { EngagementAction } from '@/lib/db/site-action-engagement-links'
 import type { MissionHealthTone } from '@/lib/missions/mission-health'
@@ -74,7 +75,6 @@ export function PlannedEngagementCard({
   // mais ne bloque ni "Créer une mission" ni "Planifier la prochaine
   // intervention", et ne compte pas comme prise en charge actuelle.
   const activeMissions = missions.filter((m) => m.active)
-  const actionsSummary = describeEngagementActionsSummary(actions)
   const statusBadge = e.status === 'active'
     ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
     : 'border-amber-300 bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
@@ -165,14 +165,7 @@ export function PlannedEngagementCard({
               ))}
             </div>
           )}
-          {actionsSummary && (
-            // ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Action
-            // terminée ne doit jamais disparaître complètement de la carte ;
-            // elle reste tracée en compact, jamais comme "Engagement traité".
-            <Link href={`/sites/${siteId}/actions`} className="inline-block text-[11px] font-medium text-primary hover:underline">
-              {`Actions / ${actionsSummary}`}
-            </Link>
-          )}
+          {actions.length > 0 && renderEngagementActionsList(actions, siteId)}
         </div>
       )}
 
@@ -199,29 +192,65 @@ export function PlannedEngagementCard({
   )
 }
 
+const ENGAGEMENT_ACTIONS_VISIBLE_LIMIT = 3
+
 /**
- * ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — trace compacte des Actions
- * liées, jamais un statut de l'Engagement lui-même. Une Action terminale
- * (done/cancelled) reste comptée, jamais retirée silencieusement. Quand une
- * seule Action est ouverte, sa qualification courante (P0-4C) est affichée si
- * connue — jamais de nouvelle taxonomie, seulement le libellé déjà canonique.
+ * RECETTE E2E point 6 (écart Vincent 2026-09-28) — une Action ouverte doit
+ * être identifiable et directement accessible depuis la carte Engagement, pas
+ * seulement comptée : chaque Action ouverte a son propre lien vers sa fiche
+ * (`actionFicheHref` — Sheet sur /actions, jamais une redirection silencieuse
+ * vers le chantier). Le lien global `/sites/{siteId}/actions` reste en
+ * secours au-delà de `ENGAGEMENT_ACTIONS_VISIBLE_LIMIT`, jamais en
+ * remplacement des liens individuels.
+ *
+ * ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Action terminale
+ * (done/cancelled) reste tracée, jamais retirée silencieusement, jamais
+ * comme "Engagement traité".
  */
-function describeEngagementActionsSummary(actions: EngagementAction[]): string | null {
-  if (actions.length === 0) return null
+function renderEngagementActionsList(actions: EngagementAction[], siteId: string) {
   const openActions = actions.filter((a) => a.active)
   const doneActions = actions.filter((a) => !a.active)
 
   if (openActions.length === 0) {
-    return `✓ ${doneActions.length} action${doneActions.length > 1 ? 's' : ''} terminée${doneActions.length > 1 ? 's' : ''}`
+    return (
+      <Link href={`/sites/${siteId}/actions`} className="inline-block text-[11px] font-medium text-primary hover:underline">
+        {`✓ ${doneActions.length} action${doneActions.length > 1 ? 's' : ''} terminée${doneActions.length > 1 ? 's' : ''}`}
+      </Link>
+    )
   }
 
-  const openLabel =
-    openActions.length === 1 && openActions[0].currentQualification
-      ? `1 ouverte · ${QUALIFICATION_LABEL[openActions[0].currentQualification] ?? openActions[0].currentQualification}`
-      : `${openActions.length} ouverte${openActions.length > 1 ? 's' : ''}`
-  const doneLabel = doneActions.length > 0 ? `${doneActions.length} terminée${doneActions.length > 1 ? 's' : ''}` : null
+  const visibleActions = openActions.slice(0, ENGAGEMENT_ACTIONS_VISIBLE_LIMIT)
+  const overflowCount = openActions.length - visibleActions.length
 
-  return [openLabel, doneLabel].filter(Boolean).join(' · ')
+  return (
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-muted-foreground">Actions ouvertes</p>
+      <ul className="space-y-0.5">
+        {visibleActions.map((a) => (
+          <li key={a.actionId} className="truncate">
+            <Link href={actionFicheHref(a.actionId, siteId)} className="text-[11px] font-medium text-primary hover:underline">
+              {a.title}
+            </Link>
+            {openActions.length === 1 && a.currentQualification && (
+              <span className="ml-1 text-[10px] text-muted-foreground">
+                {QUALIFICATION_LABEL[a.currentQualification] ?? a.currentQualification}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {overflowCount > 0 && (
+        <Link href={`/sites/${siteId}/actions`} className="inline-block text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+          {`+ ${overflowCount} autre${overflowCount > 1 ? 's' : ''}`}
+        </Link>
+      )}
+      {doneActions.length > 0 && (
+        <p className="text-[10px] text-muted-foreground">
+          {`✓ ${doneActions.length} terminée${doneActions.length > 1 ? 's' : ''}`}
+        </p>
+      )}
+    </div>
+  )
 }
 
 export function ProvenanceLine({ provenance: p }: { provenance: PlannedEngagement['primaryProvenance'] }) {
