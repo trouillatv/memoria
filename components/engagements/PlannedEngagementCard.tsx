@@ -157,7 +157,7 @@ export function PlannedEngagementCard({
                     </Link>
                   )}
                   {canPlan && m.active && !m.hasActiveRhythm && (
-                    <Link href={`/missions/${m.missionId}`} className="text-[11px] font-medium text-primary hover:underline">
+                    <Link href={`/missions/${m.missionId}#rythme`} className="text-[11px] font-medium text-primary hover:underline">
                       Définir le rythme
                     </Link>
                   )}

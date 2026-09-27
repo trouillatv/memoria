@@ -92,6 +92,7 @@ export function CycleEditor({
   initial,
   knownPrestations = [],
   isCopy = false,
+  preselectMissionId,
 }: {
   siteId: string
   missions: MissionOption[]
@@ -106,6 +107,10 @@ export function CycleEditor({
    *  CRÉE un nouveau. L'original n'est jamais touché — les deux vivent ensuite
    *  séparément. */
   isCopy?: boolean
+  /** PLAN-UX-1A+B (mandat Vincent 2026-09-27) — arrivée depuis « Créer un
+   *  roulement avancé » sur une Mission précise : pré-sélectionne sa
+   *  prestation sans forcer une copie. Ignoré si `initial` est fourni. */
+  preselectMissionId?: string
 }) {
   const router = useRouter()
   const [pending, start] = useTransition()
@@ -118,7 +123,7 @@ export function CycleEditor({
   // chantier neuf, il n'y a rien à choisir. On propose ce qui existe, on accepte
   // ce qui n'existe pas encore.
   const [prestation, setPrestation] = useState(
-    () => missions.find((m) => m.id === initial?.missionId)?.name ?? missions[0]?.name ?? '',
+    () => missions.find((m) => m.id === (initial?.missionId ?? preselectMissionId))?.name ?? missions[0]?.name ?? '',
   )
 
   /** La mission de CE chantier portant ce nom — sinon on l'ouvrira au serveur.

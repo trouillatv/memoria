@@ -16,7 +16,7 @@
 import { requireMissionAccess } from '@/lib/auth/resource-access'
 import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, MapPin, Repeat } from 'lucide-react'
+import { ArrowLeft, CalendarDays, MapPin, Repeat } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getMission } from '@/lib/db/missions'
 import { getSiteIdentity } from '@/lib/db/site-cockpit'
@@ -25,6 +25,7 @@ import {
   getTemplateStatsBatch,
   listTemplatesForMission,
 } from '@/lib/db/intervention-templates'
+import { listCyclesBySite } from '@/lib/db/planning-cycles'
 import { describeTemplate, formatDateFr } from '@/lib/recurrence/describe'
 import { siteLabel } from '@/lib/labels/site-label'
 import { RecurrenceSection } from '@/app/(dashboard)/contracts/[id]/missions/[missionId]/edit/RecurrenceSection'
@@ -49,14 +50,26 @@ export default async function MissionPage({
   const mission = await getMission(missionId)
   if (!mission) notFound()
 
-  const [identity, allTeams, templates] = await Promise.all([
+  const [identity, allTeams, templates, cycles] = await Promise.all([
     getSiteIdentity(mission.site_id).catch(() => null),
     listTeamsForSite(mission.site_id).catch(() => []),
     listTemplatesForMission(missionId).catch(() => []),
+    listCyclesBySite(mission.site_id).catch(() => []),
   ])
 
+  // PLAN-UX-1A+B (mandat Vincent 2026-09-27) — simple et roulement avancé ne
+  // coexistent JAMAIS pour une même Mission active (invariant PLAN-INTEG-1).
+  // cycle_id non-null = rythme technique PROJETÉ depuis un roulement, jamais
+  // un rythme simple éditable : il ne doit pas apparaître dans cette liste.
   const activeTemplates = templates.filter((t) => t.active && !t.deleted_at)
-  const stats = await getTemplateStatsBatch(activeTemplates.map((t) => t.id)).catch(
+  const simpleTemplates = activeTemplates.filter((t) => !t.cycle_id)
+  const missionCycles = cycles.filter((c) => c.missionId === mission.id)
+  const publishedCycle = missionCycles.find((c) => c.status === 'published') ?? null
+  const draftCycle = publishedCycle ? null : (missionCycles.find((c) => c.status === 'draft') ?? null)
+  const rhythmCase: 'simple' | 'cycle' | 'draft' | 'none' =
+    simpleTemplates.length > 0 ? 'simple' : publishedCycle ? 'cycle' : draftCycle ? 'draft' : 'none'
+
+  const stats = await getTemplateStatsBatch(simpleTemplates.map((t) => t.id)).catch(
     () => new Map<string, { lastInterventionDate: string | null; nextInterventionDate: string | null }>(),
   )
 
@@ -94,59 +107,123 @@ export default async function MissionPage({
         <MissionTeamPicker missionId={mission.id} teams={teams} currentTeamId={assignedTeamId} />
       </section>
 
-      {/* QUAND elle revient — sans passer par un contrat, et jusqu'à une date. */}
-      <section className="space-y-3 rounded-2xl border bg-card p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold">
-              <Repeat className="h-4 w-4" /> Quand elle revient
-            </h2>
-            <p className="text-[11px] text-muted-foreground">
-              Les interventions sont créées au fil de l&apos;eau, confiées à l&apos;équipe ci-dessus.
-            </p>
-          </div>
-          <RecurrenceSection missionId={mission.id} missionName={mission.name} />
+      {/* QUAND elle revient — sans passer par un contrat, et jusqu'à une date.
+          PLAN-UX-1A+B : un seul rythme à la fois, jamais simple + roulement
+          affichés ensemble (mission.tsx#rythme = cible de « Définir le
+          rythme » depuis la carte Engagement). */}
+      <section id="rythme" className="space-y-3 rounded-2xl border bg-card p-4">
+        <div>
+          <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold">
+            <Repeat className="h-4 w-4" /> Quand elle revient
+          </h2>
+          <p className="text-[11px] text-muted-foreground">
+            Les interventions sont créées au fil de l&apos;eau, confiées à l&apos;équipe ci-dessus.
+          </p>
         </div>
 
-        {activeTemplates.length === 0 ? (
-          <p className="text-xs italic text-muted-foreground">
-            Aucun rythme. Cette mission ne revient pas toute seule.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {activeTemplates.map((t) => {
-              const s = stats.get(t.id)
-              return (
-                <li
-                  key={t.id}
-                  data-testid={`recurrence-row-${t.id}`}
-                  className="rounded-lg border bg-background p-3 text-sm"
-                >
-                  <div className="flex items-start gap-2">
-                    <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <p className="font-medium">{describeTemplate(t)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {t.ends_on
-                          ? `Jusqu’au ${formatDateFr(t.ends_on)}`
-                          : 'Sans date de fin'}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {s?.nextInterventionDate
-                          ? `Prochaine : ${formatDateFr(s.nextInterventionDate)}`
-                          : 'Aucune intervention planifiée'}
-                      </p>
+        {rhythmCase === 'none' && (
+          <div className="space-y-2">
+            <p className="text-xs italic text-muted-foreground">
+              Aucun rythme. Cette mission ne revient pas toute seule.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <RecurrenceSection missionId={mission.id} missionName={mission.name} />
+              <Link
+                href={`/sites/${mission.site_id}/roulements/nouveau?mission=${mission.id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
+              >
+                <CalendarDays className="h-3.5 w-3.5" /> Créer un roulement avancé
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {rhythmCase === 'simple' && (
+          <div className="space-y-2">
+            <ul className="space-y-2">
+              {simpleTemplates.map((t) => {
+                const s = stats.get(t.id)
+                return (
+                  <li
+                    key={t.id}
+                    data-testid={`recurrence-row-${t.id}`}
+                    className="rounded-lg border bg-background p-3 text-sm"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span aria-hidden className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <p className="font-medium">{describeTemplate(t)}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {t.ends_on
+                            ? `Jusqu’au ${formatDateFr(t.ends_on)}`
+                            : 'Sans date de fin'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {s?.nextInterventionDate
+                            ? `Prochaine : ${formatDateFr(s.nextInterventionDate)}`
+                            : 'Aucune intervention planifiée'}
+                        </p>
+                      </div>
+                      <RecurrenceRowActions
+                        template={t}
+                        missionId={mission.id}
+                        missionName={mission.name}
+                      />
                     </div>
-                    <RecurrenceRowActions
-                      template={t}
-                      missionId={mission.id}
-                      missionName={mission.name}
-                    />
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="flex flex-wrap items-center gap-2">
+              <RecurrenceSection missionId={mission.id} missionName={mission.name} />
+              <Link
+                href={`/sites/${mission.site_id}?tab=planning`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
+              >
+                <CalendarDays className="h-3.5 w-3.5" /> Voir le planning
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {rhythmCase === 'cycle' && publishedCycle && (
+          <div className="space-y-2">
+            <div className="rounded-lg border bg-background p-3 text-sm">
+              <p className="font-medium">{publishedCycle.name || 'Roulement'}</p>
+              <p className="text-xs text-muted-foreground">
+                Sur {publishedCycle.cycleLengthWeeks} semaine{publishedCycle.cycleLengthWeeks > 1 ? 's' : ''} · depuis {formatDateFr(publishedCycle.startsOn)}
+                {publishedCycle.endsOn ? ` · jusqu’au ${formatDateFr(publishedCycle.endsOn)}` : ''}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/sites/${mission.site_id}/roulements/${publishedCycle.id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
+              >
+                Voir le roulement
+              </Link>
+              <Link
+                href={`/sites/${mission.site_id}?tab=planning`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
+              >
+                <CalendarDays className="h-3.5 w-3.5" /> Voir le planning
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {rhythmCase === 'draft' && draftCycle && (
+          <div className="space-y-2">
+            <p className="text-xs italic text-muted-foreground">
+              Un roulement est en préparation pour cette mission, pas encore publié.
+            </p>
+            <Link
+              href={`/sites/${mission.site_id}/roulements/${draftCycle.id}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
+            >
+              Continuer la configuration
+            </Link>
+          </div>
         )}
       </section>
     </div>

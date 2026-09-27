@@ -186,7 +186,7 @@ describe('PlannedEngagementCard — liens par Mission (PLAN-UX-1A+B)', () => {
       canPlan: true,
       missions: [mission({ missionId: 'mission-9', hasActiveRhythm: false })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-9', 'Définir le rythme')).toBe(true)
+    expect(containsLinkWithText(tree, '/missions/mission-9#rythme', 'Définir le rythme')).toBe(true)
     expect(containsLinkWithText(tree, '/sites/site-1?tab=planning', 'Voir le planning')).toBe(false)
   })
 
@@ -199,7 +199,7 @@ describe('PlannedEngagementCard — liens par Mission (PLAN-UX-1A+B)', () => {
       missions: [mission({ missionId: 'mission-9', hasActiveRhythm: true })],
     })
     expect(containsLinkWithText(tree, '/sites/site-1?tab=planning', 'Voir le planning')).toBe(true)
-    expect(containsLinkWithText(tree, '/missions/mission-9', 'Définir le rythme')).toBe(false)
+    expect(containsLinkWithText(tree, '/missions/mission-9#rythme', 'Définir le rythme')).toBe(false)
   })
 
   it('rythme actif + canPlan=false : « Voir le planning » reste présent (consultation, pas une action réservée)', () => {
@@ -221,7 +221,7 @@ describe('PlannedEngagementCard — liens par Mission (PLAN-UX-1A+B)', () => {
       canPlan: false,
       missions: [mission({ missionId: 'mission-9', hasActiveRhythm: false })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-9', 'Définir le rythme')).toBe(false)
+    expect(containsLinkWithText(tree, '/missions/mission-9#rythme', 'Définir le rythme')).toBe(false)
   })
 })
 
@@ -247,7 +247,7 @@ describe('PlannedEngagementCard — Mission inactive (ENG-UX-1 MICRO-FIX)', () =
       canPlan: true,
       missions: [mission({ missionId: 'mission-old', active: false, hasActiveRhythm: false })],
     })
-    expect(containsLinkWithText(tree, '/missions/mission-old', 'Définir le rythme')).toBe(false)
+    expect(containsLinkWithText(tree, '/missions/mission-old#rythme', 'Définir le rythme')).toBe(false)
   })
 
   it('Mission inactive : « Voir la mission » reste présent (historique visible, compact)', () => {

@@ -17,14 +17,14 @@ export default async function NouveauRoulementPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ copier?: string }>
+  searchParams: Promise<{ copier?: string; mission?: string }>
 }) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { copier } = await searchParams
+  const { copier, mission } = await searchParams
   const [identity, missions, teams, knownPrestations] = await Promise.all([
     getSiteIdentity(id),
     listMissionsBySite(id).catch(() => []),
@@ -74,6 +74,7 @@ export default async function NouveauRoulementPage({
         siteId={id}
         missions={missions.filter((m) => m.active).map((m) => ({ id: m.id, name: m.name }))}
         teams={teams}
+        {...(!source && mission ? { preselectMissionId: mission } : {})}
       />
     </div>
   )

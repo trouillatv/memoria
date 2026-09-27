@@ -267,15 +267,30 @@ export async function getMissionsForEngagements(
   }
 
   // Rythme actif = même vérité que le moteur de projection Mois/Semaine
-  // (buildMonthRows), pas le champ grossier missions.cadence.
-  const { data: activeTemplateRows } = await supabase
-    .from('intervention_templates')
-    .select('mission_id')
-    .in('mission_id', missionIds)
-    .eq('active', true)
-    .is('deleted_at', null)
+  // (buildMonthRows), pas le champ grossier missions.cadence. cycle_id IS NULL
+  // exclut les rythmes techniques PROJETÉS depuis un roulement (PLAN-INTEG-1 :
+  // planning_cycles est la SEULE source de vérité pour un roulement avancé,
+  // jamais l'existence de intervention_templates dérivés).
+  const [activeTemplateRes, activeCycleRes] = await Promise.all([
+    supabase
+      .from('intervention_templates')
+      .select('mission_id')
+      .in('mission_id', missionIds)
+      .eq('active', true)
+      .is('deleted_at', null)
+      .is('cycle_id', null),
+    supabase
+      .from('planning_cycles')
+      .select('mission_id')
+      .in('mission_id', missionIds)
+      .eq('status', 'published')
+      .is('deleted_at', null),
+  ])
   const missionsWithActiveRhythm = new Set(
-    ((activeTemplateRows ?? []) as Array<{ mission_id: string }>).map((t) => t.mission_id),
+    ((activeTemplateRes.data ?? []) as Array<{ mission_id: string }>).map((t) => t.mission_id),
+  )
+  const missionsWithPublishedCycle = new Set(
+    ((activeCycleRes.data ?? []) as Array<{ mission_id: string }>).map((c) => c.mission_id),
   )
 
   const [lastRes, nextRes, inProgressRes] = await Promise.all([
@@ -349,7 +364,7 @@ export async function getMissionsForEngagements(
       nextInterventionDate,
       openAnomalyCount,
       health: buildMissionHealth({ active: m.active, cadence: m.cadence, lastInterventionDate, nextInterventionDate, openAnomalyCount, assignedTeam }, today),
-      hasActiveRhythm: missionsWithActiveRhythm.has(m.id),
+      hasActiveRhythm: missionsWithActiveRhythm.has(m.id) || missionsWithPublishedCycle.has(m.id),
     }
     for (const eid of engagementOverlap) {
       const list = result.get(eid) ?? []
