@@ -47,8 +47,12 @@ interface MonthIntervention {
 export async function buildMonthRows(params: {
   from: string
   to: string
+  /** Restreint le calcul à ces chantiers. Omis = tout l'organisation (portefeuille
+   *  /mois, /semaine). Filtre appliqué après la lecture, en plus d'orgIds : mêmes
+   *  requêtes, même moteur, juste moins de lignes retenues. */
+  siteIds?: string[]
 }): Promise<MonthRow[]> {
-  const { from, to } = params
+  const { from, to, siteIds: siteFilter } = params
   const db = createAdminClient()
   const orgIds = await getOrgIdsOfUser() // M3 : agrégé, fail-closed (jamais null → tout)
 
@@ -81,6 +85,7 @@ export async function buildMonthRows(params: {
     if (!site?.id) continue
     // Isolation : le service role contourne la RLS â le filtre org vit ici.
     if (!orgIds.includes(site.organization_id ?? '')) continue
+    if (siteFilter && !siteFilter.includes(site.id)) continue
     siteNames.set(site.id, site.name ?? 'Chantier')
     {
       const c = Array.isArray(site.client) ? site.client[0] : site.client
@@ -123,6 +128,7 @@ export async function buildMonthRows(params: {
     const site = t.missions?.sites
     if (!site?.id) continue
     if (!orgIds.includes(site.organization_id ?? '')) continue
+    if (siteFilter && !siteFilter.includes(site.id)) continue
     siteNames.set(site.id, site.name ?? 'Chantier')
     {
       const c = Array.isArray(site.client) ? site.client[0] : site.client

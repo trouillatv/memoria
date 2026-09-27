@@ -83,6 +83,8 @@ import { RoulementsSubView } from './views/planning/RoulementsSubView'
 import { listSitePlanningItems, getPlanningItemSourceDocuments } from '@/lib/db/site-planning-items'
 import { getPlanningTimeline } from '@/lib/db/planning-timeline'
 import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
+import { buildMonthRows, type MonthRow } from '@/lib/db/month-view'
+import type { ProjectedDayOccurrence } from '@/lib/planning/month-view'
 import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
 
 interface PageProps {
@@ -494,7 +496,7 @@ async function PlanningView({ siteId, plantab }: { siteId: string; plantab: Plan
   const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
 
-  const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, maskedProposals, teams, timeline, scheduledEvents, planningItems] = await Promise.all([
+  const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, maskedProposals, teams, timeline, scheduledEvents, planningItems, monthRows] = await Promise.all([
     getSiteCurrentState(siteId).catch(() => null),
     listInterventionsSupervisor({ siteId, dateRange: 'all', limit: 80 }).catch((e) => { console.error('[sites/[id]] interventions', e); return { items: [], total: 0 } }),
     listMissionsBySite(siteId).catch(() => []),
@@ -507,7 +509,16 @@ async function PlanningView({ siteId, plantab }: { siteId: string; plantab: Plan
     getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
     listScheduledEvents(siteId, { from: new Date().toISOString() }).catch((): ScheduledEvent[] => []),
     listSitePlanningItems(siteId).catch(() => []),
+    buildMonthRows({ from: iso(lundi), to: iso(dimanche), siteIds: [siteId] }).catch((): MonthRow[] => []),
   ])
+  // SITE-PLAN-PROJ-1 : occurrences projetées (rythme/roulement) de la semaine,
+  // pas encore matérialisées — même moteur que /mois et /semaine (buildMonthRows),
+  // juste filtré à ce chantier. N'affecte pas getPlanningTimeline ni /aujourdhui.
+  const projectedOccurrences: Array<ProjectedDayOccurrence & { day: string }> = monthRows.flatMap((row) =>
+    Object.entries(row.days).flatMap(([day, facts]) =>
+      (facts.projectedOccurrences ?? []).map((occ) => ({ ...occ, day })),
+    ),
+  )
   const linkedDeadlines = deadlines
     .filter((d) => !!d.canonical_subject_id && !!d.due_date)
     .map((d) => ({ id: d.id, canonical_subject_id: d.canonical_subject_id!, due_date: d.due_date! }))
@@ -539,6 +550,7 @@ async function PlanningView({ siteId, plantab }: { siteId: string; plantab: Plan
           cycles={cycles}
           teams={teams}
           timeline={timeline}
+          projectedOccurrences={projectedOccurrences}
         />
       ) : plantab === 'echeances' ? (
         <EcheancesSubView

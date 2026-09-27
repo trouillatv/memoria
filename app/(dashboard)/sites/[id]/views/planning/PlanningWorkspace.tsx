@@ -8,6 +8,10 @@ import type { SupervisorInterventionRow } from '@/lib/db/interventions'
 import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
 import type { OverviewEventInput } from '@/lib/chantier/overview-projections'
 import type { DbMission, DbTeam } from '@/types/db'
+import type { ProjectedDayOccurrence } from '@/lib/planning/month-view'
+import { PLANNING_GRAMMAR } from '@/lib/planning/grammar'
+import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
+import { TeamBadge } from '@/components/ui/team-badge'
 import { SectionTitle, Empty } from './PlanningUI'
 
 interface PlanningWorkspaceProps {
@@ -25,6 +29,10 @@ interface PlanningWorkspaceProps {
    *  n'a d'intervention (0 sur les 5 organisations) : la grille des jours ne
    *  traçait donc qu'un objet que personne ne crée. */
   timeline?: PlanningTimelineEvent[]
+  /** SITE-PLAN-PROJ-1 : occurrences projetées par les rythmes/roulements des
+   *  Missions, pas encore matérialisées — même moteur que /mois et /semaine
+   *  (buildMonthRows). Distinct de `timeline` : jamais un événement daté réel. */
+  projectedOccurrences?: Array<ProjectedDayOccurrence & { day: string }>
 }
 
 const WEEKDAYS = ['Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.', 'Dim.']
@@ -46,6 +54,7 @@ export function PlanningWorkspace({
   cycles,
   teams,
   timeline,
+  projectedOccurrences,
 }: PlanningWorkspaceProps) {
   const week = getCurrentWeek()
   const interventionsThisWeek = interventions.filter((intervention) => {
@@ -113,12 +122,13 @@ export function PlanningWorkspace({
                 // était donc vide par construction, la semaine où une visite a eu
                 // lieu. Elle montre désormais tout ce qui est daté.
                 const dayEvents = inWeek.filter((e) => eventDay(e.start) === day.iso)
+                const dayProjections = (projectedOccurrences ?? []).filter((occ) => occ.day === day.iso)
                 return (
                   <div
                     key={day.iso}
                     className={cn(
                       'rounded-2xl border p-3',
-                      dayEvents.length > 0 ? 'min-h-[140px] bg-card' : 'min-h-[76px] bg-muted/20',
+                      dayEvents.length > 0 || dayProjections.length > 0 ? 'min-h-[140px] bg-card' : 'min-h-[76px] bg-muted/20',
                     )}
                   >
                     <p className="text-sm font-semibold">{day.label}</p>
@@ -141,6 +151,32 @@ export function PlanningWorkspace({
                           <p className="mt-0.5 text-xs">{e.title}</p>
                           {e.detail && <p className="mt-0.5 text-xs text-muted-foreground">{e.detail}</p>}
                         </Link>
+                      ))}
+                      {dayProjections.map((projection) => (
+                        <div
+                          key={`${projection.templateId}-${projection.day}`}
+                          className="rounded-xl border border-dashed bg-background p-2 text-sm"
+                        >
+                          <p className={cn('text-[10px] font-semibold uppercase tracking-wide', PLANNING_GRAMMAR.rhythm_planned.textClassName)}>
+                            {PLANNING_GRAMMAR.rhythm_planned.label}
+                          </p>
+                          <p className="mt-0.5 font-medium">{projection.missionName ?? 'Mission'}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {formatInterventionTimeLabel({
+                              planned_start: projection.plannedStart,
+                              planned_end: projection.plannedEnd,
+                              slot: projection.slot as never,
+                            })}
+                          </p>
+                          {projection.assignedTeamName && (
+                            <div className="mt-1">
+                              <TeamBadge name={projection.assignedTeamName} color={projection.assignedTeamColor} variant="dot" />
+                            </div>
+                          )}
+                          <Link href={`/missions/${projection.missionId}`} className="mt-1 inline-flex text-xs font-medium text-primary hover:underline">
+                            Voir la mission
+                          </Link>
+                        </div>
                       ))}
                     </div>
                   </div>
