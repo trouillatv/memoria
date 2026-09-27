@@ -26,6 +26,7 @@ import {
   listTemplatesForMission,
 } from '@/lib/db/intervention-templates'
 import { listCyclesBySite } from '@/lib/db/planning-cycles'
+import { todayLocalIso } from '@/lib/time/local-date'
 import { describeTemplate, formatDateFr } from '@/lib/recurrence/describe'
 import { siteLabel } from '@/lib/labels/site-label'
 import { RecurrenceSection } from '@/app/(dashboard)/contracts/[id]/missions/[missionId]/edit/RecurrenceSection'
@@ -57,17 +58,26 @@ export default async function MissionPage({
     listCyclesBySite(mission.site_id).catch(() => []),
   ])
 
-  // PLAN-UX-1A+B (mandat Vincent 2026-09-27) — simple et roulement avancé ne
+  // PLAN-UX-1A+B (mandat Vincent 2026-09-27) — simple et roulement PUBLIÉ ne
   // coexistent JAMAIS pour une même Mission active (invariant PLAN-INTEG-1).
   // cycle_id non-null = rythme technique PROJETÉ depuis un roulement, jamais
   // un rythme simple éditable : il ne doit pas apparaître dans cette liste.
+  // Un roulement DRAFT, lui, est explicitement autorisé à coexister avec un
+  // rythme actif (simple ou cycle publié) — révision Vincent 2026-09-28,
+  // point 2 : ne jamais le masquer derrière un état exclusif.
+  // ends_on dans le passé = rythme terminé, jamais "actif" (révision Vincent
+  // 2026-09-28, point 1 — même vigilance que getMissionsForEngagements).
+  const today = todayLocalIso()
   const activeTemplates = templates.filter((t) => t.active && !t.deleted_at)
-  const simpleTemplates = activeTemplates.filter((t) => !t.cycle_id)
+  const simpleTemplates = activeTemplates.filter(
+    (t) => !t.cycle_id && (!t.ends_on || t.ends_on >= today),
+  )
   const missionCycles = cycles.filter((c) => c.missionId === mission.id)
-  const publishedCycle = missionCycles.find((c) => c.status === 'published') ?? null
-  const draftCycle = publishedCycle ? null : (missionCycles.find((c) => c.status === 'draft') ?? null)
-  const rhythmCase: 'simple' | 'cycle' | 'draft' | 'none' =
-    simpleTemplates.length > 0 ? 'simple' : publishedCycle ? 'cycle' : draftCycle ? 'draft' : 'none'
+  const publishedCycle =
+    missionCycles.find((c) => c.status === 'published' && (!c.endsOn || c.endsOn >= today)) ?? null
+  const draftCycle = missionCycles.find((c) => c.status === 'draft') ?? null
+  const rhythmCase: 'simple' | 'cycle' | 'none' =
+    simpleTemplates.length > 0 ? 'simple' : publishedCycle ? 'cycle' : 'none'
 
   const stats = await getTemplateStatsBatch(simpleTemplates.map((t) => t.id)).catch(
     () => new Map<string, { lastInterventionDate: string | null; nextInterventionDate: string | null }>(),
@@ -108,9 +118,11 @@ export default async function MissionPage({
       </section>
 
       {/* QUAND elle revient — sans passer par un contrat, et jusqu'à une date.
-          PLAN-UX-1A+B : un seul rythme à la fois, jamais simple + roulement
-          affichés ensemble (mission.tsx#rythme = cible de « Définir le
-          rythme » depuis la carte Engagement). */}
+          PLAN-UX-1A+B : rythme actif = simple OU cycle publié OU aucun ;
+          un roulement en préparation (draft) s'affiche en parallèle, jamais
+          masqué par un rythme actif (révision Vincent 2026-09-28, point 2).
+          mission.tsx#rythme = cible de « Définir le rythme » depuis la carte
+          Engagement. */}
       <section id="rythme" className="space-y-3 rounded-2xl border bg-card p-4">
         <div>
           <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold">
@@ -212,8 +224,8 @@ export default async function MissionPage({
           </div>
         )}
 
-        {rhythmCase === 'draft' && draftCycle && (
-          <div className="space-y-2">
+        {draftCycle && (
+          <div className="space-y-2 rounded-lg border border-dashed border-border bg-background/60 p-3">
             <p className="text-xs italic text-muted-foreground">
               Un roulement est en préparation pour cette mission, pas encore publié.
             </p>

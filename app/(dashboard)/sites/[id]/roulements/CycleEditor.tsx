@@ -126,11 +126,33 @@ export function CycleEditor({
     () => missions.find((m) => m.id === (initial?.missionId ?? preselectMissionId))?.name ?? missions[0]?.name ?? '',
   )
 
+  /** L'IDENTITÉ réelle de la prestation choisie, conservée par ID tant que le
+   *  texte tapé n'a pas divergé de son nom. Sans ce fil, `initial.missionId`
+   *  ou `preselectMissionId` ne servaient qu'à retrouver un NOM au montage —
+   *  et à l'enregistrement, une recherche par nom pouvait faire matcher une
+   *  autre Mission homonyme du même chantier (revue Vincent 2026-09-28,
+   *  point 3). */
+  const [selectedMissionId, setSelectedMissionId] = useState<string | undefined>(
+    () => initial?.missionId ?? preselectMissionId,
+  )
+
   /** La mission de CE chantier portant ce nom — sinon on l'ouvrira au serveur.
    *  Comparaison sans casse NI accents : « Nettoyage » et « nettoyage » sont le
-   *  même travail. */
+   *  même travail. Utilisé seulement quand aucun ID n'est déjà conservé
+   *  (saisie libre, prestation neuve, ou texte modifié à la main). */
   const missionIdOf = (name: string): string | undefined =>
     missions.find((m) => samePrestation(m.name, name))?.id
+
+  /** Change la prestation tapée, et n'invalide l'ID conservé que si le texte
+   *  ne désigne plus la Mission actuellement référencée. */
+  function updatePrestation(next: string) {
+    setPrestation(next)
+    setSelectedMissionId((prev) => {
+      if (!prev) return prev
+      const current = missions.find((m) => m.id === prev)
+      return current && samePrestation(current.name, next) ? prev : undefined
+    })
+  }
 
   /** Toutes les propositions : celles du chantier, plus celles de l'organisation. */
   // « Créer quand même » : il a vu la proposition, il l'a écartée. On ne la
@@ -223,22 +245,30 @@ export function CycleEditor({
 
   /** Ce qui est commun à l'aperçu et à l'enregistrement. */
   const cycleShape = useCallback(
-    () => ({
-      siteId,
-      // Une prestation CONNUE de ce chantier → son identifiant. Une prestation
-      // NEUVE → son nom : le serveur l'ouvrira, et elle sera proposée ensuite.
-      missionId: missionIdOf(prestation) ?? null,
-      missionName: missionIdOf(prestation) ? undefined : prestation.trim(),
-      cycleLengthWeeks: weeks,
-      // L'ancrage est le lundi de la date de début : c'est lui qui définit
-      // « la semaine A ».
-      anchorDate: mondayOf(startsOn),
-      startsOn,
-      endsOn: endsOn || null,
-      slots: buildSlots(),
-    }),
+    () => {
+      // L'ID conservé (initial/préselection non retapé) prime sur une
+      // recherche par nom, homonyme-vulnérable (point 3, revue 2026-09-28).
+      const missionId =
+        selectedMissionId && missions.some((m) => m.id === selectedMissionId)
+          ? selectedMissionId
+          : (missionIdOf(prestation) ?? null)
+      return {
+        siteId,
+        // Une prestation CONNUE de ce chantier → son identifiant. Une prestation
+        // NEUVE → son nom : le serveur l'ouvrira, et elle sera proposée ensuite.
+        missionId,
+        missionName: missionId ? undefined : prestation.trim(),
+        cycleLengthWeeks: weeks,
+        // L'ancrage est le lundi de la date de début : c'est lui qui définit
+        // « la semaine A ».
+        anchorDate: mondayOf(startsOn),
+        startsOn,
+        endsOn: endsOn || null,
+        slots: buildSlots(),
+      }
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- missionIdOf dérive de `missions`, stable
-    [siteId, prestation, missions, weeks, startsOn, endsOn, buildSlots],
+    [siteId, prestation, selectedMissionId, missions, weeks, startsOn, endsOn, buildSlots],
   )
 
   function valid(): boolean {
@@ -407,7 +437,7 @@ export function CycleEditor({
           <span className="text-xs font-medium text-muted-foreground">Quelle prestation ?</span>
           <input
             value={prestation}
-            onChange={(e) => setPrestation(e.target.value)}
+            onChange={(e) => updatePrestation(e.target.value)}
             list="prestations-connues"
             maxLength={200}
             placeholder="ex : Nettoyage magasin"
@@ -429,7 +459,7 @@ export function CycleEditor({
               <span className="mt-1 flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setPrestation(proche)}
+                  onClick={() => updatePrestation(proche)}
                   disabled={pending}
                   className="font-medium underline underline-offset-2"
                 >

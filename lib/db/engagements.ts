@@ -270,27 +270,35 @@ export async function getMissionsForEngagements(
   // (buildMonthRows), pas le champ grossier missions.cadence. cycle_id IS NULL
   // exclut les rythmes techniques PROJETÉS depuis un roulement (PLAN-INTEG-1 :
   // planning_cycles est la SEULE source de vérité pour un roulement avancé,
-  // jamais l'existence de intervention_templates dérivés).
+  // jamais l'existence de intervention_templates dérivés). ends_on dans le
+  // passé = rythme terminé : un cycle published supersédé le reste (jamais
+  // republié en draft), sa date de fin doit donc être vérifiée explicitement
+  // (Vincent, revue d4525dcd — point 1).
   const [activeTemplateRes, activeCycleRes] = await Promise.all([
     supabase
       .from('intervention_templates')
-      .select('mission_id')
+      .select('mission_id, ends_on')
       .in('mission_id', missionIds)
       .eq('active', true)
       .is('deleted_at', null)
       .is('cycle_id', null),
     supabase
       .from('planning_cycles')
-      .select('mission_id')
+      .select('mission_id, ends_on')
       .in('mission_id', missionIds)
       .eq('status', 'published')
       .is('deleted_at', null),
   ])
+  const notEnded = (r: { ends_on: string | null }) => !r.ends_on || r.ends_on >= today
   const missionsWithActiveRhythm = new Set(
-    ((activeTemplateRes.data ?? []) as Array<{ mission_id: string }>).map((t) => t.mission_id),
+    ((activeTemplateRes.data ?? []) as Array<{ mission_id: string; ends_on: string | null }>)
+      .filter(notEnded)
+      .map((t) => t.mission_id),
   )
   const missionsWithPublishedCycle = new Set(
-    ((activeCycleRes.data ?? []) as Array<{ mission_id: string }>).map((c) => c.mission_id),
+    ((activeCycleRes.data ?? []) as Array<{ mission_id: string; ends_on: string | null }>)
+      .filter(notEnded)
+      .map((c) => c.mission_id),
   )
 
   const [lastRes, nextRes, inProgressRes] = await Promise.all([
