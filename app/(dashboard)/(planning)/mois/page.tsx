@@ -716,6 +716,7 @@ export default async function MoisPage({
           date={focusDate}
           month={month}
           siteRows={filteredSiteRows}
+          monthRows={gridRows}
           conflictsBySite={conflictsBySite}
           closuresBySite={closuresBySite}
           weekHref={`/semaine?week=${isoWeekParamOf(focusDate)}`}
