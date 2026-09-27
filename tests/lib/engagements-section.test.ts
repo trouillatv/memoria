@@ -5,9 +5,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   computePlannedEngagementSynthesis,
+  computePlannedEngagementTabCounts,
+  filterPlannedEngagements,
   getPlannedEngagementSection,
   getSectionHomogeneousStatus,
   groupPlannedEngagementsBySection,
+  plannedEngagementMatchesTab,
   PLANNED_ENGAGEMENT_SECTION_ORDER,
 } from '@/lib/engagements/section'
 import type { EngagementMission, PlannedEngagement } from '@/lib/db/engagements'
@@ -306,5 +309,141 @@ describe('computePlannedEngagementSynthesis — ENG-UX-1 LOT F', () => {
     expect(result.withMission).toBe(1)
     expect(result.withoutMission).toBe(0)
     expect(result.needsPlanning).toBe(0)
+  })
+
+  it('curatedCount et activeCount reflètent status, indépendamment de withMission/withoutMission', () => {
+    const engagements = [
+      engagement({ id: 'a', status: 'curated' }),
+      engagement({ id: 'b', status: 'curated' }),
+      engagement({ id: 'c', status: 'active' }),
+    ]
+    const result = computePlannedEngagementSynthesis(engagements, new Map(), new Map())
+    expect(result.curatedCount).toBe(2)
+    expect(result.activeCount).toBe(1)
+    expect(result.total).toBe(3)
+  })
+})
+
+// PLAN-UX-1D (mandat Vincent 2026-09-27) — onglets/filtres de pilotage.
+describe('plannedEngagementMatchesTab', () => {
+  it("'all' matche tout, quel que soit le statut", () => {
+    expect(plannedEngagementMatchesTab('all', engagement({ id: 'a', status: 'curated' }), [], [])).toBe(true)
+    expect(plannedEngagementMatchesTab('all', engagement({ id: 'a', status: 'active' }), [], [])).toBe(true)
+  })
+
+  it("'to_activate' matche uniquement les curated", () => {
+    expect(plannedEngagementMatchesTab('to_activate', engagement({ id: 'a', status: 'curated' }), [], [])).toBe(true)
+    expect(plannedEngagementMatchesTab('to_activate', engagement({ id: 'a', status: 'active' }), [], [])).toBe(false)
+  })
+
+  it("'with_open_action' matche dès qu'une Action liée est active, quel que soit le statut de l'Engagement", () => {
+    const actions = [testAction({ actionId: 'act-1', active: true })]
+    expect(plannedEngagementMatchesTab('with_open_action', engagement({ id: 'a', status: 'curated' }), [], actions)).toBe(true)
+    expect(plannedEngagementMatchesTab('with_open_action', engagement({ id: 'a', status: 'active' }), [], actions)).toBe(true)
+    const closedActions = [testAction({ actionId: 'act-1', active: false })]
+    expect(plannedEngagementMatchesTab('with_open_action', engagement({ id: 'a', status: 'active' }), [], closedActions)).toBe(false)
+  })
+
+  it("'to_organize' matche un Engagement actif sans aucune Mission active", () => {
+    const active = engagement({ id: 'a', status: 'active' })
+    expect(plannedEngagementMatchesTab('to_organize', active, [], [])).toBe(true)
+    const inactiveOnly = [testMission({ missionId: 'm1', active: false })]
+    expect(plannedEngagementMatchesTab('to_organize', active, inactiveOnly, [])).toBe(true)
+    const activeMission = [testMission({ missionId: 'm1', active: true })]
+    expect(plannedEngagementMatchesTab('to_organize', active, activeMission, [])).toBe(false)
+    expect(plannedEngagementMatchesTab('to_organize', engagement({ id: 'a', status: 'curated' }), [], [])).toBe(false)
+  })
+
+  it("'to_plan' matche un Engagement actif dont aucune Mission active n'a de prochaine occurrence", () => {
+    const active = engagement({ id: 'a', status: 'active' })
+    const noUpcoming = [testMission({ missionId: 'm1', active: true, nextInterventionDate: null })]
+    expect(plannedEngagementMatchesTab('to_plan', active, noUpcoming, [])).toBe(true)
+    const upcoming = [testMission({ missionId: 'm1', active: true, nextInterventionDate: '2026-11-01' })]
+    expect(plannedEngagementMatchesTab('to_plan', active, upcoming, [])).toBe(false)
+    expect(plannedEngagementMatchesTab('to_plan', active, [], [])).toBe(true)
+  })
+})
+
+describe('computePlannedEngagementTabCounts', () => {
+  it('compte chaque Engagement dans tous les onglets où il matche', () => {
+    const engagements = [
+      engagement({ id: 'a', status: 'curated' }),
+      engagement({ id: 'b', status: 'active' }),
+      engagement({ id: 'c', status: 'active' }),
+    ]
+    const missionsByEngagement = new Map([
+      ['b', [testMission({ missionId: 'm1', active: true, nextInterventionDate: '2026-11-01' })]],
+    ])
+    const actionsByEngagement = new Map([
+      ['c', [testAction({ actionId: 'act-1', active: true })]],
+    ])
+    const counts = computePlannedEngagementTabCounts(engagements, missionsByEngagement, actionsByEngagement)
+    expect(counts.all).toBe(3)
+    expect(counts.to_activate).toBe(1) // a
+    expect(counts.to_organize).toBe(1) // c (aucune Mission)
+    expect(counts.to_plan).toBe(1) // c (idem, aucune Mission organisée)
+    expect(counts.with_open_action).toBe(1) // c
+  })
+})
+
+describe('filterPlannedEngagements', () => {
+  const dataset = [
+    engagement({
+      id: 'a',
+      status: 'curated',
+      kind: 'controle',
+      category: 'quality',
+      shortLabel: 'Essai plaque',
+      primaryProvenance: { documentId: 'doc-1', documentFilename: 'CCTP.pdf', pageNumber: 1, excerpt: null, frequencyRaw: null },
+    }),
+    engagement({
+      id: 'b',
+      status: 'active',
+      kind: 'livrable',
+      category: 'reporting',
+      shortLabel: 'DOE',
+      primaryProvenance: { documentId: null, documentFilename: null, pageNumber: null, excerpt: null, frequencyRaw: null },
+    }),
+  ]
+
+  it('filtre par tab', () => {
+    const result = filterPlannedEngagements(dataset, new Map(), new Map(), { tab: 'to_activate' })
+    expect(result.map((e) => e.id)).toEqual(['a'])
+  })
+
+  it('filtre par kind', () => {
+    const result = filterPlannedEngagements(dataset, new Map(), new Map(), { kind: 'livrable' })
+    expect(result.map((e) => e.id)).toEqual(['b'])
+  })
+
+  it('filtre par kind=null (sentinel « Non typé »)', () => {
+    const withUntyped = [...dataset, engagement({ id: 'c', kind: null })]
+    const result = filterPlannedEngagements(withUntyped, new Map(), new Map(), { kind: null })
+    expect(result.map((e) => e.id)).toEqual(['c'])
+  })
+
+  it('filtre par category', () => {
+    const result = filterPlannedEngagements(dataset, new Map(), new Map(), { category: 'reporting' })
+    expect(result.map((e) => e.id)).toEqual(['b'])
+  })
+
+  it('filtre par provenance manuelle vs document', () => {
+    expect(filterPlannedEngagements(dataset, new Map(), new Map(), { provenance: 'document' }).map((e) => e.id)).toEqual(['a'])
+    expect(filterPlannedEngagements(dataset, new Map(), new Map(), { provenance: 'manual' }).map((e) => e.id)).toEqual(['b'])
+  })
+
+  it('filtre par document source (nom de fichier)', () => {
+    const result = filterPlannedEngagements(dataset, new Map(), new Map(), { documentFilename: 'CCTP.pdf' })
+    expect(result.map((e) => e.id)).toEqual(['a'])
+  })
+
+  it('filtre par recherche texte (insensible à la casse) sur shortLabel', () => {
+    const result = filterPlannedEngagements(dataset, new Map(), new Map(), { search: 'doe' })
+    expect(result.map((e) => e.id)).toEqual(['b'])
+  })
+
+  it('combine plusieurs filtres (ET logique)', () => {
+    const result = filterPlannedEngagements(dataset, new Map(), new Map(), { category: 'quality', kind: 'controle' })
+    expect(result.map((e) => e.id)).toEqual(['a'])
   })
 })

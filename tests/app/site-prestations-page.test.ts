@@ -75,7 +75,8 @@ const { default: SitePrestationsPage } = await import(
  * marcheur ne teste pas son contenu.
  */
 // P0-3.2 ajoute ActivateEngagementButton (mêmes hooks) sur les cartes curated : même traitement.
-const SKIP_COMPONENTS = new Set(['DynamicCrumb', 'BreadcrumbPrefix', 'AddPlannedEngagementDialog', 'ActivateEngagementButton'])
+// PLAN-UX-1D ajoute FiltersBar (useRouter/usePathname/useSearchParams) : même traitement.
+const SKIP_COMPONENTS = new Set(['DynamicCrumb', 'BreadcrumbPrefix', 'AddPlannedEngagementDialog', 'ActivateEngagementButton', 'FiltersBar'])
 const UNWRAP_COMPONENTS = new Set(['ScrollActiveRail'])
 
 function treeContainsText(node: unknown, text: string): boolean {
@@ -154,7 +155,7 @@ beforeEach(() => {
 describe('/sites/[id]/prestations — état vide, badge Mesurable, sécurité', () => {
   it('zéro Engagement : même libellé métier que le mobile', async () => {
     mockListPlannedEngagements.mockResolvedValueOnce([])
-    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(treeContainsText(tree, 'Aucun engagement validé pour ce chantier.')).toBe(true)
   })
@@ -164,7 +165,7 @@ describe('/sites/[id]/prestations — état vide, badge Mesurable, sécurité', 
     mockFindPendingEngagementFinalization.mockResolvedValueOnce({
       runId: 'run-1', documentId: 'doc-1', count: 43,
     })
-    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(treeContainsText(tree, 'Aucun engagement validé pour ce chantier.')).toBe(false)
     expect(treeContainsText(tree, 'Finaliser les 43 Engagements')).toBe(true)
@@ -172,21 +173,21 @@ describe('/sites/[id]/prestations — état vide, badge Mesurable, sécurité', 
 
   it('measurable=true : rend le badge « Mesurable »', async () => {
     mockListPlannedEngagements.mockResolvedValueOnce([plannedEngagement({ measurable: true })])
-    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(treeContainsText(tree, 'Mesurable')).toBe(true)
   })
 
   it('measurable=false : ne rend PAS de badge « Mesurable »', async () => {
     mockListPlannedEngagements.mockResolvedValueOnce([plannedEngagement({ measurable: false })])
-    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(treeContainsText(tree, 'Mesurable')).toBe(false)
   })
 
   it('rend le statut, la provenance et la fréquence d’un engagement curated/active', async () => {
     mockListPlannedEngagements.mockResolvedValueOnce([plannedEngagement()])
-    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(treeContainsText(tree, 'Nettoyage mensuel des filtres')).toBe(true)
     expect(treeContainsText(tree, 'Mensuel')).toBe(true)
@@ -194,7 +195,7 @@ describe('/sites/[id]/prestations — état vide, badge Mesurable, sécurité', 
 
   it('sécurité : getSiteIdentity est appelé AVANT listPlannedEngagementsForSite', async () => {
     mockListPlannedEngagements.mockResolvedValueOnce([])
-    await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(mockGetSiteIdentity).toHaveBeenCalledWith('site-1')
     expect(mockListPlannedEngagements).toHaveBeenCalledWith('site-1')
@@ -207,7 +208,7 @@ describe('/sites/[id]/prestations — état vide, badge Mesurable, sécurité', 
     mockGetSiteIdentity.mockResolvedValueOnce(null as unknown as { id: string; name: string })
 
     await expect(
-      SitePrestationsPage({ params: Promise.resolve({ id: 'site-cross-org' }) }),
+      SitePrestationsPage({ params: Promise.resolve({ id: 'site-cross-org' }), searchParams: Promise.resolve({}) }),
     ).rejects.toThrow()
 
     expect(mockListPlannedEngagements).not.toHaveBeenCalled()
@@ -218,7 +219,7 @@ describe('/sites/[id]/prestations — CTA « Mettre en vigueur » (P0-3.2 FIX ga
   it('membership managerOrAdmin sur ce chantier : CTA présent sur un Engagement curated', async () => {
     mockRequireSiteWriteAccess.mockResolvedValueOnce({ ok: true, organizationId: 'org-1', userId: 'user-1', role: 'manager' })
     mockListPlannedEngagements.mockResolvedValueOnce([plannedEngagement({ status: 'curated' })])
-    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(treeContainsComponent(tree, 'ActivateEngagementButton')).toBe(true)
   })
@@ -226,14 +227,14 @@ describe('/sites/[id]/prestations — CTA « Mettre en vigueur » (P0-3.2 FIX ga
   it('accès refusé sur ce chantier (membership d’une autre organisation) : CTA absent même si le profil plateforme est admin', async () => {
     mockRequireSiteWriteAccess.mockResolvedValueOnce({ ok: false, error: 'Accès refusé' })
     mockListPlannedEngagements.mockResolvedValueOnce([plannedEngagement({ status: 'curated' })])
-    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    const tree = await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(treeContainsComponent(tree, 'ActivateEngagementButton')).toBe(false)
   })
 
   it('sécurité : requireSiteWriteAccess reçoit le siteId de la route et la politique managerOrAdmin', async () => {
     mockListPlannedEngagements.mockResolvedValueOnce([])
-    await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }) })
+    await SitePrestationsPage({ params: Promise.resolve({ id: 'site-1' }), searchParams: Promise.resolve({}) })
 
     expect(mockRequireSiteWriteAccess).toHaveBeenCalledWith('site-1', 'managerOrAdmin')
   })

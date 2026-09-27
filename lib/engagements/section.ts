@@ -109,6 +109,10 @@ export function groupPlannedEngagementsBySection(
 
 export interface PlannedEngagementSynthesis {
   total: number
+  /** Pas encore en vigueur — cf. plannedEngagementStatusLabel('curated'). */
+  curatedCount: number
+  /** En vigueur — cf. plannedEngagementStatusLabel('active'). */
+  activeCount: number
   withMission: number
   /** Actif mais sans aucune Mission organisatrice (pas encore prise en charge). */
   withoutMission: number
@@ -133,11 +137,17 @@ export function computePlannedEngagementSynthesis(
   missionsByEngagement: Map<string, EngagementMission[]>,
   actionsByEngagement: Map<string, EngagementAction[]>,
 ): PlannedEngagementSynthesis {
+  let curatedCount = 0
+  let activeCount = 0
   let withMission = 0
   let withoutMission = 0
   let needsPlanning = 0
   for (const e of engagements) {
-    if (e.status !== 'active') continue
+    if (e.status !== 'active') {
+      curatedCount++
+      continue
+    }
+    activeCount++
     // ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Mission inactive
     // n'organise pas l'Engagement : elle ne doit ni compter comme prise en
     // charge actuelle, ni éviter le compteur "à planifier".
@@ -157,9 +167,125 @@ export function computePlannedEngagementSynthesis(
 
   return {
     total: engagements.length,
+    curatedCount,
+    activeCount,
     withMission,
     withoutMission,
     needsPlanning,
     openActionsCount: openActionIds.size,
   }
+}
+
+/**
+ * PLAN-UX-1D (mandat Vincent 2026-09-27) — onglets par état de pilotage de la
+ * page Prestations prévues. Réutilise EXACTEMENT la même lecture des
+ * read-models que computePlannedEngagementSynthesis (aucune nouvelle vérité) :
+ * `to_organize` reprend la logique de `withoutMission`, `to_plan` reprend
+ * celle de `needsPlanning`. `with_open_action` s'applique quel que soit le
+ * statut (curated ou active) car une Action peut rester ouverte après
+ * bascule.
+ */
+export type PlannedEngagementTabKey =
+  | 'all'
+  | 'to_activate'
+  | 'to_organize'
+  | 'to_plan'
+  | 'with_open_action'
+
+export const PLANNED_ENGAGEMENT_TAB_ORDER: PlannedEngagementTabKey[] = [
+  'all',
+  'to_activate',
+  'to_organize',
+  'to_plan',
+  'with_open_action',
+]
+
+export const PLANNED_ENGAGEMENT_TAB_LABELS: Record<PlannedEngagementTabKey, string> = {
+  all: 'Tous',
+  to_activate: 'À mettre en vigueur',
+  to_organize: 'À organiser',
+  to_plan: 'À planifier',
+  with_open_action: 'Avec action ouverte',
+}
+
+export function plannedEngagementMatchesTab(
+  tab: PlannedEngagementTabKey,
+  engagement: PlannedEngagement,
+  missions: EngagementMission[],
+  actions: EngagementAction[],
+): boolean {
+  if (tab === 'all') return true
+  if (tab === 'to_activate') return engagement.status === 'curated'
+  if (tab === 'with_open_action') return actions.some((a) => a.active)
+  if (engagement.status !== 'active') return false
+  const activeMissions = missions.filter((m) => m.active)
+  if (tab === 'to_organize') return activeMissions.length === 0
+  // to_plan : actif ET (sans Mission, ou aucune Mission n'a de prochaine occurrence)
+  return !activeMissions.some((m) => !!m.nextInterventionDate)
+}
+
+export function computePlannedEngagementTabCounts(
+  engagements: PlannedEngagement[],
+  missionsByEngagement: Map<string, EngagementMission[]>,
+  actionsByEngagement: Map<string, EngagementAction[]>,
+): Record<PlannedEngagementTabKey, number> {
+  const counts: Record<PlannedEngagementTabKey, number> = {
+    all: 0,
+    to_activate: 0,
+    to_organize: 0,
+    to_plan: 0,
+    with_open_action: 0,
+  }
+  for (const e of engagements) {
+    const missions = missionsByEngagement.get(e.id) ?? []
+    const actions = actionsByEngagement.get(e.id) ?? []
+    for (const tab of PLANNED_ENGAGEMENT_TAB_ORDER) {
+      if (plannedEngagementMatchesTab(tab, e, missions, actions)) counts[tab]++
+    }
+  }
+  return counts
+}
+
+/**
+ * Filtres avancés (PLAN-UX-1D) : Nature/Catégorie dérivées des colonnes
+ * `kind`/`category` déjà en base ; Provenance dérivée de `primaryProvenance.
+ * documentId` (null = créé manuellement, même logique que ProvenanceLine dans
+ * PlannedEngagementCard — aucune nouvelle colonne). Recherche texte sur
+ * `shortLabel` uniquement.
+ */
+export interface PlannedEngagementFilters {
+  tab?: PlannedEngagementTabKey
+  kind?: EngagementKind | null
+  category?: EngagementCategory
+  provenance?: 'manual' | 'document'
+  documentFilename?: string
+  search?: string
+}
+
+export function filterPlannedEngagements(
+  engagements: PlannedEngagement[],
+  missionsByEngagement: Map<string, EngagementMission[]>,
+  actionsByEngagement: Map<string, EngagementAction[]>,
+  filters: PlannedEngagementFilters,
+): PlannedEngagement[] {
+  const search = filters.search?.trim().toLowerCase()
+  return engagements.filter((e) => {
+    if (filters.tab && filters.tab !== 'all') {
+      const missions = missionsByEngagement.get(e.id) ?? []
+      const actions = actionsByEngagement.get(e.id) ?? []
+      if (!plannedEngagementMatchesTab(filters.tab, e, missions, actions)) return false
+    }
+    if (filters.kind !== undefined && e.kind !== filters.kind) return false
+    if (filters.category && e.category !== filters.category) return false
+    if (filters.provenance) {
+      const isManual = e.primaryProvenance.documentId === null
+      if (filters.provenance === 'manual' && !isManual) return false
+      if (filters.provenance === 'document' && isManual) return false
+    }
+    if (filters.documentFilename && e.primaryProvenance.documentFilename !== filters.documentFilename) {
+      return false
+    }
+    if (search && !e.shortLabel.toLowerCase().includes(search)) return false
+    return true
+  })
 }
