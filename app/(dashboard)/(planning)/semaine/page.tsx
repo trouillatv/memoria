@@ -32,6 +32,7 @@ import {
 } from '@/lib/db/week-planning'
 import { listActiveClosuresForSites, type SiteClosure } from '@/lib/db/site-closures'
 import { listTemplatesByIds } from '@/lib/db/week-planning'
+import { buildMonthRows, type MonthRow } from '@/lib/db/month-view'
 import { detectDeviations, hhmmOf } from '@/lib/planning/occurrence-exception'
 import { detectClosureConflicts } from '@/lib/planning/conflicts'
 import { listKeptInterventionIds, listDecisions } from '@/lib/db/closure-decisions'
@@ -156,7 +157,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
 
   // On fetch UNIQUEMENT la vue active pour éviter du I/O inutile (la TeamRow
   // fait un appel supplémentaire à teams + team_members).
-  const [siteRows, teamRows, allTeams, missionOptions, siteOptions, memberCounts, vigilance, memorySignals, weekSignals] =
+  const [siteRows, teamRows, allTeams, missionOptions, siteOptions, memberCounts, vigilance, memorySignals, weekSignals, monthRows] =
     await Promise.all([
       view === 'site' ? getWeekBySite(range, orgIds) : Promise.resolve<SiteRow[]>([]),
       view === 'team' ? getWeekByTeam(range) : Promise.resolve<TeamRow[]>([]),
@@ -170,6 +171,10 @@ export default async function SemainePage({ searchParams }: PageProps) {
       view === 'site' ? collectMemorySignals() : Promise.resolve<MemorySignal[]>([]),
       // Niveau 1 : signaux opérationnels (standing) par site — vue site uniquement.
       view === 'site' ? getWeekOperationalSignals(range) : Promise.resolve<SiteWeekSignals[]>([]),
+      // PLAN-UX-1C — mêmes faits que le Mois (`buildMonthRows` est agnostique
+      // à la plage) : un chantier en pur roulement projeté sans intervention
+      // matérialisée doit se voir en Semaine, pas seulement au Mois.
+      view === 'site' ? buildMonthRows({ from: range.weekStart, to: range.weekEnd }) : Promise.resolve<MonthRow[]>([]),
     ])
   const rotationOptions = await fetchRotationOptions(missionOptions).catch(() => [])
   const lecture = view === 'site'
@@ -225,7 +230,36 @@ export default async function SemainePage({ searchParams }: PageProps) {
           days: Object.fromEntries(weekDaysList.map((d) => [d, []])),
         }))
     : []
-  const allSiteRows = [...siteRows, ...scheduledOnlySiteRows]
+  // PLAN-UX-1C — mêmes faits que la case Mois (`buildMonthRows`), restreints
+  // aux jours où le roulement PROJETTE du monde sans intervention matérialisée
+  // (`facts.projected > 0`). On ignore volontairement `closed`/`hasException` :
+  // ces états sont déjà couverts par le pipeline fermetures/conflits ci-dessous
+  // (listActiveClosuresForSites/projectClosures/detectClosureConflicts) — les
+  // recalculer ici ferait diverger deux vérités.
+  const projectedBySite: Record<string, Record<string, number>> = {}
+  if (view === 'site') {
+    for (const row of monthRows) {
+      const byDate: Record<string, number> = {}
+      for (const [day, facts] of Object.entries(row.days)) {
+        if (facts.projected > 0) byDate[day] = facts.projected
+      }
+      if (Object.keys(byDate).length > 0) projectedBySite[row.siteId] = byDate
+    }
+  }
+  const scheduledOnlySiteIds = new Set(scheduledOnlySiteRows.map((r) => r.site_id))
+  const projectedOnlySiteRows: SiteRow[] = view === 'site'
+    ? monthRows
+        .filter((r) => !siteRowIds.has(r.siteId) && !scheduledOnlySiteIds.has(r.siteId))
+        .filter((r) => Object.values(r.days).some((f) => f.projected > 0))
+        .map((r) => ({
+          site_id: r.siteId,
+          site_name: r.siteName,
+          contract_id: '',
+          contract_name: '—',
+          days: Object.fromEntries(weekDaysList.map((d) => [d, []])),
+        }))
+    : []
+  const allSiteRows = [...siteRows, ...scheduledOnlySiteRows, ...projectedOnlySiteRows]
 
   // LE CALENDRIER DU CHANTIER D'ABORD, le conflit ensuite.
   //
@@ -465,7 +499,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
         </p>
         {view === 'site' ? (
           <WeekGridClient rows={allSiteRows} todayIso={todayIso} teams={teams} signalsBySite={signalsBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} decisions={decisions} optionsBySite={optionsBySite} exceptionsById={exceptionsById} initialCellKey={params.cell ?? null}>
-            <WeekGrid range={range} rows={allSiteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} />
+            <WeekGrid range={range} rows={allSiteRows} todayIso={todayIso} signalsBySite={signalsBySite} standingBySite={standingBySite} daysBySite={daysBySite} conflictsBySite={conflictsBySite} closuresBySite={closuresBySite} projectedBySite={projectedBySite} />
           </WeekGridClient>
         ) : (
           <TeamWeekGridClient rows={teamRows} todayIso={todayIso} teams={teams}>

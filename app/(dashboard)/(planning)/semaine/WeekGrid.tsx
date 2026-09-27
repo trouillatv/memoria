@@ -74,6 +74,14 @@ export interface PlanningGridProps {
   /** Niveau 1 — le CALENDRIER du chantier : quels jours il est fermé, même sans
    *  aucune prestation prévue. La fermeture est une information métier. */
   closuresBySite?: Record<string, Record<string, ProjectableClosure>>
+  /**
+   * PLAN-UX-1C — ÉCHELLE SEMAINE — combien d'occurrences le roulement projette
+   * ce jour-là pour un chantier sans aucune intervention matérialisée. Même
+   * source (`buildMonthRows`) que `monthRows`, filtrée aux jours projetés
+   * (`facts.projected > 0`). OPTIONNEL : sans lui, la semaine reste strictement
+   * inchangée.
+   */
+  projectedBySite?: Record<string, Record<string, number>>
 }
 
 /**
@@ -85,7 +93,7 @@ export interface PlanningGridProps {
  *
  * Deux tableaux parallèles finissent toujours par diverger.
  */
-export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows, signalsBySite, standingBySite, daysBySite, conflictsBySite, closuresBySite }: PlanningGridProps) {
+export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows, signalsBySite, standingBySite, daysBySite, conflictsBySite, closuresBySite, projectedBySite }: PlanningGridProps) {
   // La PLAGE décide du nombre de colonnes — sept ou trente-et-une, même code.
   const days = enumerateRangeDays({ start: range.weekStart, end: range.weekEnd })
   const colWidth = columnWidthClass(scale)
@@ -179,6 +187,7 @@ export function PlanningGrid({ scale = 'week', range, rows, todayIso, monthRows,
                   dayEventsByDate={daysBySite?.[row.site_id]}
                   conflictByDate={conflictsBySite?.[row.site_id]}
                   closureByDate={closuresBySite?.[row.site_id]}
+                  projectedByDate={projectedBySite?.[row.site_id]}
                 />
               ))}
         </tbody>
@@ -240,6 +249,7 @@ function SiteGridRow({
   dayEventsByDate,
   conflictByDate,
   closureByDate,
+  projectedByDate,
 }: {
   row: SiteRow
   days: string[]
@@ -249,6 +259,7 @@ function SiteGridRow({
   dayEventsByDate?: Record<string, WeekOperationalSignal[]>
   conflictByDate?: Record<string, ClosureConflict>
   closureByDate?: Record<string, ProjectableClosure>
+  projectedByDate?: Record<string, number>
 }) {
   return (
     <tr className="border-t" data-site-id={row.site_id}>
@@ -283,6 +294,7 @@ function SiteGridRow({
             dayEvents={dayEventsByDate?.[d]}
             conflict={conflictByDate?.[d]}
             closure={closureByDate?.[d]}
+            projectedCount={projectedByDate?.[d]}
           />
         )
       })}

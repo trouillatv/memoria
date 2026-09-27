@@ -132,9 +132,17 @@ export interface WeekGridCellProps {
    *  Information métier (vacances, férié, inventaire), pas une erreur : elle se
    *  voit calmement. Le rouge reste réservé au conflit (niveau 2). */
   closure?: ProjectableClosure
+  /**
+   * PLAN-UX-1C — le roulement PROJETTE du monde ce jour-là mais rien n'est
+   * encore matérialisé. Même état que la case Mois (`MonthGridCell`,
+   * `isProjectedOnly`) : le tiroir explique d'abord le roulement, il ne
+   * redirige jamais en silence. Ignoré si la cellule a du réel (`cells`
+   * non vide) — le réel prime toujours.
+   */
+  projectedCount?: number
 }
 
-export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvents, conflict, closure }: WeekGridCellProps) {
+export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvents, conflict, closure, projectedCount }: WeekGridCellProps) {
   const cellKey = `${siteId}::${date}`
   const isPast = !!(todayIso && date < todayIso)
 
@@ -223,8 +231,12 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvent
     return dur ? `${start}–${end} · ${dur}` : `${start}–${end}`
   })()
 
+  const isProjectedOnly = isEmpty && (projectedCount ?? 0) > 0
+
   const ariaParts: string[] = [siteName, date]
-  if (isEmpty) {
+  if (isProjectedOnly) {
+    ariaParts.push('roulement prévu, aucune intervention créée')
+  } else if (isEmpty) {
     ariaParts.push('aucune intervention')
   } else {
     ariaParts.push(`${cells.length} intervention${cells.length > 1 ? 's' : ''}`)
@@ -287,7 +299,25 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvent
       )}
       {...(draggable ? { ...attributes, ...listeners } : {})}
     >
-      {isEmpty ? (
+      {isProjectedOnly ? (
+        // PLAN-UX-1C — même doctrine que la case Mois (`MonthGridCell`,
+        // `isProjectedOnly`) : le roulement projette du monde ce jour-là mais
+        // rien n'est matérialisé. Le tiroir (CellDrawer, [data-projected-trigger])
+        // explique d'abord le roulement, il ne redirige jamais en silence.
+        <button
+          type="button"
+          data-projected-trigger="true"
+          data-site-id={siteId}
+          data-date={date}
+          data-site-label={siteName}
+          title="Roulement prévu — aucune intervention créée ce jour"
+          onPointerDownCapture={(e) => e.stopPropagation()}
+          aria-label={ariaLabel}
+          className="flex w-full flex-col items-start gap-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+        >
+          <span className="text-sm italic tabular-nums text-muted-foreground/70">{projectedCount}</span>
+        </button>
+      ) : isEmpty ? (
         <div className="text-muted-foreground/60 text-center text-sm" aria-label={ariaLabel}>
           —
         </div>

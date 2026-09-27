@@ -376,6 +376,41 @@ describe('WeekGridCell', () => {
     expect(cellFuture?.getAttribute('data-past')).toBe('false')
     expect(cellFuture?.getAttribute('style') ?? '').not.toContain('repeating-linear-gradient')
   })
+
+  // PLAN-UX-1C — ÉCHELLE SEMAINE — même doctrine que le Mois (`MonthGridCell`,
+  // `isProjectedOnly`) : un roulement projeté sans intervention matérialisée
+  // porte le déclencheur d'état « Roulement prévu », jamais un faux tiret vide.
+  it('rend le déclencheur "Roulement prévu" quand la cellule est vide mais projectedCount > 0', () => {
+    renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU"
+        cells={[]}
+        projectedCount={1}
+      />,
+    )
+    const trigger = screen.getByRole('button')
+    expect(trigger.getAttribute('data-projected-trigger')).toBe('true')
+    expect(trigger.getAttribute('data-site-id')).toBe('s1')
+    expect(trigger.getAttribute('data-date')).toBe('2026-05-11')
+    expect(trigger.getAttribute('data-site-label')).toBe('CHU')
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+  })
+
+  it('reste sur le simple tiret "—" quand la cellule est vide sans roulement projeté (régression)', () => {
+    renderInTable(
+      <WeekGridCell
+        date="2026-05-11"
+        siteId="s1"
+        siteName="CHU"
+        cells={[]}
+        projectedCount={0}
+      />,
+    )
+    expect(screen.getByText('—')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
 })
 
 // ----------------------------------------------------------------------------
@@ -417,6 +452,59 @@ describe('WeekGrid', () => {
     )
     const cells = container.querySelectorAll('[data-slot="week-grid-cell"]')
     expect(cells.length).toBe(7)
+  })
+})
+
+// ----------------------------------------------------------------------------
+// PlanningGrid — ÉCHELLE SEMAINE — roulement projeté (PLAN-UX-1C, C2)
+// ----------------------------------------------------------------------------
+//
+// Même contrat que le Mois : un chantier en pur rythme projeté (aucune
+// intervention matérialisée) doit se VOIR en Semaine — le symptôme corrigé
+// est « Aucune mission planifiée cette semaine » alors qu'un roulement couvre
+// réellement la période.
+
+describe('PlanningGrid semaine — roulement projeté', () => {
+  it('un site en pur rythme projeté (sans intervention) porte le déclencheur "Roulement prévu"', () => {
+    const row = makeSiteRow({ site_id: 'site-p', site_name: 'OCEF Compostage' })
+    render(
+      <PlanningGrid
+        range={WEEK_RANGE}
+        rows={[row]}
+        todayIso="2026-05-11"
+        projectedBySite={{ 'site-p': { '2026-05-12': 1 } }}
+      />,
+    )
+    const grid = screen.getByTestId('week-grid')
+    const trigger = grid.querySelector('[data-projected-trigger="true"][data-date="2026-05-12"]')
+    expect(trigger).not.toBeNull()
+    expect(trigger?.getAttribute('data-site-id')).toBe('site-p')
+  })
+
+  it('sans projectedBySite, la semaine reste strictement inchangée (rétro-compatibilité)', () => {
+    const row = makeSiteRow({ site_id: 'site-p', site_name: 'OCEF Compostage' })
+    render(<PlanningGrid range={WEEK_RANGE} rows={[row]} todayIso="2026-05-11" />)
+    const grid = screen.getByTestId('week-grid')
+    expect(grid.querySelector('[data-projected-trigger="true"]')).toBeNull()
+  })
+
+  it('le clic sur un jour projeté ouvre « Roulement prévu », jamais un faux tiroir', () => {
+    const row = makeSiteRow({ site_id: 'site-p', site_name: 'OCEF Compostage' })
+    render(
+      <CellDrawer rows={[row]} teams={[]} todayIso="2026-05-11">
+        <PlanningGrid
+          range={WEEK_RANGE}
+          rows={[row]}
+          todayIso="2026-05-11"
+          projectedBySite={{ 'site-p': { '2026-05-12': 1 } }}
+        />
+      </CellDrawer>,
+    )
+    fireEvent.click(
+      document.querySelector('[data-projected-trigger="true"][data-date="2026-05-12"]')!,
+    )
+    expect(screen.getByText('Roulement prévu')).toBeInTheDocument()
+    expect(screen.getByText('Aucune intervention créée.')).toBeInTheDocument()
   })
 })
 
