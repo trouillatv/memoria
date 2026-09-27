@@ -25,6 +25,7 @@ import { TeamBadge } from '@/components/ui/team-badge'
 import { fmtHourFr, fmtDurationFr } from '@/lib/time/prestation-slot'
 import { CLOSURE_REASON_FR, type ProjectableClosure } from '@/lib/planning/closures'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
+import { PLANNING_GRAMMAR } from '@/lib/planning/grammar'
 import type { WeekInterventionCell } from '@/lib/db/week-planning'
 import type { WeekOperationalSignal } from '@/lib/week-operational-signals-helpers'
 import type { InterventionSlot } from '@/types/db'
@@ -310,12 +311,22 @@ export function WeekGridCell({ date, siteId, siteName, cells, todayIso, dayEvent
           data-site-id={siteId}
           data-date={date}
           data-site-label={siteName}
-          title="Roulement prévu — aucune intervention créée ce jour"
+          title={`${PLANNING_GRAMMAR.rhythm_planned.label} — ${PLANNING_GRAMMAR.rhythm_planned.description}`}
           onPointerDownCapture={(e) => e.stopPropagation()}
           aria-label={ariaLabel}
-          className="flex w-full flex-col items-start gap-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+          className="flex w-full flex-col items-start gap-0.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
         >
-          <span className="text-sm italic tabular-nums text-muted-foreground/70">{projectedCount}</span>
+          <span className="flex items-baseline gap-1">
+            <span className={cn('text-sm italic tabular-nums', PLANNING_GRAMMAR.rhythm_planned.textClassName)}>
+              {projectedCount}
+            </span>
+            <span className={cn('text-[10px] font-medium uppercase tracking-wide', PLANNING_GRAMMAR.rhythm_planned.textClassName)}>
+              {PLANNING_GRAMMAR.rhythm_planned.shortLabel}
+            </span>
+          </span>
+          <span className={cn('text-[10px] italic leading-tight', PLANNING_GRAMMAR.rhythm_planned.textClassName)}>
+            {PLANNING_GRAMMAR.rhythm_planned.label}
+          </span>
         </button>
       ) : isEmpty ? (
         <div className="text-muted-foreground/60 text-center text-sm" aria-label={ariaLabel}>

@@ -4,10 +4,22 @@ import { TeamBadge } from '@/components/ui/team-badge'
 import { siteLabel } from '@/lib/labels/site-label'
 import { CLOSURE_REASON_FR, type ProjectableClosure } from '@/lib/planning/closures'
 import type { ClosureConflict } from '@/lib/planning/conflicts'
-import { dayState } from '@/lib/planning/month-view'
+import {
+  PLANNING_GRAMMAR,
+  planningStateFromDayFacts,
+  planningStateFromInterventionStatus,
+  type PlanningGrammarState,
+} from '@/lib/planning/grammar'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import type { MonthRow } from '@/lib/db/month-view'
 import type { SiteRow } from '@/lib/db/week-planning'
+import { cn } from '@/lib/utils'
+
+const MATERIALIZED_SECTION_ORDER: PlanningGrammarState[] = [
+  'intervention_planned',
+  'completed',
+  'closed',
+]
 
 function formatFullDate(iso: string): string {
   const d = new Date(`${iso}T00:00:00.000Z`)
@@ -60,12 +72,13 @@ export function DayFocusPanel({
         },
         cells: site?.days[date] ?? [],
         facts,
+        grammarState: facts ? planningStateFromDayFacts(facts) : 'empty',
         projectedOccurrences: facts?.projectedOccurrences ?? [],
         conflict: conflictsBySite[siteId]?.[date],
         closure: closuresBySite[siteId]?.[date],
       }
     })
-    .filter((e) => e.cells.length > 0 || e.projectedOccurrences.length > 0 || e.conflict || e.closure || (e.facts && dayState(e.facts) === 'hole'))
+    .filter((e) => e.cells.length > 0 || e.projectedOccurrences.length > 0 || e.conflict || e.closure || e.grammarState === 'hole')
     .sort(
       (a, b) =>
         a.site.contract_name.localeCompare(b.site.contract_name, 'fr', { sensitivity: 'base' }) ||
@@ -76,7 +89,10 @@ export function DayFocusPanel({
   const totalProjected = entries.reduce((n, e) => n + e.projectedOccurrences.length, 0)
   const conflictCount = entries.filter((e) => e.conflict).length
   const closureCount = entries.filter((e) => e.closure && !e.conflict).length
-  const nothing = totalItv === 0 && totalProjected === 0 && conflictCount === 0 && closureCount === 0
+  const holeCount = entries.filter(
+    (e) => e.grammarState === 'hole' && e.cells.length === 0 && e.projectedOccurrences.length === 0 && !e.conflict && !e.closure,
+  ).length
+  const nothing = totalItv === 0 && totalProjected === 0 && conflictCount === 0 && closureCount === 0 && holeCount === 0
 
   return (
     <aside className="rounded-lg border-l-2 border-reading-border bg-card px-5 py-5">
@@ -111,11 +127,12 @@ export function DayFocusPanel({
           : [
               totalItv > 0 ? `${totalItv} intervention${totalItv > 1 ? 's' : ''}` : null,
               totalProjected > 0 ? `${totalProjected} prévu${totalProjected > 1 ? 's' : ''} par le rythme` : null,
+              holeCount > 0 ? `${holeCount} trou${holeCount > 1 ? 's' : ''} de couverture` : null,
               `${entries.length} chantier${entries.length > 1 ? 's' : ''}`,
             ].filter(Boolean).join(' · ')}
       </p>
 
-      {(conflictCount > 0 || closureCount > 0) && (
+      {(conflictCount > 0 || closureCount > 0 || holeCount > 0) && (
         <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs">
           {conflictCount > 0 && (
             <span className="font-medium text-rose-700 dark:text-rose-300">
@@ -125,6 +142,11 @@ export function DayFocusPanel({
           {closureCount > 0 && (
             <span className="text-sky-700 dark:text-sky-300">
               {closureCount} chantier{closureCount > 1 ? 's' : ''} fermé{closureCount > 1 ? 's' : ''}
+            </span>
+          )}
+          {holeCount > 0 && (
+            <span className={PLANNING_GRAMMAR.hole.textClassName}>
+              {holeCount} {PLANNING_GRAMMAR.hole.label.toLowerCase()} - roulement publié, rien de prévu
             </span>
           )}
         </p>
@@ -172,42 +194,62 @@ export function DayFocusPanel({
                 </p>
 
                 {e.cells.length > 0 && (
-                  <div className="mt-2 space-y-1.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Intervention planifiée
-                    </p>
-                    {e.cells.map((cell) => (
-                      <div key={cell.id} className="rounded-md border bg-background px-2.5 py-2 text-xs">
-                        <p className="font-medium text-foreground">{cell.mission_name}</p>
-                        <p className="mt-0.5 text-muted-foreground">
-                          {formatInterventionTimeLabel({
-                            planned_start: cell.planned_start,
-                            planned_end: cell.planned_end,
-                            slot: cell.slot as never,
-                          })}
-                        </p>
-                        {cell.assigned_team_name && (
-                          <div className="mt-1.5">
-                            <TeamBadge name={cell.assigned_team_name} color={cell.assigned_team_color} variant="dot" />
-                          </div>
-                        )}
-                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-                          <Link href={`/interventions/${cell.id}`} className="font-medium text-primary hover:underline">
-                            Voir l&apos;intervention
-                          </Link>
-                          <Link href={`/missions/${cell.mission_id}`} className="font-medium text-primary hover:underline">
-                            Voir la mission
-                          </Link>
+                  <div className="mt-2 space-y-3">
+                    {MATERIALIZED_SECTION_ORDER.map((sectionState) => {
+                      const cellsForState = e.cells.filter(
+                        (cell) => planningStateFromInterventionStatus(cell.status) === sectionState,
+                      )
+                      if (cellsForState.length === 0) return null
+                      return (
+                        <div key={sectionState} className="space-y-1.5">
+                          <p
+                            className={cn(
+                              'text-[10px] font-semibold uppercase tracking-wide',
+                              PLANNING_GRAMMAR[sectionState].textClassName,
+                            )}
+                          >
+                            {PLANNING_GRAMMAR[sectionState].label}
+                          </p>
+                          {cellsForState.map((cell) => (
+                            <div key={cell.id} className="rounded-md border bg-background px-2.5 py-2 text-xs">
+                              <p className="font-medium text-foreground">{cell.mission_name}</p>
+                              <p className="mt-0.5 text-muted-foreground">
+                                {formatInterventionTimeLabel({
+                                  planned_start: cell.planned_start,
+                                  planned_end: cell.planned_end,
+                                  slot: cell.slot as never,
+                                })}
+                              </p>
+                              {cell.assigned_team_name && (
+                                <div className="mt-1.5">
+                                  <TeamBadge name={cell.assigned_team_name} color={cell.assigned_team_color} variant="dot" />
+                                </div>
+                              )}
+                              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                                <Link href={`/interventions/${cell.id}`} className="font-medium text-primary hover:underline">
+                                  Voir l&apos;intervention
+                                </Link>
+                                <Link href={`/missions/${cell.mission_id}`} className="font-medium text-primary hover:underline">
+                                  Voir la mission
+                                </Link>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
 
                 {e.projectedOccurrences.length > 0 && (
                   <div className="mt-2 space-y-1.5">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Prévu par le rythme
+                    <p
+                      className={cn(
+                        'text-[10px] font-semibold uppercase tracking-wide',
+                        PLANNING_GRAMMAR.rhythm_planned.textClassName,
+                      )}
+                    >
+                      {PLANNING_GRAMMAR.rhythm_planned.label}
                     </p>
                     {e.projectedOccurrences.map((projection) => (
                       <div key={`${projection.templateId}-${projection.plannedStart ?? date}`} className="rounded-md border border-dashed bg-background px-2.5 py-2 text-xs">
@@ -234,6 +276,17 @@ export function DayFocusPanel({
                       <p className="text-[11px] text-muted-foreground">Aucune intervention matérialisée pour cette date.</p>
                     )}
                   </div>
+                )}
+
+                {e.grammarState === 'hole' && e.cells.length === 0 && e.projectedOccurrences.length === 0 && (
+                  <p
+                    className={cn(
+                      'mt-2 inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px]',
+                      PLANNING_GRAMMAR.hole.badgeClassName,
+                    )}
+                  >
+                    {PLANNING_GRAMMAR.hole.label} - roulement publié, rien de prévu
+                  </p>
                 )}
               </li>
             )

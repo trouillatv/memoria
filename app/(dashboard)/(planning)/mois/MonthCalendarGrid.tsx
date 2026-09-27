@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { CalendarOff } from 'lucide-react'
 import { dayState, monthDays, peopleOn, type DayFacts, type DayState } from '@/lib/planning/month-view'
+import { PLANNING_GRAMMAR, planningStateFromDayFacts, type PlanningGrammarState } from '@/lib/planning/grammar'
 import type { MonthRow } from '@/lib/db/month-view'
 import { cn } from '@/lib/utils'
 
@@ -27,6 +28,7 @@ function factsFor(rows: MonthRow[], date: string): DayFacts {
 interface SiteEntry {
   name: string
   state: DayState
+  grammarState: PlanningGrammarState
   count: number
 }
 
@@ -34,7 +36,7 @@ function sitesOn(rows: MonthRow[], date: string): SiteEntry[] {
   return rows
     .map((r) => {
       const facts = r.days[date] ?? emptyFacts()
-      return { name: r.siteName, state: dayState(facts), count: peopleOn(facts) }
+      return { name: r.siteName, state: dayState(facts), grammarState: planningStateFromDayFacts(facts), count: peopleOn(facts) }
     })
     .filter((e) => e.count > 0 || e.state === 'closed' || e.state === 'conflict' || e.state === 'hole')
     .sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
@@ -56,23 +58,14 @@ function SiteMarker({ state }: { state: DayState }) {
   return <span aria-hidden className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dot)} />
 }
 
-const SITE_BADGE: Record<DayState, string> = {
-  ok: 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-100',
-  projected: 'border-dashed border-border bg-background/60 text-muted-foreground dark:bg-background/30',
-  conflict: 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-200',
-  closed: 'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-950/60 dark:text-sky-200',
-  hole: 'border-rose-200 bg-rose-50/80 text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200',
-  empty: 'border-border bg-background/60 text-muted-foreground',
-}
-
 function SiteBadge({ entry }: { entry: SiteEntry }) {
   return (
     <span
       className={cn(
         'flex w-full items-center gap-1 rounded-full border px-1.5 py-px text-[11px] leading-tight',
-        SITE_BADGE[entry.state],
+        PLANNING_GRAMMAR[entry.grammarState].badgeClassName,
       )}
-      title={entry.name}
+      title={`${entry.name} - ${PLANNING_GRAMMAR[entry.grammarState].label}`}
     >
       <SiteMarker state={entry.state} />
       <span className="truncate">{entry.name}</span>
@@ -102,13 +95,22 @@ export function MonthCalendarGrid({
     <div className="overflow-hidden rounded-lg border bg-card">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b px-3 py-2.5 text-[13px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-emerald-600" />chantier prévu
+          <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-slate-500" />{PLANNING_GRAMMAR.rhythm_planned.label}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <CalendarOff className="h-4 w-4 text-sky-600" aria-hidden />fermé
+          <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-emerald-600" />{PLANNING_GRAMMAR.intervention_planned.label}
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <CalendarOff className="h-4 w-4 text-rose-600" aria-hidden />fermé + intervention prévue
+          <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-teal-600" />{PLANNING_GRAMMAR.completed.label}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarOff className="h-4 w-4 text-sky-600" aria-hidden />{PLANNING_GRAMMAR.closed.label}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarOff className="h-4 w-4 text-rose-600" aria-hidden />{PLANNING_GRAMMAR.conflict.label}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-rose-500" />{PLANNING_GRAMMAR.hole.label}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-violet-600" />exception
@@ -220,7 +222,7 @@ export function MonthCalendarGrid({
 }
 
 function ariaFor(num: number, month: string, entries: SiteEntry[]): string {
-  if (entries.length === 0) return `${num} ${month} : rien de prévu`
-  const names = entries.map((e) => e.name).join(', ')
+  if (entries.length === 0) return `${num} ${month} : ${PLANNING_GRAMMAR.empty.label.toLowerCase()}`
+  const names = entries.map((e) => `${e.name} (${PLANNING_GRAMMAR[e.grammarState].label})`).join(', ')
   return `${num} ${month} : ${entries.length} chantier${entries.length > 1 ? 's' : ''} - ${names}`
 }
