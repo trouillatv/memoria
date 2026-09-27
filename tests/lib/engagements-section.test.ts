@@ -224,7 +224,7 @@ describe('computePlannedEngagementSynthesis — ENG-UX-1 LOT F', () => {
     expect(result.total).toBe(2)
     expect(result.withMission).toBe(0)
     expect(result.withoutMission).toBe(1) // seul 'b' est actif ; 'a' (curated) n'est jamais compté
-    expect(result.needsPlanning).toBe(1)
+    expect(result.needsPlanning).toBe(0) // sans Mission = "à organiser", jamais "à planifier"
   })
 
   it('un Engagement curated ne compte jamais dans withMission/withoutMission/needsPlanning', () => {
@@ -235,37 +235,51 @@ describe('computePlannedEngagementSynthesis — ENG-UX-1 LOT F', () => {
     expect(result.needsPlanning).toBe(0)
   })
 
-  it('actif avec une Mission ayant une prochaine occurrence : withMission=1, needsPlanning=0', () => {
+  it('actif avec une Mission ayant un rythme actif : withMission=1, needsPlanning=0', () => {
     const engagements = [engagement({ id: 'a', status: 'active' })]
-    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', nextInterventionDate: '2026-10-01' })]]])
+    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', hasActiveRhythm: true })]]])
     const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
     expect(result.withMission).toBe(1)
     expect(result.withoutMission).toBe(0)
     expect(result.needsPlanning).toBe(0)
   })
 
-  it('actif avec une Mission SANS prochaine occurrence : withMission=1 mais needsPlanning=1', () => {
+  it('actif avec une Mission SANS rythme actif : withMission=1 mais needsPlanning=1', () => {
     const engagements = [engagement({ id: 'a', status: 'active' })]
-    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', nextInterventionDate: null })]]])
+    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', hasActiveRhythm: false })]]])
     const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
     expect(result.withMission).toBe(1)
     expect(result.withoutMission).toBe(0)
     expect(result.needsPlanning).toBe(1)
   })
 
-  it('actif sans aucune Mission : withoutMission=1 et needsPlanning=1', () => {
+  it('actif avec une Mission SANS rythme actif mais une nextInterventionDate historique : needsPlanning=1 quand même (matérialisation lazy, nextInterventionDate n’est plus déterminant)', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', hasActiveRhythm: false, nextInterventionDate: '2026-10-01' })]]])
+    const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
+    expect(result.needsPlanning).toBe(1)
+  })
+
+  it('actif avec une Mission ayant hasActiveRhythm=true mais aucune nextInterventionDate (roulement publié sans occurrence matérialisée) : needsPlanning=0', () => {
+    const engagements = [engagement({ id: 'a', status: 'active' })]
+    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', hasActiveRhythm: true, nextInterventionDate: null })]]])
+    const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
+    expect(result.needsPlanning).toBe(0)
+  })
+
+  it('actif sans aucune Mission : withoutMission=1 mais needsPlanning=0 ("à organiser", jamais "à planifier")', () => {
     const engagements = [engagement({ id: 'a', status: 'active' })]
     const result = computePlannedEngagementSynthesis(engagements, new Map(), new Map())
     expect(result.withMission).toBe(0)
     expect(result.withoutMission).toBe(1)
-    expect(result.needsPlanning).toBe(1)
+    expect(result.needsPlanning).toBe(0)
   })
 
-  it('plusieurs Missions, une seule avec prochaine occurrence : needsPlanning=0 (au moins une organisée)', () => {
+  it('plusieurs Missions, une seule avec rythme actif : needsPlanning=0 (au moins une organisée)', () => {
     const engagements = [engagement({ id: 'a', status: 'active' })]
     const missionsByEngagement = new Map([['a', [
-      testMission({ missionId: 'm1', nextInterventionDate: null }),
-      testMission({ missionId: 'm2', nextInterventionDate: '2026-11-01' }),
+      testMission({ missionId: 'm1', hasActiveRhythm: false }),
+      testMission({ missionId: 'm2', hasActiveRhythm: true }),
     ]]])
     const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
     expect(result.needsPlanning).toBe(0)
@@ -290,20 +304,20 @@ describe('computePlannedEngagementSynthesis — ENG-UX-1 LOT F', () => {
 
   // ENG-UX-1 MICRO-FIX (mandat Vincent 2026-09-26) — une Mission inactive est
   // de l'historique, jamais une organisation actuelle.
-  it('actif avec une seule Mission INACTIVE : withoutMission=1 et needsPlanning=1 (l’inactive ignorée)', () => {
+  it('actif avec une seule Mission INACTIVE : withoutMission=1 et needsPlanning=0 (l’inactive ignorée, sans Mission active = "à organiser")', () => {
     const engagements = [engagement({ id: 'a', status: 'active' })]
-    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', active: false, nextInterventionDate: '2026-10-01' })]]])
+    const missionsByEngagement = new Map([['a', [testMission({ missionId: 'm1', active: false, hasActiveRhythm: true })]]])
     const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
     expect(result.withMission).toBe(0)
     expect(result.withoutMission).toBe(1)
-    expect(result.needsPlanning).toBe(1)
+    expect(result.needsPlanning).toBe(0)
   })
 
   it('Mission inactive + Mission active organisée : withMission=1, needsPlanning=0 (l’inactive n’en bloque pas la comptabilisation)', () => {
     const engagements = [engagement({ id: 'a', status: 'active' })]
     const missionsByEngagement = new Map([['a', [
-      testMission({ missionId: 'm1', active: false, nextInterventionDate: null }),
-      testMission({ missionId: 'm2', active: true, nextInterventionDate: '2026-11-01' }),
+      testMission({ missionId: 'm1', active: false, hasActiveRhythm: false }),
+      testMission({ missionId: 'm2', active: true, hasActiveRhythm: true }),
     ]]])
     const result = computePlannedEngagementSynthesis(engagements, missionsByEngagement, new Map())
     expect(result.withMission).toBe(1)
@@ -354,13 +368,16 @@ describe('plannedEngagementMatchesTab', () => {
     expect(plannedEngagementMatchesTab('to_organize', engagement({ id: 'a', status: 'curated' }), [], [])).toBe(false)
   })
 
-  it("'to_plan' matche un Engagement actif dont aucune Mission active n'a de prochaine occurrence", () => {
+  it("'to_plan' matche un Engagement actif avec au moins une Mission active mais aucune à rythme actif — PLAN-UX-1D correctif : nextInterventionDate n'est plus déterminant (matérialisation lazy)", () => {
     const active = engagement({ id: 'a', status: 'active' })
-    const noUpcoming = [testMission({ missionId: 'm1', active: true, nextInterventionDate: null })]
-    expect(plannedEngagementMatchesTab('to_plan', active, noUpcoming, [])).toBe(true)
-    const upcoming = [testMission({ missionId: 'm1', active: true, nextInterventionDate: '2026-11-01' })]
-    expect(plannedEngagementMatchesTab('to_plan', active, upcoming, [])).toBe(false)
-    expect(plannedEngagementMatchesTab('to_plan', active, [], [])).toBe(true)
+    const noRhythm = [testMission({ missionId: 'm1', active: true, hasActiveRhythm: false })]
+    expect(plannedEngagementMatchesTab('to_plan', active, noRhythm, [])).toBe(true)
+    const activeRhythm = [testMission({ missionId: 'm1', active: true, hasActiveRhythm: true, nextInterventionDate: null })]
+    expect(plannedEngagementMatchesTab('to_plan', active, activeRhythm, [])).toBe(false)
+    const noRhythmButUpcoming = [testMission({ missionId: 'm1', active: true, hasActiveRhythm: false, nextInterventionDate: '2026-11-01' })]
+    expect(plannedEngagementMatchesTab('to_plan', active, noRhythmButUpcoming, [])).toBe(true)
+    // Sans aucune Mission : "à organiser", jamais "à planifier".
+    expect(plannedEngagementMatchesTab('to_plan', active, [], [])).toBe(false)
   })
 })
 
@@ -372,7 +389,7 @@ describe('computePlannedEngagementTabCounts', () => {
       engagement({ id: 'c', status: 'active' }),
     ]
     const missionsByEngagement = new Map([
-      ['b', [testMission({ missionId: 'm1', active: true, nextInterventionDate: '2026-11-01' })]],
+      ['b', [testMission({ missionId: 'm1', active: true, hasActiveRhythm: true })]],
     ])
     const actionsByEngagement = new Map([
       ['c', [testAction({ actionId: 'act-1', active: true })]],
@@ -381,7 +398,7 @@ describe('computePlannedEngagementTabCounts', () => {
     expect(counts.all).toBe(3)
     expect(counts.to_activate).toBe(1) // a
     expect(counts.to_organize).toBe(1) // c (aucune Mission)
-    expect(counts.to_plan).toBe(1) // c (idem, aucune Mission organisée)
+    expect(counts.to_plan).toBe(0) // b a un rythme actif, c n'a aucune Mission (donc "à organiser", pas "à planifier")
     expect(counts.with_open_action).toBe(1) // c
   })
 })

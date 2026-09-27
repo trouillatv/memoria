@@ -116,7 +116,10 @@ export interface PlannedEngagementSynthesis {
   withMission: number
   /** Actif mais sans aucune Mission organisatrice (pas encore prise en charge). */
   withoutMission: number
-  /** Actif ET (sans Mission, ou aucune Mission n'a de prochaine occurrence connue). */
+  /** Actif, au moins une Mission active, mais aucune n'a de rythme actif
+   *  (ni rythme simple actif, ni roulement publié) — cf. hasActiveRhythm
+   *  (PLAN-UX-1A+B). Ne compte JAMAIS les Engagements sans Mission (ceux-là
+   *  sont "à organiser", pas "à planifier" — cf. PLAN-UX-1D correctif). */
   needsPlanning: number
   /** Actions ouvertes liées (P0-4B), dédupliquées : une Action liée à plusieurs
    *  Engagements ne compte qu'une fois. */
@@ -154,8 +157,7 @@ export function computePlannedEngagementSynthesis(
     const missions = (missionsByEngagement.get(e.id) ?? []).filter((m) => m.active)
     if (missions.length > 0) withMission++
     else withoutMission++
-    const hasUpcoming = missions.some((m) => !!m.nextInterventionDate)
-    if (!hasUpcoming) needsPlanning++
+    if (activeMissionsNeedPlanning(missions)) needsPlanning++
   }
 
   const openActionIds = new Set<string>()
@@ -177,13 +179,31 @@ export function computePlannedEngagementSynthesis(
 }
 
 /**
+ * PLAN-UX-1D CORRECTIF (revue ChatGPT, SHA 64e7ba5e) — "à planifier" ne peut
+ * PAS reposer sur `nextInterventionDate` : la matérialisation MemorIA est
+ * lazy (une Mission avec rythme actif ou roulement publié peut légitimement
+ * n'avoir encore aucune intervention future matérialisée). La vérité
+ * stabilisée par PLAN-UX-1A+B est `EngagementMission.hasActiveRhythm`
+ * (rythme simple actif OU roulement publié). Un Engagement a besoin d'être
+ * planifié seulement s'il a AU MOINS une Mission active mais AUCUNE avec un
+ * rythme actif — jamais s'il n'a aucune Mission (ça, c'est "à organiser").
+ * Fonction partagée par computePlannedEngagementSynthesis ET
+ * plannedEngagementMatchesTab pour ne jamais diverger.
+ */
+function activeMissionsNeedPlanning(activeMissions: EngagementMission[]): boolean {
+  return activeMissions.length > 0 && !activeMissions.some((m) => m.hasActiveRhythm)
+}
+
+/**
  * PLAN-UX-1D (mandat Vincent 2026-09-27) — onglets par état de pilotage de la
  * page Prestations prévues. Réutilise EXACTEMENT la même lecture des
  * read-models que computePlannedEngagementSynthesis (aucune nouvelle vérité) :
  * `to_organize` reprend la logique de `withoutMission`, `to_plan` reprend
- * celle de `needsPlanning`. `with_open_action` s'applique quel que soit le
- * statut (curated ou active) car une Action peut rester ouverte après
- * bascule.
+ * celle de `needsPlanning` (activeMissionsNeedPlanning, cf. ci-dessus).
+ * `with_open_action` s'applique quel que soit le statut (curated ou active)
+ * car une Action peut rester ouverte après bascule. `to_organize` et
+ * `to_plan` ne se chevauchent jamais : un Engagement sans Mission n'est
+ * jamais "à planifier".
  */
 export type PlannedEngagementTabKey =
   | 'all'
@@ -220,8 +240,8 @@ export function plannedEngagementMatchesTab(
   if (engagement.status !== 'active') return false
   const activeMissions = missions.filter((m) => m.active)
   if (tab === 'to_organize') return activeMissions.length === 0
-  // to_plan : actif ET (sans Mission, ou aucune Mission n'a de prochaine occurrence)
-  return !activeMissions.some((m) => !!m.nextInterventionDate)
+  // to_plan : actif, au moins une Mission active, aucune avec rythme actif.
+  return activeMissionsNeedPlanning(activeMissions)
 }
 
 export function computePlannedEngagementTabCounts(
