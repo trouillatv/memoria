@@ -21,6 +21,7 @@ const base: PlanningLectureInput = {
     { date: '2026-07-23', missionId: 'mission-1', rotationId: 'rotation-e1' },
     { date: '2026-07-24', missionId: 'mission-2', rotationId: 'rotation-e1' },
   ],
+  missionGaps: [],
 }
 
 describe('derivePlanningLecture', () => {
@@ -48,5 +49,45 @@ describe('derivePlanningLecture', () => {
     const result = derivePlanningLecture({ ...base, scope: 'week', anchorDate: '2026-07-20' })
     expect(result?.contextLabel).toBe('Planning · 20 juillet 2026')
     expect(result?.headline).toBe('Le lundi 20 mérite votre attention.')
+  })
+
+  // E2E-FIX-2 correction (revue ChatGPT du SHA e69045a4) — un rythme simple
+  // projeté sans équipe n'est JAMAIS un trou de roulement. Témoin Vincent :
+  // « Entretien Carrelage » (rythme simple lun-ven), occurrences 28/29/30
+  // projetées, assignedTeamId null → « Mission prévue sans équipe ».
+  it('surfaces a mission-unassigned-impact signal for a projected occurrence with no team, never rotation-gap-impact', () => {
+    const result = derivePlanningLecture({
+      ...base,
+      rotations: [],
+      gaps: [],
+      missions: [{ id: 'mission-carrelage', name: 'Entretien Carrelage', siteName: 'Résidence' }],
+      assignments: [],
+      missionGaps: [
+        { date: '2026-09-28', missionId: 'mission-carrelage' },
+        { date: '2026-09-29', missionId: 'mission-carrelage' },
+        { date: '2026-09-30', missionId: 'mission-carrelage' },
+      ],
+    })
+
+    expect(result).toMatchObject({
+      headline: 'Entretien Carrelage est prévu sans équipe.',
+      primary: {
+        kind: 'mission-unassigned-impact',
+        sourceId: 'mission-carrelage',
+        sourceLabel: 'Entretien Carrelage',
+        siteName: 'Résidence',
+        occurrenceCount: 3,
+        gapDates: ['2026-09-28', '2026-09-29', '2026-09-30'],
+      },
+      evidence: { rotations: 0, missions: 1 },
+    })
+  })
+
+  it('prefers a real rotation-gap-impact over a mission-unassigned-impact when both exist', () => {
+    const result = derivePlanningLecture({
+      ...base,
+      missionGaps: [{ date: '2026-09-28', missionId: 'mission-carrelage' }],
+    })
+    expect(result?.primary.kind).toBe('rotation-gap-impact')
   })
 })

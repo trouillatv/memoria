@@ -28,6 +28,20 @@ export interface LectureGap {
   rotationId: string | null
 }
 
+/**
+ * E2E-FIX-2 correction (revue ChatGPT du SHA e69045a4, 2026-09-28) — une
+ * occurrence projetée sans équipe n'est PAS un trou de roulement : c'est un
+ * fait sur la Mission elle-même, qu'elle soit en rythme simple ou en
+ * roulement avancé. La confondre avec `LectureGap` la ferait matcher contre
+ * `rotations` (qui contient aussi les rythmes simples) et produirait à tort
+ * un signal « roulement actif » — exactement la confusion que l'E2E-FIX
+ * devait éliminer.
+ */
+export interface LectureMissionGap {
+  date: string
+  missionId: string
+}
+
 export interface PlanningLectureInput {
   scope: LectureScope
   anchorDate: string
@@ -36,21 +50,33 @@ export interface PlanningLectureInput {
   missions: LectureMission[]
   assignments: LectureAssignment[]
   gaps: LectureGap[]
+  missionGaps: LectureMissionGap[]
 }
+
+interface PlanningLecturePrimaryBase {
+  sourceId: string
+  sourceLabel: string
+  gapDates: string[]
+  missionIds: string[]
+}
+
+export type PlanningLecturePrimary =
+  | (PlanningLecturePrimaryBase & {
+      kind: 'rotation-gap-impact'
+      endsOn: string | null
+      gapCount: number
+      missionCount: number
+    })
+  | (PlanningLecturePrimaryBase & {
+      kind: 'mission-unassigned-impact'
+      siteName: string
+      occurrenceCount: number
+    })
 
 export interface PlanningLecture {
   contextLabel: string
   headline: string
-  primary: {
-    kind: 'rotation-gap-impact'
-    sourceId: string
-    sourceLabel: string
-    endsOn: string | null
-    gapCount: number
-    missionCount: number
-    gapDates: string[]
-    missionIds: string[]
-  }
+  primary: PlanningLecturePrimary
   evidence: {
     rotations: number
     missions: number
@@ -97,7 +123,7 @@ export function derivePlanningLecture(input: PlanningLectureInput): PlanningLect
   const rotationById = new Map(input.rotations.map((rotation) => [rotation.id, rotation]))
   const missionById = new Map(input.missions.map((mission) => [mission.id, mission]))
 
-  const candidates = input.rotations
+  const rotationCandidates = input.rotations
     .map((rotation) => {
       const gaps = input.gaps.filter((gap) =>
         gap.rotationId === rotation.id &&
@@ -123,28 +149,76 @@ export function derivePlanningLecture(input: PlanningLectureInput): PlanningLect
       a.rotation.id.localeCompare(b.rotation.id),
     )
 
-  const candidate = candidates[0]
-  if (!candidate) return null
-
   const contextDate = formatContextDate(input.anchorDate)
-  const headlineDate = formatDate(input.anchorDate, input.scope)
+
+  const rotationCandidate = rotationCandidates[0]
+  if (rotationCandidate) {
+    const headlineDate = formatDate(input.anchorDate, input.scope)
+    return {
+      contextLabel: `Planning · ${contextDate}`,
+      headline: `Le ${headlineDate} mérite votre attention.`,
+      primary: {
+        kind: 'rotation-gap-impact',
+        sourceId: rotationCandidate.rotation.id,
+        sourceLabel: rotationCandidate.rotation.name,
+        endsOn: rotationCandidate.rotation.endsOn,
+        gapCount: rotationCandidate.gaps.length,
+        missionCount: rotationCandidate.missionIds.length,
+        gapDates: rotationCandidate.gapDates,
+        missionIds: rotationCandidate.missionIds,
+      },
+      evidence: {
+        rotations: rotationById.has(rotationCandidate.rotation.id) ? 1 : 0,
+        missions: rotationCandidate.missionIds.length,
+        assignments: rotationCandidate.assignments.length,
+      },
+    }
+  }
+
+  // E2E-FIX-2 correction — pas de vrai trou de roulement : une Mission (rythme
+  // simple ou roulement) projetée sans équipe effective reste un fait qui
+  // mérite attention, mais JAMAIS sous l'identité d'un roulement.
+  const missionCandidates = input.missions
+    .map((mission) => {
+      const gaps = input.missionGaps.filter((gap) =>
+        gap.missionId === mission.id &&
+        (!input.focusDate || gap.date === input.focusDate),
+      )
+      return {
+        mission,
+        gaps,
+        gapDates: stableUnique(gaps.map((gap) => gap.date)),
+      }
+    })
+    .filter((candidate) => candidate.gaps.length > 0)
+    .sort((a, b) =>
+      b.gaps.length - a.gaps.length ||
+      a.mission.id.localeCompare(b.mission.id),
+    )
+
+  const missionCandidate = missionCandidates[0]
+  if (!missionCandidate) return null
+
+  const assignments = input.assignments.filter(
+    (assignment) => assignment.missionId === missionCandidate.mission.id && assignment.assigned,
+  )
+
   return {
     contextLabel: `Planning · ${contextDate}`,
-    headline: `Le ${headlineDate} mérite votre attention.`,
+    headline: `${missionCandidate.mission.name} est prévu sans équipe.`,
     primary: {
-      kind: 'rotation-gap-impact',
-      sourceId: candidate.rotation.id,
-      sourceLabel: candidate.rotation.name,
-      endsOn: candidate.rotation.endsOn,
-      gapCount: candidate.gaps.length,
-      missionCount: candidate.missionIds.length,
-      gapDates: candidate.gapDates,
-      missionIds: candidate.missionIds,
+      kind: 'mission-unassigned-impact',
+      sourceId: missionCandidate.mission.id,
+      sourceLabel: missionCandidate.mission.name,
+      siteName: missionCandidate.mission.siteName,
+      occurrenceCount: missionCandidate.gaps.length,
+      gapDates: missionCandidate.gapDates,
+      missionIds: [missionCandidate.mission.id],
     },
     evidence: {
-      rotations: rotationById.has(candidate.rotation.id) ? 1 : 0,
-      missions: candidate.missionIds.length,
-      assignments: candidate.assignments.length,
+      rotations: 0,
+      missions: 1,
+      assignments: assignments.length,
     },
   }
 }

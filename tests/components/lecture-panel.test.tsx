@@ -18,6 +18,7 @@ const input: PlanningLectureInput = {
     { date: '2026-07-20', missionId: 'mission-1', rotationId: 'rotation-e1' },
     { date: '2026-07-21', missionId: 'mission-2', rotationId: 'rotation-e1' },
   ],
+  missionGaps: [],
 }
 
 describe('LecturePanel', () => {
@@ -58,6 +59,53 @@ describe('LecturePanel', () => {
     expect(screen.getByText('1 roulement')).toBeInTheDocument()
     expect(screen.getByText('2 missions')).toBeInTheDocument()
     expect(screen.getByText('1 affectation')).toBeInTheDocument()
+  })
+
+  // E2E-FIX-2 correction (revue ChatGPT du SHA e69045a4) — un signal
+  // `mission-unassigned-impact` ne doit JAMAIS parler de « roulement ».
+  it('renders mission-unassigned-impact without any rotation wording', () => {
+    const lecture = derivePlanningLecture({
+      scope: 'week',
+      anchorDate: '2026-09-28',
+      rotations: [],
+      missions: [{ id: 'mission-carrelage', name: 'Entretien Carrelage', siteName: 'Résidence' }],
+      assignments: [],
+      gaps: [],
+      missionGaps: [
+        { date: '2026-09-28', missionId: 'mission-carrelage' },
+        { date: '2026-09-29', missionId: 'mission-carrelage' },
+        { date: '2026-09-30', missionId: 'mission-carrelage' },
+      ],
+    })
+    expect(lecture).not.toBeNull()
+
+    render(
+      <LecturePanel
+        lecture={lecture!}
+        links={{
+          rotation: '/roulements',
+          gaps: '/semaine?week=2026-W40',
+          missions: ['/missions/mission-carrelage'],
+        }}
+        emptyContextLabel="Planning · septembre 2026"
+        rotationCount={0}
+        interventionCount={0}
+        assignmentCount={0}
+      />,
+    )
+
+    expect(screen.getByText('Entretien Carrelage est prévu sans équipe.')).toBeInTheDocument()
+    expect(screen.getByText('Mission prévue sans équipe')).toBeInTheDocument()
+    expect(screen.getByText('3 passages concernés cette semaine')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Entretien Carrelage' })).toHaveAttribute(
+      'href',
+      '/missions/mission-carrelage',
+    )
+    expect(screen.getByRole('link', { name: /Voir la fiche de Entretien Carrelage/ })).toHaveAttribute(
+      'href',
+      '/missions/mission-carrelage',
+    )
+    expect(screen.queryByText(/roulement/i)).not.toBeInTheDocument()
   })
 
   it('renders no empty shell when no deterministic lecture exists', () => {

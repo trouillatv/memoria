@@ -124,6 +124,22 @@ export interface CycleOverview extends PlanningCycle {
 }
 
 /**
+ * E2E-FIX-2 correction (revue ChatGPT du SHA e69045a4) — `listCyclesForOrg()`
+ * est org-wide et non filtré par période : un cycle publié mais déjà terminé,
+ * ou qui démarre après la période affichée, ne couvre pas cette période et ne
+ * doit jamais être compté comme un roulement actif dessus.
+ */
+export function filterCyclesCoveringPeriod<T extends Pick<PlanningCycle, 'status' | 'startsOn' | 'endsOn'>>(
+  cycles: T[],
+  periodStart: string,
+  periodEnd: string,
+): T[] {
+  return cycles.filter(
+    (c) => c.status === 'published' && c.startsOn <= periodEnd && (c.endsOn === null || c.endsOn >= periodStart),
+  )
+}
+
+/**
  * TOUS les roulements de l'organisation.
  *
  * Cette vue répond à UNE question : « quels roulements existent, et dans quel

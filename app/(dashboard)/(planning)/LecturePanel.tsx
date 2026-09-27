@@ -51,10 +51,41 @@ export function LecturePanel({
   }
 
   const { primary, evidence } = lecture
-  const gapLabel = `${primary.gapCount} jour${primary.gapCount > 1 ? 's' : ''} sans équipe`
-  const missionLabel = `${primary.missionCount} chantier${primary.missionCount > 1 ? 's' : ''} concerné${primary.missionCount > 1 ? 's' : ''}`
   const missionEvidenceLabel = `${evidence.missions} mission${evidence.missions > 1 ? 's' : ''}`
   const assignmentEvidenceLabel = `${evidence.assignments} affectation${evidence.assignments > 1 ? 's' : ''}`
+  const gapDatesLabel = primary.gapDates.map((date) => date.slice(-2)).join(', ') || 'jour'
+
+  // E2E-FIX-2 correction — un `mission-unassigned-impact` n'est jamais un
+  // roulement : wording, lien et preuve doivent parler de la Mission elle-même,
+  // jamais de « roulement actif » ni « N roulement(s) ».
+  let item1Href = links.rotation
+  let item1Subtext = 'roulement actif'
+  let gapLabel = ''
+  let item3Label = ''
+  let item3Subtext = 'couverture issue du planning'
+  let evidenceChip1 = '1 roulement'
+  let evidenceChip2 = missionEvidenceLabel
+  let footerText = `Voir la fiche du ${primary.sourceLabel} →`
+
+  if (primary.kind === 'rotation-gap-impact') {
+    item1Href = links.rotation
+    item1Subtext = primary.endsOn ? `se termine le ${primary.endsOn}` : 'roulement actif'
+    gapLabel = `${primary.gapCount} jour${primary.gapCount > 1 ? 's' : ''} sans équipe`
+    item3Label = `${primary.missionCount} chantier${primary.missionCount > 1 ? 's' : ''} concerné${primary.missionCount > 1 ? 's' : ''}`
+    item3Subtext = 'couverture issue du planning'
+    evidenceChip1 = '1 roulement'
+    evidenceChip2 = missionEvidenceLabel
+    footerText = `Voir la fiche du ${primary.sourceLabel} →`
+  } else {
+    item1Href = links.missions[0] ?? links.gaps
+    item1Subtext = 'Mission prévue sans équipe'
+    gapLabel = `${primary.occurrenceCount} passage${primary.occurrenceCount > 1 ? 's' : ''} concerné${primary.occurrenceCount > 1 ? 's' : ''} cette semaine`
+    item3Label = primary.siteName
+    item3Subtext = 'chantier concerné'
+    evidenceChip1 = missionEvidenceLabel
+    evidenceChip2 = `${primary.occurrenceCount} passage${primary.occurrenceCount > 1 ? 's' : ''}`
+    footerText = `Voir la fiche de ${primary.sourceLabel} →`
+  }
 
   return (
     <aside className="rounded-lg border-l-2 border-reading-border bg-card px-5 py-5">
@@ -68,7 +99,7 @@ export function LecturePanel({
 
       <div className="relative mt-3 space-y-2 pl-8 before:absolute before:bottom-3 before:left-3 before:top-3 before:border-l before:border-border">
         <Link
-          href={links.rotation}
+          href={item1Href}
           aria-label={primary.sourceLabel}
           className="relative flex items-center gap-2 py-1 text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -78,7 +109,7 @@ export function LecturePanel({
           <span>
             {primary.sourceLabel}
             <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-              {primary.endsOn ? `se termine le ${primary.endsOn}` : 'roulement actif'}
+              {item1Subtext}
             </span>
           </span>
         </Link>
@@ -94,23 +125,23 @@ export function LecturePanel({
           <span>
             {gapLabel}
             <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-              dont le {primary.gapDates[0]?.slice(-2) ?? 'jour'}
+              dont le {gapDatesLabel}
             </span>
           </span>
         </Link>
 
         <Link
           href={links.missions[0] ?? links.gaps}
-          aria-label={missionLabel}
+          aria-label={item3Label}
           className="relative flex items-center gap-2 py-1 text-left text-sm font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="absolute -left-8 flex h-6 w-6 items-center justify-center rounded-full border bg-card text-[10px] font-semibold text-primary">
             3
           </span>
           <span>
-            {missionLabel}
+            {item3Label}
             <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-              couverture issue du planning
+              {item3Subtext}
             </span>
           </span>
         </Link>
@@ -119,10 +150,10 @@ export function LecturePanel({
       <p className="mt-5 text-xs font-medium text-muted-foreground">Construit à partir de</p>
       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700">
-          1 roulement
+          {evidenceChip1}
         </span>
         <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-sky-700">
-          {missionEvidenceLabel}
+          {evidenceChip2}
         </span>
         <span className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700">
           {assignmentEvidenceLabel}
@@ -130,10 +161,10 @@ export function LecturePanel({
       </div>
 
       <Link
-        href={links.rotation}
+        href={item1Href}
         className="mt-5 block border-t pt-3 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        Voir la fiche du {primary.sourceLabel} →
+        {footerText}
       </Link>
     </aside>
   )

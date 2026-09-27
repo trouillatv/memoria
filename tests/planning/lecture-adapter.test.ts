@@ -58,5 +58,50 @@ describe('buildPlanningLectureInput', () => {
     expect(input.rotations).toEqual([])
     expect(input.assignments).toEqual([])
     expect(input.gaps).toEqual([])
+    expect(input.missionGaps).toEqual([])
+  })
+
+  // E2E-FIX-2 correction (revue ChatGPT du SHA e69045a4) — une occurrence
+  // projetée sans équipe alimente `missionGaps`, JAMAIS `gaps` : sinon elle
+  // matche contre `rotations` (qui contient aussi les rythmes simples) et
+  // produit à tort un signal « roulement actif ».
+  it('routes unassigned projected occurrences into missionGaps, never into gaps', () => {
+    const input = buildPlanningLectureInput({
+      scope: 'week',
+      anchorDate: '2026-09-28',
+      rows: [],
+      missions: [{ id: 'mission-carrelage', name: 'Entretien Carrelage', siteId: 'site-1', siteName: 'Résidence', clientName: null, contractName: null, defaultTeamId: null }],
+      rotations: [],
+      monthRows: [{
+        siteId: 'site-1',
+        siteName: 'Résidence',
+        clientName: null,
+        days: {
+          '2026-09-28': {
+            expected: 0,
+            done: 0,
+            kept: 0,
+            projected: 1,
+            closed: false,
+            hasException: false,
+            cycleCovers: false,
+            projectedOccurrences: [{
+              templateId: 'template-1',
+              missionId: 'mission-carrelage',
+              missionName: 'Entretien Carrelage',
+              plannedStart: null,
+              plannedEnd: null,
+              slot: 'morning',
+              assignedTeamId: null,
+              assignedTeamName: null,
+              assignedTeamColor: null,
+            }],
+          },
+        },
+      }],
+    })
+
+    expect(input.gaps).toEqual([])
+    expect(input.missionGaps).toEqual([{ date: '2026-09-28', missionId: 'mission-carrelage' }])
   })
 })

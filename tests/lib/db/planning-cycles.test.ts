@@ -113,13 +113,46 @@ let db: ReturnType<typeof makeDb>
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => db }))
 
-import { createCycle, updateCycle, supersedeCycle } from '@/lib/db/planning-cycles'
+import { createCycle, updateCycle, supersedeCycle, filterCyclesCoveringPeriod } from '@/lib/db/planning-cycles'
 
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.requireTeamCompatibleWithOrg.mockResolvedValue({ allowed: true })
   mocks.rpc.mockResolvedValue({ error: null })
   db = makeDb(baseResponses())
+})
+
+// E2E-FIX-2 correction (revue ChatGPT du SHA e69045a4) — le badge Lecture
+// Semaine comptait TOUS les cycles publiés de l'organisation, sans vérifier
+// qu'ils couvrent réellement la semaine affichée.
+describe('filterCyclesCoveringPeriod (E2E-FIX-2 correction)', () => {
+  const weekStart = '2026-09-28'
+  const weekEnd = '2026-10-04'
+
+  it('excludes a published cycle that already ended before the period', () => {
+    const cycles = [{ status: 'published' as const, startsOn: '2026-01-01', endsOn: '2025-12-31' }]
+    expect(filterCyclesCoveringPeriod(cycles, weekStart, weekEnd)).toEqual([])
+  })
+
+  it('excludes a published cycle that starts after the period', () => {
+    const cycles = [{ status: 'published' as const, startsOn: '2026-11-01', endsOn: null }]
+    expect(filterCyclesCoveringPeriod(cycles, weekStart, weekEnd)).toEqual([])
+  })
+
+  it('includes a published cycle overlapping the period', () => {
+    const cycles = [{ status: 'published' as const, startsOn: '2026-09-01', endsOn: '2026-10-15' }]
+    expect(filterCyclesCoveringPeriod(cycles, weekStart, weekEnd)).toEqual(cycles)
+  })
+
+  it('includes an open-ended published cycle that already started', () => {
+    const cycles = [{ status: 'published' as const, startsOn: '2026-01-01', endsOn: null }]
+    expect(filterCyclesCoveringPeriod(cycles, weekStart, weekEnd)).toEqual(cycles)
+  })
+
+  it('excludes a draft cycle even if it overlaps the period', () => {
+    const cycles = [{ status: 'draft' as const, startsOn: '2026-09-01', endsOn: null }]
+    expect(filterCyclesCoveringPeriod(cycles, weekStart, weekEnd)).toEqual([])
+  })
 })
 
 describe('regenerateTemplates — routage atomique par RPC (PLAN-INTEG-1 Bug #2)', () => {

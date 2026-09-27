@@ -39,7 +39,7 @@ import { listKeptInterventionIds, listDecisions } from '@/lib/db/closure-decisio
 import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
 import { resolutionOptions, type ResolutionOption } from '@/lib/planning/conflict-resolution'
 import { listTeams } from '@/lib/db/teams'
-import { listCyclesForOrg } from '@/lib/db/planning-cycles'
+import { filterCyclesCoveringPeriod, listCyclesForOrg } from '@/lib/db/planning-cycles'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
 import {
   getWeekOperationalSignals,
@@ -181,8 +181,15 @@ export default async function SemainePage({ searchParams }: PageProps) {
   // E2E-4 (mandat Vincent 2026-09-28) — le badge Lecture doit compter des
   // roulements (planning_cycle publiés), jamais tous les intervention_templates
   // actifs : un rythme simple n'est pas un roulement.
+  //
+  // E2E-FIX-2 correction (revue ChatGPT du SHA e69045a4) — `listCyclesForOrg()`
+  // est org-wide et non filtré par période : un cycle publié mais déjà terminé
+  // (ou qui démarre après cette semaine) était compté à tort. Un roulement ne
+  // compte que s'il couvre RÉELLEMENT la semaine affichée.
   const publishedCycles = view === 'site'
-    ? await listCyclesForOrg().then((cs) => cs.filter((c) => c.status === 'published')).catch(() => [])
+    ? await listCyclesForOrg()
+        .then((cs) => filterCyclesCoveringPeriod(cs, range.weekStart, range.weekEnd))
+        .catch(() => [])
     : []
   const lecture = view === 'site'
     ? derivePlanningLecture(buildPlanningLectureInput({

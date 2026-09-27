@@ -4,6 +4,7 @@ import type {
   LectureAssignment,
   LectureGap,
   LectureMission,
+  LectureMissionGap,
   LectureRotation,
   LectureScope,
   PlanningLectureInput,
@@ -52,6 +53,11 @@ export function buildPlanningLectureInput({
    * roulement avancé régénèrent un `intervention_templates` par équipe/slot),
    * donc null ici veut dire réellement « aucune équipe » — jamais une
    * approximation.
+   *
+   * E2E-FIX-2 correction (revue ChatGPT du SHA e69045a4) — ces occurrences
+   * alimentent `missionGaps`, jamais `gaps` : un rythme simple projeté sans
+   * équipe n'est pas un trou de roulement (voir doctrine sur
+   * `LectureMissionGap`).
    */
   monthRows?: MonthRow[]
 }): PlanningLectureInput {
@@ -95,14 +101,14 @@ export function buildPlanningLectureInput({
   // matérialisée (absente de `rows`), ni couverte par une rotation en gap
   // (aucune cellule n'existe pour elle). Sans ce bloc, `derivePlanningLecture`
   // n'a strictement aucune visibilité sur elle.
+  const missionGaps: LectureMissionGap[] = []
   for (const row of monthRows) {
     for (const [date, facts] of Object.entries(row.days)) {
       for (const occurrence of facts.projectedOccurrences ?? []) {
         if (occurrence.assignedTeamId) continue
-        gaps.push({
+        missionGaps.push({
           date,
           missionId: occurrence.missionId,
-          rotationId: occurrence.templateId,
         })
       }
     }
@@ -116,5 +122,6 @@ export function buildPlanningLectureInput({
     missions: lectureMissions,
     assignments,
     gaps,
+    missionGaps,
   }
 }
