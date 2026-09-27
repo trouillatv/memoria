@@ -39,6 +39,7 @@ import { listKeptInterventionIds, listDecisions } from '@/lib/db/closure-decisio
 import { projectClosures, type ProjectableClosure } from '@/lib/planning/closures'
 import { resolutionOptions, type ResolutionOption } from '@/lib/planning/conflict-resolution'
 import { listTeams } from '@/lib/db/teams'
+import { listCyclesForOrg } from '@/lib/db/planning-cycles'
 import { getWeekVigilance } from '@/lib/db/week-vigilance'
 import {
   getWeekOperationalSignals,
@@ -177,6 +178,12 @@ export default async function SemainePage({ searchParams }: PageProps) {
       view === 'site' ? buildMonthRows({ from: range.weekStart, to: range.weekEnd }) : Promise.resolve<MonthRow[]>([]),
     ])
   const rotationOptions = await fetchRotationOptions(missionOptions).catch(() => [])
+  // E2E-4 (mandat Vincent 2026-09-28) — le badge Lecture doit compter des
+  // roulements (planning_cycle publiés), jamais tous les intervention_templates
+  // actifs : un rythme simple n'est pas un roulement.
+  const publishedCycles = view === 'site'
+    ? await listCyclesForOrg().then((cs) => cs.filter((c) => c.status === 'published')).catch(() => [])
+    : []
   const lecture = view === 'site'
     ? derivePlanningLecture(buildPlanningLectureInput({
         scope: 'week',
@@ -184,6 +191,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
         rows: siteRows,
         missions: missionOptions,
         rotations: rotationOptions,
+        monthRows,
       }))
     : null
 
@@ -524,7 +532,7 @@ export default async function SemainePage({ searchParams }: PageProps) {
           lecture={lecture}
           links={lectureLinks ?? { rotation: '/roulements', gaps: `/semaine?week=${formatWeekParam(range)}`, missions: [] }}
           emptyContextLabel={`Planning · ${formatWeekHeader(range)}`}
-          rotationCount={rotationOptions.length}
+          rotationCount={publishedCycles.length}
           interventionCount={siteRows.flatMap((row) => Object.values(row.days).flat()).length}
           assignmentCount={siteRows.flatMap((row) => Object.values(row.days).flat()).filter((cell) => Boolean(cell.assigned_team_id)).length}
         />

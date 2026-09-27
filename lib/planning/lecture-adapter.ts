@@ -1,4 +1,5 @@
 import type { SiteRow } from '@/lib/week-planning-helpers'
+import type { MonthRow } from '@/lib/db/month-view'
 import type {
   LectureAssignment,
   LectureGap,
@@ -35,6 +36,7 @@ export function buildPlanningLectureInput({
   rows,
   missions,
   rotations,
+  monthRows = [],
 }: {
   scope: LectureScope
   anchorDate: string
@@ -42,6 +44,16 @@ export function buildPlanningLectureInput({
   rows: SiteRow[]
   missions: LectureMissionOption[]
   rotations: LectureRotationOption[]
+  /**
+   * E2E-3 (Vincent 2026-09-28) — occurrences PROJETÉES (pas encore
+   * matérialisées) : `rows` ne voit qu'`interventions`, donc une mission en
+   * pur rythme projeté sans équipe n'y apparaît jamais. `assignedTeamId` sur
+   * `projectedOccurrences` porte déjà l'équipe effective (rythme simple ET
+   * roulement avancé régénèrent un `intervention_templates` par équipe/slot),
+   * donc null ici veut dire réellement « aucune équipe » — jamais une
+   * approximation.
+   */
+  monthRows?: MonthRow[]
 }): PlanningLectureInput {
   const lectureMissions: LectureMission[] = missions.map((mission) => ({
     id: mission.id,
@@ -75,6 +87,23 @@ export function buildPlanningLectureInput({
             rotationId: cell.template_id,
           })
         }
+      }
+    }
+  }
+
+  // E2E-3 — occurrence projetée dans la période, sans équipe effective : ni
+  // matérialisée (absente de `rows`), ni couverte par une rotation en gap
+  // (aucune cellule n'existe pour elle). Sans ce bloc, `derivePlanningLecture`
+  // n'a strictement aucune visibilité sur elle.
+  for (const row of monthRows) {
+    for (const [date, facts] of Object.entries(row.days)) {
+      for (const occurrence of facts.projectedOccurrences ?? []) {
+        if (occurrence.assignedTeamId) continue
+        gaps.push({
+          date,
+          missionId: occurrence.missionId,
+          rotationId: occurrence.templateId,
+        })
       }
     }
   }

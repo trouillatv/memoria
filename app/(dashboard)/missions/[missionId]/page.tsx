@@ -173,7 +173,7 @@ export default async function MissionPage({
                         <p className="text-xs text-muted-foreground">
                           {s?.nextInterventionDate
                             ? `Prochaine : ${formatDateFr(s.nextInterventionDate)}`
-                            : 'Aucune intervention planifiée'}
+                            : 'Aucune intervention matérialisée'}
                         </p>
                       </div>
                       <RecurrenceRowActions
@@ -189,7 +189,13 @@ export default async function MissionPage({
             <div className="flex flex-wrap items-center gap-2">
               <RecurrenceSection missionId={mission.id} missionName={mission.name} />
               <Link
-                href={`/sites/${mission.site_id}?tab=planning`}
+                href={`/sites/${mission.site_id}/roulements/nouveau?mission=${mission.id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
+              >
+                <CalendarDays className="h-3.5 w-3.5" /> Préparer un roulement avancé
+              </Link>
+              <Link
+                href={`/mois?site=${mission.site_id}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
               >
                 <CalendarDays className="h-3.5 w-3.5" /> Voir le planning
@@ -215,7 +221,7 @@ export default async function MissionPage({
                 Voir le roulement
               </Link>
               <Link
-                href={`/sites/${mission.site_id}?tab=planning`}
+                href={`/mois?site=${mission.site_id}`}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded border bg-card hover:bg-muted/50 text-sm"
               >
                 <CalendarDays className="h-3.5 w-3.5" /> Voir le planning
