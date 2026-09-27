@@ -9,6 +9,7 @@ import type { CycleSlot, PlanningCycle } from '@/lib/db/planning-cycles'
 import type { OverviewEventInput } from '@/lib/chantier/overview-projections'
 import type { DbMission, DbTeam } from '@/types/db'
 import type { ProjectedDayOccurrence } from '@/lib/planning/month-view'
+import { occurrenceKey } from '@/lib/planning/projection'
 import { PLANNING_GRAMMAR } from '@/lib/planning/grammar'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
 import { TeamBadge } from '@/components/ui/team-badge'
@@ -91,7 +92,7 @@ export function PlanningWorkspace({
     ...listEvents.map((e): WeekListItem => ({ kind: 'real', id: e.id, sortKey: e.start, event: e })),
     ...weekProjections.map((occ): WeekListItem => ({
       kind: 'projected',
-      id: `${occ.templateId}-${occ.day}`,
+      id: occurrenceKey({ templateId: occ.templateId, scheduledFor: occ.day, slot: occ.slot }),
       sortKey: occ.plannedStart ?? occ.day,
       occurrence: occ,
     })),
@@ -173,7 +174,7 @@ export function PlanningWorkspace({
                       ))}
                       {dayProjections.map((projection) => (
                         <div
-                          key={`${projection.templateId}-${projection.day}`}
+                          key={occurrenceKey({ templateId: projection.templateId, scheduledFor: projection.day, slot: projection.slot })}
                           className="rounded-xl border border-dashed bg-background p-2 text-sm"
                         >
                           <p className={cn('text-[10px] font-semibold uppercase tracking-wide', PLANNING_GRAMMAR.rhythm_planned.textClassName)}>
@@ -222,7 +223,7 @@ export function PlanningWorkspace({
                     href={`/missions/${item.occurrence.missionId}`}
                     className="flex flex-col gap-1 p-3 hover:bg-muted/40 md:flex-row md:items-center md:gap-4"
                   >
-                    <span className="w-44 shrink-0 text-sm font-medium">{formatEventStart(item.occurrence.plannedStart ?? item.occurrence.day)}</span>
+                    <span className="w-44 shrink-0 text-sm font-medium">{formatProjectionStart(item.occurrence)}</span>
                     <span className="min-w-0 flex-1 text-sm">{item.occurrence.missionName ?? 'Mission'}</span>
                     <span className={cn('shrink-0 text-sm font-medium', PLANNING_GRAMMAR.rhythm_planned.textClassName)}>
                       {PLANNING_GRAMMAR.rhythm_planned.label}
@@ -478,4 +479,20 @@ function formatEventStart(value: string): string {
     })
   }
   return d.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long', timeZone: 'UTC' })
+}
+
+// `plannedStart`/`plannedEnd` stockent une heure locale numérique avec un
+// suffixe Z historique : ce n'est PAS un vrai UTC, il ne faut jamais le
+// reconvertir via un fuseau (`formatEventStart` applique Pacific/Noumea et
+// décalerait l'heure affichée). La date vient de `occurrence.day` (date nue,
+// donc sans risque de conversion) ; l'heure vient de `formatInterventionTimeLabel`,
+// seule source de vérité horaire déjà utilisée par la grille juste au-dessus.
+function formatProjectionStart(occurrence: ProjectedDayOccurrence & { day: string }): string {
+  const dateLabel = formatEventStart(occurrence.day)
+  const timeLabel = formatInterventionTimeLabel({
+    planned_start: occurrence.plannedStart,
+    planned_end: occurrence.plannedEnd,
+    slot: occurrence.slot as never,
+  })
+  return timeLabel === '—' ? dateLabel : `${dateLabel} · ${timeLabel}`
 }

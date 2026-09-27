@@ -241,6 +241,101 @@ describe('site operational workspaces', () => {
     expect(listItem).toHaveAttribute('href', '/missions/mission-2')
   })
 
+  // ── SITE-PLAN-PROJ-1 FINAL — L'HEURE PROJETÉE N'EST PAS UN TIMESTAMP RÉEL ──
+  // `planned_start`/`planned_end` stockent une heure locale numérique avec un
+  // suffixe Z historique : ce n'est pas un vrai UTC. Formater avec le fuseau
+  // Pacific/Noumea (comme `formatEventStart`, fait pour les VRAIS événements
+  // datés) décale l'heure de 11h — 07:00 devenait 18:00 dans la liste alors
+  // que la grille juste au-dessus montrait la bonne heure.
+  it('affiche l’heure projetée telle que saisie, jamais décalée par un fuseau', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-28T10:00:00.000Z'))
+    render(
+      <PlanningWorkspace
+        siteId="site-1"
+        nextEvent={null}
+        interventions={[]}
+        missions={[missionFixture({ id: 'mission-2', name: 'Entretien Carrelage' })]}
+        teams={[]}
+        blocages={[]}
+        cycles={[]}
+        timeline={[]}
+        projectedOccurrences={[{
+          templateId: 'tpl-1',
+          missionId: 'mission-2',
+          missionName: 'Entretien Carrelage',
+          plannedStart: '2026-09-28T07:00:00.000Z',
+          plannedEnd: '2026-09-28T09:00:00.000Z',
+          slot: null,
+          assignedTeamId: null,
+          assignedTeamName: null,
+          assignedTeamColor: null,
+          day: '2026-09-28',
+        }]}
+      />,
+    )
+
+    const listItem = screen.getByRole('link', { name: /Entretien Carrelage/ })
+    expect(listItem).toHaveTextContent('7h')
+    expect(listItem).toHaveTextContent('9h')
+    expect(listItem).not.toHaveTextContent('18h')
+  })
+
+  // ── SITE-PLAN-PROJ-1 FINAL — DEUX PASSAGES DU MÊME TEMPLATE, MÊME JOUR ──────
+  // L'identité canonique d'une occurrence est (template, jour, slot) : deux
+  // créneaux du même template le même jour (ex. Nettoyage matin + après-midi)
+  // sont deux occurrences distinctes, jamais la même clé React.
+  it('distingue deux occurrences du même template le même jour sur deux créneaux', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-28T10:00:00.000Z'))
+    render(
+      <PlanningWorkspace
+        siteId="site-1"
+        nextEvent={null}
+        interventions={[]}
+        missions={[missionFixture({ id: 'mission-2', name: 'Nettoyage Z2' })]}
+        teams={[]}
+        blocages={[]}
+        cycles={[]}
+        timeline={[]}
+        projectedOccurrences={[
+          {
+            templateId: 'tpl-1',
+            missionId: 'mission-2',
+            missionName: 'Nettoyage Z2',
+            plannedStart: '2026-09-28T07:00:00.000Z',
+            plannedEnd: '2026-09-28T09:00:00.000Z',
+            slot: 'morning',
+            assignedTeamId: null,
+            assignedTeamName: null,
+            assignedTeamColor: null,
+            day: '2026-09-28',
+          },
+          {
+            templateId: 'tpl-1',
+            missionId: 'mission-2',
+            missionName: 'Nettoyage Z2',
+            plannedStart: '2026-09-28T13:00:00.000Z',
+            plannedEnd: '2026-09-28T15:00:00.000Z',
+            slot: 'afternoon',
+            assignedTeamId: null,
+            assignedTeamName: null,
+            assignedTeamColor: null,
+            day: '2026-09-28',
+          },
+        ]}
+      />,
+    )
+
+    // La grille du jour ET la Liste de la semaine affichent chacune les deux
+    // créneaux : on scope la vérification à la Liste (dernier rendu) pour ne
+    // pas confondre les deux surfaces qui partagent le même texte d'heure.
+    const listItems = screen.getAllByRole('link', { name: /Nettoyage Z2/ })
+    expect(listItems).toHaveLength(2)
+    expect(listItems[0]).toHaveTextContent(/7h – 9h/)
+    expect(listItems[1]).toHaveTextContent(/13h – 15h/)
+  })
+
   // ── L'ÉCHÉANCE CONFIRMÉE ATTERRIT QUELQUE PART ─────────────────────────────
   // Une échéance sans date n'est pas une erreur : c'est du travail réel qui attend
   // un jour. Elle a sa section, avec la CONTRAINTE qui dit pourquoi elle attend —
