@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => ({
   createCycle: vi.fn(),
   updateCycle: vi.fn(),
   supersedeCycle: vi.fn(),
+  savePublishedCycleAtomic: vi.fn(),
+  supersedeCyclePublishedAtomic: vi.fn(),
   softDeleteCycle: vi.fn(),
   resolveEffectiveDate: vi.fn(),
   isRealSplit: vi.fn(),
@@ -66,6 +68,8 @@ vi.mock('@/lib/db/planning-cycles', () => ({
   createCycle: mocks.createCycle,
   updateCycle: mocks.updateCycle,
   supersedeCycle: mocks.supersedeCycle,
+  savePublishedCycleAtomic: mocks.savePublishedCycleAtomic,
+  supersedeCyclePublishedAtomic: mocks.supersedeCyclePublishedAtomic,
   softDeleteCycle: mocks.softDeleteCycle,
   getCycle: mocks.getCycle,
 }))
@@ -86,6 +90,7 @@ const siteId = '11111111-1111-4111-8111-111111111111'
 const foreignSiteId = '55555555-5555-4555-8555-555555555555'
 const missionId = '88888888-8888-4888-8888-888888888888'
 const cycleId = '33333333-3333-4333-8333-333333333333'
+const newCycleId = '66666666-6666-4666-8666-666666666666'
 const teamId = '44444444-4444-4444-8444-444444444444'
 
 const REFUS = 'Accès refusé'
@@ -144,6 +149,8 @@ beforeEach(() => {
   mocks.createCycle.mockResolvedValue(cycleId)
   mocks.updateCycle.mockResolvedValue(undefined)
   mocks.supersedeCycle.mockResolvedValue(cycleId)
+  mocks.savePublishedCycleAtomic.mockResolvedValue({ ok: true })
+  mocks.supersedeCyclePublishedAtomic.mockResolvedValue({ ok: true, cycleId: newCycleId })
   mocks.softDeleteCycle.mockResolvedValue(undefined)
   mocks.resolveEffectiveDate.mockReturnValue({ date: null })
   mocks.isRealSplit.mockReturnValue(false)
@@ -248,40 +255,43 @@ describe('saveCycleAction — toute écriture publiée passe par la RPC exclusiv
     expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
-  it('AVANT LE FIX cette réécriture contournait la RPC : roulement déjà publié, réécrit sur place, reste publié → passe désormais par fn_plan_publish_cycle_exclusive', async () => {
+  it('roulement déjà publié réécrit sur place, reste publié → passe par la RPC atomique unique fn_plan_save_published_cycle_exclusive (mig 444), jamais updateCycle/supersedeCycle/rpc en plusieurs appels', async () => {
     mocks.getCycle.mockResolvedValue(makeExistingCycle({ status: 'published' }))
     mocks.resolveEffectiveDate.mockReturnValue({ date: null }) // effect='rewrite' : pas de split
+    mocks.savePublishedCycleAtomic.mockResolvedValue({ ok: true })
 
     const result = await saveCycleAction(makeInput({ cycleId, effect: 'rewrite', status: 'published' }))
 
-    expect(mocks.updateCycle).toHaveBeenCalledWith(cycleId, expect.objectContaining({ status: 'draft' }))
+    expect(mocks.savePublishedCycleAtomic).toHaveBeenCalledWith({
+      cycleId,
+      payload: expect.objectContaining({ missionId, siteId, status: 'published' }),
+      confirmReplaceSimple: true,
+      actorId: userId,
+    })
+    expect(mocks.updateCycle).not.toHaveBeenCalled()
     expect(mocks.supersedeCycle).not.toHaveBeenCalled()
-    expect(mocks.rpc).toHaveBeenCalledWith(
-      'fn_plan_publish_cycle_exclusive',
-      expect.objectContaining({ p_cycle_id: cycleId, p_actor_id: userId }),
-    )
+    expect(mocks.rpc).not.toHaveBeenCalled()
     expect(result).toEqual({ ok: true, cycleId })
   })
 
-  it('AVANT LE FIX cette version-split contournait la RPC : roulement déjà publié, découpé en nouvelle version, reste publié → la NOUVELLE version passe par fn_plan_publish_cycle_exclusive', async () => {
-    const newCycleId = '66666666-6666-4666-8666-666666666666'
+  it('roulement déjà publié découpé en nouvelle version, reste publié → passe par la RPC atomique unique fn_plan_supersede_cycle_exclusive (mig 444), jamais supersedeCycle/updateCycle/rpc en plusieurs appels', async () => {
     mocks.getCycle.mockResolvedValue(makeExistingCycle({ status: 'published' }))
     mocks.resolveEffectiveDate.mockReturnValue({ date: '2026-10-01' })
     mocks.isRealSplit.mockReturnValue(true)
-    mocks.supersedeCycle.mockResolvedValue(newCycleId)
+    mocks.supersedeCyclePublishedAtomic.mockResolvedValue({ ok: true, cycleId: newCycleId })
 
     const result = await saveCycleAction(makeInput({ cycleId, effect: 'date', effectDate: '2026-10-01', status: 'published' }))
 
-    expect(mocks.supersedeCycle).toHaveBeenCalledWith(
-      cycleId,
-      expect.objectContaining({ status: 'draft' }),
-      '2026-10-01',
-    )
+    expect(mocks.supersedeCyclePublishedAtomic).toHaveBeenCalledWith({
+      oldCycleId: cycleId,
+      effectiveFrom: '2026-10-01',
+      payload: expect.objectContaining({ missionId, siteId, status: 'published' }),
+      confirmReplaceSimple: true,
+      actorId: userId,
+    })
+    expect(mocks.supersedeCycle).not.toHaveBeenCalled()
     expect(mocks.updateCycle).not.toHaveBeenCalled()
-    expect(mocks.rpc).toHaveBeenCalledWith(
-      'fn_plan_publish_cycle_exclusive',
-      expect.objectContaining({ p_cycle_id: newCycleId, p_actor_id: userId }),
-    )
+    expect(mocks.rpc).not.toHaveBeenCalled()
     expect(result).toEqual({ ok: true, cycleId: newCycleId })
   })
 
@@ -294,9 +304,12 @@ describe('saveCycleAction — toute écriture publiée passe par la RPC exclusiv
     expect(mocks.rpc).not.toHaveBeenCalled()
   })
 
-  it('la RPC signale un rythme simple concurrent → conflit renvoyé, jamais un succès silencieux', async () => {
+  it('la RPC atomique signale un rythme simple concurrent → conflit renvoyé, jamais un succès silencieux', async () => {
     mocks.getCycle.mockResolvedValue(makeExistingCycle({ status: 'published' }))
-    mocks.rpc.mockResolvedValue({ error: { message: 'PLAN_INTEG_REPLACE_SIMPLE_REQUIRED' } })
+    mocks.savePublishedCycleAtomic.mockResolvedValue({
+      error: 'Cette mission utilise déjà un rythme simple. Confirmez le remplacement pour publier ce roulement.',
+      conflict: 'replace_simple_with_cycle',
+    })
 
     const result = await saveCycleAction(makeInput({ cycleId, effect: 'rewrite', status: 'published' }))
 

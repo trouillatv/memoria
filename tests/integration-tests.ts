@@ -102,4 +102,5 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/db/tracked-point-pending-resolution-queue.test.ts',
   'tests/lib/db/materialize-historical-visit-contract.test.ts',
   'tests/lib/db/create-action-from-engagement-point-atomic.test.ts',
+  'tests/lib/db/plan-integ-1-atomic-published-switch.test.ts',
 ]

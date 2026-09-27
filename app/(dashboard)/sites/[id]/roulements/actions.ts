@@ -23,6 +23,8 @@ import {
   createCycle,
   updateCycle,
   supersedeCycle,
+  savePublishedCycleAtomic,
+  supersedeCyclePublishedAtomic,
   softDeleteCycle,
   getCycle,
   type CycleSlot,
@@ -111,6 +113,38 @@ const cycleSchema = z
       }
     }
   })
+
+/**
+ * Publie un roulement qui vient d'être créé/mis à jour EN BROUILLON — le seul
+ * appel restant hors du périmètre PLAN-INTEG-1 FINAL : bootstrap
+ * brouillon→publié, sans aucun état publié préexistant à protéger par une
+ * transaction unique (`fn_plan_publish_cycle_exclusive` reste elle-même une
+ * seule RPC atomique, mig 442).
+ */
+async function publishCycleViaRpc(
+  cycleId: string,
+  confirmReplaceRhythm: boolean,
+  actorId: string | null,
+): Promise<{ error: string; conflict?: 'replace_simple_with_cycle' } | null> {
+  const { error } = await (createAdminClient() as unknown as {
+    rpc: (
+      name: string,
+      args: Record<string, unknown>,
+    ) => Promise<{ error: { message: string } | null }>
+  }).rpc('fn_plan_publish_cycle_exclusive', {
+    p_cycle_id: cycleId,
+    p_confirm_replace_simple: confirmReplaceRhythm,
+    p_actor_id: actorId,
+  })
+  if (!error) return null
+  if (error.message.includes('PLAN_INTEG_REPLACE_SIMPLE_REQUIRED')) {
+    return {
+      error: 'Cette mission utilise déjà un rythme simple. Confirmez le remplacement pour publier ce roulement.',
+      conflict: 'replace_simple_with_cycle',
+    }
+  }
+  return { error: error.message }
+}
 
 export async function saveCycleAction(input: unknown): Promise<Result> {
   const parsed = cycleSchema.safeParse(input)
@@ -206,18 +240,10 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
   }
 
   let cycleId: string
-  let shouldPublishViaRpc = d.status === 'published' && !d.cycleId
   if (d.cycleId) {
     // `existing` a déjà été chargé plus haut pour résoudre le site réel — il
     // ne peut pas être null ici (sinon on aurait déjà refusé l'accès).
     const current = existing!
-    // PLAN-INTEG-1 : toute écriture qui ABOUTIT à 'published' passe par la RPC
-    // exclusive — qu'elle parte d'un brouillon OU d'un roulement déjà publié
-    // (réécriture sur place ou nouvelle version issue d'un supersede). Avant ce
-    // correctif, un roulement déjà publié qui restait publié contournait
-    // entièrement la RPC : verrou de mission, vérification d'exclusivité et
-    // régénération n'étaient plus atomiques.
-    shouldPublishViaRpc = d.status === 'published'
 
     // LA DATE D'EFFET. Un roulement PUBLIÉ a un passé : il a produit des
     // interventions et des preuves. Le modifier « à partir de » ne réécrit
@@ -226,43 +252,61 @@ export async function saveCycleAction(input: unknown): Promise<Result> {
     const resolved = resolveEffectiveDate(d.effect ?? 'rewrite', d.effectDate ?? null, todayLocalIso())
     if ('error' in resolved) return { error: resolved.error }
 
-    if (current.status === 'published' && resolved.date && isRealSplit(resolved.date, current.startsOn)) {
-      // La nouvelle version est créée en BROUILLON, puis publiée par la RPC
-      // exclusive ci-dessous — jamais insérée déjà publiée hors de son verrou.
-      cycleId = await supersedeCycle(
-        d.cycleId,
-        shouldPublishViaRpc ? { ...payload, status: 'draft' } : payload,
-        resolved.date,
-      )
+    const isSplit = current.status === 'published' && resolved.date != null && isRealSplit(resolved.date, current.startsOn)
+
+    if (current.status === 'published' && d.status === 'published') {
+      // PLAN-INTEG-1 FINAL — un roulement déjà PUBLIÉ qui reste/devient publié
+      // passe entièrement par une RPC ATOMIQUE (mig 444) : champs, cases,
+      // exclusivité SIMPLE/ROULEMENT et régénération dans UNE transaction
+      // Postgres. Plus de séquence updateCycle/supersedeCycle → RPC publish en
+      // commits séparés, qui laissait l'ancien roulement muté sans rollback en
+      // cas d'échec tardif.
+      if (isSplit) {
+        const result = await supersedeCyclePublishedAtomic({
+          oldCycleId: d.cycleId,
+          effectiveFrom: resolved.date!,
+          payload,
+          confirmReplaceSimple: d.confirmReplaceRhythm ?? false,
+          actorId: access.userId,
+        })
+        if ('error' in result) return result
+        cycleId = result.cycleId
+      } else {
+        const result = await savePublishedCycleAtomic({
+          cycleId: d.cycleId,
+          payload,
+          confirmReplaceSimple: d.confirmReplaceRhythm ?? false,
+          actorId: access.userId,
+        })
+        if ('error' in result) return result
+        cycleId = d.cycleId
+      }
+    } else if (isSplit) {
+      // Brouillon → nouvelle version publiée : la version est créée en
+      // BROUILLON, puis publiée par la RPC exclusive ci-dessous — jamais
+      // insérée déjà publiée hors de son verrou.
+      cycleId = await supersedeCycle(d.cycleId, d.status === 'published' ? { ...payload, status: 'draft' } : payload, resolved.date!)
+      if (d.status === 'published') {
+        const err = await publishCycleViaRpc(cycleId, d.confirmReplaceRhythm ?? false, access.userId)
+        if (err) return err
+      }
     } else {
       // Effet avant le premier jour = il n'y a rien à découper : c'est une
-      // réécriture qui ne dit pas son nom, on la traite comme telle.
-      await updateCycle(d.cycleId, shouldPublishViaRpc ? { ...payload, status: 'draft' } : payload)
+      // réécriture qui ne dit pas son nom, on la traite comme telle. Pas
+      // d'état publié préexistant à corrompre ici (sinon le bloc ci-dessus
+      // aurait intercepté le cas) : un seul appel déjà atomique suffit.
+      await updateCycle(d.cycleId, d.status === 'published' ? { ...payload, status: 'draft' } : payload)
       cycleId = d.cycleId
+      if (d.status === 'published') {
+        const err = await publishCycleViaRpc(cycleId, d.confirmReplaceRhythm ?? false, access.userId)
+        if (err) return err
+      }
     }
   } else {
-    cycleId = await createCycle(shouldPublishViaRpc ? { ...payload, status: 'draft' } : payload)
-  }
-
-  if (shouldPublishViaRpc) {
-    const { error } = await (createAdminClient() as unknown as {
-      rpc: (
-        name: string,
-        args: Record<string, unknown>,
-      ) => Promise<{ error: { message: string } | null }>
-    }).rpc('fn_plan_publish_cycle_exclusive', {
-      p_cycle_id: cycleId,
-      p_confirm_replace_simple: d.confirmReplaceRhythm ?? false,
-      p_actor_id: access.userId,
-    })
-    if (error) {
-      if (error.message.includes('PLAN_INTEG_REPLACE_SIMPLE_REQUIRED')) {
-        return {
-          error: 'Cette mission utilise déjà un rythme simple. Confirmez le remplacement pour publier ce roulement.',
-          conflict: 'replace_simple_with_cycle',
-        }
-      }
-      return { error: error.message }
+    cycleId = await createCycle(d.status === 'published' ? { ...payload, status: 'draft' } : payload)
+    if (d.status === 'published') {
+      const err = await publishCycleViaRpc(cycleId, d.confirmReplaceRhythm ?? false, access.userId)
+      if (err) return err
     }
   }
 

@@ -353,6 +353,116 @@ export async function supersedeCycle(
   })
 }
 
+function slotToJsonb(s: CycleSlot): Record<string, unknown> {
+  return {
+    weekIndex: s.weekIndex,
+    weekday: s.weekday,
+    teamId: s.teamId,
+    state: s.state,
+    startTime: s.startTime,
+    endTime: s.endTime,
+  }
+}
+
+function mapPlanIntegRpcError(message: string): { error: string; conflict?: 'replace_simple_with_cycle' } {
+  if (message.includes('PLAN_INTEG_REPLACE_SIMPLE_REQUIRED')) {
+    return {
+      error: 'Cette mission utilise déjà un rythme simple. Confirmez le remplacement pour publier ce roulement.',
+      conflict: 'replace_simple_with_cycle',
+    }
+  }
+  return { error: message }
+}
+
+/**
+ * PLAN-INTEG-1 — FINAL ATOMIC SWITCH FIX (review ChatGPT du SHA `f564aa29`).
+ *
+ * Réécrit un roulement DÉJÀ PUBLIÉ, en place, en une seule transaction
+ * Postgres (`fn_plan_save_published_cycle_exclusive`, mig 444) : champs, cases,
+ * exclusivité SIMPLE/ROULEMENT et régénération sont TOUS dans le corps de la
+ * RPC. Un échec à n'importe quelle étape laisse l'ancien roulement strictement
+ * intact — plus de séquence `updateCycle` → `regenerateTemplates` → RPC publish
+ * en trois commits séparés.
+ *
+ * `assertTeamsCompatible` reste un préflight applicatif en LECTURE SEULE (il ne
+ * mute rien, il ne fait que décider si la RPC est appelée) : la RPC elle-même
+ * ne valide pas les équipes, exactement comme `fn_plan_regenerate_cycle_templates`.
+ */
+export async function savePublishedCycleAtomic(args: {
+  cycleId: string
+  payload: SaveCycleInput
+  confirmReplaceSimple: boolean
+  actorId: string | null
+}): Promise<{ ok: true } | { error: string; conflict?: 'replace_simple_with_cycle' }> {
+  const work = args.payload.slots.filter((s) => s.state === 'work')
+  if (work.length > 0) {
+    await assertTeamsCompatible(work.map((s) => s.teamId), args.payload.organizationId)
+  }
+
+  const { error } = await createAdminClient().rpc('fn_plan_save_published_cycle_exclusive', {
+    p_cycle_id: args.cycleId,
+    p_name: args.payload.name,
+    p_cycle_length_weeks: args.payload.cycleLengthWeeks,
+    p_anchor_date: args.payload.anchorDate,
+    p_starts_on: args.payload.startsOn,
+    p_ends_on: args.payload.endsOn,
+    p_mission_id: args.payload.missionId,
+    p_slots: args.payload.slots.map(slotToJsonb),
+    p_confirm_replace_simple: args.confirmReplaceSimple,
+    p_actor_id: args.actorId,
+  })
+  if (error) return mapPlanIntegRpcError(error.message)
+  return { ok: true }
+}
+
+/**
+ * PLAN-INTEG-1 — FINAL ATOMIC SWITCH FIX. Version-split d'un roulement DÉJÀ
+ * PUBLIÉ (`fn_plan_supersede_cycle_exclusive`, mig 444) : clore l'ancienne
+ * version, créer la nouvelle DÉJÀ publiée, remplacer le SIMPLE conflictuel et
+ * régénérer les DEUX projections — une seule transaction. Plus de fenêtre où
+ * l'ancien cycle est raccourci, le successeur bloqué en brouillon, et l'ancien
+ * SIMPLE toujours actif (état hybride).
+ *
+ * Les DEUX grilles (ancienne déjà persistée, nouvelle proposée) sont vérifiées
+ * AVANT l'appel — préflight en lecture seule, la RPC ne valide pas les équipes.
+ */
+export async function supersedeCyclePublishedAtomic(args: {
+  oldCycleId: string
+  effectiveFrom: string
+  payload: SaveCycleInput
+  confirmReplaceSimple: boolean
+  actorId: string | null
+}): Promise<{ ok: true; cycleId: string } | { error: string; conflict?: 'replace_simple_with_cycle' }> {
+  const old = await getCycle(args.oldCycleId)
+  if (!old) return { error: 'Roulement introuvable' }
+
+  const oldWork = old.slots.filter((s) => s.state === 'work')
+  if (oldWork.length > 0) {
+    await assertTeamsCompatible(oldWork.map((s) => s.teamId), args.payload.organizationId)
+  }
+  const newWork = args.payload.slots.filter((s) => s.state === 'work')
+  if (newWork.length > 0) {
+    await assertTeamsCompatible(newWork.map((s) => s.teamId), args.payload.organizationId)
+  }
+
+  const { data, error } = await createAdminClient().rpc('fn_plan_supersede_cycle_exclusive', {
+    p_old_cycle_id: args.oldCycleId,
+    p_effective_from: args.effectiveFrom,
+    p_site_id: args.payload.siteId,
+    p_mission_id: args.payload.missionId,
+    p_organization_id: args.payload.organizationId,
+    p_name: args.payload.name,
+    p_cycle_length_weeks: args.payload.cycleLengthWeeks,
+    p_anchor_date: args.payload.anchorDate,
+    p_ends_on: args.payload.endsOn,
+    p_slots: args.payload.slots.map(slotToJsonb),
+    p_confirm_replace_simple: args.confirmReplaceSimple,
+    p_actor_id: args.actorId,
+  })
+  if (error) return mapPlanIntegRpcError(error.message)
+  return { ok: true, cycleId: (data as { new_cycle_id: string }).new_cycle_id }
+}
+
 /**
  * TERMINER un roulement : il s'arrête à une date, mais reste VISIBLE — c'est de
  * l'histoire, pas un déchet. (« Retirer », lui, le sort des écrans.)
