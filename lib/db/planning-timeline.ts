@@ -28,6 +28,7 @@ import { projectClosures, CLOSURE_REASON_FR } from '@/lib/planning/closures'
 import { echeanceDateLabel } from '@/lib/visits/echeance-labels'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { listScheduledEvents, scheduledTypeLabel } from '@/lib/db/scheduled-events'
+import { extractHHMM } from '@/lib/time/prestation-slot'
 import {
   sortTimeline,
   type PlanningTimelineEvent,
@@ -92,6 +93,12 @@ export async function getPlanningTimeline(
       if (!mission) continue
       const done = i.status === 'completed' || i.status === 'validated'
       const day = (i.scheduled_for as string) ?? String(i.scheduled_at ?? '').slice(0, 10)
+      // `planned_start` est un timestamp complet `YYYY-MM-DDTHH:MM:00.000Z`
+      // (Z historique, l'heure EST déjà locale — cf. lib/time/prestation-slot.ts).
+      // `.slice(0, 5)` y prenait les 5 premiers caractères de la date ("2026-"),
+      // pas l'heure : `new Date()` explosait ensuite sur ce timestamp invalide
+      // (RangeError, digest 1455451503). `extractHHMM` lit HH:MM après le "T".
+      const plannedHHMM = i.planned_start ? extractHHMM(i.planned_start as string) : null
       out.push({
         id: `intervention-${i.id}`,
         type: 'intervention',
@@ -99,7 +106,7 @@ export async function getPlanningTimeline(
         siteName: nameOf.get(mission.site_id) ?? '',
         title: (i.label as string) || mission.name,
         // L'heure si elle est connue, la date sinon — jamais un horaire fabriqué.
-        start: (i.planned_start as string) ? `${day}T${String(i.planned_start).slice(0, 5)}:00+11:00` : day,
+        start: plannedHHMM ? `${day}T${plannedHHMM}:00+11:00` : day,
         end: null,
         status: i.status === 'cancelled' ? 'cancelled' : done ? 'done' : statusOfDate(day, today),
         certainty: 'confirmed',
