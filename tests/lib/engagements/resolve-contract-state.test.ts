@@ -528,6 +528,157 @@ describe('resolveEngagementAtDate — effets orphelins (doctrine 2)', () => {
   })
 })
 
+describe('resolveEngagementAtDate — portées indépendantes', () => {
+  it('deux portées MODIFY distinctes se résolvent sans s’influencer', () => {
+    const founder = row({ id: 'new-1', effect: 'new', temporality: 'permanent', startsOn: '2026-01-01' })
+    const modA = row({ id: 'mod-a', effect: 'modify', scopeKey: 'lot_a', startsOn: '2026-02-01', effectPayload: { price: 10 } })
+    const modB = row({ id: 'mod-b', effect: 'modify', scopeKey: 'lot_b', startsOn: '2026-02-01', effectPayload: { price: 20 } })
+    const dto = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, modA, modB] }, '2026-06-01')
+    expect(dto.scopes.find((s) => s.scopeKey === 'lot_a')).toMatchObject({ basis: 'modify', value: { price: 10 } })
+    expect(dto.scopes.find((s) => s.scopeKey === 'lot_b')).toMatchObject({ basis: 'modify', value: { price: 20 } })
+  })
+
+  it('une SUSPEND scopée à lot_a n’affecte jamais la portée indépendante lot_b', () => {
+    const founder = row({ id: 'new-1', effect: 'new', temporality: 'permanent', startsOn: '2026-01-01' })
+    const modB = row({ id: 'mod-b', effect: 'modify', scopeKey: 'lot_b', startsOn: '2026-02-01', effectPayload: { price: 20 } })
+    const suspA = row({
+      id: 'susp-a',
+      effect: 'suspend',
+      temporality: 'bounded',
+      scopeKey: 'lot_a',
+      startsOn: '2026-03-01',
+      endsOn: '2026-03-31',
+    })
+    const dto = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, modB, suspA] }, '2026-03-15')
+    expect(dto.scopes.find((s) => s.scopeKey === 'lot_a')?.applicability).toBe('suspended')
+    expect(dto.scopes.find((s) => s.scopeKey === 'lot_b')).toMatchObject({
+      applicability: 'applicable',
+      dominatedByWholeEngagementSuspend: false,
+      basis: 'modify',
+      value: { price: 20 },
+    })
+  })
+
+  it('MODIFY one_off — valeur active uniquement le jour même, repli avant/après', () => {
+    const founder = row({ id: 'new-1', effect: 'new', temporality: 'permanent', startsOn: '2026-01-01' })
+    const modBase = row({ id: 'mod-base', effect: 'modify', scopeKey: 'lot_a', startsOn: '2026-01-01', effectPayload: { price: 100 } })
+    const modOneOff = row({
+      id: 'mod-oneoff',
+      effect: 'modify',
+      temporality: 'one_off',
+      scopeKey: 'lot_a',
+      startsOn: '2026-05-10',
+      effectPayload: { price: 500 },
+    })
+    const effects = [founder, modBase, modOneOff]
+    expect(
+      resolveEngagementAtDate({ engagementId: 'eng-1', effects }, '2026-05-09').scopes.find((s) => s.scopeKey === 'lot_a'),
+    ).toMatchObject({ value: { price: 100 } })
+    expect(
+      resolveEngagementAtDate({ engagementId: 'eng-1', effects }, '2026-05-10').scopes.find((s) => s.scopeKey === 'lot_a'),
+    ).toMatchObject({ value: { price: 500 } })
+    expect(
+      resolveEngagementAtDate({ engagementId: 'eng-1', effects }, '2026-05-11').scopes.find((s) => s.scopeKey === 'lot_a'),
+    ).toMatchObject({ value: { price: 100 } })
+  })
+})
+
+// DOC-CONTRACT-OS-1B2-B2 (mandat Vincent 2026-09-29) — golden witnesses. Les 4
+// formes ci-dessous reprennent EXACTEMENT les shapes déjà validées à la
+// matérialisation réelle par la RPC (tests/lib/db/materialize-engagement-
+// contract-effect.test.ts, describe OS15), rejouées ici à travers le moteur
+// pur pour prouver qu'il interprète correctement ce que la RPC produit
+// réellement — aucune nouvelle fixture synthétique inventée.
+describe('resolveEngagementAtDate — golden witness OS15 (4 cas RPC validés, mandat B2)', () => {
+  it('Cas 1 — MODIFY permanent (fréquence Z2 sanitaires) : repli avant startsOn, valeur RPC après', () => {
+    const mod = row({
+      id: 'os15-modify-1',
+      effect: 'modify',
+      scopeKey: 'frequency',
+      startsOn: '2026-12-01',
+      effectPayload: { frequency: { from: '2/semaine', to: '3/semaine' } },
+    })
+    const before = resolveEngagementAtDate({ engagementId: 'eng-os15', effects: [mod] }, '2026-11-15')
+    expect(before.scopes.find((s) => s.scopeKey === 'frequency')).toMatchObject({ basis: 'engagement_base', value: null })
+
+    const after = resolveEngagementAtDate({ engagementId: 'eng-os15', effects: [mod] }, '2026-12-01')
+    expect(after.scopes.find((s) => s.scopeKey === 'frequency')).toMatchObject({
+      basis: 'modify',
+      value: { frequency: { from: '2/semaine', to: '3/semaine' } },
+      sourceEffectId: 'os15-modify-1',
+    })
+  })
+
+  it('Cas 2 — SUSPEND bounded sans trou (resume_on = ends_on+1) : suspended puis applicable sans indétermination', () => {
+    const susp = row({
+      id: 'os15-suspend-1',
+      effect: 'suspend',
+      temporality: 'bounded',
+      startsOn: '2026-12-10',
+      endsOn: '2026-12-14',
+      resumeOn: '2026-12-15',
+    })
+    const during = resolveEngagementAtDate({ engagementId: 'eng-os15', effects: [susp] }, '2026-12-12')
+    expect(during.scopes.find((s) => s.scopeKey === 'whole_engagement')?.applicability).toBe('suspended')
+
+    const onResume = resolveEngagementAtDate({ engagementId: 'eng-os15', effects: [susp] }, '2026-12-15')
+    expect(onResume.scopes.find((s) => s.scopeKey === 'whole_engagement')?.applicability).toBe('applicable')
+  })
+
+  it('Cas 3 — NEW bounded (rapport photo hebdo) : existence fermée exactement sur [starts_on, ends_on]', () => {
+    const founder = row({ id: 'os15-new-1', effect: 'new', temporality: 'bounded', startsOn: '2026-12-01', endsOn: '2027-01-31' })
+    expect(resolveEngagementAtDate({ engagementId: 'eng-os15', effects: [founder] }, '2026-11-15').existence.status).toBe(
+      'not_yet_existing',
+    )
+    expect(resolveEngagementAtDate({ engagementId: 'eng-os15', effects: [founder] }, '2026-12-15').existence.status).toBe(
+      'exists',
+    )
+    expect(resolveEngagementAtDate({ engagementId: 'eng-os15', effects: [founder] }, '2027-02-15').existence.status).toBe(
+      'expired',
+    )
+  })
+
+  it('Cas 4 — CONFIRM (registre traçabilité) : provenance pure, zéro mutation même avec payload ignoré par la RPC', () => {
+    const confirm = row({ id: 'os15-confirm-1', effect: 'confirm', startsOn: '2026-12-01', appliedAt: '2026-12-02T00:00:00Z' })
+    const dto = resolveEngagementAtDate({ engagementId: 'eng-os15', effects: [confirm] }, '2026-12-15')
+    expect(dto.existence).toEqual({ status: 'exists', foundedBy: null, existsFrom: null, existsUntil: null })
+    expect(dto.scopes.find((s) => s.scopeKey === 'whole_engagement')).toMatchObject({
+      applicability: 'applicable',
+      basis: 'engagement_base',
+      value: null,
+    })
+    const provenance = dto.provenanceTrail.find((p) => p.effectId === 'os15-confirm-1')
+    expect(provenance).toMatchObject({ usedInResolution: false, orphaned: false })
+  })
+})
+
+// Témoin réel OS14 (OCEF_Compostage_OS14_TEST.pdf) — vérifié en base live
+// 2026-09-29 : engagement_contract_effects = 0 ligne pour toute organisation ;
+// les 7 propositions engagement de ce document sont soit rejetées, soit
+// acceptées sans contract_effect qualifié, soit qualifiées 'conflict' et
+// rejetées. Aucun effet structuré NEW/MODIFY/SUSPEND/CONFIRM n'existe jamais
+// pour ce document — le cas réel est donc rigoureusement le cas legacy
+// (aucune inférence, aucun backfill, aucune valeur inventée depuis le texte).
+describe('resolveEngagementAtDate — OS14 témoin réel legacy/incomplet (mandat B2)', () => {
+  it('OS14 réel : zéro effet matérialisé — engagement_base/null, aucune fausse vérité contractuelle', () => {
+    const dto = resolveEngagementAtDate({ engagementId: 'eng-os14', effects: [] }, '2026-12-01')
+    expect(dto.existence).toEqual({ status: 'exists', foundedBy: null, existsFrom: null, existsUntil: null })
+    expect(dto.scopes).toEqual([
+      {
+        scopeKey: 'whole_engagement',
+        applicability: 'applicable',
+        dominatedByWholeEngagementSuspend: false,
+        basis: 'engagement_base',
+        value: null,
+        sourceEffectId: null,
+        valueConflict: null,
+        applicabilityConflict: null,
+        indeterminateReason: null,
+      },
+    ])
+  })
+})
+
 describe('resolveEngagementAtDate — déterminisme (indépendance à l’ordre du tableau)', () => {
   it('le même jeu d’effets dans un ordre différent produit un DTO strictement identique', () => {
     const founder = row({ id: 'new-1', effect: 'new', temporality: 'permanent', startsOn: '2026-01-01' })
