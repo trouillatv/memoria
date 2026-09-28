@@ -149,6 +149,43 @@ export async function finalizeAcceptedEngagementsForRun(input: {
   return { ok: true, createdCount, needsReviewCount }
 }
 
+export interface MaterializeContractEffectResult {
+  effectId: string
+  engagementId: string
+}
+
+/**
+ * DOC-CONTRACT-OS-1B1 — matérialisation atomique NEW/MODIFY/SUSPEND/CONFIRM
+ * (migration 445). La RPC relit elle-même la qualification EFFET × TEMPORALITÉ
+ * depuis source_payload.contract_effect : category/kind/measurable ne servent
+ * qu'à NEW (même convention que materializeEngagementCreateNew), effectPayload
+ * ne sert qu'à MODIFY (ignoré et forcé à {} pour CONFIRM côté RPC).
+ */
+export async function materializeEngagementContractEffect(
+  proposalId: string,
+  userId: string,
+  opts: {
+    category?: EngagementCategory | null
+    kind?: EngagementKind | null
+    measurable?: boolean | null
+    effectPayload?: Record<string, unknown>
+  } = {}
+): Promise<MaterializeContractEffectResult> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase.rpc('materialize_engagement_contract_effect', {
+    p_proposal_id: proposalId,
+    p_user_id: userId,
+    p_category: opts.category ?? null,
+    p_kind: opts.kind ?? null,
+    p_measurable: opts.measurable ?? null,
+    p_effect_payload: opts.effectPayload ?? {},
+  })
+  if (error) throw new Error(error.message)
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row) throw new Error(`materialize_engagement_contract_effect : aucune ligne retournée pour la proposition ${proposalId}`)
+  return { effectId: row.effect_id as string, engagementId: row.engagement_id as string }
+}
+
 export interface PendingEngagementFinalization {
   runId: string
   documentId: string
