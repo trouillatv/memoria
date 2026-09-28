@@ -15,6 +15,8 @@ import {
   effectRequiresTarget,
   temporalityRequiresDates,
   effectBlocksMaterialization,
+  effectAllowsCreateNew,
+  effectAllowsLinkExisting,
 } from '@/lib/engagements/contract-effect'
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
@@ -345,8 +347,12 @@ export function ProposalCard({
 
   // Une proposition n'est matérialisable qu'après validation humaine explicite —
   // jamais depuis 'pending' (cf. audit P0-2C section 11, précondition de la RPC).
-  // Un effet Conflit/Non-Engagement bloque toute matérialisation (Vincent 2026-09-28).
-  const canMaterializeEngagement = isEngagement && (localStatus === 'accepted' || localStatus === 'edited') && !effectBlocked
+  // Geste par geste, alignés sur la matrice serveur (mandat de fermeture Vincent
+  // 2026-09-28) : NEW→create, CONFIRM→link, MODIFY/SUSPEND/CONFLICT/NON_ENGAGEMENT→aucun.
+  const acceptedOrEdited = isEngagement && (localStatus === 'accepted' || localStatus === 'edited')
+  const canCreateEngagement = acceptedOrEdited && effectAllowsCreateNew(localEffect || null)
+  const canLinkEngagement = acceptedOrEdited && effectAllowsLinkExisting(localEffect || null)
+  const canMaterializeEngagement = canCreateEngagement || canLinkEngagement
 
   function onCreateEngagement() {
     if (!localKind) { setMsg({ ok: false, text: 'Choisissez une nature avant de créer l’Engagement' }); return }
@@ -752,14 +758,18 @@ export function ProposalCard({
           {!isMaterialized && canMaterializeEngagement && (
             <div className="pt-1 space-y-2">
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={onCreateEngagement} disabled={pending}>
-                  {pending ? '…' : 'Créer un nouvel Engagement'}
-                </Button>
-                <Button type="button" size="sm" variant="outline" onClick={() => setShowLinkPicker((v) => !v)} disabled={pending}>
-                  Rattacher à un Engagement existant
-                </Button>
+                {canCreateEngagement && (
+                  <Button type="button" size="sm" onClick={onCreateEngagement} disabled={pending}>
+                    {pending ? '…' : 'Créer un nouvel Engagement'}
+                  </Button>
+                )}
+                {canLinkEngagement && (
+                  <Button type="button" size="sm" variant="outline" onClick={() => setShowLinkPicker((v) => !v)} disabled={pending}>
+                    Rattacher à un Engagement existant
+                  </Button>
+                )}
               </div>
-              {showLinkPicker && (
+              {canLinkEngagement && showLinkPicker && (
                 <div className="space-y-1">
                   <input
                     type="text"
@@ -800,7 +810,9 @@ export function ProposalCard({
                 ? (localEffect === 'conflict'
                     ? 'Conflit documentaire non résolu — la matérialisation est bloquée tant que l’effet n’est pas requalifié.'
                     : 'Effet « Non-Engagement » — cette proposition ne doit jamais devenir un Engagement.')
-                : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
+                : (acceptedOrEdited && (localEffect === 'modify' || localEffect === 'suspend'))
+                  ? 'Effet qualifié — application au contrat disponible dans DOC-CONTRACT-OS-1B.'
+                  : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
             </p>
           )}
         </div>

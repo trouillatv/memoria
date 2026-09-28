@@ -48,6 +48,7 @@ import {
   createEngagementFromProposalAction,
   linkEngagementToProposalAction,
 } from '../../app/(dashboard)/documents/[id]/extraction/[runId]/review-actions'
+import { effectAllowsCreateNew, effectAllowsLinkExisting, type ContractEffect } from '@/lib/engagements/contract-effect'
 
 // ─── Helpers (même convention que historical-visit-review.test.ts) ────────────
 
@@ -152,6 +153,72 @@ describe('setContractEffectAction — invariants EFFET × TEMPORALITÉ (DOC-CONT
   it('qualification valide — enregistrée normalement', async () => {
     const result = await setContractEffectAction(buildForm({ effect: 'new', temporality: 'permanent' }))
     expect(result).toEqual({ ok: true })
+  })
+
+  // Micro-fix de fermeture (mandat Vincent 2026-09-28, point 1) : un conflit
+  // documentaire peut rester sans cible identifiée — ce n'est plus une erreur
+  // de saisie, c'est l'état normal d'un « je ne sais pas encore quel Engagement
+  // est concerné ». effectRequiresTarget() ne couvre plus conflict.
+  it('conflict sans cible — qualification enregistrable', async () => {
+    const result = await setContractEffectAction(buildForm({ effect: 'conflict', temporality: 'permanent' }))
+    expect(result).toEqual({ ok: true })
+  })
+})
+
+// ─── setContractEffectAction — validation de cible fail-closed (mandat de
+// fermeture Vincent 2026-09-28, point 2) ─────────────────────────────────────
+// Avec un admin client, l'absence de proposal.target_site_id ne doit jamais
+// laisser passer une cible arbitraire : refus, jamais un fallback permissif.
+
+describe('setContractEffectAction — validation cible fail-closed (DOC-CONTRACT-OS-1A)', () => {
+  it('target fourni + proposal.target_site_id null — refus', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ targetSiteId: null }))
+    const result = await setContractEffectAction(buildForm({
+      effect: 'confirm', temporality: 'permanent', target_engagement_id: 'eng-1',
+    }))
+    expect(result).toEqual({ ok: false, error: 'Chantier de la proposition introuvable' })
+  })
+
+  it('target fourni + engagement.site_id différent de proposal.target_site_id — refus', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ targetSiteId: 'site-1', targetEngagementSiteId: 'site-2' }))
+    const result = await setContractEffectAction(buildForm({
+      effect: 'confirm', temporality: 'permanent', target_engagement_id: 'eng-1',
+    }))
+    expect(result).toEqual({ ok: false, error: 'Engagement cible : chantier différent' })
+  })
+
+  it('target fourni + même chantier — accepté', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ targetSiteId: 'site-1', targetEngagementSiteId: 'site-1' }))
+    const result = await setContractEffectAction(buildForm({
+      effect: 'confirm', temporality: 'permanent', target_engagement_id: 'eng-1',
+    }))
+    expect(result).toEqual({ ok: true })
+  })
+})
+
+// ─── effectAllowsCreateNew / effectAllowsLinkExisting — matrice UI/serveur
+// (mandat de fermeture Vincent 2026-09-28, point 3) ──────────────────────────
+// ProposalCard doit n'afficher que le geste que le serveur autorise réellement ;
+// ces fonctions pures sont la source de vérité partagée entre les deux.
+
+describe('effectAllowsCreateNew / effectAllowsLinkExisting — matrice complète', () => {
+  const MATRIX: Array<{ effect: ContractEffect; createNew: boolean; linkExisting: boolean }> = [
+    { effect: 'new', createNew: true, linkExisting: false },
+    { effect: 'confirm', createNew: false, linkExisting: true },
+    { effect: 'modify', createNew: false, linkExisting: false },
+    { effect: 'suspend', createNew: false, linkExisting: false },
+    { effect: 'conflict', createNew: false, linkExisting: false },
+    { effect: 'non_engagement', createNew: false, linkExisting: false },
+  ]
+
+  it.each(MATRIX)('$effect — createNew=$createNew, linkExisting=$linkExisting', ({ effect, createNew, linkExisting }) => {
+    expect(effectAllowsCreateNew(effect)).toBe(createNew)
+    expect(effectAllowsLinkExisting(effect)).toBe(linkExisting)
+  })
+
+  it('non qualifié (null, CCTP historique) — autorise les deux, comportement préservé', () => {
+    expect(effectAllowsCreateNew(null)).toBe(true)
+    expect(effectAllowsLinkExisting(null)).toBe(true)
   })
 })
 

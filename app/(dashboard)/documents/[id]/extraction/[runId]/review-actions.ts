@@ -311,14 +311,19 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
       .select('target_site_id')
       .eq('id', proposalId)
       .maybeSingle()
+    const targetSiteId = (proposalRow as { target_site_id: string | null } | null)?.target_site_id
+    // Fail-closed (mandat de fermeture Vincent 2026-09-28) : l'absence de
+    // chantier sur la proposition n'ouvre jamais la portée de validation, même
+    // via l'admin client — cohérent avec la doctrine « rôle plateforme ≠ accès
+    // métier » déjà figée ailleurs (verifyReviewAccess).
+    if (!targetSiteId) return { ok: false, error: 'Chantier de la proposition introuvable' }
     const { data: targetEngagement } = await admin
       .from('engagements')
       .select('site_id')
       .eq('id', targetEngagementId)
       .maybeSingle()
     if (!targetEngagement) return { ok: false, error: 'Engagement cible introuvable' }
-    const targetSiteId = (proposalRow as { target_site_id: string | null } | null)?.target_site_id
-    if (targetSiteId && targetEngagement.site_id !== targetSiteId) {
+    if (targetEngagement.site_id !== targetSiteId) {
       return { ok: false, error: 'Engagement cible : chantier différent' }
     }
   }

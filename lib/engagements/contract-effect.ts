@@ -73,7 +73,7 @@ export function effectLabel(effect: ContractEffect | null): string {
 }
 
 export function effectRequiresTarget(effect: ContractEffect): boolean {
-  return effect === 'modify' || effect === 'suspend' || effect === 'confirm' || effect === 'conflict'
+  return effect === 'modify' || effect === 'suspend' || effect === 'confirm'
 }
 
 export function temporalityRequiresDates(temporality: ContractTemporality): boolean {
