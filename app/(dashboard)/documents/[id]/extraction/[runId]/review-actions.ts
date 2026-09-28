@@ -11,6 +11,7 @@ import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-imp
 import { materializeHistoricalRun } from '@/lib/documents/materialize-historical-run'
 import { materializeEngagementCreateNew, materializeEngagementLinkExisting, finalizeAcceptedEngagementsForRun } from '@/lib/db/materialize-engagement'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
+import type { ContractEffect, ContractTemporality } from '@/lib/engagements/contract-effect'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -244,6 +245,85 @@ async function verifyEngagementProposal(proposalId: string, documentId: string):
   if (!data || (data as { proposal_family: string }).proposal_family !== 'engagement') {
     return { ok: false, error: 'Proposition non éligible (famille attendue : engagement)' }
   }
+  return { ok: true }
+}
+
+const VALID_CONTRACT_EFFECTS = new Set<ContractEffect>([
+  'new', 'modify', 'suspend', 'confirm', 'conflict', 'non_engagement',
+])
+const VALID_CONTRACT_TEMPORALITIES = new Set<ContractTemporality>([
+  'permanent', 'bounded', 'one_off', 'event_driven',
+])
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+// ─── Qualification d'effet contractuel (DOC-CONTRACT-OS-1A, mandat Vincent 2026-09-28) ──
+// Décision humaine uniquement : quel effet ce document produit sur le contrat
+// (EFFET × TEMPORALITÉ, deux axes orthogonaux), et sur quel Engagement le cas
+// échéant. N'applique rien au contrat réel, ne mute aucun Engagement — stocké
+// dans source_payload en attendant une éventuelle table d'effets (DOC-CONTRACT-OS-1B,
+// hors périmètre ici).
+export async function setContractEffectAction(fd: FormData): Promise<ActionResult> {
+  const proposalId = fd.get('proposal_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  const effect = fd.get('effect')?.toString() as ContractEffect | undefined
+  const temporality = fd.get('temporality')?.toString() as ContractTemporality | undefined
+  const targetEngagementId = fd.get('target_engagement_id')?.toString() || null
+  const startsOn = fd.get('starts_on')?.toString() || null
+  const endsOn = fd.get('ends_on')?.toString() || null
+  const resumeOn = fd.get('resume_on')?.toString() || null
+  const scope = fd.get('scope')?.toString()?.trim() || null
+
+  if (!proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+  if (!effect || !VALID_CONTRACT_EFFECTS.has(effect)) return { ok: false, error: 'Effet invalide' }
+  if (!temporality || !VALID_CONTRACT_TEMPORALITIES.has(temporality)) return { ok: false, error: 'Temporalité invalide' }
+  for (const d of [startsOn, endsOn, resumeOn]) {
+    if (d && !ISO_DATE_RE.test(d)) return { ok: false, error: 'Date invalide (AAAA-MM-JJ attendu)' }
+  }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return access
+
+  const ownership = await verifyEngagementProposal(proposalId, documentId)
+  if (!ownership.ok) return ownership
+
+  const admin = createAdminClient()
+
+  if (targetEngagementId) {
+    const { data: proposalRow } = await admin
+      .from('document_extraction_proposal')
+      .select('target_site_id')
+      .eq('id', proposalId)
+      .maybeSingle()
+    const { data: targetEngagement } = await admin
+      .from('engagements')
+      .select('site_id')
+      .eq('id', targetEngagementId)
+      .maybeSingle()
+    if (!targetEngagement) return { ok: false, error: 'Engagement cible introuvable' }
+    const targetSiteId = (proposalRow as { target_site_id: string | null } | null)?.target_site_id
+    if (targetSiteId && targetEngagement.site_id !== targetSiteId) {
+      return { ok: false, error: 'Engagement cible : chantier différent' }
+    }
+  }
+
+  const { data: proposal } = await admin
+    .from('document_extraction_proposal')
+    .select('source_payload')
+    .eq('id', proposalId)
+    .single()
+  if (!proposal) return { ok: false, error: 'Proposition introuvable' }
+
+  const newPayload = {
+    ...((proposal.source_payload as Record<string, unknown>) ?? {}),
+    contract_effect: { effect, temporality, targetEngagementId, startsOn, endsOn, resumeOn, scope },
+  }
+
+  const { error } = await admin
+    .from('document_extraction_proposal')
+    .update({ source_payload: newPayload, review_status: 'edited' })
+    .eq('id', proposalId)
+
+  if (error) return { ok: false, error: error.message }
   return { ok: true }
 }
 

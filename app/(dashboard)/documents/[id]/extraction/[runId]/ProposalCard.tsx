@@ -3,8 +3,19 @@
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction, updatePersonAttendanceAction, createEngagementFromProposalAction, linkEngagementToProposalAction } from './review-actions'
+import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction, updatePersonAttendanceAction, createEngagementFromProposalAction, linkEngagementToProposalAction, setContractEffectAction } from './review-actions'
 import type { DbDocumentExtractionProposal, DbDocumentExtractionEvidence, DocumentEvidenceRelationType, DbEngagement, DbDocumentProposalMaterialization, EngagementCategory, EngagementKind } from '@/types/db'
+import {
+  type ContractEffect,
+  type ContractTemporality,
+  CONTRACT_EFFECT_ORDER,
+  CONTRACT_EFFECT_META,
+  CONTRACT_TEMPORALITY_ORDER,
+  CONTRACT_TEMPORALITY_META,
+  effectRequiresTarget,
+  temporalityRequiresDates,
+  effectBlocksMaterialization,
+} from '@/lib/engagements/contract-effect'
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
 
@@ -256,6 +267,15 @@ export function ProposalCard({
     measurable?: boolean
     frequency_raw?: string | null
     ai_confidence?: number | null
+    contract_effect?: {
+      effect: ContractEffect
+      temporality: ContractTemporality
+      targetEngagementId: string | null
+      startsOn: string | null
+      endsOn: string | null
+      resumeOn: string | null
+      scope: string | null
+    } | null
   } | null
   const relevanceScore = sourcePayload?.relevanceScore ?? null
 
@@ -283,9 +303,50 @@ export function ProposalCard({
   const [localMeasurable, setLocalMeasurable] = useState<boolean>(sourcePayload?.measurable ?? false)
   const [showLinkPicker, setShowLinkPicker] = useState(false)
   const [engagementSearch, setEngagementSearch] = useState('')
+
+  // Qualification d'effet contractuel (DOC-CONTRACT-OS-1A) — EFFET × TEMPORALITÉ,
+  // deux axes orthogonaux. Décision humaine, jamais appliquée au contrat réel ici.
+  const contractEffect = sourcePayload?.contract_effect ?? null
+  const [localEffect, setLocalEffect] = useState<ContractEffect | ''>(contractEffect?.effect ?? '')
+  const [localTemporality, setLocalTemporality] = useState<ContractTemporality | ''>(contractEffect?.temporality ?? '')
+  const [localTargetEngagementId, setLocalTargetEngagementId] = useState<string | null>(contractEffect?.targetEngagementId ?? null)
+  const [localStartsOn, setLocalStartsOn] = useState(contractEffect?.startsOn ?? '')
+  const [localEndsOn, setLocalEndsOn] = useState(contractEffect?.endsOn ?? '')
+  const [localResumeOn, setLocalResumeOn] = useState(contractEffect?.resumeOn ?? '')
+  const [localScope, setLocalScope] = useState(contractEffect?.scope ?? '')
+  const [effectTargetSearch, setEffectTargetSearch] = useState('')
+  const isQualificationSaved = !!contractEffect
+    && contractEffect.effect === localEffect
+    && contractEffect.temporality === localTemporality
+    && contractEffect.targetEngagementId === localTargetEngagementId
+    && (contractEffect.startsOn ?? '') === localStartsOn
+    && (contractEffect.endsOn ?? '') === localEndsOn
+    && (contractEffect.resumeOn ?? '') === localResumeOn
+    && (contractEffect.scope ?? '') === localScope
+  const effectBlocked = effectBlocksMaterialization(localEffect || null)
+
+  function onSaveContractEffect() {
+    if (!localEffect || !localTemporality) return
+    const fd = new FormData()
+    fd.set('proposal_id', proposal.id)
+    fd.set('document_id', documentId)
+    fd.set('effect', localEffect)
+    fd.set('temporality', localTemporality)
+    if (localTargetEngagementId) fd.set('target_engagement_id', localTargetEngagementId)
+    if (localStartsOn) fd.set('starts_on', localStartsOn)
+    if (localEndsOn) fd.set('ends_on', localEndsOn)
+    if (localResumeOn) fd.set('resume_on', localResumeOn)
+    if (localScope) fd.set('scope', localScope)
+    handleAction(() => setContractEffectAction(fd), () => {
+      setLocalStatus('edited')
+      setMsg({ ok: true, text: 'Qualification enregistrée' })
+    })
+  }
+
   // Une proposition n'est matérialisable qu'après validation humaine explicite —
   // jamais depuis 'pending' (cf. audit P0-2C section 11, précondition de la RPC).
-  const canMaterializeEngagement = isEngagement && (localStatus === 'accepted' || localStatus === 'edited')
+  // Un effet Conflit/Non-Engagement bloque toute matérialisation (Vincent 2026-09-28).
+  const canMaterializeEngagement = isEngagement && (localStatus === 'accepted' || localStatus === 'edited') && !effectBlocked
 
   function onCreateEngagement() {
     if (!localKind) { setMsg({ ok: false, text: 'Choisissez une nature avant de créer l’Engagement' }); return }
@@ -486,6 +547,159 @@ export function ProposalCard({
             </blockquote>
           )}
 
+          {/* Effet contractuel (DOC-CONTRACT-OS-1A) — qualification humaine, rien n'est appliqué au contrat */}
+          {!isMaterialized && (
+            <div className="space-y-2 pt-2 border-t">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Effet contractuel proposé</p>
+
+              {localEffect === 'conflict' && (
+                <div className="rounded border border-red-300 bg-red-50 dark:bg-red-950/20 p-2 text-xs text-red-800 dark:text-red-300 space-y-1">
+                  <p className="font-medium">⚠ Conflit documentaire détecté</p>
+                  <p>Ce document contredit une source déjà connue (CCTP, Engagement existant…). Examinez les sources avant de choisir un effet définitif.</p>
+                </div>
+              )}
+              {localEffect === 'non_engagement' && (
+                <div className="rounded border border-slate-300 bg-slate-50 dark:bg-slate-900/30 p-2 text-xs text-slate-700 dark:text-slate-300">
+                  Formalité administrative — ne doit jamais devenir un Engagement. Si une action est nécessaire, créez-la manuellement comme Action ponctuelle.
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] text-muted-foreground mb-1 block">Effet</label>
+                  <select
+                    value={localEffect}
+                    onChange={(e) => setLocalEffect(e.target.value as ContractEffect)}
+                    disabled={pending}
+                    className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                  >
+                    <option value="">— à choisir —</option>
+                    {CONTRACT_EFFECT_ORDER.map((eff) => (
+                      <option key={eff} value={eff}>{CONTRACT_EFFECT_META[eff].label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] text-muted-foreground mb-1 block">Temporalité</label>
+                  <select
+                    value={localTemporality}
+                    onChange={(e) => setLocalTemporality(e.target.value as ContractTemporality)}
+                    disabled={pending}
+                    className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                  >
+                    <option value="">— à choisir —</option>
+                    {CONTRACT_TEMPORALITY_ORDER.map((t) => (
+                      <option key={t} value={t}>{CONTRACT_TEMPORALITY_META[t].label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {localEffect && (
+                <p className="text-[11px] text-muted-foreground">{CONTRACT_EFFECT_META[localEffect].description}</p>
+              )}
+
+              {localEffect && effectRequiresTarget(localEffect) && (
+                <div>
+                  <label className="text-[11px] text-muted-foreground mb-1 block">Engagement concerné</label>
+                  {localTargetEngagementId ? (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="font-medium">
+                        {siteEngagements?.find((e) => e.id === localTargetEngagementId)?.short_label ?? localTargetEngagementId}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground underline"
+                        onClick={() => setLocalTargetEngagementId(null)}
+                        disabled={pending}
+                      >
+                        Changer
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <input
+                        type="text"
+                        value={effectTargetSearch}
+                        onChange={(e) => setEffectTargetSearch(e.target.value)}
+                        placeholder="Rechercher un Engagement du chantier…"
+                        className="w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                      {!siteEngagements || siteEngagements.length === 0 ? (
+                        <p className="text-xs text-muted-foreground px-1">Aucun Engagement existant sur ce chantier.</p>
+                      ) : (() => {
+                        const filtered = siteEngagements.filter((e) => e.short_label.toLowerCase().includes(effectTargetSearch.toLowerCase())).slice(0, 8)
+                        if (filtered.length === 0) return <p className="text-xs text-muted-foreground px-1">Aucun Engagement trouvé.</p>
+                        return (
+                          <ul className="rounded-md border border-border bg-background shadow-sm divide-y divide-border max-h-32 overflow-y-auto">
+                            {filtered.map((e) => (
+                              <li key={e.id}>
+                                <button
+                                  type="button"
+                                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-muted/60 transition-colors"
+                                  onClick={() => setLocalTargetEngagementId(e.id)}
+                                  disabled={pending}
+                                >
+                                  {e.short_label}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {localTemporality && temporalityRequiresDates(localTemporality) && (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] text-muted-foreground mb-1 block">Début</label>
+                    <input type="date" value={localStartsOn} onChange={(e) => setLocalStartsOn(e.target.value)} disabled={pending} className="w-full rounded border bg-background px-2 py-1.5 text-xs" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-muted-foreground mb-1 block">Fin</label>
+                    <input type="date" value={localEndsOn} onChange={(e) => setLocalEndsOn(e.target.value)} disabled={pending} className="w-full rounded border bg-background px-2 py-1.5 text-xs" />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-muted-foreground mb-1 block">Reprise</label>
+                    <input type="date" value={localResumeOn} onChange={(e) => setLocalResumeOn(e.target.value)} disabled={pending} className="w-full rounded border bg-background px-2 py-1.5 text-xs" />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Périmètre (optionnel)</label>
+                <input
+                  type="text"
+                  value={localScope}
+                  onChange={(e) => setLocalScope(e.target.value)}
+                  disabled={pending}
+                  placeholder="ex : Zone Z2, sanitaires"
+                  className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                {isQualificationSaved ? (
+                  <span className="text-[11px] text-emerald-700 dark:text-emerald-400">✓ Qualification enregistrée</span>
+                ) : (
+                  <span className="text-[11px] text-amber-700 dark:text-amber-400">⚠ À confirmer</span>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={onSaveContractEffect}
+                  disabled={pending || !localEffect || !localTemporality || isQualificationSaved}
+                >
+                  {pending ? '…' : 'Enregistrer la qualification'}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {!isMaterialized && (
             <div className="grid grid-cols-2 gap-2 pt-1">
               <div>
@@ -581,7 +795,13 @@ export function ProposalCard({
             </div>
           )}
           {!isMaterialized && !canMaterializeEngagement && (
-            <p className="text-xs text-muted-foreground">Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.</p>
+            <p className="text-xs text-muted-foreground">
+              {effectBlocked
+                ? (localEffect === 'conflict'
+                    ? 'Conflit documentaire non résolu — la matérialisation est bloquée tant que l’effet n’est pas requalifié.'
+                    : 'Effet « Non-Engagement » — cette proposition ne doit jamais devenir un Engagement.')
+                : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
+            </p>
           )}
         </div>
       )}
