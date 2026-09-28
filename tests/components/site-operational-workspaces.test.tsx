@@ -191,6 +191,10 @@ describe('site operational workspaces', () => {
           supersedesCycleId: null,
           slots: [{ weekIndex: 0, weekday: 1, teamId: 'team-1', state: 'work', startTime: '06:00', endTime: '14:00' }],
         }]}
+        weekStart="2026-07-13"
+        prevWeekParam="2026-W28"
+        nextWeekParam="2026-W30"
+        currentWeekParam="2026-W29"
       />,
     )
 
@@ -232,6 +236,10 @@ describe('site operational workspaces', () => {
           assignedTeamColor: null,
           day: '2026-09-28',
         }]}
+        weekStart="2026-09-28"
+        prevWeekParam="2026-W39"
+        nextWeekParam="2026-W41"
+        currentWeekParam="2026-W40"
       />,
     )
 
@@ -272,6 +280,10 @@ describe('site operational workspaces', () => {
           assignedTeamColor: null,
           day: '2026-09-28',
         }]}
+        weekStart="2026-09-28"
+        prevWeekParam="2026-W39"
+        nextWeekParam="2026-W41"
+        currentWeekParam="2026-W40"
       />,
     )
 
@@ -324,6 +336,10 @@ describe('site operational workspaces', () => {
             day: '2026-09-28',
           },
         ]}
+        weekStart="2026-09-28"
+        prevWeekParam="2026-W39"
+        nextWeekParam="2026-W41"
+        currentWeekParam="2026-W40"
       />,
     )
 

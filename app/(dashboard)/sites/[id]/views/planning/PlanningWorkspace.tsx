@@ -34,6 +34,15 @@ interface PlanningWorkspaceProps {
    *  Missions, pas encore matérialisées — même moteur que /mois et /semaine
    *  (buildMonthRows). Distinct de `timeline` : jamais un événement daté réel. */
   projectedOccurrences?: Array<ProjectedDayOccurrence & { day: string }>
+  /** Lundi (ISO yyyy-mm-dd) de la semaine affichée — calculé côté page,
+   *  ancré Pacific/Noumea par défaut ou fixé par `?week=YYYY-Www`. Jamais
+   *  recalculé ici depuis `new Date()` (bug navigation semaine, Vincent). */
+  weekStart: string
+  /** Paramètre `?week=` de la semaine précédente/suivante/affichée — pour de
+   *  vrais liens de navigation, plus des `<span>` inertes. */
+  prevWeekParam: string
+  nextWeekParam: string
+  currentWeekParam: string
 }
 
 /** Un item de la « Liste de la semaine » : un événement réel daté, ou une
@@ -62,8 +71,12 @@ export function PlanningWorkspace({
   teams,
   timeline,
   projectedOccurrences,
+  weekStart,
+  prevWeekParam,
+  nextWeekParam,
+  currentWeekParam,
 }: PlanningWorkspaceProps) {
-  const week = getCurrentWeek()
+  const week = buildWeekDays(weekStart)
   const interventionsThisWeek = interventions.filter((intervention) => {
     const date = intervention.scheduled_for ?? isoDate(intervention.scheduled_at)
     return date >= week[0].iso && date <= week[6].iso
@@ -121,10 +134,25 @@ export function PlanningWorkspace({
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-sm">
-            <span className="rounded-full border px-3 py-1.5 text-muted-foreground">Semaine précédente</span>
+            <Link
+              href={`?tab=planning&plantab=agenda&week=${prevWeekParam}`}
+              scroll={false}
+              className="rounded-full border px-3 py-1.5 text-muted-foreground hover:bg-muted"
+            >
+              Semaine précédente
+            </Link>
             <span className="rounded-full bg-foreground px-3 py-1.5 text-background">{formatWeekRange(week)}</span>
-            <span className="rounded-full border px-3 py-1.5 text-muted-foreground">Semaine suivante</span>
-            <Link href={`/semaine?site=${siteId}`} className="rounded-full border px-3 py-1.5 font-medium hover:bg-muted">
+            <Link
+              href={`?tab=planning&plantab=agenda&week=${nextWeekParam}`}
+              scroll={false}
+              className="rounded-full border px-3 py-1.5 text-muted-foreground hover:bg-muted"
+            >
+              Semaine suivante
+            </Link>
+            <Link
+              href={`/semaine?site=${siteId}&week=${currentWeekParam}`}
+              className="rounded-full border px-3 py-1.5 font-medium hover:bg-muted"
+            >
               Ouvrir la semaine
             </Link>
           </div>
@@ -435,24 +463,24 @@ function teamsUsedThisWeek(interventions: SupervisorInterventionRow[], teamById:
   }))
 }
 
-function getCurrentWeek() {
-  const now = new Date()
-  const day = now.getDay() === 0 ? 7 : now.getDay()
-  const monday = new Date(now)
-  monday.setHours(0, 0, 0, 0)
-  monday.setDate(now.getDate() - day + 1)
+/** Construit les 7 jours (lundi→dimanche) de la semaine affichée, depuis un
+ *  `weekStart` déjà résolu (Pacific/Noumea par défaut ou `?week=`) — jamais
+ *  recalculé ici depuis `new Date()` (bug navigation semaine, Vincent). */
+function buildWeekDays(weekStart: string) {
+  const monday = new Date(`${weekStart}T00:00:00Z`)
   return Array.from({ length: 7 }, (_, index) => {
     const date = new Date(monday)
-    date.setDate(monday.getDate() + index)
+    date.setUTCDate(monday.getUTCDate() + index)
+    const iso = isoDate(date.toISOString())
     return {
-      iso: isoDate(date.toISOString()),
+      iso,
       label: WEEKDAYS[index],
-      shortDate: date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
+      shortDate: new Date(`${iso}T00:00:00Z`).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', timeZone: 'UTC' }),
     }
   })
 }
 
-function formatWeekRange(week: ReturnType<typeof getCurrentWeek>): string {
+function formatWeekRange(week: ReturnType<typeof buildWeekDays>): string {
   return `${week[0].shortDate} - ${week[6].shortDate}`
 }
 

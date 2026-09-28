@@ -86,10 +86,11 @@ import type { PlanningTimelineEvent } from '@/lib/planning/timeline-contract'
 import { buildMonthRows, type MonthRow } from '@/lib/db/month-view'
 import type { ProjectedDayOccurrence } from '@/lib/planning/month-view'
 import { SiteOverviewTab } from './views/apercu/SiteOverviewTab'
+import { getWeekRange, parseWeekParam, formatWeekParam, todayNoumeaIso, type WeekRange } from '@/lib/week-planning-helpers'
 
 interface PageProps {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ tab?: string; person?: string; action?: string; decision?: string; plantab?: string }>
+  searchParams: Promise<{ tab?: string; person?: string; action?: string; decision?: string; plantab?: string; week?: string }>
 }
 
 type ChantierViewKey = SiteTabKey
@@ -106,7 +107,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
   if (user.role === 'chef_equipe') redirect('/m')
 
   const { id } = await params
-  const { tab: rawTab, person: personId, action: actionId, decision: decisionId, plantab: rawPlantab } = await searchParams
+  const { tab: rawTab, person: personId, action: actionId, decision: decisionId, plantab: rawPlantab, week: rawWeek } = await searchParams
   const tab: ChantierViewKey = resolveSiteTab(rawTab)
   // Simplification Mémoire (mandat Vincent 2026-09-22) : une seule route
   // canonique /sites/<id>/memoire — l'ancien point d'entrée ?tab=memoire redirige,
@@ -234,7 +235,7 @@ export default async function SitePage({ params, searchParams }: PageProps) {
           ) : tab === 'chronologie' ? (
             <ChronologieView siteId={id} />
           ) : tab === 'planning' ? (
-            <PlanningView siteId={id} plantab={plantab} />
+            <PlanningView siteId={id} plantab={plantab} weekParam={rawWeek} />
           ) : tab === 'documents-preuves' ? (
             <DocumentsPreuvesView siteId={id} canExport={user.role === 'admin' || user.role === 'manager'} />
           ) : tab === 'intervenants' ? (
@@ -487,14 +488,17 @@ async function ChronologieView({ siteId }: { siteId: string }) {
   )
 }
 
-async function PlanningView({ siteId, plantab }: { siteId: string; plantab: PlanningSubTab }) {
+async function PlanningView({ siteId, plantab, weekParam }: { siteId: string; plantab: PlanningSubTab; weekParam?: string }) {
   // La vie datée du chantier — visites, réunions, échéances, interventions. On
-  // charge la semaine courante, pour que la grille et les compteurs lisent la
-  // même chose.
-  const jour = new Date()
-  const lundi = new Date(jour); lundi.setDate(jour.getDate() - ((jour.getDay() === 0 ? 7 : jour.getDay()) - 1))
-  const dimanche = new Date(lundi); dimanche.setDate(lundi.getDate() + 6)
-  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  // charge la semaine affichée (ancrée Pacific/Noumea par défaut, ou celle
+  // demandée via ?week=YYYY-Www), pour que la grille et les compteurs lisent
+  // la même chose. `buildMonthRows`/`getPlanningTimeline` restent inchangés :
+  // seule la plage from/to qui les alimente change.
+  const weekRange: WeekRange = weekParam ? parseWeekParam(weekParam) : getWeekRange(todayNoumeaIso())
+  const currentMonday = new Date(`${weekRange.weekStart}T00:00:00Z`)
+  const prevWeekParam = formatWeekParam(getWeekRange(new Date(currentMonday.getTime() - 7 * 86_400_000)))
+  const nextWeekParam = formatWeekParam(getWeekRange(new Date(currentMonday.getTime() + 7 * 86_400_000)))
+  const currentWeekParam = formatWeekParam(weekRange)
 
   const [currentState, interventions, missions, blocages, cycles, deadlines, deadlineHistory, maskedProposals, teams, timeline, scheduledEvents, planningItems, monthRows] = await Promise.all([
     getSiteCurrentState(siteId).catch(() => null),
@@ -506,10 +510,10 @@ async function PlanningView({ siteId, plantab }: { siteId: string; plantab: Plan
     listSiteDeadlineHistory(siteId).catch(() => []),
     listMaskedDeadlineProposals(siteId).catch(() => []),
     listTeamsForSite(siteId).catch(() => []),
-    getPlanningTimeline({ from: iso(lundi), to: iso(dimanche) }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
+    getPlanningTimeline({ from: weekRange.weekStart, to: weekRange.weekEnd }, { siteIds: [siteId] }).catch((): PlanningTimelineEvent[] => []),
     listScheduledEvents(siteId, { from: new Date().toISOString() }).catch((): ScheduledEvent[] => []),
     listSitePlanningItems(siteId).catch(() => []),
-    buildMonthRows({ from: iso(lundi), to: iso(dimanche), siteIds: [siteId] }).catch((): MonthRow[] => []),
+    buildMonthRows({ from: weekRange.weekStart, to: weekRange.weekEnd, siteIds: [siteId] }).catch((): MonthRow[] => []),
   ])
   // SITE-PLAN-PROJ-1 : occurrences projetées (rythme/roulement) de la semaine,
   // pas encore matérialisées — même moteur que /mois et /semaine (buildMonthRows),
@@ -551,6 +555,10 @@ async function PlanningView({ siteId, plantab }: { siteId: string; plantab: Plan
           teams={teams}
           timeline={timeline}
           projectedOccurrences={projectedOccurrences}
+          weekStart={weekRange.weekStart}
+          prevWeekParam={prevWeekParam}
+          nextWeekParam={nextWeekParam}
+          currentWeekParam={currentWeekParam}
         />
       ) : plantab === 'echeances' ? (
         <EcheancesSubView

@@ -125,3 +125,18 @@ export function parseWeekParam(raw: string | undefined | null): WeekRange {
 export function formatWeekParam(range: WeekRange): string {
   return `${range.year}-W${String(range.weekNumber).padStart(2, '0')}`
 }
+
+/**
+ * "Aujourd'hui" ancré Pacific/Noumea (pilote NC, UTC+11) — jamais l'horloge du
+ * serveur (UTC sur Vercel). À 09h locales à Nouméa, le serveur est encore la
+ * veille en UTC : calculer une semaine par défaut depuis `new Date()` brut
+ * résout la mauvaise semaine (bug navigation Agenda chantier, SITE-PLAN-PROJ-1).
+ */
+export function todayNoumeaIso(): string {
+  return new Intl.DateTimeFormat('fr-CA', {
+    timeZone: 'Pacific/Noumea',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
