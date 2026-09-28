@@ -30,6 +30,7 @@ import { SiteReportLauncher } from '@/app/(field)/m/site/[siteId]/SiteReportLaun
 import { DynamicCrumb } from '@/components/layout/BreadcrumbProvider'
 import { DossierConfidenceBadge } from '@/components/ui/dossier-confidence-badge'
 import { getContractSummaries } from '@/lib/db/dashboard'
+import { todayLocalIso } from '@/lib/time/local-date'
 import type { EngagementComplianceRatios } from '@/types/db'
 
 const COMPLETED_STATUSES = new Set(['completed', 'validated'])
@@ -154,13 +155,22 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   // DOC-CONTRACT-OS-1B2-B4 — « aujourd'hui » est calculé UNE FOIS ici, par le
   // consommateur, puis transmis explicitement à la primitive B3 (jamais un
   // Date.now()/new Date() dans le resolver lui-même). Historique COMPLET déjà
-  // chargé par B3 — aucun filtre "actif" ici.
-  const todayIso = new Date().toISOString().slice(0, 10)
+  // chargé par B3 — aucun filtre "actif" ici. Date CIVILE Nouméa (`todayLocalIso`),
+  // jamais `new Date().toISOString()` qui rend la date UTC — fausse le matin en NC.
+  const todayIso = todayLocalIso()
   const contractStateResults = await Promise.all(
     obligations.map((e) => resolveEngagementContractStateForUser(e.id, todayIso, me)),
   )
   const contractStateByEngagement = new Map(
     obligations.map((e, i) => [e.id, contractStateResults[i]]),
+  )
+
+  // Fix 2 (revue ChatGPT 1B2-B4) — libellé de provenance : réutilise les
+  // documents DÉJÀ chargés/filtrés par visibilité ci-dessus, aucune requête
+  // supplémentaire. Fallback sur l'id brut si le document source n'est pas
+  // (ou plus) visible pour ce rôle.
+  const contractDocumentTitleById = new Map(
+    visibleContractDocs.map((d) => [d.id, d.filename]),
   )
 
   return (
@@ -442,7 +452,10 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                   </div>
                 </div>
                 <EngagementCompliance ratios={computeRatios(e.id)} size="medium" />
-                <EngagementContractStatePanel result={contractStateByEngagement.get(e.id)} />
+                <EngagementContractStatePanel
+                  result={contractStateByEngagement.get(e.id)}
+                  documentTitleById={contractDocumentTitleById}
+                />
               </li>
             ))}
           </ul>

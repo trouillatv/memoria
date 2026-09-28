@@ -10,6 +10,7 @@
 import { cn } from '@/lib/utils'
 import type {
   EngagementExistenceStatus,
+  ProvenanceEntry,
   ScopeApplicability,
   ScopeState,
 } from '@/lib/engagements/resolve-contract-state'
@@ -17,13 +18,20 @@ import type { ResolveEngagementContractStateForUserResult } from '@/lib/engageme
 
 interface EngagementContractStatePanelProps {
   result: ResolveEngagementContractStateForUserResult | undefined
+  /** id document → libellé lisible (déjà chargés par la page contrat, aucune
+   *  requête supplémentaire ici) — fallback sur l'id brut si absent. */
+  documentTitleById?: Map<string, string>
 }
 
+// Dimension d'EXISTENCE de l'Engagement — distincte de l'applicabilité d'une
+// portée (qui peut être suspendue/indéterminée même quand l'Engagement
+// existe). Ne jamais réutiliser "Applicable" ici : un Engagement "en vigueur"
+// avec une portée "Suspendu" ne doit jamais lire "Applicable / Suspendu".
 const EXISTENCE_LABELS: Record<EngagementExistenceStatus, string> = {
-  not_yet_existing: 'Pas encore applicable',
-  exists: 'Applicable',
+  not_yet_existing: 'Pas encore en vigueur',
+  exists: 'En vigueur',
   expired: 'Expiré',
-  undetermined: 'Indéterminé (conflit)',
+  undetermined: 'Existence indéterminée',
 }
 
 const EXISTENCE_TONE: Record<EngagementExistenceStatus, string> = {
@@ -51,7 +59,26 @@ function formatScopeValue(value: unknown): string {
   }
 }
 
-function ScopeRow({ scope }: { scope: ScopeState }) {
+function findProvenance(trail: ProvenanceEntry[], effectId: string | null): ProvenanceEntry | null {
+  if (!effectId) return null
+  return trail.find((p) => p.effectId === effectId) ?? null
+}
+
+function ScopeRow({
+  scope,
+  provenanceTrail,
+  documentTitleById,
+}: {
+  scope: ScopeState
+  provenanceTrail: ProvenanceEntry[]
+  documentTitleById?: Map<string, string>
+}) {
+  const provenance = findProvenance(provenanceTrail, scope.sourceEffectId)
+  const sourceLabel =
+    provenance?.sourceDocumentId != null
+      ? (documentTitleById?.get(provenance.sourceDocumentId) ?? provenance.sourceDocumentId)
+      : null
+
   return (
     <li className="flex items-start justify-between gap-3 text-[11px]">
       <div className="min-w-0">
@@ -62,6 +89,9 @@ function ScopeRow({ scope }: { scope: ScopeState }) {
         )}
         {scope.indeterminateReason && (
           <span className="block text-amber-700">{scope.indeterminateReason}</span>
+        )}
+        {sourceLabel && (
+          <span className="block text-muted-foreground">Source contractuelle : {sourceLabel}</span>
         )}
       </div>
       <span
@@ -83,7 +113,7 @@ function ScopeRow({ scope }: { scope: ScopeState }) {
  * fournie par l'appelant (jamais recalculée ici). N'affiche ni historique,
  * ni Planning, ni action de matérialisation — cf. mandat 1B2-B4.
  */
-export function EngagementContractStatePanel({ result }: EngagementContractStatePanelProps) {
+export function EngagementContractStatePanel({ result, documentTitleById }: EngagementContractStatePanelProps) {
   if (!result) return null
   if (!result.ok) {
     return (
@@ -134,7 +164,12 @@ export function EngagementContractStatePanel({ result }: EngagementContractState
       {state.scopes.length > 0 && (
         <ul className="space-y-1 pt-1">
           {state.scopes.map((scope) => (
-            <ScopeRow key={scope.scopeKey} scope={scope} />
+            <ScopeRow
+              key={scope.scopeKey}
+              scope={scope}
+              provenanceTrail={state.provenanceTrail}
+              documentTitleById={documentTitleById}
+            />
           ))}
         </ul>
       )}

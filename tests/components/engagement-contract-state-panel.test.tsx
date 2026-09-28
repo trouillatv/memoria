@@ -115,8 +115,104 @@ describe('EngagementContractStatePanel — indéterminé', () => {
       resolutionIssue: { type: 'multiple_new_founders', conflictingEffectIds: ['e1', 'e2'] },
     })
     render(<EngagementContractStatePanel result={ok(state)} />)
-    expect(screen.getByText('Indéterminé (conflit)')).toBeInTheDocument()
+    expect(screen.getByText('Existence indéterminée')).toBeInTheDocument()
     expect(screen.getByText(/Conflit non résolu/)).toBeInTheDocument()
+  })
+})
+
+describe('EngagementContractStatePanel — provenance (Fix ChatGPT 1B2-B4)', () => {
+  it('MODIFY actif avec sourceEffectId relié à une entrée de provenance : source visible', () => {
+    const state = baseState({
+      existence: { status: 'exists', foundedBy: 'effect-new-1', existsFrom: '2026-01-01', existsUntil: null },
+      scopes: [
+        baseScope({
+          scopeKey: 'frequency',
+          basis: 'modify',
+          applicability: 'applicable',
+          value: 'hebdomadaire',
+          sourceEffectId: 'effect-modify-1',
+        }),
+      ],
+      provenanceTrail: [
+        {
+          effectId: 'effect-modify-1',
+          effect: 'modify',
+          temporality: 'permanent',
+          scopeKey: 'frequency',
+          startsOn: '2026-03-01',
+          endsOn: null,
+          resumeOn: null,
+          sourceDocumentId: 'doc-os15',
+          sourceProposalId: 'proposal-1',
+          recordedInMemoriaAt: '2026-03-02T00:00:00Z',
+          recordedAfterQueriedDate: false,
+          orphaned: false,
+          usedInResolution: true,
+        },
+      ],
+    })
+    render(
+      <EngagementContractStatePanel
+        result={ok(state)}
+        documentTitleById={new Map([['doc-os15', 'OS15']])}
+      />,
+    )
+    expect(screen.getByText(/Source contractuelle : OS15/)).toBeInTheDocument()
+  })
+
+  it('sourceDocumentId sans libellé connu : fallback sur l\'id brut', () => {
+    const state = baseState({
+      existence: { status: 'exists', foundedBy: 'effect-new-1', existsFrom: '2026-01-01', existsUntil: null },
+      scopes: [
+        baseScope({
+          scopeKey: 'frequency',
+          basis: 'modify',
+          applicability: 'applicable',
+          value: 'hebdomadaire',
+          sourceEffectId: 'effect-modify-1',
+        }),
+      ],
+      provenanceTrail: [
+        {
+          effectId: 'effect-modify-1',
+          effect: 'modify',
+          temporality: 'permanent',
+          scopeKey: 'frequency',
+          startsOn: '2026-03-01',
+          endsOn: null,
+          resumeOn: null,
+          sourceDocumentId: 'doc-unknown',
+          sourceProposalId: 'proposal-1',
+          recordedInMemoriaAt: '2026-03-02T00:00:00Z',
+          recordedAfterQueriedDate: false,
+          orphaned: false,
+          usedInResolution: true,
+        },
+      ],
+    })
+    render(<EngagementContractStatePanel result={ok(state)} />)
+    expect(screen.getByText(/Source contractuelle : doc-unknown/)).toBeInTheDocument()
+  })
+})
+
+describe('EngagementContractStatePanel — pas de badges contradictoires (Fix ChatGPT 1B2-B4)', () => {
+  it('Engagement existant (en vigueur) avec une portée suspendue : jamais "Applicable" pour l\'existence', () => {
+    const state = baseState({
+      existence: { status: 'exists', foundedBy: 'effect-new-1', existsFrom: '2026-01-01', existsUntil: null },
+      scopes: [
+        baseScope({
+          scopeKey: 'whole_engagement',
+          basis: 'modify',
+          applicability: 'suspended',
+          value: 'mensuel',
+          dominatedByWholeEngagementSuspend: true,
+        }),
+      ],
+    })
+    render(<EngagementContractStatePanel result={ok(state)} />)
+    expect(screen.getByText('En vigueur')).toBeInTheDocument()
+    expect(screen.getByText('Suspendu')).toBeInTheDocument()
+    expect(screen.queryByText('Applicable')).not.toBeInTheDocument()
   })
 })
 
