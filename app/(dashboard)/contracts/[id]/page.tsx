@@ -21,6 +21,8 @@ import { LinkedDocumentsList } from '@/components/documents/LinkedDocumentsList'
 import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from './engagement-compliance'
+import { EngagementContractStatePanel } from './EngagementContractStatePanel'
+import { resolveEngagementContractStateForUser } from '@/lib/engagements/resolve-contract-state-for-user'
 import { ContractVigilancePanel } from './ContractVigilancePanel'
 import { ASavoirPropositionsPanel } from './ASavoirPropositionsPanel'
 import { ContractTabs } from './contract-tabs'
@@ -148,6 +150,18 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
   )
   const unplannedEngagements = obligations.filter((e) => !planned.has(e.id))
   const unplannedCount = unplannedEngagements.length
+
+  // DOC-CONTRACT-OS-1B2-B4 — « aujourd'hui » est calculé UNE FOIS ici, par le
+  // consommateur, puis transmis explicitement à la primitive B3 (jamais un
+  // Date.now()/new Date() dans le resolver lui-même). Historique COMPLET déjà
+  // chargé par B3 — aucun filtre "actif" ici.
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const contractStateResults = await Promise.all(
+    obligations.map((e) => resolveEngagementContractStateForUser(e.id, todayIso, me)),
+  )
+  const contractStateByEngagement = new Map(
+    obligations.map((e, i) => [e.id, contractStateResults[i]]),
+  )
 
   return (
     <div className="space-y-6 w-full">
@@ -428,6 +442,7 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
                   </div>
                 </div>
                 <EngagementCompliance ratios={computeRatios(e.id)} size="medium" />
+                <EngagementContractStatePanel result={contractStateByEngagement.get(e.id)} />
               </li>
             ))}
           </ul>
