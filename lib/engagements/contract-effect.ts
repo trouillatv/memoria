@@ -99,6 +99,28 @@ export function effectAllowsLinkExisting(effect: ContractEffect | null): boolean
   return effect === null || effect === 'confirm'
 }
 
+// Trou de doctrine comblé (mandat de fermeture Vincent 2026-09-28) : `effect === null`
+// signifiait à la fois « ancien CCTP jamais qualifié » (comportement legacy préservé)
+// et « OS/Avenant nouvellement importé, qualification pas encore faite » (devrait
+// bloquer). documents.document_type (migration 433, valeurs existantes — jamais un
+// second champ inventé) distingue les deux : seuls ordre_service et avenant exigent
+// une qualification explicite avant toute matérialisation individuelle ou groupée.
+export const DOCUMENT_TYPES_REQUIRING_QUALIFICATION: readonly string[] = ['ordre_service', 'avenant']
+
+export function documentRequiresContractEffectQualification(documentType: string | null | undefined): boolean {
+  return !!documentType && DOCUMENT_TYPES_REQUIRING_QUALIFICATION.includes(documentType)
+}
+
+export function effectAllowsCreateNewForDocument(documentType: string | null | undefined, effect: ContractEffect | null): boolean {
+  if (effect !== null) return effectAllowsCreateNew(effect)
+  return !documentRequiresContractEffectQualification(documentType)
+}
+
+export function effectAllowsLinkExistingForDocument(documentType: string | null | undefined, effect: ContractEffect | null): boolean {
+  if (effect !== null) return effectAllowsLinkExisting(effect)
+  return !documentRequiresContractEffectQualification(documentType)
+}
+
 export type ContractEffectQualification = {
   effect: ContractEffect
   temporality: ContractTemporality

@@ -260,6 +260,7 @@ export default async function ExtractionReviewPage({
         siteEngagements={siteEngagements}
         nonVisitSignal={nonVisitSignal?.detected ? { evidence: nonVisitSignal.evidence } : null}
         isEngagementRun={isEngagementRun}
+        documentType={doc.document_type}
       />
     </div>
   )

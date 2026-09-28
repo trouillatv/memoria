@@ -204,3 +204,73 @@ describe('finalizeAcceptedEngagementsForRun — garde EFFET × TEMPORALITÉ (DOC
     expect(result).toEqual({ ok: true, createdCount: 1, needsReviewCount: 0 })
   })
 })
+
+// DOC-CONTRACT-OS-1A — DERNIER GATE (mandat de fermeture Vincent 2026-09-28).
+// Le geste groupé « Finaliser les Engagements » doit exclure lui aussi un
+// ordre_service/avenant sans qualification enregistrée, pas seulement le
+// geste par carte — sinon il contourne la qualification requise.
+describe('finalizeAcceptedEngagementsForRun — documentType (DOC-CONTRACT-OS-1A dernier gate)', () => {
+  it('CCTP explicite sans contract_effect — bulk crée normalement', async () => {
+    proposalsResult = {
+      data: [{ id: 'p1', source_payload: { kind: 'obligation', category: 'sla', measurable: true } }],
+      error: null,
+    }
+    rpc.mockResolvedValue({ data: 'eng-x', error: null })
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1', documentType: 'cctp' })
+
+    expect(result).toEqual({ ok: true, createdCount: 1, needsReviewCount: 0 })
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('ordre_service sans contract_effect — bulk ne crée rien, needsReviewCount, aucun appel RPC', async () => {
+    proposalsResult = {
+      data: [{ id: 'p1', source_payload: { kind: 'obligation', category: 'sla', measurable: true } }],
+      error: null,
+    }
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1', documentType: 'ordre_service' })
+
+    expect(result).toEqual({ ok: true, createdCount: 0, needsReviewCount: 1 })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('avenant sans contract_effect — bulk ne crée rien, needsReviewCount, aucun appel RPC', async () => {
+    proposalsResult = {
+      data: [{ id: 'p1', source_payload: { kind: 'obligation', category: 'sla', measurable: true } }],
+      error: null,
+    }
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1', documentType: 'avenant' })
+
+    expect(result).toEqual({ ok: true, createdCount: 0, needsReviewCount: 1 })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('ordre_service + effet NEW qualifié — bulk crée (la matrice prime dès qu\'un effet existe)', async () => {
+    proposalsResult = {
+      data: [{
+        id: 'p1',
+        source_payload: { kind: 'obligation', category: 'sla', measurable: true, contract_effect: { effect: 'new' } },
+      }],
+      error: null,
+    }
+    rpc.mockResolvedValue({ data: 'eng-x', error: null })
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1', documentType: 'ordre_service' })
+
+    expect(result).toEqual({ ok: true, createdCount: 1, needsReviewCount: 0 })
+  })
+
+  it('documentType absent (comportement legacy par défaut) — équivalent à CCTP, bulk crée normalement', async () => {
+    proposalsResult = {
+      data: [{ id: 'p1', source_payload: { kind: 'obligation', category: 'sla', measurable: true } }],
+      error: null,
+    }
+    rpc.mockResolvedValue({ data: 'eng-x', error: null })
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1' })
+
+    expect(result).toEqual({ ok: true, createdCount: 1, needsReviewCount: 0 })
+  })
+})

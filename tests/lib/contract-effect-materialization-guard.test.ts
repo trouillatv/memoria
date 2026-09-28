@@ -48,7 +48,14 @@ import {
   createEngagementFromProposalAction,
   linkEngagementToProposalAction,
 } from '../../app/(dashboard)/documents/[id]/extraction/[runId]/review-actions'
-import { effectAllowsCreateNew, effectAllowsLinkExisting, type ContractEffect } from '@/lib/engagements/contract-effect'
+import {
+  effectAllowsCreateNew,
+  effectAllowsLinkExisting,
+  effectAllowsCreateNewForDocument,
+  effectAllowsLinkExistingForDocument,
+  documentRequiresContractEffectQualification,
+  type ContractEffect,
+} from '@/lib/engagements/contract-effect'
 
 // ─── Helpers (même convention que historical-visit-review.test.ts) ────────────
 
@@ -78,6 +85,7 @@ function buildAccessMock(config: {
   targetSiteId?: string | null
   sourcePayload?: Record<string, unknown>
   targetEngagementSiteId?: string
+  documentType?: string | null
 } = {}) {
   const {
     documentId = 'doc-1',
@@ -85,10 +93,11 @@ function buildAccessMock(config: {
     targetSiteId = null,
     sourcePayload = {},
     targetEngagementSiteId = 'site-1',
+    documentType = 'cctp',
   } = config
   return (table: string) => {
     if (table === 'documents') {
-      return buildChainWithThen(() => ({ data: { organization_id: 'org-1' }, error: null }))
+      return buildChainWithThen(() => ({ data: { organization_id: 'org-1', document_type: documentType }, error: null }))
     }
     if (table === 'document_extraction_proposal') {
       return buildChainWithThen(() => ({
@@ -222,6 +231,48 @@ describe('effectAllowsCreateNew / effectAllowsLinkExisting — matrice complète
   })
 })
 
+// ─── effectAllowsCreateNewForDocument / effectAllowsLinkExistingForDocument —
+// dernier gate de fermeture DOC-CONTRACT-OS-1A (mandat Vincent 2026-09-28) :
+// null ne signifie plus « autorisé » pour un document qui exige une
+// qualification explicite (ordre_service, avenant). Un effet déjà qualifié
+// suit exactement la même matrice que ci-dessus, quel que soit le document.
+
+describe('effectAllowsCreateNewForDocument / effectAllowsLinkExistingForDocument — legacy vs qualification requise', () => {
+  it('documentRequiresContractEffectQualification — seuls ordre_service et avenant', () => {
+    expect(documentRequiresContractEffectQualification('ordre_service')).toBe(true)
+    expect(documentRequiresContractEffectQualification('avenant')).toBe(true)
+    expect(documentRequiresContractEffectQualification('cctp')).toBe(false)
+    expect(documentRequiresContractEffectQualification('ccap')).toBe(false)
+    expect(documentRequiresContractEffectQualification(null)).toBe(false)
+    expect(documentRequiresContractEffectQualification(undefined)).toBe(false)
+  })
+
+  it('CCTP (legacy) sans qualification — create et link toujours autorisés', () => {
+    expect(effectAllowsCreateNewForDocument('cctp', null)).toBe(true)
+    expect(effectAllowsLinkExistingForDocument('cctp', null)).toBe(true)
+  })
+
+  it('ordre_service sans qualification — create et link refusés', () => {
+    expect(effectAllowsCreateNewForDocument('ordre_service', null)).toBe(false)
+    expect(effectAllowsLinkExistingForDocument('ordre_service', null)).toBe(false)
+  })
+
+  it('avenant sans qualification — create et link refusés', () => {
+    expect(effectAllowsCreateNewForDocument('avenant', null)).toBe(false)
+    expect(effectAllowsLinkExistingForDocument('avenant', null)).toBe(false)
+  })
+
+  it('ordre_service + new qualifié — create autorisé (la matrice prime dès qu\'un effet existe)', () => {
+    expect(effectAllowsCreateNewForDocument('ordre_service', 'new')).toBe(true)
+    expect(effectAllowsLinkExistingForDocument('ordre_service', 'new')).toBe(false)
+  })
+
+  it('ordre_service + confirm qualifié — link autorisé', () => {
+    expect(effectAllowsCreateNewForDocument('ordre_service', 'confirm')).toBe(false)
+    expect(effectAllowsLinkExistingForDocument('ordre_service', 'confirm')).toBe(true)
+  })
+})
+
 // ─── createEngagementFromProposalAction — garde de matérialisation ────────────
 // NEW/pas de qualification → autorisé (déjà couvert par Section 6 de
 // historical-visit-review.test.ts). Ici : les effets qui doivent bloquer create_new.
@@ -306,5 +357,68 @@ describe('linkEngagementToProposalAction — garde EFFET × TEMPORALITÉ (DOC-CO
     const result = await linkEngagementToProposalAction(buildEngagementForm('suspend', { targetEngagementId: 'eng-1' }))
     expect(result).toMatchObject({ ok: false, error: 'Cet effet contractuel ne permet pas de rattacher un Engagement existant' })
     expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
+  })
+})
+
+// ─── DOC-CONTRACT-OS-1A — dernier gate de fermeture (mandat Vincent 2026-09-28) ──
+// null ne signifie plus « CCTP historique, autorisé » pour un ordre_service ou un
+// avenant : la qualification devient obligatoire avant create ET link, y compris
+// côté serveur (documents.document_type, jamais un second champ inventé).
+
+describe('createEngagementFromProposalAction / linkEngagementToProposalAction — qualification obligatoire pour ordre_service/avenant (DOC-CONTRACT-OS-1A dernier gate)', () => {
+  it('CCTP legacy sans contract_effect — create toujours possible', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ documentType: 'cctp', sourcePayload: {} }))
+    mocks.materializeEngagementCreateNew.mockResolvedValue('eng-x')
+    const result = await createEngagementFromProposalAction(buildForm({ category: 'sla', kind: 'controle', measurable: 'true' }))
+    expect(result).toMatchObject({ ok: true, engagementId: 'eng-x' })
+  })
+
+  it('CCTP legacy sans contract_effect — link toujours possible', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ documentType: 'cctp', sourcePayload: {} }))
+    mocks.materializeEngagementLinkExisting.mockResolvedValue('eng-1')
+    const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-1' }))
+    expect(result).toMatchObject({ ok: true, engagementId: 'eng-1' })
+  })
+
+  it('ordre_service sans contract_effect — create refusé', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ documentType: 'ordre_service', sourcePayload: {} }))
+    const result = await createEngagementFromProposalAction(buildForm({ category: 'sla', kind: 'controle', measurable: 'true' }))
+    expect(result).toMatchObject({ ok: false, error: 'Qualifiez d’abord l’effet contractuel de ce document avant de créer un Engagement' })
+    expect(mocks.materializeEngagementCreateNew).not.toHaveBeenCalled()
+  })
+
+  it('ordre_service sans contract_effect — link refusé', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ documentType: 'ordre_service', sourcePayload: {} }))
+    const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-1' }))
+    expect(result).toMatchObject({ ok: false, error: 'Qualifiez d’abord l’effet contractuel de ce document avant de rattacher un Engagement' })
+    expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
+  })
+
+  it('avenant sans contract_effect — create refusé', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ documentType: 'avenant', sourcePayload: {} }))
+    const result = await createEngagementFromProposalAction(buildForm({ category: 'sla', kind: 'controle', measurable: 'true' }))
+    expect(result).toMatchObject({ ok: false, error: 'Qualifiez d’abord l’effet contractuel de ce document avant de créer un Engagement' })
+    expect(mocks.materializeEngagementCreateNew).not.toHaveBeenCalled()
+  })
+
+  it('avenant sans contract_effect — link refusé', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ documentType: 'avenant', sourcePayload: {} }))
+    const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-1' }))
+    expect(result).toMatchObject({ ok: false, error: 'Qualifiez d’abord l’effet contractuel de ce document avant de rattacher un Engagement' })
+    expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
+  })
+
+  it('ordre_service + effet NEW qualifié — create autorisé', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ documentType: 'ordre_service', sourcePayload: { contract_effect: { effect: 'new' } } }))
+    mocks.materializeEngagementCreateNew.mockResolvedValue('eng-x')
+    const result = await createEngagementFromProposalAction(buildForm({ category: 'sla', kind: 'controle', measurable: 'true' }))
+    expect(result).toMatchObject({ ok: true, engagementId: 'eng-x' })
+  })
+
+  it('ordre_service + effet CONFIRM qualifié — link autorisé', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ documentType: 'ordre_service', sourcePayload: { contract_effect: { effect: 'confirm', targetEngagementId: 'eng-1' } } }))
+    mocks.materializeEngagementLinkExisting.mockResolvedValue('eng-1')
+    const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-1' }))
+    expect(result).toMatchObject({ ok: true, engagementId: 'eng-1' })
   })
 })

@@ -464,6 +464,7 @@ export function ExtractionReviewClient({
   siteEngagements,
   nonVisitSignal,
   isEngagementRun,
+  documentType,
 }: {
   proposals: DocumentExtractionProposalWithEvidence[]
   orphanEvidence: DbDocumentExtractionEvidence[]
@@ -484,6 +485,8 @@ export function ExtractionReviewClient({
   nonVisitSignal?: { evidence: string | null } | null
   /** P0-2C — un run Engagement n'a pas de visite à matérialiser : CreateVisitBlock ne doit jamais s'y afficher. */
   isEngagementRun?: boolean
+  /** documents.document_type — gate d'affichage DOC-CONTRACT-OS-1A (ordre_service/avenant exigent une qualification). */
+  documentType?: string | null
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -880,6 +883,7 @@ export function ExtractionReviewClient({
                     siteSubjects={siteSubjects}
                     materializations={p.materializations}
                     siteEngagements={siteEngagements}
+                    documentType={documentType}
                     confirmedPhotos={(confirmedPhotosByProposal.get(p.proposal.id) ?? []).map((photo) => ({
                       evidenceId: photo.evidenceId,
                       caption: photo.caption,

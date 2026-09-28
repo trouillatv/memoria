@@ -15,7 +15,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { KIND_META } from '@/lib/engagements/kind'
 import { CATEGORY_LABELS } from '@/lib/engagements/labels'
-import { effectAllowsCreateNew, type ContractEffect } from '@/lib/engagements/contract-effect'
+import { effectAllowsCreateNewForDocument, type ContractEffect } from '@/lib/engagements/contract-effect'
 import type { EngagementCategory, EngagementKind } from '@/types/db'
 
 export async function materializeEngagementCreateNew(
@@ -85,12 +85,19 @@ export interface FinalizeAcceptedEngagementsResult {
  * Idempotent par construction : la requête ne sélectionne que review_status IN
  * (accepted, edited) — une proposition déjà matérialisée (review_status flip à
  * 'materialized' par la RPC) ne peut plus être resélectionnée.
+ *
+ * `documentType` (documents.document_type, mandat de fermeture Vincent
+ * 2026-09-28) : un ordre_service/avenant sans contract_effect qualifié est
+ * exclu ici aussi (needsReviewCount), pas seulement sur le geste par carte —
+ * sinon « Finaliser les Engagements » contournerait la qualification requise.
+ * Absent/CCTP → comportement historique inchangé.
  */
 export async function finalizeAcceptedEngagementsForRun(input: {
   runId: string
   userId: string
+  documentType?: string | null
 }): Promise<FinalizeAcceptedEngagementsResult> {
-  const { runId, userId } = input
+  const { runId, userId, documentType = null } = input
   const supabase = createAdminClient()
 
   const { data: proposals, error } = await supabase
@@ -114,7 +121,7 @@ export async function finalizeAcceptedEngagementsForRun(input: {
     // historique) = comportement inchangé.
     const contractEffect = payload.contract_effect as { effect?: unknown } | undefined
     const qualifiedEffect = typeof contractEffect?.effect === 'string' ? (contractEffect.effect as ContractEffect) : null
-    if (!effectAllowsCreateNew(qualifiedEffect)) {
+    if (!effectAllowsCreateNewForDocument(documentType, qualifiedEffect)) {
       needsReviewCount++
       continue
     }

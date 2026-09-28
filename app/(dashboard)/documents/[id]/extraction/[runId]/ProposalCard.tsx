@@ -15,8 +15,9 @@ import {
   effectRequiresTarget,
   temporalityRequiresDates,
   effectBlocksMaterialization,
-  effectAllowsCreateNew,
-  effectAllowsLinkExisting,
+  effectAllowsCreateNewForDocument,
+  effectAllowsLinkExistingForDocument,
+  documentRequiresContractEffectQualification,
 } from '@/lib/engagements/contract-effect'
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
@@ -152,6 +153,7 @@ export function ProposalCard({
   siteEngagements,
   confirmedPhotos = [],
   onPinToggle,
+  documentType,
 }: {
   proposal: DbDocumentExtractionProposal
   evidence: Array<{ evidence: DbDocumentExtractionEvidence; relationType: DocumentEvidenceRelationType; confidence: number | null }>
@@ -162,6 +164,7 @@ export function ProposalCard({
   siteEngagements?: DbEngagement[]
   confirmedPhotos?: ConfirmedPhoto[]
   onPinToggle?: (evidenceId: string) => void
+  documentType?: string | null
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -349,10 +352,13 @@ export function ProposalCard({
   // jamais depuis 'pending' (cf. audit P0-2C section 11, précondition de la RPC).
   // Geste par geste, alignés sur la matrice serveur (mandat de fermeture Vincent
   // 2026-09-28) : NEW→create, CONFIRM→link, MODIFY/SUSPEND/CONFLICT/NON_ENGAGEMENT→aucun.
+  // Sans qualification enregistrée, un ordre_service/avenant n'a plus droit au
+  // comportement legacy « null = autorisé » — seul le CCTP historique le conserve.
   const acceptedOrEdited = isEngagement && (localStatus === 'accepted' || localStatus === 'edited')
-  const canCreateEngagement = acceptedOrEdited && effectAllowsCreateNew(localEffect || null)
-  const canLinkEngagement = acceptedOrEdited && effectAllowsLinkExisting(localEffect || null)
+  const canCreateEngagement = acceptedOrEdited && effectAllowsCreateNewForDocument(documentType, localEffect || null)
+  const canLinkEngagement = acceptedOrEdited && effectAllowsLinkExistingForDocument(documentType, localEffect || null)
   const canMaterializeEngagement = canCreateEngagement || canLinkEngagement
+  const requiresQualificationFirst = acceptedOrEdited && !localEffect && documentRequiresContractEffectQualification(documentType)
 
   function onCreateEngagement() {
     if (!localKind) { setMsg({ ok: false, text: 'Choisissez une nature avant de créer l’Engagement' }); return }
@@ -812,7 +818,9 @@ export function ProposalCard({
                     : 'Effet « Non-Engagement » — cette proposition ne doit jamais devenir un Engagement.')
                 : (acceptedOrEdited && (localEffect === 'modify' || localEffect === 'suspend'))
                   ? 'Effet qualifié — application au contrat disponible dans DOC-CONTRACT-OS-1B.'
-                  : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
+                  : requiresQualificationFirst
+                    ? 'Qualifiez d’abord l’effet contractuel de ce document avant de créer ou rattacher un Engagement.'
+                    : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
             </p>
           )}
         </div>

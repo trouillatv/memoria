@@ -12,7 +12,7 @@ import { materializeHistoricalRun } from '@/lib/documents/materialize-historical
 import { materializeEngagementCreateNew, materializeEngagementLinkExisting, finalizeAcceptedEngagementsForRun } from '@/lib/db/materialize-engagement'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
 import type { ContractEffect, ContractTemporality } from '@/lib/engagements/contract-effect'
-import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNew, effectAllowsLinkExisting } from '@/lib/engagements/contract-effect'
+import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNewForDocument, effectAllowsLinkExistingForDocument } from '@/lib/engagements/contract-effect'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -20,7 +20,7 @@ type ActionResult = { ok: boolean; error?: string }
 
 export async function verifyReviewAccess(
   documentId: string,
-): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+): Promise<{ ok: true; userId: string; documentType: string | null } | { ok: false; error: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return { ok: false, error: 'Non authentifié' }
@@ -35,16 +35,17 @@ export async function verifyReviewAccess(
   const admin = createAdminClient()
   const { data: doc } = await admin
     .from('documents')
-    .select('organization_id')
+    .select('organization_id, document_type')
     .eq('id', documentId)
     .is('deleted_at', null)
     .maybeSingle()
   if (!doc) return { ok: false, error: 'Document introuvable' }
-  const orgId = (doc as { organization_id: string }).organization_id
+  const orgId = (doc as { organization_id: string; document_type: string | null }).organization_id
+  const documentType = (doc as { organization_id: string; document_type: string | null }).document_type
   const orgIds = await getOrgIdsOfUser()
   if (!orgIds.includes(orgId)) return { ok: false, error: 'Accès refusé' }
 
-  return { ok: true, userId: user.id }
+  return { ok: true, userId: user.id, documentType }
 }
 
 export async function verifyProposalOwnership(
@@ -389,10 +390,17 @@ export async function createEngagementFromProposalAction(fd: FormData): Promise<
 
   // Ne jamais dépendre uniquement du garde client (canMaterializeEngagement,
   // ProposalCard) — mandat de fermeture Vincent 2026-09-28. CONFIRM/MODIFY/
-  // SUSPEND/CONFLICT/NON_ENGAGEMENT ne créent jamais un nouvel Engagement.
+  // SUSPEND/CONFLICT/NON_ENGAGEMENT ne créent jamais un nouvel Engagement. Un
+  // document ordre_service/avenant sans qualification enregistrée n'a pas non
+  // plus droit au comportement legacy « null = autorisé » (seul le CCTP l'a).
   const qualifiedEffect = await getQualifiedContractEffect(proposalId)
-  if (!effectAllowsCreateNew(qualifiedEffect)) {
-    return { ok: false, error: 'Cet effet contractuel ne permet pas de créer un nouvel Engagement' }
+  if (!effectAllowsCreateNewForDocument(access.documentType, qualifiedEffect)) {
+    return {
+      ok: false,
+      error: qualifiedEffect === null
+        ? 'Qualifiez d’abord l’effet contractuel de ce document avant de créer un Engagement'
+        : 'Cet effet contractuel ne permet pas de créer un nouvel Engagement',
+    }
   }
 
   // Nature/mesurable : valeurs humaines-confirmées, jamais le payload IA brut —
@@ -425,8 +433,13 @@ export async function linkEngagementToProposalAction(fd: FormData): Promise<{
   if (!ownership.ok) return ownership
 
   const qualifiedEffect = await getQualifiedContractEffect(proposalId)
-  if (!effectAllowsLinkExisting(qualifiedEffect)) {
-    return { ok: false, error: 'Cet effet contractuel ne permet pas de rattacher un Engagement existant' }
+  if (!effectAllowsLinkExistingForDocument(access.documentType, qualifiedEffect)) {
+    return {
+      ok: false,
+      error: qualifiedEffect === null
+        ? 'Qualifiez d’abord l’effet contractuel de ce document avant de rattacher un Engagement'
+        : 'Cet effet contractuel ne permet pas de rattacher un Engagement existant',
+    }
   }
 
   try {
@@ -451,7 +464,7 @@ export async function finalizeAcceptedEngagementsAction(fd: FormData): Promise<{
   const access = await verifyReviewAccess(documentId)
   if (!access.ok) return { ok: false, error: access.error }
 
-  return finalizeAcceptedEngagementsForRun({ runId, userId: access.userId })
+  return finalizeAcceptedEngagementsForRun({ runId, userId: access.userId, documentType: access.documentType })
 }
 
 export async function relinkEvidenceAction(fd: FormData): Promise<ActionResult> {
