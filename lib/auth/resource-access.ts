@@ -47,7 +47,7 @@ export type OrganizationMembershipRole = UserRole
  *  `organization_id` (M2A), donc son propriétaire se résout sans jointure. La
  *  résolution est commune lecture/écriture ; seule la POLITIQUE diffère (elle
  *  vit dans `site-write-access.ts`). */
-export type ResourceKind = 'site' | 'client' | 'mission' | 'intervention' | 'contract' | 'site_action' | 'site_report'
+export type ResourceKind = 'site' | 'client' | 'mission' | 'intervention' | 'contract' | 'site_action' | 'site_report' | 'engagement'
 
 /** M2B ne traite que la LECTURE : pas de champ `permission`. M2C étendra aux
  *  écritures avec une politique explicite. */
@@ -94,6 +94,7 @@ const ORG_TABLES = {
   intervention: 'interventions',
   contract: 'contracts',
   site_action: 'site_actions',
+  engagement: 'engagements',
 } as const
 
 /**
@@ -122,6 +123,7 @@ async function resolveMissionOrganization(id: string) { return selectOrganizatio
 async function resolveInterventionOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.intervention, id) }
 async function resolveContractOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.contract, id) }
 async function resolveSiteActionOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.site_action, id) }
+async function resolveEngagementOrganization(id: string) { return selectOrganizationIdFromKnownTable(ORG_TABLES.engagement, id) }
 
 /**
  * L'organisation d'un compte-rendu. Cas particulier : `site_reports` porte une
@@ -151,6 +153,7 @@ const resourceResolvers = {
   contract: resolveContractOrganization,
   site_action: resolveSiteActionOrganization,
   site_report: resolveSiteReportOrganization,
+  engagement: resolveEngagementOrganization,
 } satisfies Record<ResourceKind, (id: string) => Promise<string | null | undefined>>
 
 // ── LE CŒUR ─────────────────────────────────────────────────────────────────
