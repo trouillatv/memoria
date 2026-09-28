@@ -291,6 +291,18 @@ function SiteContractualDocumentDialog({
   // seul un lien vers /documents/{id}, la fiche sait déjà tout afficher (P0-2D
   // FIX_REQUIRED, revue Vincent 2026-09-25).
   const [documentId, setDocumentId] = useState<string | null>(null)
+  // DOC-CONTRACT-OS-1A-UX FIX (revue Vincent 2026-09-28) : un doublon détecté
+  // basculait sous un formulaire réinitialisé à vide (fichier + date d'effet),
+  // donnant l'impression que l'import venait d'être perdu. État terminal dédié
+  // qui masque entièrement le formulaire tant que l'utilisateur n'a pas
+  // explicitement choisi de repartir sur un autre fichier.
+  const [duplicateInfo, setDuplicateInfo] = useState<{
+    documentId: string | null
+    filename: string
+    documentTypeValue: string
+    effectiveDate: string | null
+    message: string
+  } | null>(null)
 
   // Remplacement explicite de version (P0-1B2 revue FIX_REQUIRED, Vincent
   // 2026-09-24, tâche 4) : seul moyen de remplacer une version dont le nom de
@@ -326,8 +338,21 @@ function SiteContractualDocumentDialog({
           return
         }
         setVersionConflict(null)
-        setDocumentId(result.documentId ?? null)
         const engagementEligible = ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES.includes(documentType)
+        if (result.duplicate) {
+          // Doublon détecté : ne jamais réinitialiser le formulaire ici — état
+          // terminal dédié plutôt qu'un formulaire vidé à côté du message.
+          setDuplicateInfo({
+            documentId: result.documentId ?? null,
+            filename: result.existingFilename ?? incomingFilename ?? 'ce document',
+            documentTypeValue: result.documentTypeChange?.to ?? documentType,
+            effectiveDate: result.effectiveDateChange?.to ?? ((fd.get('effective_date') as string | null) || null),
+            message: buildContractualUploadMessage(result, incomingFilename, engagementEligible),
+          })
+          setMessage(null)
+          return
+        }
+        setDocumentId(result.documentId ?? null)
         setMessage(
           result.versioned
             ? 'Nouvelle version créée, l’ancienne est conservée dans l’historique.'
@@ -355,6 +380,21 @@ function SiteContractualDocumentDialog({
     if (!versionConflict) return
     versionConflict.pendingData.set('version_decision', decision)
     runUpload(versionConflict.pendingData, versionConflict.incomingFilename)
+  }
+
+  function resetForNewImport() {
+    setDuplicateInfo(null)
+    setDocumentId(null)
+    setMessage(null)
+    setVersionConflict(null)
+  }
+
+  if (duplicateInfo) {
+    return (
+      <Modal title="Ajouter un document contractuel" onClose={onClose}>
+        <DuplicateDocumentCard info={duplicateInfo} onChooseAnother={resetForNewImport} onClose={onClose} />
+      </Modal>
+    )
   }
 
   return (
@@ -421,6 +461,45 @@ function SiteContractualDocumentDialog({
         )}
       </form>
     </Modal>
+  )
+}
+
+// DOC-CONTRACT-OS-1A-UX FIX (revue Vincent 2026-09-28) — état terminal dédié
+// au doublon : jamais affiché en même temps qu'un formulaire vide, seul
+// "Choisir un autre fichier" redonne accès à un import.
+function DuplicateDocumentCard({
+  info,
+  onChooseAnother,
+  onClose,
+}: {
+  info: { documentId: string | null; filename: string; documentTypeValue: string; effectiveDate: string | null; message: string }
+  onChooseAnother: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+        <p className="font-medium">Document déjà présent</p>
+        <p className="text-muted-foreground">{info.filename}</p>
+        <p className="text-muted-foreground">{documentTypeLabel(info.documentTypeValue)}</p>
+        {info.effectiveDate && (
+          <p className="text-muted-foreground">Date d’effet : {formatEffectiveDate(info.effectiveDate)}</p>
+        )}
+        <p className="text-muted-foreground">{info.message}</p>
+      </div>
+      <div className="flex flex-wrap justify-end gap-2">
+        <button type="button" onClick={onClose} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Fermer</button>
+        <button type="button" onClick={onChooseAnother} className="rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted">Choisir un autre fichier</button>
+        {info.documentId && (
+          <Link
+            href={`/documents/${info.documentId}`}
+            className="inline-flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-sm font-medium text-background"
+          >
+            Ouvrir le document
+          </Link>
+        )}
+      </div>
+    </div>
   )
 }
 

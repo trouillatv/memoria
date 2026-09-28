@@ -247,3 +247,58 @@ describe('Document contractuel — pont vers la fiche document sur doublon (P0-2
     expect(screen.queryByRole('link', { name: 'Ouvrir le document' })).toBeNull()
   })
 })
+
+// ── DOC-CONTRACT-OS-1A-UX FIX (revue Vincent 2026-09-28) ────────────────────
+//
+// Défaut signalé : sur un doublon détecté, le message « Document déjà connu »
+// apparaissait EN MÊME TEMPS qu'un formulaire réinitialisé à vide (fichier +
+// date d'effet) — donnant l'impression que l'import venait d'être perdu. Le
+// formulaire doit être entièrement masqué tant que l'utilisateur n'a pas
+// explicitement choisi de repartir sur un autre fichier.
+describe('Document contractuel — doublon : état terminal dédié, jamais de formulaire vide à côté (DOC-CONTRACT-OS-1A-UX FIX)', () => {
+  it('doublon détecté → le formulaire d’import est entièrement masqué', async () => {
+    uploadSiteContractualDocumentAction.mockResolvedValueOnce({
+      ok: true,
+      documentId: 'doc-existing',
+      duplicate: true,
+      existingFilename: 'OCEF_Compostage_OS14_TEST.pdf',
+    })
+
+    render(<SiteAddMenu siteId="s1" />)
+    submitContractualDocument('OCEF_Compostage_OS14_TEST.pdf')
+
+    await waitFor(() => expect(uploadSiteContractualDocumentAction).toHaveBeenCalledTimes(1))
+    await screen.findByText('Document déjà présent')
+
+    expect(screen.queryByLabelText('Nature du document')).toBeNull()
+    expect(screen.queryByLabelText('PDF')).toBeNull()
+    expect(screen.queryByLabelText(/Date d.effet/)).toBeNull()
+    expect(screen.getByText('OCEF_Compostage_OS14_TEST.pdf')).toBeTruthy()
+    const link = screen.getByRole('link', { name: 'Ouvrir le document' })
+    expect(link.getAttribute('href')).toBe('/documents/doc-existing')
+  })
+
+  it('« Choisir un autre fichier » → réinitialise volontairement et réaffiche le formulaire vide', async () => {
+    uploadSiteContractualDocumentAction.mockResolvedValueOnce({
+      ok: true,
+      documentId: 'doc-existing',
+      duplicate: true,
+      existingFilename: 'OCEF_Compostage_OS14_TEST.pdf',
+    })
+
+    render(<SiteAddMenu siteId="s1" />)
+    submitContractualDocument('OCEF_Compostage_OS14_TEST.pdf')
+
+    await waitFor(() => expect(uploadSiteContractualDocumentAction).toHaveBeenCalledTimes(1))
+    await screen.findByText('Document déjà présent')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choisir un autre fichier' }))
+
+    expect(screen.queryByText('Document déjà présent')).toBeNull()
+    expect(screen.getByLabelText('Nature du document')).toBeTruthy()
+    const fileInput = screen.getByLabelText('PDF') as HTMLInputElement
+    expect(fileInput.files?.length ?? 0).toBe(0)
+    const dateInput = screen.getByLabelText(/Date d.effet/) as HTMLInputElement
+    expect(dateInput.value).toBe('')
+  })
+})

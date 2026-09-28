@@ -514,6 +514,21 @@ export async function countPendingProposalsForRun(runId: string): Promise<number
   return count ?? 0
 }
 
+// DOC-CONTRACT-OS-1A-UX FIX (2026-09-28) — champs minimaux pour
+// computeContractEffectSynthesis sur la fiche document, sans tirer evidence
+// ni materialisations (listExtractionForReview, disproportionne ici).
+export async function listProposalsForContractEffectSynthesis(
+  runId: string,
+): Promise<Array<{ proposal_family: string; review_status: string; source_payload: unknown }>> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('document_extraction_proposal')
+    .select('proposal_family, review_status, source_payload')
+    .eq('extraction_run_id', runId)
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
 // P0 Unicite des runs historiques — un run dans l'un de ces statuts est
 // exploitable : une extraction standard ne doit pas en recreer un autre pour
 // le meme document. Seule une intention explicite de "Reanalyser" le peut.

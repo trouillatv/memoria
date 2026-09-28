@@ -10,8 +10,14 @@ import {
   getLatestExtractionRunForDocument,
   getLatestExtractionRunForDocumentAndExtractor,
   countPendingProposalsForRun,
+  listProposalsForContractEffectSynthesis,
 } from '@/lib/db/document-extractions'
 import { ENGAGEMENT_ELIGIBLE_DOCUMENT_TYPES } from '@/lib/documents/engagement-eligible-document-types'
+import {
+  documentRequiresContractEffectQualification,
+  computeContractEffectSynthesis,
+  isContractEffectReviewComplete,
+} from '@/lib/engagements/contract-effect'
 import { listContracts } from '@/lib/db/contracts'
 import { listSites, listClients } from '@/lib/db/sites'
 import { listTenders } from '@/lib/db/tenders'
@@ -145,8 +151,21 @@ export default async function DocumentViewerPage({
     ? await getLatestExtractionRunForDocumentAndExtractor(doc.id, 'engagement_prescriptif_v1').catch(() => null)
     : null
   const engagementInProgress = engagementRun?.status === 'processing' || engagementRun?.status === 'pending'
-  const engagementPendingCount = engagementRun && !engagementInProgress && engagementRun.status !== 'failed'
-    ? await countPendingProposalsForRun(engagementRun.id).catch(() => 0)
+  const engagementRunUsable = !!engagementRun && !engagementInProgress && engagementRun.status !== 'failed'
+
+  // DOC-CONTRACT-OS-1A-UX FIX (2026-09-28) — un OS/Avenant n'est pas un simple
+  // pourvoyeur de nouveaux Engagements ("Voir les prestations prévues" comme
+  // seul point de sortie), c'est un document qui peut modifier le chantier :
+  // qualification EFFET × TEMPORALITÉ déjà exigée côté serveur (DOC-CONTRACT-OS-1A).
+  // Le CCTP historique (jamais qualifié) garde le parcours existant inchangé.
+  const requiresContractEffectQualification = documentRequiresContractEffectQualification(doc.document_type)
+  const contractEffectProposals = requiresContractEffectQualification && engagementRunUsable
+    ? await listProposalsForContractEffectSynthesis(engagementRun!.id).catch(() => [])
+    : []
+  const contractEffectSynthesis = computeContractEffectSynthesis(contractEffectProposals)
+  const contractEffectReviewComplete = isContractEffectReviewComplete(contractEffectSynthesis)
+  const engagementPendingCount = engagementRunUsable && !requiresContractEffectQualification
+    ? await countPendingProposalsForRun(engagementRun!.id).catch(() => 0)
     : 0
 
   // Coût IA indicatif = moyenne observée des dernières analyses de document
@@ -240,11 +259,13 @@ export default async function DocumentViewerPage({
         </section>
       )}
 
-      {/* Section extraction IA — uniquement pour les documents contractuels éligibles (P0-2D) */}
+      {/* Section extraction IA — uniquement pour les documents contractuels éligibles (P0-2D).
+          OS/Avenant (DOC-CONTRACT-OS-1A-UX FIX) : bloc "Impact contractuel" dédié,
+          distinct du parcours CCTP historique inchangé ci-dessous. */}
       {engagementEligible && engagementRun && (
         <section className="rounded-lg border bg-card p-4 space-y-2">
           <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            Engagements contractuels
+            {requiresContractEffectQualification ? 'Impact contractuel' : 'Engagements contractuels'}
           </h2>
           {engagementInProgress ? (
             <p className="text-sm text-muted-foreground">Analyse en cours…</p>
@@ -254,6 +275,55 @@ export default async function DocumentViewerPage({
             <p className="text-sm text-muted-foreground">
               Analyse terminée — aucun engagement détecté dans ce document.
             </p>
+          ) : requiresContractEffectQualification ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">
+                Statut : {contractEffectReviewComplete ? 'Revue terminée' : 'Revue à terminer'}
+              </p>
+              {contractEffectSynthesis.totalRelevant === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucun engagement détecté dans ce document.</p>
+              ) : (
+                <ul className="text-sm text-muted-foreground space-y-0.5">
+                  {contractEffectSynthesis.toQualify > 0 && (
+                    <li>{contractEffectSynthesis.toQualify} à qualifier</li>
+                  )}
+                  {contractEffectSynthesis.new > 0 && (
+                    <li>{contractEffectSynthesis.new} nouvel Engagement{contractEffectSynthesis.new > 1 ? 's' : ''}</li>
+                  )}
+                  {contractEffectSynthesis.confirm > 0 && (
+                    <li>{contractEffectSynthesis.confirm} confirmation{contractEffectSynthesis.confirm > 1 ? 's' : ''}</li>
+                  )}
+                  {contractEffectSynthesis.pendingApplication > 0 && (
+                    <li>{contractEffectSynthesis.pendingApplication} effet{contractEffectSynthesis.pendingApplication > 1 ? 's' : ''} à appliquer</li>
+                  )}
+                  {contractEffectSynthesis.conflict > 0 && (
+                    <li>{contractEffectSynthesis.conflict} conflit{contractEffectSynthesis.conflict > 1 ? 's' : ''}</li>
+                  )}
+                  {contractEffectSynthesis.nonEngagement > 0 && (
+                    <li>{contractEffectSynthesis.nonEngagement} non-Engagement{contractEffectSynthesis.nonEngagement > 1 ? 's' : ''}</li>
+                  )}
+                  {contractEffectSynthesis.materialized > 0 && (
+                    <li>{contractEffectSynthesis.materialized} matérialisé{contractEffectSynthesis.materialized > 1 ? 's' : ''}</li>
+                  )}
+                </ul>
+              )}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
+                <Link
+                  href={`/documents/${doc.id}/extraction/${engagementRun.id}`}
+                  className="inline-flex text-sm underline underline-offset-2 hover:text-foreground text-muted-foreground"
+                >
+                  Revoir l'analyse
+                </Link>
+                {engagementRun.target_site_id && (
+                  <Link
+                    href={`/sites/${engagementRun.target_site_id}/prestations`}
+                    className="inline-flex text-xs underline underline-offset-2 hover:text-foreground text-muted-foreground/70"
+                  >
+                    Voir les prestations prévues
+                  </Link>
+                )}
+              </div>
+            </div>
           ) : engagementPendingCount > 0 ? (
             <div className="space-y-1.5">
               <Link
