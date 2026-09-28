@@ -11,6 +11,7 @@ import {
   type PlanningGrammarState,
 } from '@/lib/planning/grammar'
 import { formatInterventionTimeLabel } from '@/lib/time/prestation-slot'
+import { occurrenceKey } from '@/lib/planning/projection'
 import type { MonthRow } from '@/lib/db/month-view'
 import type { SiteRow } from '@/lib/db/week-planning'
 import { cn } from '@/lib/utils'
@@ -252,7 +253,10 @@ export function DayFocusPanel({
                       {PLANNING_GRAMMAR.rhythm_planned.label}
                     </p>
                     {e.projectedOccurrences.map((projection) => (
-                      <div key={`${projection.templateId}-${projection.plannedStart ?? date}`} className="rounded-md border border-dashed bg-background px-2.5 py-2 text-xs">
+                      <div
+                        key={occurrenceKey({ templateId: projection.templateId, scheduledFor: date, slot: projection.slot })}
+                        className="rounded-md border border-dashed bg-background px-2.5 py-2 text-xs"
+                      >
                         <p className="font-medium text-foreground">{projection.missionName ?? 'Mission'}</p>
                         <p className="mt-0.5 text-muted-foreground">
                           {formatInterventionTimeLabel({

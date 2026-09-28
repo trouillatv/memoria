@@ -141,6 +141,41 @@ describe('DayFocusPanel mois', () => {
     expect(screen.getByText('Rien de prévu ce jour-là.')).toBeInTheDocument()
   })
 
+  it('F. OCC-ID-1 — deux occurrences projetées du même template/jour (slots différents) restent deux rendus distincts', () => {
+    const row = monthRow()
+    row.days[DATE].projectedOccurrences = [
+      {
+        templateId: 'tpl-1',
+        missionId: 'mission-1',
+        missionName: 'Nettoyage Z2 — matin',
+        plannedStart: '2026-09-29T07:00:00.000Z',
+        plannedEnd: '2026-09-29T09:00:00.000Z',
+        slot: 'morning',
+        assignedTeamId: 'team-1',
+        assignedTeamName: 'DISCOUNT P1',
+        assignedTeamColor: 'sky',
+      },
+      {
+        templateId: 'tpl-1',
+        missionId: 'mission-1',
+        missionName: 'Nettoyage Z2 — après-midi',
+        plannedStart: '2026-09-29T13:00:00.000Z',
+        plannedEnd: '2026-09-29T15:00:00.000Z',
+        slot: 'afternoon',
+        assignedTeamId: 'team-1',
+        assignedTeamName: 'DISCOUNT P1',
+        assignedTeamColor: 'sky',
+      },
+    ]
+    row.days[DATE].projected = 2
+
+    renderPanel({ siteRows: [siteRow()], monthRows: [row] })
+
+    expect(screen.getByText('Nettoyage Z2 — matin')).toBeInTheDocument()
+    expect(screen.getByText('Nettoyage Z2 — après-midi')).toBeInTheDocument()
+    expect(screen.getByText(/2 prévus par le rythme/)).toBeInTheDocument()
+  })
+
   it('conserve la lecture fermeture et conflit', () => {
     const c = closure()
     renderPanel({

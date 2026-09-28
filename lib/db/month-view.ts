@@ -12,7 +12,7 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
-import { projectOccurrences, type ProjectableTemplate } from '@/lib/planning/projection'
+import { projectOccurrences, occurrenceKey, type ProjectableTemplate } from '@/lib/planning/projection'
 import { findClosureForDate } from '@/lib/planning/closures'
 import { isStillExpected } from '@/lib/planning/conflicts'
 import { detectDeviations, hhmmOf } from '@/lib/planning/occurrence-exception'
@@ -38,6 +38,7 @@ interface MonthIntervention {
   site_id: string
   template_id: string | null
   scheduled_for: string
+  slot: string | null
   status: string
   assigned_team_id: string | null
   planned_start: string | null
@@ -60,7 +61,7 @@ export async function buildMonthRows(params: {
   const { data: intvRows } = await db
     .from('interventions')
     .select(
-      'id, template_id, scheduled_for, status, assigned_team_id, planned_start, planned_end, missions!inner(site_id, sites!inner(id, name, organization_id, client:clients(name)))',
+      'id, template_id, scheduled_for, slot, status, assigned_team_id, planned_start, planned_end, missions!inner(site_id, sites!inner(id, name, organization_id, client:clients(name)))',
     )
     .gte('scheduled_for', from)
     .lte('scheduled_for', to)
@@ -69,6 +70,7 @@ export async function buildMonthRows(params: {
     id: string
     template_id: string | null
     scheduled_for: string
+    slot: string | null
     status: string
     assigned_team_id: string | null
     planned_start: string | null
@@ -96,6 +98,7 @@ export async function buildMonthRows(params: {
       site_id: site.id,
       template_id: r.template_id,
       scheduled_for: r.scheduled_for,
+      slot: r.slot,
       status: r.status,
       assigned_team_id: r.assigned_team_id,
       planned_start: r.planned_start,
@@ -213,12 +216,16 @@ export async function buildMonthRows(params: {
 
       // ProjetÃ© SANS doublon : un (rythme, jour) dÃ©jÃ  matÃ©rialisÃ© ne compte pas
       // deux fois â l'identitÃ© d'occurrence est la mÃªme qu'en base (mig 198).
-      const materializedTpl = new Set(
-        todays.map((i) => i.template_id).filter((v): v is string => !!v),
+      const materializedKeys = new Set(
+        todays
+          .filter((i): i is MonthIntervention & { template_id: string } => !!i.template_id)
+          .map((i) => occurrenceKey({ templateId: i.template_id, scheduledFor: i.scheduled_for, slot: i.slot })),
       )
       const projTpl = projectedByDay.get(day) ?? new Set<string>()
-      const projectedCount = [...projTpl].filter((id) => !materializedTpl.has(id)).length
-      const projectedOccurrences = (projectedDetailsByDay.get(day) ?? []).filter((o) => !materializedTpl.has(o.templateId))
+      const projectedOccurrences = (projectedDetailsByDay.get(day) ?? []).filter(
+        (o) => !materializedKeys.has(occurrenceKey({ templateId: o.templateId, scheduledFor: day, slot: o.slot })),
+      )
+      const projectedCount = projectedOccurrences.length
 
       // Exceptions : une occurrence matÃ©rialisÃ©e qui dÃ©vie de son rythme.
       const hasException = todays.some((i) => {
@@ -358,7 +365,7 @@ export async function buildTeamMonthRows(params: {
   const { data: intvRows } = await db
     .from('interventions')
     .select(
-      'id, scheduled_for, status, assigned_team_id, template_id, missions!inner(site_id, sites!inner(id, organization_id))',
+      'id, scheduled_for, slot, status, assigned_team_id, template_id, missions!inner(site_id, sites!inner(id, organization_id))',
     )
     .gte('scheduled_for', from)
     .lte('scheduled_for', to)
@@ -366,6 +373,7 @@ export async function buildTeamMonthRows(params: {
   type Raw = {
     id: string
     scheduled_for: string
+    slot: string | null
     status: string
     assigned_team_id: string | null
     template_id: string | null
@@ -432,13 +440,15 @@ export async function buildTeamMonthRows(params: {
   if (templates.length > 0) {
     // Jamais deux fois la mÃªme occurrence : si elle existe en base, elle est
     // dÃ©jÃ  comptÃ©e au-dessus (identitÃ© d'occurrence, mig 198).
-    const materialized = new Set(
-      intv.filter((r) => r.template_id).map((r) => `${r.template_id}::${r.scheduled_for}`),
+    const materializedKeys = new Set(
+      intv
+        .filter((r): r is typeof r & { template_id: string } => !!r.template_id)
+        .map((r) => occurrenceKey({ templateId: r.template_id, scheduledFor: r.scheduled_for, slot: r.slot })),
     )
     const teamOfTemplate = new Map(templates.map((t) => [t.id, t.assigned_team_id as string]))
 
     for (const o of projectOccurrences({ templates, from, to })) {
-      if (materialized.has(`${o.templateId}::${o.scheduledFor}`)) continue
+      if (materializedKeys.has(occurrenceKey({ templateId: o.templateId, scheduledFor: o.scheduledFor, slot: o.slot }))) continue
       const teamId = teamOfTemplate.get(o.templateId)
       if (!teamId) continue
 
