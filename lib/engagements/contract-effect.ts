@@ -130,3 +130,56 @@ export type ContractEffectQualification = {
   resumeOn: string | null
   scope: string | null
 }
+
+// DOC-CONTRACT-OS-1A-UX (mandat Vincent 2026-09-28) — synthèse de revue contractuelle
+// pour OS/Avenant. Remplace le bulk trompeur « Créer les N Engagements » : ce dernier
+// ne pouvait pas être vrai pour un CONFLICT, un NON_ENGAGEMENT, un CONFIRM (rattachement,
+// pas création) ou un MODIFY/SUSPEND (attend DOC-CONTRACT-OS-1B). Une proposition
+// refusée (review_status='rejected') est déjà traitée par le mécanisme de refus
+// existant — elle n'a pas besoin d'un effet contractuel et sort du calcul.
+export type ContractEffectSynthesis = {
+  totalRelevant: number
+  toQualify: number
+  new: number
+  confirm: number
+  pendingApplication: number
+  conflict: number
+  nonEngagement: number
+  materialized: number
+}
+
+export function computeContractEffectSynthesis(
+  proposals: Array<{ proposal_family: string; review_status: string; source_payload: unknown }>,
+): ContractEffectSynthesis {
+  const synthesis: ContractEffectSynthesis = {
+    totalRelevant: 0, toQualify: 0, new: 0, confirm: 0,
+    pendingApplication: 0, conflict: 0, nonEngagement: 0, materialized: 0,
+  }
+  for (const p of proposals) {
+    if (p.proposal_family !== 'engagement') continue
+    if (p.review_status === 'rejected') continue
+    synthesis.totalRelevant++
+    if (p.review_status === 'materialized') {
+      synthesis.materialized++
+      continue
+    }
+    const payload = p.source_payload as { contract_effect?: { effect: ContractEffect } | null } | null
+    const effect = payload?.contract_effect?.effect ?? null
+    switch (effect) {
+      case 'new': synthesis.new++; break
+      case 'confirm': synthesis.confirm++; break
+      case 'modify':
+      case 'suspend': synthesis.pendingApplication++; break
+      case 'conflict': synthesis.conflict++; break
+      case 'non_engagement': synthesis.nonEngagement++; break
+      default: synthesis.toQualify++
+    }
+  }
+  return synthesis
+}
+
+// Une proposition CONFLICT ou NON_ENGAGEMENT qualifiée compte comme « traitée » —
+// seul `toQualify` (aucun effet enregistré) bloque la fin de revue (Vincent 2026-09-28).
+export function isContractEffectReviewComplete(synthesis: ContractEffectSynthesis): boolean {
+  return synthesis.toQualify === 0
+}

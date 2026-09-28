@@ -344,7 +344,7 @@ export function ProposalCard({
     if (localScope) fd.set('scope', localScope)
     handleAction(() => setContractEffectAction(fd), () => {
       setLocalStatus('edited')
-      setMsg({ ok: true, text: 'Qualification enregistrée' })
+      setMsg({ ok: true, text: 'Qualification validée' })
     })
   }
 
@@ -695,7 +695,7 @@ export function ProposalCard({
 
               <div className="flex items-center justify-between gap-2">
                 {isQualificationSaved ? (
-                  <span className="text-[11px] text-emerald-700 dark:text-emerald-400">✓ Qualification enregistrée</span>
+                  <span className="text-[11px] text-emerald-700 dark:text-emerald-400">✓ Qualification validée</span>
                 ) : (
                   <span className="text-[11px] text-amber-700 dark:text-amber-400">⚠ À confirmer</span>
                 )}
@@ -706,7 +706,7 @@ export function ProposalCard({
                   onClick={onSaveContractEffect}
                   disabled={pending || !localEffect || !localTemporality || isQualificationSaved}
                 >
-                  {pending ? '…' : 'Enregistrer la qualification'}
+                  {pending ? '…' : 'Valider la qualification'}
                 </Button>
               </div>
             </div>

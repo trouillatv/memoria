@@ -14,6 +14,10 @@ import {
 import type { DocumentExtractionProposalWithEvidence, DbDocumentExtractionEvidence, DocumentEvidenceRelationType, DbEngagement } from '@/types/db'
 import type { ReviewSummary } from '@/lib/documents/effective-proposal'
 import type { SubjectSuggestionRow } from '@/lib/db/subject-suggestions'
+import {
+  computeContractEffectSynthesis, isContractEffectReviewComplete,
+  documentRequiresContractEffectQualification, type ContractEffectSynthesis,
+} from '@/lib/engagements/contract-effect'
 
 type CandidateLink = {
   evidence_id: string
@@ -443,6 +447,57 @@ function EngagementFinalizeBlock({
   )
 }
 
+/**
+ * DOC-CONTRACT-OS-1A-UX (mandat Vincent 2026-09-28) — remplace, pour OS/Avenant
+ * uniquement, le bulk trompeur « Créer les N Engagements » : il ne pouvait pas
+ * être vrai dès qu'une proposition était CONFLICT/NON_ENGAGEMENT/CONFIRM/MODIFY/
+ * SUSPEND. Ici on pilote la revue (où j'en suis), les gestes métier restent sur
+ * chaque carte. « Terminer la revue » ne matérialise rien et ne résout aucun
+ * conflit — un CONFLICT ou NON_ENGAGEMENT qualifié ne bloque pas la sortie.
+ */
+function ContractEffectSynthesisBlock({
+  synthesis, canFinishReview, documentId,
+}: {
+  synthesis: ContractEffectSynthesis
+  canFinishReview: boolean
+  documentId: string
+}) {
+  const lines: string[] = []
+  if (synthesis.toQualify > 0) lines.push(`${synthesis.toQualify} à qualifier`)
+  if (synthesis.new > 0) lines.push(`${synthesis.new} nouvel Engagement${synthesis.new > 1 ? 's' : ''} prêt${synthesis.new > 1 ? 's' : ''}`)
+  if (synthesis.confirm > 0) lines.push(`${synthesis.confirm} confirmation${synthesis.confirm > 1 ? 's' : ''} prête${synthesis.confirm > 1 ? 's' : ''} à rattacher`)
+  if (synthesis.pendingApplication > 0) lines.push(`${synthesis.pendingApplication} effet${synthesis.pendingApplication > 1 ? 's' : ''} contractuel${synthesis.pendingApplication > 1 ? 's' : ''} en attente d'application`)
+  if (synthesis.conflict > 0) lines.push(`${synthesis.conflict} conflit${synthesis.conflict > 1 ? 's' : ''} à résoudre`)
+  if (synthesis.nonEngagement > 0) lines.push(`${synthesis.nonEngagement} non-Engagement${synthesis.nonEngagement > 1 ? 's' : ''}`)
+  if (synthesis.materialized > 0) lines.push(`${synthesis.materialized} déjà matérialisé${synthesis.materialized > 1 ? 's' : ''}`)
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <h2 className="text-sm font-medium">Impact du document</h2>
+      {synthesis.totalRelevant === 0 ? (
+        <p className="text-sm text-muted-foreground">Aucun Engagement détecté dans ce document.</p>
+      ) : (
+        <ul className="text-sm text-muted-foreground space-y-0.5">
+          <li className="text-foreground font-medium">{synthesis.totalRelevant} proposition{synthesis.totalRelevant > 1 ? 's' : ''}</li>
+          {lines.map((line) => <li key={line}>{line}</li>)}
+        </ul>
+      )}
+      {canFinishReview ? (
+        <a
+          href={`/documents/${documentId}`}
+          className="inline-flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+        >
+          Terminer la revue
+        </a>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Qualifiez chaque proposition d'Engagement (effet contractuel) pour terminer la revue.
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ─── Client principal ─────────────────────────────────────────────────────────
 
 export function ExtractionReviewClient({
@@ -730,6 +785,15 @@ export function ExtractionReviewClient({
       return p.proposal.proposal_family === familyFilter
     })
 
+  // DOC-CONTRACT-OS-1A-UX — OS/Avenant seulement ; le parcours CCTP historique
+  // (Tout accepter + bulk Créer les N Engagements) reste inchangé pour les autres types.
+  const requiresQualification = documentRequiresContractEffectQualification(documentType)
+  const contractEffectSynthesis = useMemo(
+    () => computeContractEffectSynthesis(proposals.map((p) => p.proposal)),
+    [proposals],
+  )
+  const canFinishReview = summary.pending === 0 && isContractEffectReviewComplete(contractEffectSynthesis)
+
   // Regroupement par famille
   const grouped = new Map<string, DocumentExtractionProposalWithEvidence[]>()
   for (const p of filtered) {
@@ -756,12 +820,16 @@ export function ExtractionReviewClient({
               type="button"
               onClick={handleAcceptAll}
               disabled={isPending}
+              title={requiresQualification ? "Valide le contenu extrait. N'applique aucun effet contractuel." : undefined}
               className="shrink-0 rounded-lg border px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-50"
             >
-              {isPending ? '…' : `Tout accepter (${summary.pending})`}
+              {isPending ? '…' : requiresQualification ? `Accepter les extractions (${summary.pending})` : `Tout accepter (${summary.pending})`}
             </button>
           )}
         </div>
+        {requiresQualification && summary.pending > 0 && (
+          <p className="text-xs text-muted-foreground">Valide le contenu extrait. N'applique aucun effet contractuel.</p>
+        )}
         {acceptAllMsg && <p className="text-xs text-muted-foreground">{acceptAllMsg}</p>}
         {summary.pending === 0 && summary.total > 0 && (
           <p className="text-xs text-muted-foreground">Toutes les propositions ont été examinées.</p>
@@ -787,7 +855,15 @@ export function ExtractionReviewClient({
         />
       )}
 
-      {isEngagementRun && (
+      {isEngagementRun && requiresQualification && (
+        <ContractEffectSynthesisBlock
+          synthesis={contractEffectSynthesis}
+          canFinishReview={canFinishReview}
+          documentId={documentId}
+        />
+      )}
+
+      {isEngagementRun && !requiresQualification && (
         <EngagementFinalizeBlock
           summary={summary}
           isPending={isPending}
