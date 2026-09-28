@@ -54,6 +54,7 @@ function isValidIsoDate(value: string): boolean {
 type EngagementContractEffectDbRow = {
   id: string
   engagement_id: string
+  organization_id: string
   effect: string
   temporality: string
   scope_key: string
@@ -140,12 +141,25 @@ export async function resolveEngagementContractStateForUser(
   const { data: effectRows, error: effectsError } = await supabase
     .from('engagement_contract_effects')
     .select(
-      'id, engagement_id, effect, temporality, scope_key, effect_payload, starts_on, ends_on, resume_on, source_document_id, source_proposal_id, applied_at',
+      'id, engagement_id, organization_id, effect, temporality, scope_key, effect_payload, starts_on, ends_on, resume_on, source_document_id, source_proposal_id, applied_at',
     )
     .eq('engagement_id', engagementId)
   if (effectsError) return { ok: false, error: 'access_denied' }
 
-  const effects = ((effectRows ?? []) as EngagementContractEffectDbRow[]).map(mapRow)
+  const rawEffects = (effectRows ?? []) as EngagementContractEffectDbRow[]
+
+  // Lecture privilégiée (service role, RLS non appliquée) : l'appartenance
+  // organisation de chaque effet doit être recontrôlée ici, jamais supposée
+  // garantie par la seule RPC de matérialisation qui les a créés.
+  const inconsistentEffect = rawEffects.some((row) => row.organization_id !== engagementRow.organization_id)
+  if (inconsistentEffect) {
+    console.error(
+      `[resolve-contract-state-for-user] engagement ${engagementId} effet(s) avec organization_id incohérent`,
+    )
+    return { ok: false, error: 'access_denied' }
+  }
+
+  const effects = rawEffects.map(mapRow)
 
   const state = resolveEngagementAtDate({ engagementId, effects }, queriedDate)
   return { ok: true, state }

@@ -52,6 +52,7 @@ let legacyEngagementId: string
 let historyEngagementId: string
 let crossOrgEngagementId: string
 let inconsistentEngagementId: string
+let tamperedEffectEngagementId: string
 
 const currentUser = () => ({ id: adminUserId })
 
@@ -167,6 +168,27 @@ beforeAll(async () => {
     targetEngagementId: historyEngagementId,
   })
   await materializeEffectWithPayload(boundedProposal, { frequency: 'B' })
+
+  // Effet corrompu : matérialisé normalement via la RPC (donc cohérent à la
+  // création), puis son organization_id est altéré directement en base —
+  // seule façon de produire, en lecture privilégiée, l'anomalie que la RPC
+  // interdit en écriture. Témoin du fail-closed Section 7 sur les EFFETS,
+  // pas seulement sur l'Engagement/chantier.
+  tamperedEffectEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} tampered-effect` })
+  const tamperedProposal = await makeQualifiedProposal({
+    effect: 'modify',
+    temporality: 'permanent',
+    scope: 'frequency',
+    scopeKey: 'frequency',
+    startsOn: '2026-01-01',
+    targetEngagementId: tamperedEffectEngagementId,
+  })
+  const tamperedEffect = await materializeEffectWithPayload(tamperedProposal, { frequency: 'TAMPERED' })
+  const { error: tamperError } = await db
+    .from('engagement_contract_effects')
+    .update({ organization_id: outsiderOrgId })
+    .eq('id', tamperedEffect.effect_id)
+  if (tamperError) throw tamperError
 })
 
 async function materializeEffectWithPayload(proposalId: string, payload: Record<string, unknown>) {
@@ -186,7 +208,7 @@ async function materializeEffectWithPayload(proposalId: string, payload: Record<
 afterAll(async () => {
   const db = createAdminClient()
   // engagements cascade → engagement_contract_effects
-  await db.from('engagements').delete().in('id', [legacyEngagementId, historyEngagementId, crossOrgEngagementId, inconsistentEngagementId])
+  await db.from('engagements').delete().in('id', [legacyEngagementId, historyEngagementId, crossOrgEngagementId, inconsistentEngagementId, tamperedEffectEngagementId])
   // documents cascade → run → proposals → evidence → proposal_evidence → materialization
   await db.from('documents').delete().eq('id', docId)
   await db.from('sites').delete().in('id', [siteId, outsiderSiteId])
@@ -269,6 +291,11 @@ describe('resolveEngagementContractStateForUser — sécurité', () => {
 
   it('Engagement avec incohérence organisation/chantier : refusé (fail-closed, jamais absorbé)', async () => {
     const result = await resolveEngagementContractStateForUser(inconsistentEngagementId, '2026-09-29', currentUser())
+    expect(result).toEqual({ ok: false, error: 'access_denied' })
+  })
+
+  it('effet rattaché à l’Engagement mais organization_id incohérent (lecture privilégiée) : refusé, aucun appel au resolver', async () => {
+    const result = await resolveEngagementContractStateForUser(tamperedEffectEngagementId, '2026-09-29', currentUser())
     expect(result).toEqual({ ok: false, error: 'access_denied' })
   })
 
