@@ -422,3 +422,32 @@ describe('createEngagementFromProposalAction / linkEngagementToProposalAction �
     expect(result).toMatchObject({ ok: true, engagementId: 'eng-1' })
   })
 })
+
+// ─── linkEngagementToProposalAction — cible verrouillée pour CONFIRM (micro-fix
+// continuité, mandat Vincent 2026-09-28) ───────────────────────────────────────
+// CONFIRM oblige déjà l'utilisateur à choisir contract_effect.targetEngagementId
+// pendant la qualification. Le serveur ne doit plus jamais faire confiance à un
+// engagement_id différent envoyé par le client — seule la cible persistée fait foi.
+
+describe('linkEngagementToProposalAction — cible verrouillée pour CONFIRM (micro-fix continuité)', () => {
+  it('CONFIRM cible A → tentative de rattacher B → refus serveur', async () => {
+    mocks.from.mockImplementation(buildAccessMock({
+      documentType: 'ordre_service',
+      sourcePayload: { contract_effect: { effect: 'confirm', targetEngagementId: 'eng-A' } },
+    }))
+    const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-B' }))
+    expect(result).toEqual({ ok: false, error: 'Cet Engagement ne correspond pas à la cible validée lors de la qualification' })
+    expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
+  })
+
+  it('CONFIRM cible A → rattacher A → autorisé', async () => {
+    mocks.from.mockImplementation(buildAccessMock({
+      documentType: 'ordre_service',
+      sourcePayload: { contract_effect: { effect: 'confirm', targetEngagementId: 'eng-A' } },
+    }))
+    mocks.materializeEngagementLinkExisting.mockResolvedValue('eng-A')
+    const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-A' }))
+    expect(result).toMatchObject({ ok: true, engagementId: 'eng-A' })
+    expect(mocks.materializeEngagementLinkExisting).toHaveBeenCalledWith('prop-1', 'eng-A', 'user-admin')
+  })
+})

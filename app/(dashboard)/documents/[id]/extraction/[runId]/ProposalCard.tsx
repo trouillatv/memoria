@@ -334,6 +334,14 @@ export function ProposalCard({
   // débloquer Créer/Rattacher, jamais localEffect seul.
   const validatedEffect: ContractEffect | null = isQualificationSaved ? (localEffect || null) : null
   const effectBlocked = effectBlocksMaterialization(validatedEffect)
+  // CONFIRM impose déjà sa cible pendant la qualification (effectRequiresTarget) —
+  // le geste de rattachement ne doit jamais redemander cette décision (micro-fix
+  // continuité, revue Vincent 2026-09-28). null pour tout autre effet, y compris
+  // le CCTP legacy non qualifié, qui garde le picker générique existant.
+  const lockedLinkTargetId = validatedEffect === 'confirm' ? (contractEffect?.targetEngagementId ?? null) : null
+  const lockedLinkTargetLabel = lockedLinkTargetId
+    ? (siteEngagements?.find((e) => e.id === lockedLinkTargetId)?.short_label ?? lockedLinkTargetId)
+    : null
 
   function onSaveContractEffect() {
     if (!localEffect || !localTemporality) return
@@ -772,6 +780,11 @@ export function ProposalCard({
 
           {!isMaterialized && canMaterializeEngagement && (
             <div className="pt-1 space-y-2">
+              {lockedLinkTargetId && (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  ✓ Confirmation validée — Engagement concerné : <span className="font-medium">{lockedLinkTargetLabel}</span>
+                </p>
+              )}
               <div className="flex flex-wrap gap-2">
                 {canCreateEngagement && (
                   <Button type="button" size="sm" onClick={onCreateEngagement} disabled={pending}>
@@ -779,12 +792,18 @@ export function ProposalCard({
                   </Button>
                 )}
                 {canLinkEngagement && (
-                  <Button type="button" size="sm" variant="outline" onClick={() => setShowLinkPicker((v) => !v)} disabled={pending}>
-                    Rattacher à un Engagement existant
-                  </Button>
+                  lockedLinkTargetId ? (
+                    <Button type="button" size="sm" variant="outline" onClick={() => onLinkEngagement(lockedLinkTargetId)} disabled={pending}>
+                      {pending ? '…' : 'Rattacher à cet Engagement'}
+                    </Button>
+                  ) : (
+                    <Button type="button" size="sm" variant="outline" onClick={() => setShowLinkPicker((v) => !v)} disabled={pending}>
+                      Rattacher à un Engagement existant
+                    </Button>
+                  )
                 )}
               </div>
-              {canLinkEngagement && showLinkPicker && (
+              {canLinkEngagement && !lockedLinkTargetId && showLinkPicker && (
                 <div className="space-y-1">
                   <input
                     type="text"

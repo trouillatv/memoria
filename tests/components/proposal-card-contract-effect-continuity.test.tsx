@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { ProposalCard } from '@/app/(dashboard)/documents/[id]/extraction/[runId]/ProposalCard'
-import type { DbDocumentExtractionProposal } from '@/types/db'
+import type { DbDocumentExtractionProposal, DbEngagement } from '@/types/db'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: vi.fn() }),
@@ -70,7 +70,35 @@ function makeOsProposal(overrides: Partial<DbDocumentExtractionProposal> = {}): 
   } as DbDocumentExtractionProposal
 }
 
-function renderOsCard(overrides: Partial<DbDocumentExtractionProposal> = {}) {
+function makeEngagement(overrides: Partial<DbEngagement> = {}): DbEngagement {
+  return {
+    id: 'eng-A',
+    tender_id: null,
+    contract_id: null,
+    site_id: 'site-1',
+    source_type: 'manual',
+    source_excerpt: 'excerpt existant',
+    source_ref: null,
+    tender_document_id: null,
+    source_document_id: null,
+    page_number: null,
+    category: 'other',
+    kind: null,
+    short_label: 'Signalement incendie — Engagement A',
+    measurable: false,
+    ai_confidence: null,
+    status: 'active',
+    proof_requirement: 'none',
+    destination: 'contract_engagement',
+    organization_id: 'org-1',
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    created_by: null,
+    ...overrides,
+  }
+}
+
+function renderOsCard(overrides: Partial<DbDocumentExtractionProposal> = {}, siteEngagements?: DbEngagement[]) {
   return render(
     <ProposalCard
       proposal={makeOsProposal(overrides)}
@@ -78,6 +106,7 @@ function renderOsCard(overrides: Partial<DbDocumentExtractionProposal> = {}) {
       signedUrls={{}}
       documentId="doc-os-1"
       documentType="ordre_service"
+      siteEngagements={siteEngagements}
     />,
   )
 }
@@ -167,6 +196,34 @@ describe('ProposalCard — DOC-CONTRACT-OS-1A-UX — continuité carte OS/Avenan
       />,
     )
     expect(screen.getByText('Rattacher à un Engagement existant')).toBeInTheDocument()
+  })
+
+  it('CONFIRM cible A validé → CTA verrouillé sur A, pas de picker générique', () => {
+    renderOsCard(
+      {
+        source_payload: {
+          kind: 'controle', category: 'compliance', measurable: true,
+          frequency_raw: 'mensuel', ai_confidence: 0.9,
+          contract_effect: {
+            effect: 'confirm', temporality: 'permanent', targetEngagementId: 'eng-A',
+            startsOn: null, endsOn: null, resumeOn: null, scope: null,
+          },
+        },
+      },
+      [makeEngagement()],
+    )
+
+    // Le libellé apparaît deux fois : dans le formulaire de qualification (déjà
+    // rempli avec la cible persistée) et dans le nouveau bandeau de confirmation
+    // verrouillée — seule la présence compte ici, pas l'unicité.
+    expect(screen.getAllByText('Signalement incendie — Engagement A').length).toBeGreaterThan(0)
+    expect(screen.getByText('Rattacher à cet Engagement')).toBeInTheDocument()
+    expect(screen.queryByText('Rattacher à un Engagement existant')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Rattacher à cet Engagement'))
+    expect(mockLink).toHaveBeenCalledTimes(1)
+    const fd = mockLink.mock.calls[0][0] as FormData
+    expect(fd.get('engagement_id')).toBe('eng-A')
   })
 
   it('qualification validée puis champ modifié → CTA disparaît jusqu’à revalidation', () => {

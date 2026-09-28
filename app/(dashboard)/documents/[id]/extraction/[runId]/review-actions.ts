@@ -11,7 +11,7 @@ import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-imp
 import { materializeHistoricalRun } from '@/lib/documents/materialize-historical-run'
 import { materializeEngagementCreateNew, materializeEngagementLinkExisting, finalizeAcceptedEngagementsForRun } from '@/lib/db/materialize-engagement'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
-import type { ContractEffect, ContractTemporality } from '@/lib/engagements/contract-effect'
+import type { ContractEffect, ContractTemporality, ContractEffectQualification } from '@/lib/engagements/contract-effect'
 import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNewForDocument, effectAllowsLinkExistingForDocument } from '@/lib/engagements/contract-effect'
 
 type ActionResult = { ok: boolean; error?: string }
@@ -351,11 +351,11 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
 }
 
 /**
- * Lit l'effet contractuel déjà qualifié pour une proposition (source_payload.
- * contract_effect.effect), null si jamais qualifiée — cas des propositions
+ * Lit la qualification d'effet contractuel déjà enregistrée pour une proposition
+ * (source_payload.contract_effect), null si jamais qualifiée — cas des propositions
  * CCTP historiques, dont le comportement de matérialisation reste inchangé.
  */
-async function getQualifiedContractEffect(proposalId: string): Promise<ContractEffect | null> {
+async function getQualifiedContractEffectQualification(proposalId: string): Promise<ContractEffectQualification | null> {
   const admin = createAdminClient()
   const { data } = await admin
     .from('document_extraction_proposal')
@@ -363,8 +363,13 @@ async function getQualifiedContractEffect(proposalId: string): Promise<ContractE
     .eq('id', proposalId)
     .maybeSingle()
   const payload = (data as { source_payload: Record<string, unknown> | null } | null)?.source_payload
-  const contractEffect = payload?.contract_effect as { effect?: unknown } | undefined
-  return typeof contractEffect?.effect === 'string' ? (contractEffect.effect as ContractEffect) : null
+  const contractEffect = payload?.contract_effect as ContractEffectQualification | null | undefined
+  return contractEffect && typeof contractEffect.effect === 'string' ? contractEffect : null
+}
+
+async function getQualifiedContractEffect(proposalId: string): Promise<ContractEffect | null> {
+  const qualification = await getQualifiedContractEffectQualification(proposalId)
+  return qualification?.effect ?? null
 }
 
 export async function createEngagementFromProposalAction(fd: FormData): Promise<{
@@ -432,7 +437,8 @@ export async function linkEngagementToProposalAction(fd: FormData): Promise<{
   const ownership = await verifyEngagementProposal(proposalId, documentId)
   if (!ownership.ok) return ownership
 
-  const qualifiedEffect = await getQualifiedContractEffect(proposalId)
+  const qualification = await getQualifiedContractEffectQualification(proposalId)
+  const qualifiedEffect = qualification?.effect ?? null
   if (!effectAllowsLinkExistingForDocument(access.documentType, qualifiedEffect)) {
     return {
       ok: false,
@@ -440,6 +446,15 @@ export async function linkEngagementToProposalAction(fd: FormData): Promise<{
         ? 'Qualifiez d’abord l’effet contractuel de ce document avant de rattacher un Engagement'
         : 'Cet effet contractuel ne permet pas de rattacher un Engagement existant',
     }
+  }
+
+  // CONFIRM a déjà fixé sa cible unique pendant la qualification — mandat de
+  // fermeture Vincent 2026-09-28 (continuité qualifier→exécuter exactement cette
+  // décision). Ne jamais faire confiance à l'engagement_id envoyé par le client
+  // pour ce cas : seule source_payload.contract_effect.targetEngagementId fait foi.
+  // Le CCTP legacy (qualifiedEffect === null) garde le rattachement libre existant.
+  if (qualifiedEffect === 'confirm' && qualification?.targetEngagementId !== engagementId) {
+    return { ok: false, error: 'Cet Engagement ne correspond pas à la cible validée lors de la qualification' }
   }
 
   try {
