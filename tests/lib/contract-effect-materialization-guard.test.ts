@@ -61,7 +61,7 @@ import {
 
 function buildChainWithThen(resolve: () => { data: unknown; error: unknown }) {
   const chain: Record<string, unknown> = {}
-  const methods = ['select', 'eq', 'in', 'is', 'ilike', 'order', 'limit']
+  const methods = ['select', 'eq', 'neq', 'in', 'is', 'ilike', 'order', 'limit']
   for (const m of methods) chain[m] = vi.fn().mockReturnValue(chain)
   chain.update = vi.fn().mockReturnValue(chain)
   chain.upsert = vi.fn().mockReturnValue(chain)
@@ -159,7 +159,19 @@ describe('setContractEffectAction — invariants EFFET × TEMPORALITÉ (DOC-CONT
     const result = await setContractEffectAction(buildForm({
       effect: 'new', temporality: 'permanent', ends_on: '2026-05-10', resume_on: '2026-05-01',
     }))
-    expect(result).toEqual({ ok: false, error: 'La date de reprise ne peut pas précéder la date de fin' })
+    expect(result).toEqual({ ok: false, error: 'La date de reprise doit être strictement postérieure à la date de fin' })
+  })
+
+  // Fix DOC-CONTRACT-OS-1B1 (2e revue Vincent 2026-09-28, défaut B) : resumeOn
+  // égal à endsOn revenait à « reprise le jour même de la fin » côté serveur,
+  // incohérent avec le CHECK strict de la RPC (migration 445 : resume_on <=
+  // ends_on refusé). Le garde applicatif doit refuser exactement la même
+  // frontière, jamais une version plus permissive.
+  it('resume_on égal à ends_on — refus (frontière stricte alignée sur la RPC)', async () => {
+    const result = await setContractEffectAction(buildForm({
+      effect: 'new', temporality: 'permanent', ends_on: '2026-05-10', resume_on: '2026-05-10',
+    }))
+    expect(result).toEqual({ ok: false, error: 'La date de reprise doit être strictement postérieure à la date de fin' })
   })
 
   it('qualification valide — enregistrée normalement', async () => {

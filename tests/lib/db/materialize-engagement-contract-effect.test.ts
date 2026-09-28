@@ -24,6 +24,7 @@ let siteId: string
 let otherSiteId: string
 let docId: string
 let docWithEffectiveDateId: string
+let otherOrgDocId: string
 let runId: string
 
 type ContractEffectQualification = {
@@ -146,6 +147,9 @@ beforeAll(async () => {
   // avec effective_date renseignée — sert de repli d'ancrage temporel quand
   // startsOn n'est pas qualifié. docId (sans effective_date) sert de témoin négatif.
   docWithEffectiveDateId = (await db.from('documents').insert({ organization_id: orgId, document_type: 'ordre_service', storage_path: `${TAG}/os-effective-date.pdf`, filename: 'os-effective-date.pdf', effective_date: '2026-11-15' }).select('id').single()).data!.id as string
+  // Fix DOC-CONTRACT-OS-1B1 défaut C (2e revue Vincent 2026-09-28) : document
+  // appartenant à otherOrgId — témoin négatif du fail-closed multi-org.
+  otherOrgDocId = (await db.from('documents').insert({ organization_id: otherOrgId, document_type: 'ordre_service', storage_path: `${TAG}/os-other-org.pdf`, filename: 'os-other-org.pdf', effective_date: '2026-11-15' }).select('id').single()).data!.id as string
   runId = (await db.from('document_extraction_run').insert({ organization_id: orgId, document_id: docId, extractor_key: 'test' }).select('id').single()).data!.id as string
 })
 
@@ -154,6 +158,7 @@ afterAll(async () => {
   // document cascade → run → proposals → evidence → proposal_evidence → materialization
   await db.from('documents').delete().eq('id', docId)
   await db.from('documents').delete().eq('id', docWithEffectiveDateId)
+  await db.from('documents').delete().eq('id', otherOrgDocId)
   // engagement cascade → engagement_contract_effects
   await db.from('sites').delete().in('id', [siteId, otherSiteId])
   await db.from('clients').delete().eq('id', clientId)
@@ -608,6 +613,64 @@ describe('ancrage temporel NEW/MODIFY — startsOn qualifié ou documents.effect
     const { error } = await callRpc(proposalId, { effectPayload: { foo: 'bar' } })
     expect(error).not.toBeNull()
     expect(error!.message).toMatch(/ancrage temporel/)
+
+    const db = createAdminClient()
+    const { count } = await db
+      .from('engagement_contract_effects').select('id', { count: 'exact', head: true }).eq('source_proposal_id', proposalId)
+    expect(count).toBe(0)
+  })
+})
+
+// ─── FIX DOC-CONTRACT-OS-1B1 défaut C (2e revue Vincent 2026-09-28, migration 447) ──
+// Fail-closed multi-organisation étendu à la proposition et au document source,
+// pour TOUS les effets y compris NEW — pas seulement à l'Engagement cible
+// (déjà couvert par « refuse un rattachement cross-organisation », migration 446).
+describe('fail-closed multi-org — proposition/document vs chantier (fix défaut C)', () => {
+  it('NEW : proposition d’une autre organisation que le chantier cible → refusé, zéro écriture', async () => {
+    const proposalId = await makeQualifiedProposal(
+      { effect: 'new', temporality: 'permanent', startsOn: '2026-01-01' },
+      { label: `${TAG} new proposal cross-org`, organization_id: otherOrgId },
+    )
+    const { error } = await callRpc(proposalId, { category: 'other', kind: 'obligation', measurable: false })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/[Pp]roposition.*organisation.*cross-org refusée/)
+
+    const db = createAdminClient()
+    const { count: engagementCount } = await db
+      .from('engagements').select('id', { count: 'exact', head: true }).eq('short_label', `${TAG} new proposal cross-org`)
+    expect(engagementCount).toBe(0)
+    const { count: effectCount } = await db
+      .from('engagement_contract_effects').select('id', { count: 'exact', head: true }).eq('source_proposal_id', proposalId)
+    expect(effectCount).toBe(0)
+  })
+
+  it('NEW : document source d’une autre organisation que le chantier cible → refusé, zéro écriture', async () => {
+    const proposalId = await makeQualifiedProposal(
+      { effect: 'new', temporality: 'permanent' },
+      { label: `${TAG} new document cross-org`, document_id: otherOrgDocId },
+    )
+    const { error } = await callRpc(proposalId, { category: 'other', kind: 'obligation', measurable: false })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/[Dd]ocument.*organisation.*cross-org refusée/)
+
+    const db = createAdminClient()
+    const { count: engagementCount } = await db
+      .from('engagements').select('id', { count: 'exact', head: true }).eq('short_label', `${TAG} new document cross-org`)
+    expect(engagementCount).toBe(0)
+    const { count: effectCount } = await db
+      .from('engagement_contract_effects').select('id', { count: 'exact', head: true }).eq('source_proposal_id', proposalId)
+    expect(effectCount).toBe(0)
+  })
+
+  it('CONFIRM : proposition d’une autre organisation que le chantier cible → refusé avant la garde Engagement', async () => {
+    const target = await insertEngagement({ short_label: `${TAG} confirm cross-org proposal` })
+    const proposalId = await makeQualifiedProposal(
+      { effect: 'confirm', temporality: 'permanent', targetEngagementId: target },
+      { organization_id: otherOrgId },
+    )
+    const { error } = await callRpc(proposalId)
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/[Pp]roposition.*organisation.*cross-org refusée/)
 
     const db = createAdminClient()
     const { count } = await db

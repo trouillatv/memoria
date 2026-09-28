@@ -295,8 +295,8 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
   if (startsOn && endsOn && startsOn > endsOn) {
     return { ok: false, error: 'La date de début doit précéder ou égaler la date de fin' }
   }
-  if (resumeOn && endsOn && resumeOn < endsOn) {
-    return { ok: false, error: 'La date de reprise ne peut pas précéder la date de fin' }
+  if (resumeOn && endsOn && resumeOn <= endsOn) {
+    return { ok: false, error: 'La date de reprise doit être strictement postérieure à la date de fin' }
   }
 
   // Fix DOC-CONTRACT-OS-1B1 (revue Vincent 2026-09-28, défaut 1) : `scope` reste
@@ -362,12 +362,21 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
     contract_effect: { effect, temporality, targetEngagementId, startsOn, endsOn, resumeOn, scope, scopeKey },
   }
 
-  const { error } = await admin
+  // Fix DOC-CONTRACT-OS-1B1 (2e revue Vincent, défaut A) : la lecture de
+  // review_status ci-dessus ne protège pas contre une matérialisation concurrente
+  // survenue entre temps — seule l'UPDATE elle-même, conditionnée et vérifiée sur
+  // les lignes réellement affectées, ferme la fenêtre de course.
+  const { data: updated, error } = await admin
     .from('document_extraction_proposal')
     .update({ source_payload: newPayload, review_status: 'edited' })
     .eq('id', proposalId)
+    .neq('review_status', 'materialized')
+    .select('id')
 
   if (error) return { ok: false, error: error.message }
+  if (!updated || updated.length === 0) {
+    return { ok: false, error: 'Proposition déjà matérialisée : la qualification ne peut plus être modifiée' }
+  }
   return { ok: true }
 }
 
