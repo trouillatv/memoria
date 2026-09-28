@@ -11,12 +11,17 @@ import { SectionTitle, Empty } from './PlanningUI'
 // le détail (rythme, roulement, historique) — la vue globale reste la référence
 // pour le pilotage transverse (filtres équipe, « sans prochaine », « sans équipe »).
 
+// UX-CONTINUITY-1 (mandat Vincent 2026-09-28) — « on_demand » n'est jamais une
+// valeur par défaut (création → weekly, édition → daily) : c'est un choix
+// délibéré signifiant « pas de rythme fixe planifié ». Le libellé le dit
+// explicitement pour ne pas laisser croire qu'un rythme existe, à côté des
+// vraies cadences (Quotidienne, Hebdomadaire…).
 const CADENCE_FR: Record<string, string> = {
   daily: 'Quotidienne',
   weekly: 'Hebdomadaire',
   biweekly: 'Bihebdomadaire',
   monthly: 'Mensuelle',
-  on_demand: 'À la demande',
+  on_demand: 'Sans rythme fixe',
 }
 
 interface MissionsSubViewProps {

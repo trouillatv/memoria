@@ -54,9 +54,11 @@ export function PlannedEngagementCard({
    *  qu'à la création d'une Mission, jamais une intervention datée). Organise
    *  l'exécution normale, distinct de « Traiter un point » (situation
    *  ponctuelle). Une fois une Mission créée, ce CTA disparaît au profit des
-   *  liens par Mission (PLAN-UX-1A+B mandat Vincent 2026-09-27 : « Voir la
-   *  mission » + soit « Voir le planning » si un rythme est actif, soit
-   *  « Définir le rythme » sinon — jamais deux liens vers la même fiche).
+   *  liens par Mission (PLAN-UX-1A+B mandat Vincent 2026-09-27, distinction
+   *  roulement/rythme simple ajoutée UX-CONTINUITY-1 mandat 2026-09-28) :
+   *  « Voir la mission » + soit « Voir le roulement » (roulement publié) /
+   *  « Voir le planning » (rythme simple), soit « Définir le rythme » sinon
+   *  — jamais deux liens vers la même fiche).
    *  Même politique managerOrAdmin ; garde autoritaire côté serveur
    *  (createMissionAction / resolveEngagementAuthorization). */
   canPlan?: boolean
@@ -156,7 +158,12 @@ export function PlannedEngagementCard({
                       {chip.label}
                     </span>
                   ))}
-                  {m.active && m.hasActiveRhythm && (
+                  {m.active && m.hasActiveRhythm && m.hasPublishedCycle && (
+                    <Link href={`/sites/${siteId}?tab=planning&plantab=roulements`} className="text-[11px] font-medium text-primary hover:underline">
+                      Voir le roulement
+                    </Link>
+                  )}
+                  {m.active && m.hasActiveRhythm && !m.hasPublishedCycle && (
                     <Link href={`/sites/${siteId}?tab=planning`} className="text-[11px] font-medium text-primary hover:underline">
                       Voir le planning
                     </Link>

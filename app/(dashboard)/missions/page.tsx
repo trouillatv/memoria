@@ -23,12 +23,15 @@ import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
+// UX-CONTINUITY-1 (mandat Vincent 2026-09-28) — « on_demand » est un choix
+// délibéré (jamais une valeur par défaut), signifiant l'absence de rythme
+// fixe planifié : le libellé le dit explicitement, à côté des vraies cadences.
 const CADENCE_FR: Record<string, string> = {
   daily:     'Quotidienne',
   weekly:    'Hebdomadaire',
   biweekly:  'Bihebdomadaire',
   monthly:   'Mensuelle',
-  on_demand: 'À la demande',
+  on_demand: 'Sans rythme fixe',
 }
 
 // Seuil de retard par cadence (jours sans réalisation au-delà desquels une

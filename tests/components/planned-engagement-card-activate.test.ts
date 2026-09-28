@@ -115,6 +115,7 @@ function mission(overrides: Partial<EngagementMission> = {}): EngagementMission 
     nextInterventionDate: null,
     openAnomalyCount: 0,
     hasActiveRhythm: false,
+    hasPublishedCycle: false,
     health: buildMissionHealth(
       { active: true, cadence: 'monthly', lastInterventionDate: '2026-08-01', nextInterventionDate: null, openAnomalyCount: 0, assignedTeam: { id: 'team-1', name: 'Équipe A', color: null } },
       '2026-09-26',
@@ -192,16 +193,28 @@ describe('PlannedEngagementCard — liens par Mission (PLAN-UX-1A+B)', () => {
     expect(containsLinkWithText(tree, '/sites/site-1?tab=planning', 'Voir le planning')).toBe(false)
   })
 
-  it('rythme actif (simple ou roulement) : « Voir le planning » est présent, « Définir le rythme » est absent', () => {
+  it('rythme actif simple (pas de roulement) : « Voir le planning » est présent, « Définir le rythme » est absent', () => {
     const tree = PlannedEngagementCard({
       engagement: engagement({ id: 'eng-42', status: 'active' }),
       showStatusBadge: true,
       siteId: 'site-1',
       canPlan: true,
-      missions: [mission({ missionId: 'mission-9', hasActiveRhythm: true })],
+      missions: [mission({ missionId: 'mission-9', hasActiveRhythm: true, hasPublishedCycle: false })],
     })
     expect(containsLinkWithText(tree, '/sites/site-1?tab=planning', 'Voir le planning')).toBe(true)
     expect(containsLinkWithText(tree, '/missions/mission-9#rythme', 'Définir le rythme')).toBe(false)
+  })
+
+  it('UX-CONTINUITY-1 — roulement publié : « Voir le roulement » est présent, « Voir le planning » générique est absent', () => {
+    const tree = PlannedEngagementCard({
+      engagement: engagement({ id: 'eng-42', status: 'active' }),
+      showStatusBadge: true,
+      siteId: 'site-1',
+      canPlan: true,
+      missions: [mission({ missionId: 'mission-9', hasActiveRhythm: true, hasPublishedCycle: true })],
+    })
+    expect(containsLinkWithText(tree, '/sites/site-1?tab=planning&plantab=roulements', 'Voir le roulement')).toBe(true)
+    expect(containsLinkWithText(tree, '/sites/site-1?tab=planning', 'Voir le planning')).toBe(false)
   })
 
   it('rythme actif + canPlan=false : « Voir le planning » reste présent (consultation, pas une action réservée)', () => {

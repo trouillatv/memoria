@@ -229,6 +229,11 @@ export interface EngagementMission {
   openAnomalyCount: number
   health: MissionHealth
   hasActiveRhythm: boolean
+  /** UX-CONTINUITY-1 (mandat Vincent 2026-09-28) — distingue un roulement
+   *  publié (planning_cycles) d'un rythme simple (intervention_templates),
+   *  déjà calculés séparément ci-dessous avant d'être OR'd dans
+   *  hasActiveRhythm. Sert uniquement à distinguer le libellé du CTA. */
+  hasPublishedCycle: boolean
 }
 
 /**
@@ -373,6 +378,7 @@ export async function getMissionsForEngagements(
       openAnomalyCount,
       health: buildMissionHealth({ active: m.active, cadence: m.cadence, lastInterventionDate, nextInterventionDate, openAnomalyCount, assignedTeam }, today),
       hasActiveRhythm: missionsWithActiveRhythm.has(m.id) || missionsWithPublishedCycle.has(m.id),
+      hasPublishedCycle: missionsWithPublishedCycle.has(m.id),
     }
     for (const eid of engagementOverlap) {
       const list = result.get(eid) ?? []
