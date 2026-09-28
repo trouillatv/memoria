@@ -22,6 +22,7 @@ import { listMissionsByContract } from '@/lib/db/missions'
 import { listInterventionsByContract, listPhotosByIntervention } from '@/lib/db/interventions'
 import { EngagementCompliance } from './engagement-compliance'
 import { EngagementContractStatePanel } from './EngagementContractStatePanel'
+import { EngagementContractHistoryPanel } from './EngagementContractHistoryPanel'
 import { resolveEngagementContractStateForUser } from '@/lib/engagements/resolve-contract-state-for-user'
 import { ContractVigilancePanel } from './ContractVigilancePanel'
 import { ASavoirPropositionsPanel } from './ASavoirPropositionsPanel'
@@ -443,21 +444,28 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           </p>
         ) : (
           <ul className="space-y-3">
-            {obligations.map((e) => (
-              <li key={e.id} className="rounded-lg border p-4 bg-card">
-                <div className="min-w-0 mb-3">
-                  <div className="text-sm font-semibold mb-0.5">{e.short_label}</div>
-                  <div className="text-[11px] text-muted-foreground italic line-clamp-2">
-                    « {e.source_excerpt} »
+            {obligations.map((e) => {
+              const contractStateResult = contractStateByEngagement.get(e.id)
+              return (
+                <li key={e.id} className="rounded-lg border p-4 bg-card">
+                  <div className="min-w-0 mb-3">
+                    <div className="text-sm font-semibold mb-0.5">{e.short_label}</div>
+                    <div className="text-[11px] text-muted-foreground italic line-clamp-2">
+                      « {e.source_excerpt} »
+                    </div>
                   </div>
-                </div>
-                <EngagementCompliance ratios={computeRatios(e.id)} size="medium" />
-                <EngagementContractStatePanel
-                  result={contractStateByEngagement.get(e.id)}
-                  documentTitleById={contractDocumentTitleById}
-                />
-              </li>
-            ))}
+                  <EngagementCompliance ratios={computeRatios(e.id)} size="medium" />
+                  <EngagementContractStatePanel
+                    result={contractStateResult}
+                    documentTitleById={contractDocumentTitleById}
+                  />
+                  <EngagementContractHistoryPanel
+                    state={contractStateResult?.ok ? contractStateResult.state : undefined}
+                    documentTitleById={contractDocumentTitleById}
+                  />
+                </li>
+              )
+            })}
           </ul>
         )}
 
