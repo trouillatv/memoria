@@ -280,6 +280,7 @@ export function ProposalCard({
       endsOn: string | null
       resumeOn: string | null
       scope: string | null
+      scopeKey: string | null
     } | null
   } | null
   const relevanceScore = sourcePayload?.relevanceScore ?? null
@@ -319,6 +320,7 @@ export function ProposalCard({
   const [localEndsOn, setLocalEndsOn] = useState(contractEffect?.endsOn ?? '')
   const [localResumeOn, setLocalResumeOn] = useState(contractEffect?.resumeOn ?? '')
   const [localScope, setLocalScope] = useState(contractEffect?.scope ?? '')
+  const [localScopeKey, setLocalScopeKey] = useState(contractEffect?.scopeKey ?? '')
   const [effectTargetSearch, setEffectTargetSearch] = useState('')
   const isQualificationSaved = !!contractEffect
     && contractEffect.effect === localEffect
@@ -328,6 +330,7 @@ export function ProposalCard({
     && (contractEffect.endsOn ?? '') === localEndsOn
     && (contractEffect.resumeOn ?? '') === localResumeOn
     && (contractEffect.scope ?? '') === localScope
+    && (contractEffect.scopeKey ?? '') === localScopeKey
   // Le geste suivant (Créer / Rattacher) ne doit jamais réagir à un choix de
   // formulaire non encore validé (fix de continuité, revue Vincent 2026-09-28) —
   // seule la qualification effectivement enregistrée (isQualificationSaved) peut
@@ -355,6 +358,7 @@ export function ProposalCard({
     if (localEndsOn) fd.set('ends_on', localEndsOn)
     if (localResumeOn) fd.set('resume_on', localResumeOn)
     if (localScope) fd.set('scope', localScope)
+    if (localScopeKey) fd.set('scope_key', localScopeKey)
     handleAction(() => setContractEffectAction(fd), () => {
       setLocalStatus('edited')
       setMsg({ ok: true, text: 'Qualification validée' })
@@ -699,7 +703,7 @@ export function ProposalCard({
               )}
 
               <div>
-                <label className="text-[11px] text-muted-foreground mb-1 block">Périmètre (optionnel)</label>
+                <label className="text-[11px] text-muted-foreground mb-1 block">Périmètre (optionnel, texte libre)</label>
                 <input
                   type="text"
                   value={localScope}
@@ -709,6 +713,35 @@ export function ProposalCard({
                   className="w-full rounded border bg-background px-2 py-1.5 text-xs"
                 />
               </div>
+
+              {localEffect === 'modify' && (
+                <div>
+                  <label className="text-[11px] text-muted-foreground mb-1 block">
+                    Portée canonique (scope_key, requis pour une modification)
+                  </label>
+                  <input
+                    type="text"
+                    list="scope-key-suggestions"
+                    value={localScopeKey}
+                    onChange={(e) => setLocalScopeKey(e.target.value)}
+                    disabled={pending}
+                    placeholder="ex : frequency"
+                    className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                  />
+                  <datalist id="scope-key-suggestions">
+                    <option value="whole_engagement" />
+                    <option value="frequency" />
+                    <option value="schedule" />
+                    <option value="quantity" />
+                    <option value="access" />
+                    <option value="equipment" />
+                    <option value="reporting" />
+                  </datalist>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Valeur déterministe (minuscules, chiffres, underscore) — jamais le texte du périmètre ci-dessus.
+                  </p>
+                </div>
+              )}
 
               <div className="flex items-center justify-between gap-2">
                 {isQualificationSaved ? (
@@ -721,7 +754,7 @@ export function ProposalCard({
                   size="sm"
                   variant="outline"
                   onClick={onSaveContractEffect}
-                  disabled={pending || !localEffect || !localTemporality || isQualificationSaved}
+                  disabled={pending || !localEffect || !localTemporality || isQualificationSaved || (localEffect === 'modify' && !localScopeKey)}
                 >
                   {pending ? '…' : 'Valider la qualification'}
                 </Button>

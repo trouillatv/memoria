@@ -76,6 +76,20 @@ export function effectRequiresTarget(effect: ContractEffect): boolean {
   return effect === 'modify' || effect === 'suspend' || effect === 'confirm'
 }
 
+// scope_key (engagement_contract_effects, migration 445) est une portée métier
+// canonique déterministe — jamais le texte libre `scope` saisi par un humain
+// (fix DOC-CONTRACT-OS-1B1, revue Vincent 2026-09-28, défaut 1). Même format
+// que le CHECK en base : jamais auto-slugifié depuis `scope`.
+export const SCOPE_KEY_FORMAT_RE = /^[a-z][a-z0-9_]*$/
+
+export function isValidScopeKeyFormat(scopeKey: string): boolean {
+  return SCOPE_KEY_FORMAT_RE.test(scopeKey)
+}
+
+export function effectRequiresScopeKey(effect: ContractEffect): boolean {
+  return effect === 'modify'
+}
+
 export function temporalityRequiresDates(temporality: ContractTemporality): boolean {
   return temporality === 'bounded'
 }
@@ -129,6 +143,7 @@ export type ContractEffectQualification = {
   endsOn: string | null
   resumeOn: string | null
   scope: string | null
+  scopeKey: string | null
 }
 
 // DOC-CONTRACT-OS-1A-UX (mandat Vincent 2026-09-28) — synthèse de revue contractuelle

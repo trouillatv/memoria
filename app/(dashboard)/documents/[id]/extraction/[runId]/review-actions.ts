@@ -12,7 +12,7 @@ import { materializeHistoricalRun } from '@/lib/documents/materialize-historical
 import { materializeEngagementCreateNew, materializeEngagementLinkExisting, finalizeAcceptedEngagementsForRun } from '@/lib/db/materialize-engagement'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
 import type { ContractEffect, ContractTemporality, ContractEffectQualification } from '@/lib/engagements/contract-effect'
-import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNewForDocument, effectAllowsLinkExistingForDocument } from '@/lib/engagements/contract-effect'
+import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNewForDocument, effectAllowsLinkExistingForDocument, effectRequiresScopeKey, isValidScopeKeyFormat } from '@/lib/engagements/contract-effect'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -274,6 +274,7 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
   const endsOn = fd.get('ends_on')?.toString() || null
   const resumeOn = fd.get('resume_on')?.toString() || null
   const scope = fd.get('scope')?.toString()?.trim() || null
+  const scopeKey = fd.get('scope_key')?.toString()?.trim() || null
 
   if (!proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
   if (!effect || !VALID_CONTRACT_EFFECTS.has(effect)) return { ok: false, error: 'Effet invalide' }
@@ -296,6 +297,17 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
   }
   if (resumeOn && endsOn && resumeOn < endsOn) {
     return { ok: false, error: 'La date de reprise ne peut pas précéder la date de fin' }
+  }
+
+  // Fix DOC-CONTRACT-OS-1B1 (revue Vincent 2026-09-28, défaut 1) : `scope` reste
+  // un champ humain libre, purement descriptif — `scope_key` est la seule portée
+  // canonique déterministe lue par la RPC de matérialisation. Jamais dérivé de
+  // `scope` (aucune slugification automatique).
+  if (scopeKey && !isValidScopeKeyFormat(scopeKey)) {
+    return { ok: false, error: 'Portée canonique invalide (minuscules, chiffres, underscore, doit commencer par une lettre)' }
+  }
+  if (effectRequiresScopeKey(effect) && !scopeKey) {
+    return { ok: false, error: 'Cet effet nécessite une portée canonique (scope_key)' }
   }
 
   const access = await verifyReviewAccess(documentId)
@@ -331,14 +343,23 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
 
   const { data: proposal } = await admin
     .from('document_extraction_proposal')
-    .select('source_payload')
+    .select('source_payload, review_status')
     .eq('id', proposalId)
     .single()
   if (!proposal) return { ok: false, error: 'Proposition introuvable' }
 
+  // Fix DOC-CONTRACT-OS-1B1 (revue Vincent 2026-09-28, défaut 3) : une fois
+  // matérialisée, la qualification devient immuable — sinon source_payload et
+  // engagement_contract_effects divergeraient silencieusement (la RPC est
+  // idempotente sur source_proposal_id et ne relit jamais une réécriture).
+  // Toute correction future est un nouvel acte contractuel, jamais une réécriture.
+  if ((proposal as { review_status: string }).review_status === 'materialized') {
+    return { ok: false, error: 'Proposition déjà matérialisée : la qualification ne peut plus être modifiée' }
+  }
+
   const newPayload = {
     ...((proposal.source_payload as Record<string, unknown>) ?? {}),
-    contract_effect: { effect, temporality, targetEngagementId, startsOn, endsOn, resumeOn, scope },
+    contract_effect: { effect, temporality, targetEngagementId, startsOn, endsOn, resumeOn, scope, scopeKey },
   }
 
   const { error } = await admin

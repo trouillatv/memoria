@@ -23,12 +23,14 @@ let clientId: string
 let siteId: string
 let otherSiteId: string
 let docId: string
+let docWithEffectiveDateId: string
 let runId: string
 
 type ContractEffectQualification = {
   effect?: string
   temporality?: string
   scope?: string | null
+  scopeKey?: string | null
   startsOn?: string | null
   endsOn?: string | null
   resumeOn?: string | null
@@ -140,6 +142,10 @@ beforeAll(async () => {
   siteId = (await db.from('sites').insert({ name: `${TAG}site`, client_id: clientId, organization_id: orgId }).select('id').single()).data!.id as string
   otherSiteId = (await db.from('sites').insert({ name: `${TAG}other_site`, client_id: clientId, organization_id: orgId }).select('id').single()).data!.id as string
   docId = (await db.from('documents').insert({ organization_id: orgId, document_type: 'ordre_service', storage_path: `${TAG}/os.pdf`, filename: 'os.pdf' }).select('id').single()).data!.id as string
+  // Fix DOC-CONTRACT-OS-1B1 défaut 2 (revue Vincent 2026-09-28) : fixture positive
+  // avec effective_date renseignée — sert de repli d'ancrage temporel quand
+  // startsOn n'est pas qualifié. docId (sans effective_date) sert de témoin négatif.
+  docWithEffectiveDateId = (await db.from('documents').insert({ organization_id: orgId, document_type: 'ordre_service', storage_path: `${TAG}/os-effective-date.pdf`, filename: 'os-effective-date.pdf', effective_date: '2026-11-15' }).select('id').single()).data!.id as string
   runId = (await db.from('document_extraction_run').insert({ organization_id: orgId, document_id: docId, extractor_key: 'test' }).select('id').single()).data!.id as string
 })
 
@@ -147,6 +153,7 @@ afterAll(async () => {
   const db = createAdminClient()
   // document cascade → run → proposals → evidence → proposal_evidence → materialization
   await db.from('documents').delete().eq('id', docId)
+  await db.from('documents').delete().eq('id', docWithEffectiveDateId)
   // engagement cascade → engagement_contract_effects
   await db.from('sites').delete().in('id', [siteId, otherSiteId])
   await db.from('clients').delete().eq('id', clientId)
@@ -159,7 +166,8 @@ describe('OS15 — golden witness (4 cas fonctionnels heureux, mandat Vincent)',
     const proposalId = await makeQualifiedProposal({
       effect: 'modify',
       temporality: 'permanent',
-      scope: 'frequency',
+      scope: 'Zone Z2, sanitaires',
+      scopeKey: 'frequency',
       startsOn: '2026-12-01',
       targetEngagementId: target,
     })
@@ -336,7 +344,7 @@ describe('OS14 (témoin réel, non réparé) — reproduit structurellement : co
 describe('invariants complémentaires (mandat Vincent 1B1)', () => {
   it('NEW : rollback intégral si le payload effet est invalide après création de l’Engagement (scope_key malformé)', async () => {
     const proposalId = await makeQualifiedProposal(
-      { effect: 'new', temporality: 'permanent', scope: 'Not A Valid Slug !!' },
+      { effect: 'new', temporality: 'permanent', scopeKey: 'Not A Valid Slug !!', startsOn: '2026-01-01' },
       { label: `${TAG} new rollback scope invalide` },
     )
     const { error } = await callRpc(proposalId, { category: 'other', kind: 'obligation', measurable: false })
@@ -376,7 +384,7 @@ describe('invariants complémentaires (mandat Vincent 1B1)', () => {
   })
 
   it('MODIFY/SUSPEND/CONFIRM sans Engagement cible qualifié → refusé', async () => {
-    const proposalId = await makeQualifiedProposal({ effect: 'modify', temporality: 'permanent', scope: 'frequency' })
+    const proposalId = await makeQualifiedProposal({ effect: 'modify', temporality: 'permanent', scopeKey: 'frequency' })
     const { error } = await callRpc(proposalId, { effectPayload: { foo: 'bar' } })
     expect(error).not.toBeNull()
     expect(error!.message).toMatch(/exige un Engagement cible qualifié/)
@@ -423,7 +431,7 @@ describe('invariants complémentaires (mandat Vincent 1B1)', () => {
     const proposalId = await makeQualifiedProposal({
       effect: 'modify',
       temporality: 'permanent',
-      scope: 'frequency',
+      scopeKey: 'frequency',
       targetEngagementId: target,
     })
     const { error } = await callRpc(proposalId)
@@ -483,5 +491,127 @@ describe('invariants complémentaires (mandat Vincent 1B1)', () => {
     const { error } = await callRpc(proposalId, { category: 'other', kind: 'obligation', measurable: false })
     expect(error).not.toBeNull()
     expect(error!.message).toMatch(/famille .* invalide/)
+  })
+})
+
+// ─── FIX DOC-CONTRACT-OS-1B1 défaut 1 (revue Vincent 2026-09-28, migration 446) ──
+// scope_key est lu exclusivement depuis contract_effect.scopeKey, jamais depuis
+// contract_effect.scope (texte libre humain, ex. « Zone Z2, sanitaires »).
+describe('scope_key exclusivement issu de scopeKey (fix défaut 1)', () => {
+  it('NEW : scope texte libre ne fuit jamais dans scope_key', async () => {
+    const proposalId = await makeQualifiedProposal(
+      { effect: 'new', temporality: 'permanent', scope: 'frequency', startsOn: '2026-01-01' },
+      { label: `${TAG} scope texte libre ne fuit pas` },
+    )
+    const { data, error } = await callRpc(proposalId, { category: 'other', kind: 'obligation', measurable: false })
+    expect(error).toBeNull()
+    const row = (data as Array<{ effect_id: string }>)[0]
+
+    const db = createAdminClient()
+    const { data: effectRow } = await db
+      .from('engagement_contract_effects')
+      .select('scope_key')
+      .eq('id', row.effect_id)
+      .single()
+    // scope_key retombe sur le défaut whole_engagement — jamais la valeur de scope.
+    expect(effectRow).toMatchObject({ scope_key: 'whole_engagement' })
+  })
+})
+
+// ─── FIX DOC-CONTRACT-OS-1B1 défaut 2 (revue Vincent 2026-09-28, migration 446) ──
+// NEW/MODIFY exigent un ancrage temporel contractuel — startsOn qualifié en
+// priorité, repli sur documents.effective_date sinon, refus propre si aucun
+// des deux n'existe. Jamais applied_at. SUSPEND (exigence stricte, inchangée)
+// et CONFIRM (aucun ancrage requis) sont déjà couverts ailleurs.
+describe('ancrage temporel NEW/MODIFY — startsOn qualifié ou documents.effective_date (fix défaut 2)', () => {
+  it('NEW permanent + startsOn qualifié → starts_on = startsOn', async () => {
+    const proposalId = await makeQualifiedProposal(
+      { effect: 'new', temporality: 'permanent', startsOn: '2026-03-01' },
+      { label: `${TAG} new anchor startsOn` },
+    )
+    const { data, error } = await callRpc(proposalId, { category: 'other', kind: 'obligation', measurable: false })
+    expect(error).toBeNull()
+    const row = (data as Array<{ effect_id: string }>)[0]
+
+    const db = createAdminClient()
+    const { data: effectRow } = await db
+      .from('engagement_contract_effects').select('starts_on').eq('id', row.effect_id).single()
+    expect(effectRow).toMatchObject({ starts_on: '2026-03-01' })
+  })
+
+  it('NEW permanent sans startsOn, document.effective_date renseignée → repli sur effective_date', async () => {
+    const proposalId = await makeQualifiedProposal(
+      { effect: 'new', temporality: 'permanent' },
+      { label: `${TAG} new anchor fallback effective_date`, document_id: docWithEffectiveDateId },
+    )
+    const { data, error } = await callRpc(proposalId, { category: 'other', kind: 'obligation', measurable: false })
+    expect(error).toBeNull()
+    const row = (data as Array<{ effect_id: string }>)[0]
+
+    const db = createAdminClient()
+    const { data: effectRow } = await db
+      .from('engagement_contract_effects').select('starts_on').eq('id', row.effect_id).single()
+    expect(effectRow).toMatchObject({ starts_on: '2026-11-15' })
+  })
+
+  it('NEW permanent sans startsOn ni effective_date → refusé, zéro écriture', async () => {
+    const proposalId = await makeQualifiedProposal(
+      { effect: 'new', temporality: 'permanent' },
+      { label: `${TAG} new anchor refused` },
+    )
+    const { error } = await callRpc(proposalId, { category: 'other', kind: 'obligation', measurable: false })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/ancrage temporel/)
+
+    const db = createAdminClient()
+    const { count } = await db
+      .from('engagements').select('id', { count: 'exact', head: true }).eq('short_label', `${TAG} new anchor refused`)
+    expect(count).toBe(0)
+  })
+
+  it('MODIFY permanent + startsOn qualifié → starts_on = startsOn', async () => {
+    const target = await insertEngagement({ short_label: `${TAG} modify anchor startsOn` })
+    const proposalId = await makeQualifiedProposal({
+      effect: 'modify', temporality: 'permanent', scopeKey: 'frequency', startsOn: '2026-04-01', targetEngagementId: target,
+    })
+    const { data, error } = await callRpc(proposalId, { effectPayload: { foo: 'bar' } })
+    expect(error).toBeNull()
+    const row = (data as Array<{ effect_id: string }>)[0]
+
+    const db = createAdminClient()
+    const { data: effectRow } = await db
+      .from('engagement_contract_effects').select('starts_on').eq('id', row.effect_id).single()
+    expect(effectRow).toMatchObject({ starts_on: '2026-04-01' })
+  })
+
+  it('MODIFY permanent sans startsOn, document.effective_date renseignée → repli sur effective_date', async () => {
+    const target = await insertEngagement({ short_label: `${TAG} modify anchor fallback` })
+    const proposalId = await makeQualifiedProposal(
+      { effect: 'modify', temporality: 'permanent', scopeKey: 'frequency', targetEngagementId: target },
+      { document_id: docWithEffectiveDateId },
+    )
+    const { data, error } = await callRpc(proposalId, { effectPayload: { foo: 'bar' } })
+    expect(error).toBeNull()
+    const row = (data as Array<{ effect_id: string }>)[0]
+
+    const db = createAdminClient()
+    const { data: effectRow } = await db
+      .from('engagement_contract_effects').select('starts_on').eq('id', row.effect_id).single()
+    expect(effectRow).toMatchObject({ starts_on: '2026-11-15' })
+  })
+
+  it('MODIFY permanent sans startsOn ni effective_date → refusé, zéro écriture', async () => {
+    const target = await insertEngagement({ short_label: `${TAG} modify anchor refused` })
+    const proposalId = await makeQualifiedProposal({
+      effect: 'modify', temporality: 'permanent', scopeKey: 'frequency', targetEngagementId: target,
+    })
+    const { error } = await callRpc(proposalId, { effectPayload: { foo: 'bar' } })
+    expect(error).not.toBeNull()
+    expect(error!.message).toMatch(/ancrage temporel/)
+
+    const db = createAdminClient()
+    const { count } = await db
+      .from('engagement_contract_effects').select('id', { count: 'exact', head: true }).eq('source_proposal_id', proposalId)
+    expect(count).toBe(0)
   })
 })

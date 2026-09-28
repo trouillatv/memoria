@@ -86,6 +86,7 @@ function buildAccessMock(config: {
   sourcePayload?: Record<string, unknown>
   targetEngagementSiteId?: string
   documentType?: string | null
+  reviewStatus?: string
 } = {}) {
   const {
     documentId = 'doc-1',
@@ -94,6 +95,7 @@ function buildAccessMock(config: {
     sourcePayload = {},
     targetEngagementSiteId = 'site-1',
     documentType = 'cctp',
+    reviewStatus = 'accepted',
   } = config
   return (table: string) => {
     if (table === 'documents') {
@@ -106,6 +108,7 @@ function buildAccessMock(config: {
           proposal_family: proposalFamily,
           target_site_id: targetSiteId,
           source_payload: sourcePayload,
+          review_status: reviewStatus,
         },
         error: null,
       }))
@@ -170,6 +173,25 @@ describe('setContractEffectAction — invariants EFFET × TEMPORALITÉ (DOC-CONT
   // est concerné ». effectRequiresTarget() ne couvre plus conflict.
   it('conflict sans cible — qualification enregistrable', async () => {
     const result = await setContractEffectAction(buildForm({ effect: 'conflict', temporality: 'permanent' }))
+    expect(result).toEqual({ ok: true })
+  })
+})
+
+// ─── setContractEffectAction — immutabilité post-matérialisation (fix DOC-CONTRACT-OS-1B1
+// défaut 3, revue Vincent 2026-09-28) ──────────────────────────────────────────
+// Une proposition déjà matérialisée (review_status='materialized') ne doit plus
+// jamais accepter de réécriture de contract_effect — sinon source_payload et
+// engagement_contract_effects (migration 445) divergeraient silencieusement.
+describe('setContractEffectAction — immutabilité post-matérialisation (fix défaut 3)', () => {
+  it('proposition déjà matérialisée — toute réécriture refusée', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ reviewStatus: 'materialized' }))
+    const result = await setContractEffectAction(buildForm({ effect: 'new', temporality: 'permanent' }))
+    expect(result).toEqual({ ok: false, error: 'Proposition déjà matérialisée : la qualification ne peut plus être modifiée' })
+  })
+
+  it('proposition non matérialisée (accepted) — qualification toujours modifiable', async () => {
+    mocks.from.mockImplementation(buildAccessMock({ reviewStatus: 'accepted' }))
+    const result = await setContractEffectAction(buildForm({ effect: 'new', temporality: 'permanent' }))
     expect(result).toEqual({ ok: true })
   })
 })
