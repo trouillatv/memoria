@@ -74,9 +74,13 @@ function ScopeRow({
   documentTitleById?: Map<string, string>
 }) {
   const provenance = findProvenance(provenanceTrail, scope.sourceEffectId)
+  // Ne jamais afficher l'UUID brut d'un document absent de `documentTitleById` :
+  // cette map ne contient QUE les documents déjà filtrés par visibility_level
+  // (cf. page contrat) — un id absent signifie un document non autorisé pour ce
+  // rôle, pas un document inexistant. Mention neutre, jamais l'identifiant.
   const sourceLabel =
     provenance?.sourceDocumentId != null
-      ? (documentTitleById?.get(provenance.sourceDocumentId) ?? provenance.sourceDocumentId)
+      ? (documentTitleById?.get(provenance.sourceDocumentId) ?? 'document à accès restreint')
       : null
 
   return (

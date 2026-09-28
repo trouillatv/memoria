@@ -160,7 +160,7 @@ describe('EngagementContractStatePanel — provenance (Fix ChatGPT 1B2-B4)', () 
     expect(screen.getByText(/Source contractuelle : OS15/)).toBeInTheDocument()
   })
 
-  it('sourceDocumentId sans libellé connu : fallback sur l\'id brut', () => {
+  it('sourceDocumentId absent de documentTitleById (aucune map fournie) : mention neutre, jamais l\'UUID', () => {
     const state = baseState({
       existence: { status: 'exists', foundedBy: 'effect-new-1', existsFrom: '2026-01-01', existsUntil: null },
       scopes: [
@@ -191,7 +191,50 @@ describe('EngagementContractStatePanel — provenance (Fix ChatGPT 1B2-B4)', () 
       ],
     })
     render(<EngagementContractStatePanel result={ok(state)} />)
-    expect(screen.getByText(/Source contractuelle : doc-unknown/)).toBeInTheDocument()
+    expect(screen.getByText(/Source contractuelle : document à accès restreint/)).toBeInTheDocument()
+    expect(screen.queryByText(/doc-unknown/)).not.toBeInTheDocument()
+  })
+
+  it('document source non visible pour ce rôle (absent de documentTitleById) : mention neutre, UUID jamais exposé', () => {
+    const state = baseState({
+      existence: { status: 'exists', foundedBy: 'effect-new-1', existsFrom: '2026-01-01', existsUntil: null },
+      scopes: [
+        baseScope({
+          scopeKey: 'frequency',
+          basis: 'modify',
+          applicability: 'applicable',
+          value: 'hebdomadaire',
+          sourceEffectId: 'effect-modify-1',
+        }),
+      ],
+      provenanceTrail: [
+        {
+          effectId: 'effect-modify-1',
+          effect: 'modify',
+          temporality: 'permanent',
+          scopeKey: 'frequency',
+          startsOn: '2026-03-01',
+          endsOn: null,
+          resumeOn: null,
+          sourceDocumentId: 'doc-hidden',
+          sourceProposalId: 'proposal-1',
+          recordedInMemoriaAt: '2026-03-02T00:00:00Z',
+          recordedAfterQueriedDate: false,
+          orphaned: false,
+          usedInResolution: true,
+        },
+      ],
+    })
+    // Map de libellés qui NE contient PAS 'doc-hidden' — simule un document
+    // filtré par visibility_level en amont, dans la page contrat.
+    render(
+      <EngagementContractStatePanel
+        result={ok(state)}
+        documentTitleById={new Map([['doc-os15', 'OS15']])}
+      />,
+    )
+    expect(screen.getByText(/Source contractuelle : document à accès restreint/)).toBeInTheDocument()
+    expect(screen.queryByText(/doc-hidden/)).not.toBeInTheDocument()
   })
 })
 
