@@ -328,7 +328,12 @@ export function ProposalCard({
     && (contractEffect.endsOn ?? '') === localEndsOn
     && (contractEffect.resumeOn ?? '') === localResumeOn
     && (contractEffect.scope ?? '') === localScope
-  const effectBlocked = effectBlocksMaterialization(localEffect || null)
+  // Le geste suivant (Créer / Rattacher) ne doit jamais réagir à un choix de
+  // formulaire non encore validé (fix de continuité, revue Vincent 2026-09-28) —
+  // seule la qualification effectivement enregistrée (isQualificationSaved) peut
+  // débloquer Créer/Rattacher, jamais localEffect seul.
+  const validatedEffect: ContractEffect | null = isQualificationSaved ? (localEffect || null) : null
+  const effectBlocked = effectBlocksMaterialization(validatedEffect)
 
   function onSaveContractEffect() {
     if (!localEffect || !localTemporality) return
@@ -355,10 +360,14 @@ export function ProposalCard({
   // Sans qualification enregistrée, un ordre_service/avenant n'a plus droit au
   // comportement legacy « null = autorisé » — seul le CCTP historique le conserve.
   const acceptedOrEdited = isEngagement && (localStatus === 'accepted' || localStatus === 'edited')
-  const canCreateEngagement = acceptedOrEdited && effectAllowsCreateNewForDocument(documentType, localEffect || null)
-  const canLinkEngagement = acceptedOrEdited && effectAllowsLinkExistingForDocument(documentType, localEffect || null)
+  const canCreateEngagement = acceptedOrEdited && effectAllowsCreateNewForDocument(documentType, validatedEffect)
+  const canLinkEngagement = acceptedOrEdited && effectAllowsLinkExistingForDocument(documentType, validatedEffect)
   const canMaterializeEngagement = canCreateEngagement || canLinkEngagement
-  const requiresQualificationFirst = acceptedOrEdited && !localEffect && documentRequiresContractEffectQualification(documentType)
+  const requiresQualificationFirst = acceptedOrEdited && !validatedEffect && documentRequiresContractEffectQualification(documentType)
+  // Un effet choisi localement mais pas encore validé ne doit afficher ni Créer/Rattacher
+  // ni le message « qualifiez d'abord » — un message dédié invite à valider d'abord.
+  const hasUnsavedEffectChoice = acceptedOrEdited && !!localEffect && !isQualificationSaved
+    && documentRequiresContractEffectQualification(documentType)
 
   function onCreateEngagement() {
     if (!localKind) { setMsg({ ok: false, text: 'Choisissez une nature avant de créer l’Engagement' }); return }
@@ -812,15 +821,17 @@ export function ProposalCard({
           )}
           {!isMaterialized && !canMaterializeEngagement && (
             <p className="text-xs text-muted-foreground">
-              {effectBlocked
-                ? (localEffect === 'conflict'
-                    ? 'Conflit documentaire non résolu — la matérialisation est bloquée tant que l’effet n’est pas requalifié.'
-                    : 'Effet « Non-Engagement » — cette proposition ne doit jamais devenir un Engagement.')
-                : (acceptedOrEdited && (localEffect === 'modify' || localEffect === 'suspend'))
-                  ? 'Effet qualifié — application au contrat disponible dans DOC-CONTRACT-OS-1B.'
-                  : requiresQualificationFirst
-                    ? 'Qualifiez d’abord l’effet contractuel de ce document avant de créer ou rattacher un Engagement.'
-                    : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
+              {hasUnsavedEffectChoice
+                ? 'Validez la qualification avant de poursuivre.'
+                : effectBlocked
+                  ? (validatedEffect === 'conflict'
+                      ? 'Conflit documentaire non résolu — la matérialisation est bloquée tant que l’effet n’est pas requalifié.'
+                      : 'Effet « Non-Engagement » — cette proposition ne doit jamais devenir un Engagement.')
+                  : (acceptedOrEdited && (validatedEffect === 'modify' || validatedEffect === 'suspend'))
+                    ? 'Effet qualifié — application au contrat disponible dans DOC-CONTRACT-OS-1B.'
+                    : requiresQualificationFirst
+                      ? 'Qualifiez d’abord l’effet contractuel de ce document avant de créer ou rattacher un Engagement.'
+                      : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
             </p>
           )}
         </div>
