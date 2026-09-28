@@ -85,16 +85,22 @@ export type ScopeConflict = {
   reason: string
 }
 
+// applicability est un état exclusif à trois branches — jamais une paire de
+// booléens (applicable/indeterminate) qui pourrait manufacturer une fausse
+// certitude en même temps qu'une indétermination (doctrine 7 : « indéterminé
+// prime sur invention »). 'indeterminate' est prioritaire sur tout calcul de
+// gagnant dès qu'un mécanisme de clôture n'est pas démontré.
+export type ScopeApplicability = 'applicable' | 'suspended' | 'indeterminate'
+
 export type ScopeState = {
   scopeKey: string
-  applicable: boolean
+  applicability: ScopeApplicability
   dominatedByWholeEngagementSuspend: boolean
   basis: 'engagement_base' | 'new' | 'modify'
   value: unknown
   sourceEffectId: string | null
   valueConflict: ScopeConflict | null
   applicabilityConflict: ScopeConflict | null
-  indeterminate: boolean
   indeterminateReason: string | null
 }
 
@@ -114,6 +120,9 @@ export type ProvenanceEntry = {
   effect: MaterializedContractEffect
   temporality: ContractTemporality
   scopeKey: string
+  startsOn: string | null
+  endsOn: string | null
+  resumeOn: string | null
   sourceDocumentId: string
   sourceProposalId: string
   recordedInMemoriaAt: string
@@ -271,12 +280,81 @@ function toProvenanceEntry(
     effect: row.effect,
     temporality: row.temporality,
     scopeKey: row.scopeKey,
+    startsOn: row.startsOn,
+    endsOn: row.endsOn,
+    resumeOn: row.resumeOn,
     sourceDocumentId: row.sourceDocumentId,
     sourceProposalId: row.sourceProposalId,
     recordedInMemoriaAt: row.appliedAt,
     recordedAfterQueriedDate: isAfter(row.appliedAt.slice(0, 10), queriedDate),
     orphaned,
     usedInResolution,
+  }
+}
+
+// ─── SUSPEND — applicabilité tri-état d'une portée (whole_engagement ou
+// portée étroite) à une date donnée. L'indétermination (doctrine 7) est
+// évaluée AVANT tout gagnant : un effet actif au sens de isActiveAt() peut
+// être en même temps « indéterminé » (event_driven, trou de reprise) — dans
+// ce cas jamais rapporté comme 'suspended', toujours 'indeterminate'. ──────
+
+type SuspendApplicabilityResult = {
+  applicability: ScopeApplicability
+  applicabilityConflict: ScopeConflict | null
+  indeterminateReason: string | null
+  winnerId: string | null
+  indeterminateEffectIds: string[]
+}
+
+function resolveSuspendApplicability(
+  scopeKey: string,
+  scopeSuspendEffects: EngagementContractEffectRow[],
+  queriedDate: string,
+): SuspendApplicabilityResult {
+  const resolution = resolveActiveWinner(scopeSuspendEffects, queriedDate)
+  const indeterminateEffectIds = sortIds(scopeSuspendEffects.filter((e) => suspendIndeterminateAt(e, queriedDate)))
+
+  if (resolution.conflict) {
+    return {
+      applicability: 'indeterminate',
+      applicabilityConflict: {
+        scopeKey,
+        conflictingEffectIds: resolution.conflict.conflictingEffectIds,
+        reason: 'Plusieurs effets SUSPEND applicables simultanément sur cette portée — applicabilité indécidable.',
+      },
+      indeterminateReason: 'Conflit de suspension sur cette portée.',
+      winnerId: null,
+      indeterminateEffectIds,
+    }
+  }
+
+  if (indeterminateEffectIds.length > 0) {
+    return {
+      applicability: 'indeterminate',
+      applicabilityConflict: null,
+      indeterminateReason:
+        "Statut de reprise non confirmé (fenêtre de reprise explicite non atteinte) ou suspension déclenchée par événement sans mécanisme de clôture démontré.",
+      winnerId: resolution.winner?.id ?? null,
+      indeterminateEffectIds,
+    }
+  }
+
+  if (resolution.winner) {
+    return {
+      applicability: 'suspended',
+      applicabilityConflict: null,
+      indeterminateReason: null,
+      winnerId: resolution.winner.id,
+      indeterminateEffectIds,
+    }
+  }
+
+  return {
+    applicability: 'applicable',
+    applicabilityConflict: null,
+    indeterminateReason: null,
+    winnerId: null,
+    indeterminateEffectIds,
   }
 }
 
@@ -401,6 +479,7 @@ export function resolveEngagementAtDate(
 
   const scopeKeys = new Set<string>([WHOLE_ENGAGEMENT_SCOPE])
   for (const e of modifyEffects) scopeKeys.add(e.scopeKey)
+  for (const e of suspendEffects) scopeKeys.add(e.scopeKey)
 
   const usedIds = new Set<string>()
   if (founder) usedIds.add(founder.id)
@@ -410,9 +489,9 @@ export function resolveEngagementAtDate(
 
   if (canComputeScopes) {
     const wholeSuspendEffects = suspendEffects.filter((e) => e.scopeKey === WHOLE_ENGAGEMENT_SCOPE)
-    const wholeResolution = resolveActiveWinner(wholeSuspendEffects, queriedDate)
-    const wholeIndeterminate = wholeSuspendEffects.some((e) => suspendIndeterminateAt(e, queriedDate))
-    if (wholeResolution.winner) usedIds.add(wholeResolution.winner.id)
+    const wholeApplicability = resolveSuspendApplicability(WHOLE_ENGAGEMENT_SCOPE, wholeSuspendEffects, queriedDate)
+    if (wholeApplicability.winnerId) usedIds.add(wholeApplicability.winnerId)
+    for (const id of wholeApplicability.indeterminateEffectIds) usedIds.add(id)
 
     scopes = [...scopeKeys].sort().map((scopeKey) => {
       const baseline: { basis: 'engagement_base' | 'new'; sourceEffectId: string | null } = founder
@@ -440,68 +519,43 @@ export function resolveEngagementAtDate(
         usedIds.add(modifyResolution.winner.id)
       }
 
-      let applicable = true
+      let applicability: ScopeApplicability
       let dominatedByWholeEngagementSuspend = false
       let applicabilityConflict: ScopeConflict | null = null
-      let indeterminate = false
       let indeterminateReason: string | null = null
 
-      if (wholeResolution.conflict) {
-        applicabilityConflict = {
-          scopeKey: WHOLE_ENGAGEMENT_SCOPE,
-          conflictingEffectIds: wholeResolution.conflict.conflictingEffectIds,
-          reason: 'Plusieurs effets SUSPEND (whole_engagement) applicables simultanément — applicabilité indécidable.',
-        }
-        applicable = false
-        indeterminate = true
-        indeterminateReason = 'Conflit de suspension au niveau whole_engagement.'
-        if (scopeKey !== WHOLE_ENGAGEMENT_SCOPE) dominatedByWholeEngagementSuspend = true
-      } else if (wholeResolution.winner) {
-        applicable = false
-        if (scopeKey !== WHOLE_ENGAGEMENT_SCOPE) dominatedByWholeEngagementSuspend = true
-      } else if (scopeKey !== WHOLE_ENGAGEMENT_SCOPE) {
+      if (scopeKey === WHOLE_ENGAGEMENT_SCOPE) {
+        applicability = wholeApplicability.applicability
+        applicabilityConflict = wholeApplicability.applicabilityConflict
+        indeterminateReason = wholeApplicability.indeterminateReason
+      } else if (wholeApplicability.applicability !== 'applicable') {
+        // whole_engagement domine (suspendu OU indéterminé) — même statut
+        // propagé tel quel aux portées plus étroites, jamais réévalué
+        // localement (doctrine 6).
+        dominatedByWholeEngagementSuspend = true
+        applicability = wholeApplicability.applicability
+        applicabilityConflict = wholeApplicability.applicabilityConflict
+        indeterminateReason = wholeApplicability.indeterminateReason
+      } else {
         // whole_engagement ne domine pas — évaluer les SUSPEND propres à cette portée.
         const scopeSuspendEffects = suspendEffects.filter((e) => e.scopeKey === scopeKey)
-        const scopeResolution = resolveActiveWinner(scopeSuspendEffects, queriedDate)
-        const scopeIndeterminate = scopeSuspendEffects.some((e) => suspendIndeterminateAt(e, queriedDate))
-        if (scopeResolution.conflict) {
-          applicabilityConflict = {
-            scopeKey,
-            conflictingEffectIds: scopeResolution.conflict.conflictingEffectIds,
-            reason: 'Plusieurs effets SUSPEND applicables simultanément sur cette portée — applicabilité indécidable.',
-          }
-          applicable = false
-          indeterminate = true
-          indeterminateReason = 'Conflit de suspension sur cette portée.'
-        } else if (scopeResolution.winner) {
-          applicable = false
-          usedIds.add(scopeResolution.winner.id)
-        }
-        if (scopeIndeterminate) {
-          indeterminate = true
-          indeterminateReason =
-            indeterminateReason ??
-            "Statut de reprise non confirmé (fenêtre de reprise explicite non atteinte) ou suspension déclenchée par événement sans mécanisme de clôture démontré."
-        }
-      }
-
-      if (wholeIndeterminate) {
-        indeterminate = true
-        indeterminateReason =
-          indeterminateReason ??
-          "Statut de reprise whole_engagement non confirmé (fenêtre de reprise explicite non atteinte) ou suspension déclenchée par événement sans mécanisme de clôture démontré."
+        const scopeApplicability = resolveSuspendApplicability(scopeKey, scopeSuspendEffects, queriedDate)
+        if (scopeApplicability.winnerId) usedIds.add(scopeApplicability.winnerId)
+        for (const id of scopeApplicability.indeterminateEffectIds) usedIds.add(id)
+        applicability = scopeApplicability.applicability
+        applicabilityConflict = scopeApplicability.applicabilityConflict
+        indeterminateReason = scopeApplicability.indeterminateReason
       }
 
       return {
         scopeKey,
-        applicable,
+        applicability,
         dominatedByWholeEngagementSuspend,
         basis,
         value,
         sourceEffectId,
         valueConflict,
         applicabilityConflict,
-        indeterminate,
         indeterminateReason,
       }
     })

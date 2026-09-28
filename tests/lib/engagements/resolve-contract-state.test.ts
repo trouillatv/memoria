@@ -37,14 +37,13 @@ describe('resolveEngagementAtDate — legacy (sans NEW)', () => {
     expect(dto.scopes).toEqual([
       {
         scopeKey: 'whole_engagement',
-        applicable: true,
+        applicability: 'applicable',
         dominatedByWholeEngagementSuspend: false,
         basis: 'engagement_base',
         value: null,
         sourceEffectId: null,
         valueConflict: null,
         applicabilityConflict: null,
-        indeterminate: false,
         indeterminateReason: null,
       },
     ])
@@ -285,7 +284,7 @@ describe('resolveEngagementAtDate — repli MODIFY (doctrine 4 et 5)', () => {
 describe('resolveEngagementAtDate — SUSPEND applicabilité (doctrine 6 et 7)', () => {
   const founder = row({ id: 'new-1', effect: 'new', temporality: 'permanent', startsOn: '2026-01-01' })
 
-  it('SUSPEND event_driven — indéterminée pour toujours une fois active', () => {
+  it('SUSPEND event_driven — jamais rapportée "suspended" (fausse certitude), toujours indeterminate', () => {
     const susp = row({
       id: 'susp-ev',
       effect: 'suspend',
@@ -294,14 +293,25 @@ describe('resolveEngagementAtDate — SUSPEND applicabilité (doctrine 6 et 7)',
     })
     const before = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-02-01')
     const scopeBefore = before.scopes.find((s) => s.scopeKey === 'whole_engagement')
-    expect(scopeBefore).toMatchObject({ applicable: true, indeterminate: false })
+    expect(scopeBefore?.applicability).toBe('applicable')
 
     for (const date of ['2026-03-01', '2030-01-01']) {
       const dto = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, date)
       const scope = dto.scopes.find((s) => s.scopeKey === 'whole_engagement')
-      expect(scope?.applicable).toBe(false)
-      expect(scope?.indeterminate).toBe(true)
+      expect(scope?.applicability).toBe('indeterminate')
     }
+  })
+
+  it('SUSPEND bounded active — suspended', () => {
+    const susp = row({
+      id: 'susp-b',
+      effect: 'suspend',
+      temporality: 'bounded',
+      startsOn: '2026-02-01',
+      endsOn: '2026-02-28',
+    })
+    const during = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-02-15')
+    expect(during.scopes.find((s) => s.scopeKey === 'whole_engagement')?.applicability).toBe('suspended')
   })
 
   it('SUSPEND bounded sans resume_on — reprise automatique le lendemain de ends_on', () => {
@@ -312,19 +322,11 @@ describe('resolveEngagementAtDate — SUSPEND applicabilité (doctrine 6 et 7)',
       startsOn: '2026-02-01',
       endsOn: '2026-02-28',
     })
-    const during = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-02-15')
-    expect(during.scopes.find((s) => s.scopeKey === 'whole_engagement')).toMatchObject({
-      applicable: false,
-      indeterminate: false,
-    })
     const after = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-03-01')
-    expect(after.scopes.find((s) => s.scopeKey === 'whole_engagement')).toMatchObject({
-      applicable: true,
-      indeterminate: false,
-    })
+    expect(after.scopes.find((s) => s.scopeKey === 'whole_engagement')?.applicability).toBe('applicable')
   })
 
-  it('SUSPEND bounded avec resume_on > ends_on+1 — trou strict marqué indéterminé', () => {
+  it('SUSPEND bounded avec resume_on > ends_on+1 — trou strict marqué indeterminate, jamais applicable par défaut', () => {
     const susp = row({
       id: 'susp-g',
       effect: 'suspend',
@@ -335,26 +337,19 @@ describe('resolveEngagementAtDate — SUSPEND applicabilité (doctrine 6 et 7)',
     })
     const inGap = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-03-05')
     const scopeInGap = inGap.scopes.find((s) => s.scopeKey === 'whole_engagement')
-    expect(scopeInGap?.applicable).toBe(true)
-    expect(scopeInGap?.indeterminate).toBe(true)
+    expect(scopeInGap?.applicability).toBe('indeterminate')
     expect(scopeInGap?.indeterminateReason).toBeTruthy()
 
     const afterResume = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-03-20')
-    expect(afterResume.scopes.find((s) => s.scopeKey === 'whole_engagement')).toMatchObject({
-      applicable: true,
-      indeterminate: false,
-    })
+    expect(afterResume.scopes.find((s) => s.scopeKey === 'whole_engagement')?.applicability).toBe('applicable')
   })
 
-  it('SUSPEND one_off — le jour même seulement, reprise sans ambiguïté le lendemain', () => {
+  it('SUSPEND one_off — suspended le jour même, applicable sans ambiguïté le lendemain', () => {
     const susp = row({ id: 'susp-1', effect: 'suspend', temporality: 'one_off', startsOn: '2026-05-10' })
     const onDay = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-05-10')
-    expect(onDay.scopes.find((s) => s.scopeKey === 'whole_engagement')?.applicable).toBe(false)
+    expect(onDay.scopes.find((s) => s.scopeKey === 'whole_engagement')?.applicability).toBe('suspended')
     const nextDay = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-05-11')
-    expect(nextDay.scopes.find((s) => s.scopeKey === 'whole_engagement')).toMatchObject({
-      applicable: true,
-      indeterminate: false,
-    })
+    expect(nextDay.scopes.find((s) => s.scopeKey === 'whole_engagement')?.applicability).toBe('applicable')
   })
 
   it('SUSPEND whole_engagement domine une portée plus étroite sans effacer sa valeur repliée', () => {
@@ -375,14 +370,63 @@ describe('resolveEngagementAtDate — SUSPEND applicabilité (doctrine 6 et 7)',
     const dto = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, mod, susp] }, '2026-06-15')
     const lotA = dto.scopes.find((s) => s.scopeKey === 'lot_a')
     expect(lotA).toMatchObject({
-      applicable: false,
+      applicability: 'suspended',
       dominatedByWholeEngagementSuspend: true,
       basis: 'modify',
       value: { price: 50 },
       sourceEffectId: 'mod-dom',
     })
     const whole = dto.scopes.find((s) => s.scopeKey === 'whole_engagement')
-    expect(whole).toMatchObject({ applicable: false, dominatedByWholeEngagementSuspend: false })
+    expect(whole).toMatchObject({ applicability: 'suspended', dominatedByWholeEngagementSuspend: false })
+  })
+
+  it('SUSPEND whole_engagement indeterminate (event_driven) — propagé tel quel aux portées dominées', () => {
+    const mod = row({
+      id: 'mod-dom2',
+      effect: 'modify',
+      scopeKey: 'lot_a',
+      startsOn: '2026-01-01',
+      effectPayload: { price: 75 },
+    })
+    const susp = row({
+      id: 'susp-dom-ev',
+      effect: 'suspend',
+      temporality: 'event_driven',
+      startsOn: '2026-06-01',
+    })
+    const dto = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, mod, susp] }, '2026-06-15')
+    const lotA = dto.scopes.find((s) => s.scopeKey === 'lot_a')
+    expect(lotA).toMatchObject({
+      applicability: 'indeterminate',
+      dominatedByWholeEngagementSuspend: true,
+      basis: 'modify',
+      value: { price: 75 },
+    })
+    const whole = dto.scopes.find((s) => s.scopeKey === 'whole_engagement')
+    expect(whole?.applicability).toBe('indeterminate')
+  })
+
+  it('SUSPEND scopé sans MODIFY correspondant — la portée apparaît malgré tout dans le DTO', () => {
+    const susp = row({
+      id: 'susp-scope-only',
+      effect: 'suspend',
+      scopeKey: 'lot_z',
+      temporality: 'bounded',
+      startsOn: '2026-02-01',
+      endsOn: '2026-02-28',
+    })
+    const during = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-02-15')
+    const lotZDuring = during.scopes.find((s) => s.scopeKey === 'lot_z')
+    expect(lotZDuring).toMatchObject({
+      applicability: 'suspended',
+      dominatedByWholeEngagementSuspend: false,
+      basis: 'new',
+      value: null,
+    })
+
+    const after = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-03-01')
+    const lotZAfter = after.scopes.find((s) => s.scopeKey === 'lot_z')
+    expect(lotZAfter?.applicability).toBe('applicable')
   })
 })
 
@@ -398,10 +442,13 @@ describe('resolveEngagementAtDate — CONFIRM (doctrine 8)', () => {
     const dto = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, confirm] }, '2026-06-01')
     expect(dto.existence.status).toBe('exists')
     const whole = dto.scopes.find((s) => s.scopeKey === 'whole_engagement')
-    expect(whole).toMatchObject({ applicable: true, basis: 'new', value: null })
+    expect(whole).toMatchObject({ applicability: 'applicable', basis: 'new', value: null })
 
     const provenance = dto.provenanceTrail.find((p) => p.effectId === 'conf-1')
     expect(provenance).toMatchObject({
+      startsOn: '2026-02-01',
+      endsOn: null,
+      resumeOn: null,
       recordedInMemoriaAt: '2026-02-05T00:00:00Z',
       recordedAfterQueriedDate: false,
       orphaned: false,
@@ -420,6 +467,27 @@ describe('resolveEngagementAtDate — CONFIRM (doctrine 8)', () => {
     const dto = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, confirm] }, '2026-01-15')
     const provenance = dto.provenanceTrail.find((p) => p.effectId === 'conf-1')
     expect(provenance?.recordedAfterQueriedDate).toBe(true)
+  })
+
+  it('provenance — startsOn/endsOn/resumeOn contractuels exposés, distincts de recordedInMemoriaAt', () => {
+    const founder = row({ id: 'new-1', effect: 'new', temporality: 'permanent', startsOn: '2026-01-01' })
+    const susp = row({
+      id: 'susp-prov',
+      effect: 'suspend',
+      temporality: 'bounded',
+      startsOn: '2026-02-01',
+      endsOn: '2026-02-28',
+      resumeOn: '2026-03-15',
+      appliedAt: '2026-01-20T00:00:00Z',
+    })
+    const dto = resolveEngagementAtDate({ engagementId: 'eng-1', effects: [founder, susp] }, '2026-02-15')
+    const provenance = dto.provenanceTrail.find((p) => p.effectId === 'susp-prov')
+    expect(provenance).toMatchObject({
+      startsOn: '2026-02-01',
+      endsOn: '2026-02-28',
+      resumeOn: '2026-03-15',
+      recordedInMemoriaAt: '2026-01-20T00:00:00Z',
+    })
   })
 })
 
