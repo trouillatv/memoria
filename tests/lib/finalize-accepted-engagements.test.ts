@@ -107,3 +107,100 @@ describe('finalizeAcceptedEngagementsForRun', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 })
+
+// DOC-CONTRACT-OS-1A — FIX de fermeture (mandat Vincent 2026-09-28). Le bypass
+// concret signalé : qualifier une proposition CONFLICT, cliquer « Enregistrer la
+// qualification » (review_status passe à 'edited'), puis « Finaliser les
+// Engagements » créait quand même un Engagement. Une proposition qualifiée
+// conflict/non_engagement/confirm/modify/suspend ne doit jamais être créée
+// automatiquement ici ; l'absence de qualification (CCTP historique) doit
+// continuer à créer normalement.
+describe('finalizeAcceptedEngagementsForRun — garde EFFET × TEMPORALITÉ (DOC-CONTRACT-OS-1A)', () => {
+  it('conflict — jamais créé, compté en needsReviewCount, aucun appel RPC', async () => {
+    proposalsResult = {
+      data: [{
+        id: 'p1',
+        source_payload: { kind: 'obligation', category: 'sla', measurable: true, contract_effect: { effect: 'conflict' } },
+      }],
+      error: null,
+    }
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1' })
+
+    expect(result).toEqual({ ok: true, createdCount: 0, needsReviewCount: 1 })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('non_engagement — jamais créé, aucun appel RPC', async () => {
+    proposalsResult = {
+      data: [{
+        id: 'p1',
+        source_payload: { kind: 'obligation', category: 'sla', measurable: true, contract_effect: { effect: 'non_engagement' } },
+      }],
+      error: null,
+    }
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1' })
+
+    expect(result).toEqual({ ok: true, createdCount: 0, needsReviewCount: 1 })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('confirm — jamais créé automatiquement (link_existing reste un geste humain par carte)', async () => {
+    proposalsResult = {
+      data: [{
+        id: 'p1',
+        source_payload: { kind: 'obligation', category: 'sla', measurable: true, contract_effect: { effect: 'confirm', targetEngagementId: 'eng-1' } },
+      }],
+      error: null,
+    }
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1' })
+
+    expect(result).toEqual({ ok: true, createdCount: 0, needsReviewCount: 1 })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('modify/suspend — aucune matérialisation tant que DOC-CONTRACT-OS-1B n\'existe pas', async () => {
+    proposalsResult = {
+      data: [
+        { id: 'p1', source_payload: { kind: 'obligation', category: 'sla', measurable: true, contract_effect: { effect: 'modify', targetEngagementId: 'eng-1' } } },
+        { id: 'p2', source_payload: { kind: 'controle', category: 'quality', measurable: false, contract_effect: { effect: 'suspend', targetEngagementId: 'eng-1' } } },
+      ],
+      error: null,
+    }
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1' })
+
+    expect(result).toEqual({ ok: true, createdCount: 0, needsReviewCount: 2 })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('new — comportement historique conservé (création normale)', async () => {
+    proposalsResult = {
+      data: [{
+        id: 'p1',
+        source_payload: { kind: 'obligation', category: 'sla', measurable: true, contract_effect: { effect: 'new' } },
+      }],
+      error: null,
+    }
+    rpc.mockResolvedValue({ data: 'eng-x', error: null })
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1' })
+
+    expect(result).toEqual({ ok: true, createdCount: 1, needsReviewCount: 0 })
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('sans contract_effect (CCTP historique, jamais qualifié) — comportement historique conservé', async () => {
+    proposalsResult = {
+      data: [{ id: 'p1', source_payload: { kind: 'obligation', category: 'sla', measurable: true } }],
+      error: null,
+    }
+    rpc.mockResolvedValue({ data: 'eng-x', error: null })
+
+    const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1' })
+
+    expect(result).toEqual({ ok: true, createdCount: 1, needsReviewCount: 0 })
+  })
+})

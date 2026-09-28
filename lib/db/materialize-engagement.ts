@@ -15,6 +15,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { KIND_META } from '@/lib/engagements/kind'
 import { CATEGORY_LABELS } from '@/lib/engagements/labels'
+import { effectAllowsCreateNew, type ContractEffect } from '@/lib/engagements/contract-effect'
 import type { EngagementCategory, EngagementKind } from '@/types/db'
 
 export async function materializeEngagementCreateNew(
@@ -105,6 +106,19 @@ export async function finalizeAcceptedEngagementsForRun(input: {
 
   for (const p of proposals ?? []) {
     const payload = (p.source_payload as Record<string, unknown> | null) ?? {}
+
+    // Qualification EFFET × TEMPORALITÉ (DOC-CONTRACT-OS-1A, mandat de fermeture
+    // Vincent 2026-09-28) : une proposition qualifiée conflict, non_engagement,
+    // confirm, modify ou suspend ne doit JAMAIS être créée automatiquement comme
+    // nouvel Engagement par ce geste groupé. Absence de qualification (CCTP
+    // historique) = comportement inchangé.
+    const contractEffect = payload.contract_effect as { effect?: unknown } | undefined
+    const qualifiedEffect = typeof contractEffect?.effect === 'string' ? (contractEffect.effect as ContractEffect) : null
+    if (!effectAllowsCreateNew(qualifiedEffect)) {
+      needsReviewCount++
+      continue
+    }
+
     const kindRaw = payload.kind
     const kind = typeof kindRaw === 'string' && kindRaw in KIND_META ? (kindRaw as EngagementKind) : null
     if (!kind) {

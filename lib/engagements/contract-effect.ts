@@ -87,6 +87,18 @@ export function effectBlocksMaterialization(effect: ContractEffect | null): bool
   return effect === 'conflict' || effect === 'non_engagement'
 }
 
+// Matrice effet → RPC de matérialisation autorisée (mandat de fermeture DOC-CONTRACT-OS-1A,
+// Vincent 2026-09-28). `null` = proposition sans qualification (CCTP historique,
+// comportement préservé). MODIFY/SUSPEND n'autorisent ni l'une ni l'autre tant que
+// DOC-CONTRACT-OS-1B (persistance durable de l'effet) n'existe pas.
+export function effectAllowsCreateNew(effect: ContractEffect | null): boolean {
+  return effect === null || effect === 'new'
+}
+
+export function effectAllowsLinkExisting(effect: ContractEffect | null): boolean {
+  return effect === null || effect === 'confirm'
+}
+
 export type ContractEffectQualification = {
   effect: ContractEffect
   temporality: ContractTemporality

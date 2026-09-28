@@ -12,6 +12,7 @@ import { materializeHistoricalRun } from '@/lib/documents/materialize-historical
 import { materializeEngagementCreateNew, materializeEngagementLinkExisting, finalizeAcceptedEngagementsForRun } from '@/lib/db/materialize-engagement'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
 import type { ContractEffect, ContractTemporality } from '@/lib/engagements/contract-effect'
+import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNew, effectAllowsLinkExisting } from '@/lib/engagements/contract-effect'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -280,6 +281,22 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
     if (d && !ISO_DATE_RE.test(d)) return { ok: false, error: 'Date invalide (AAAA-MM-JJ attendu)' }
   }
 
+  // Invariants métier du modèle EFFET × TEMPORALITÉ appliqués côté serveur
+  // (mandat de fermeture Vincent 2026-09-28) — l'UI (ProposalCard) les respecte
+  // déjà, mais ne jamais dépendre uniquement d'une contrainte client.
+  if (effectRequiresTarget(effect) && !targetEngagementId) {
+    return { ok: false, error: 'Cet effet nécessite un Engagement cible' }
+  }
+  if (temporalityRequiresDates(temporality) && (!startsOn || !endsOn)) {
+    return { ok: false, error: 'Une temporalité bornée nécessite une date de début et de fin' }
+  }
+  if (startsOn && endsOn && startsOn > endsOn) {
+    return { ok: false, error: 'La date de début doit précéder ou égaler la date de fin' }
+  }
+  if (resumeOn && endsOn && resumeOn < endsOn) {
+    return { ok: false, error: 'La date de reprise ne peut pas précéder la date de fin' }
+  }
+
   const access = await verifyReviewAccess(documentId)
   if (!access.ok) return access
 
@@ -327,6 +344,23 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
   return { ok: true }
 }
 
+/**
+ * Lit l'effet contractuel déjà qualifié pour une proposition (source_payload.
+ * contract_effect.effect), null si jamais qualifiée — cas des propositions
+ * CCTP historiques, dont le comportement de matérialisation reste inchangé.
+ */
+async function getQualifiedContractEffect(proposalId: string): Promise<ContractEffect | null> {
+  const admin = createAdminClient()
+  const { data } = await admin
+    .from('document_extraction_proposal')
+    .select('source_payload')
+    .eq('id', proposalId)
+    .maybeSingle()
+  const payload = (data as { source_payload: Record<string, unknown> | null } | null)?.source_payload
+  const contractEffect = payload?.contract_effect as { effect?: unknown } | undefined
+  return typeof contractEffect?.effect === 'string' ? (contractEffect.effect as ContractEffect) : null
+}
+
 export async function createEngagementFromProposalAction(fd: FormData): Promise<{
   ok: boolean; engagementId?: string; error?: string
 }> {
@@ -347,6 +381,14 @@ export async function createEngagementFromProposalAction(fd: FormData): Promise<
 
   const ownership = await verifyEngagementProposal(proposalId, documentId)
   if (!ownership.ok) return ownership
+
+  // Ne jamais dépendre uniquement du garde client (canMaterializeEngagement,
+  // ProposalCard) — mandat de fermeture Vincent 2026-09-28. CONFIRM/MODIFY/
+  // SUSPEND/CONFLICT/NON_ENGAGEMENT ne créent jamais un nouvel Engagement.
+  const qualifiedEffect = await getQualifiedContractEffect(proposalId)
+  if (!effectAllowsCreateNew(qualifiedEffect)) {
+    return { ok: false, error: 'Cet effet contractuel ne permet pas de créer un nouvel Engagement' }
+  }
 
   // Nature/mesurable : valeurs humaines-confirmées, jamais le payload IA brut —
   // même précédent que updatePersonAttendanceAction. Elles sont passées
@@ -376,6 +418,11 @@ export async function linkEngagementToProposalAction(fd: FormData): Promise<{
 
   const ownership = await verifyEngagementProposal(proposalId, documentId)
   if (!ownership.ok) return ownership
+
+  const qualifiedEffect = await getQualifiedContractEffect(proposalId)
+  if (!effectAllowsLinkExisting(qualifiedEffect)) {
+    return { ok: false, error: 'Cet effet contractuel ne permet pas de rattacher un Engagement existant' }
+  }
 
   try {
     const linkedId = await materializeEngagementLinkExisting(proposalId, engagementId, access.userId)
