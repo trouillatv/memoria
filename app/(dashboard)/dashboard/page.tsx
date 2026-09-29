@@ -41,15 +41,11 @@ async function ActiveMemory({ site }: { site: SiteDashboardItem }) {
   return <MemorySouvient site={site} review={review} />
 }
 
-const ATTENTION_MAX = 3
+const ATTENTION_MAX = 5
 
-// FIX RECENCE CARROUSEL — pool de candidats pour le tri de présentation par
-// récence (ChantierSelector). getSitesDashboard calcule déjà les stats de
-// TOUS les chantiers accessibles quel que soit `limit` (ses requêtes Supabase
-// ne sont jamais bornées par ce paramètre, seul le slice() final l'est) : élargir
-// ce pool ne coûte donc aucune requête supplémentaire. Le carrousel affiché
-// reste plafonné à 5 cartes (cf. CAROUSEL_MAX dans DashboardPremium.tsx).
-const SITE_CARDS_POOL = 20
+// RICHNESS §2 — portefeuille "Vos chantiers" trié par récence réelle sur TOUT
+// le portefeuille accessible (multi-org), plafonné à 8 cartes affichées.
+const SITE_CARDS_LIMIT = 8
 
 export default async function DashboardPage({
   searchParams,
@@ -88,13 +84,13 @@ export default async function DashboardPage({
   const requestedSiteValid = requestedSiteId ? await isSiteAccessible(requestedSiteId, orgIds) : false
   const ensureSiteId = requestedSiteValid ? requestedSiteId : null
 
-  // Tier LÉGER : pool de candidats pour le carrousel (max SITE_CARDS_POOL,
-  // aucun delta par site) — le tri par récence et le plafond d'affichage à 5
-  // cartes sont appliqués en présentation par ChantierSelector.
+  // Tier LÉGER : portefeuille "Vos chantiers" (max SITE_CARDS_LIMIT, aucun
+  // delta par site) — tri par récence réelle sur le portefeuille complet déjà
+  // fait côté serveur (sortMode: 'recent'), ChantierSelector affiche l'ordre reçu.
   const [attention, upcoming, siteCards, deadlinesToPlan, promiseRecords] = await Promise.all([
     getAttentionDigest(5),
     getUpcomingItems(orgIds, 30, organizationMap),
-    getSitesDashboard(orgIds, organizationMap, { limit: SITE_CARDS_POOL, ensureSiteId }),
+    getSitesDashboard(orgIds, organizationMap, { limit: SITE_CARDS_LIMIT, ensureSiteId, sortMode: 'recent' }),
     getDashboardDeadlinesToPlan(orgIds, organizationMap),
     getStructuredPromiseRecords(orgIds),
   ])

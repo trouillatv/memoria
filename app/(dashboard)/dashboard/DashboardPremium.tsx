@@ -94,7 +94,7 @@ export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; hero
     <section className={`${surface} p-5 sm:p-8`}>
       <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Évolution depuis le PV précédent</p>
       <div className="mt-4 flex items-center gap-4">
-        <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="xl" />
+        <EntityLogo src={site.displayIdentity.logoUrl} label={site.displayIdentity.label} size="xl" />
         <div className="min-w-0">
           <h2 className="truncate text-xl font-bold tracking-tight text-[#101a35] sm:text-2xl">{site.name}</h2>
           <p className="mt-1 text-xs text-[#65718b]">
@@ -169,7 +169,7 @@ function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: b
           indépendamment cliquable, cf. fix carte-cliquable Home V2. */}
       <div className="relative z-10 pointer-events-none">
         <div className="flex min-w-0 items-center gap-3">
-          <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="lg" />
+          <EntityLogo src={site.displayIdentity.logoUrl} label={site.displayIdentity.label} size="lg" />
           <div className="min-w-0">
             <strong className="block truncate text-sm font-bold text-[#17213a]">{site.name}</strong>
             <span className="block truncate text-[11px] text-[#7b879d]">{site.pvCount} PV · {site.subjectCount} sujets suivis</span>
@@ -194,7 +194,7 @@ function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: b
   )
 }
 
-const CAROUSEL_MAX = 5
+const CAROUSEL_MAX = 8
 
 /**
  * Tri de présentation par récence — FIX RECENCE CARROUSEL. `lastActivityAt`
@@ -246,35 +246,90 @@ function ChantierSelector({ sites, activeSiteId }: { sites: SiteDashboardItem[];
 }
 
 /**
- * Choix déterministe du premier élément à mettre en avant : préfère un item
- * décision/connaissance/vigilance à un simple intervenant, sans jamais retrier
- * ni recalculer `getMemoryReview` — uniquement un choix de présentation parmi
- * les items déjà retournés.
+ * RICHNESS §3 — priorité de présentation des groupes de mémoire, du plus
+ * engageant au plus faible : décision > vigilance > connaissance > intervenant.
+ * Purement un ordre d'affichage, jamais un recalcul de `getMemoryReview`.
  */
-function pickHighlightedMemoryItem(review: MemoryReview) {
-  return review.confirmed.find((c) => c.group !== 'Intervenants') ?? review.confirmed[0] ?? null
+const MEMORY_GROUP_PRIORITY: Record<string, number> = {
+  'Décisions': 0,
+  'Points de vigilance': 1,
+  'Ce que le chantier sait': 2,
+  'Intervenants': 3,
+}
+const memoryGroupRank = (group: string) => MEMORY_GROUP_PRIORITY[group] ?? 99
+
+export type HomeMemoryCounter = { group: string; count: number }
+export type HomeMemoryHighlight = { id: string; group: string; title: string; href: string | null; nature: string | null }
+export type HomeMemorySummary = { counters: HomeMemoryCounter[]; highlights: HomeMemoryHighlight[] }
+
+/**
+ * Présentateur pur (aucun appel réseau/IA, aucune modification de
+ * `getMemoryReview`) : synthétise la mémoire déjà chargée du chantier actif en
+ * au plus 4 compteurs (uniquement les groupes réellement présents) et au plus
+ * 3 temps forts. Les intervenants ne sont mis en avant qu'à défaut de tout
+ * autre groupe — jamais si une décision, une vigilance ou une connaissance
+ * existe déjà.
+ */
+function buildHomeMemorySummary(review: MemoryReview): HomeMemorySummary {
+  const countByGroup = new Map<string, number>()
+  for (const item of review.confirmed) {
+    countByGroup.set(item.group, (countByGroup.get(item.group) ?? 0) + 1)
+  }
+  const counters = [...countByGroup.entries()]
+    .map(([group, count]) => ({ group, count }))
+    .sort((a, b) => memoryGroupRank(a.group) - memoryGroupRank(b.group))
+    .slice(0, 4)
+
+  const hasNonIntervenant = review.confirmed.some((c) => c.group !== 'Intervenants')
+  const highlightPool = hasNonIntervenant ? review.confirmed.filter((c) => c.group !== 'Intervenants') : review.confirmed
+  const highlights = [...highlightPool]
+    .sort((a, b) => memoryGroupRank(a.group) - memoryGroupRank(b.group))
+    .slice(0, 3)
+    .map((item) => ({ id: item.id, group: item.group, title: item.title, href: item.href, nature: item.nature }))
+
+  return { counters, highlights }
 }
 
 export function MemorySouvient({ site, review }: { site: SiteDashboardItem | null; review: MemoryReview }) {
-  const item = pickHighlightedMemoryItem(review)
+  const summary = buildHomeMemorySummary(review)
   return (
     <section className={`${surface} p-5 sm:p-6`}>
       <div className="flex items-center gap-2 text-[#26a67b]"><Sparkles className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Mémoire du chantier</h2></div>
       <p className="mt-1 text-xs text-[#7b879d]">Ce que MemorIA sait déjà de ce chantier.</p>
       {!site ? (
         <p className="mt-4 text-sm italic text-[#73809a]">Aucun chantier actif.</p>
-      ) : !item ? (
+      ) : summary.highlights.length === 0 ? (
         <p className="mt-4 text-sm italic text-[#73809a]">Aucun élément de mémoire utile mis en avant pour ce chantier pour le moment.</p>
       ) : (
-        <div className="mt-4">
-          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]">{item.group}</p>
-          {item.href ? (
-            <Link href={item.href} className="mt-1 block text-sm font-medium text-[#17213a] hover:text-[#1463e8]">{item.title}</Link>
-          ) : (
-            <p className="mt-1 text-sm font-medium text-[#17213a]">{item.title}</p>
+        <>
+          {summary.counters.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {summary.counters.map((c) => (
+                <span key={c.group} className="rounded-full bg-[#eef4ff] px-2.5 py-1 text-[10px] font-semibold text-[#4973dd]">
+                  {c.count} {c.group}
+                </span>
+              ))}
+            </div>
           )}
-          {item.nature && <p className="mt-1 text-xs text-[#65718b]">{item.nature}</p>}
-        </div>
+          <div className="mt-4 space-y-3">
+            {summary.highlights.map((item) => (
+              <div key={item.id}>
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]">{item.group}</p>
+                {item.href ? (
+                  <Link href={item.href} className="mt-1 block text-sm font-medium text-[#17213a] hover:text-[#1463e8]">{item.title}</Link>
+                ) : (
+                  <p className="mt-1 text-sm font-medium text-[#17213a]">{item.title}</p>
+                )}
+                {item.nature && <p className="mt-1 text-xs text-[#65718b]">{item.nature}</p>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+      {site && summary.highlights.length > 0 && (
+        <Link href={`/sites/${site.id}/memoire`} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">
+          Voir toute la mémoire <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       )}
     </section>
   )
@@ -302,13 +357,31 @@ const ATTENTION_BADGE_CLASS: Record<AttentionCard['tone'], string> = {
   neutral: 'bg-[#eef4ff] text-[#4973dd]',
 }
 
+/**
+ * RICHNESS §4 — résumé de présentation par ton ("2 en retard · 2 à revoir ·
+ * 1 à traiter"), calculé uniquement à partir des `cards` déjà composées et
+ * triées en amont — aucun recalcul métier, mêmes libellés que ATTENTION_BADGE.
+ */
+function summarizeAttentionCards(cards: AttentionCard[]): string | null {
+  if (cards.length === 0) return null
+  const countByTone = new Map<AttentionCard['tone'], number>()
+  for (const card of cards) countByTone.set(card.tone, (countByTone.get(card.tone) ?? 0) + 1)
+  const order: AttentionCard['tone'][] = ['red', 'amber', 'neutral']
+  return order
+    .filter((tone) => (countByTone.get(tone) ?? 0) > 0)
+    .map((tone) => `${countByTone.get(tone)} ${ATTENTION_BADGE[tone].toLowerCase()}`)
+    .join(' · ')
+}
+
 function AttentionSection({ cards }: { cards: AttentionCard[] }) {
   // `cards` arrive déjà curées et triées par page.tsx (chantier actif d'abord,
   // complété seulement si besoin) — ne jamais re-trier ici au risque de repousser
   // une carte du chantier actif derrière une carte d'un autre chantier.
+  const summary = summarizeAttentionCards(cards)
   return (
     <section className={`${surface} p-5 sm:p-7`}>
-      <div className="mb-5 flex items-center gap-2 text-[#f0525f]"><AlertTriangle className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Ce qui mérite votre attention</h2></div>
+      <div className="mb-1 flex items-center gap-2 text-[#f0525f]"><AlertTriangle className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Ce qui mérite votre attention</h2></div>
+      {summary && <p className="mb-4 text-xs text-[#7b879d]">{summary}</p>}
       {cards.length === 0 ? (
         <p className="rounded-2xl bg-[#f3fbf6] px-4 py-5 text-sm text-[#258657]">Tout est en rythme.</p>
       ) : (

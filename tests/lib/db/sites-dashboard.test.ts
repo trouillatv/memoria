@@ -53,8 +53,21 @@ function makeAdmin(tables: Tables, callLog: string[]) {
   return { from: (t: string) => builder(t) }
 }
 
+function makeAdminWithStorage(tables: Tables, callLog: string[]) {
+  const admin = makeAdmin(tables, callLog)
+  return {
+    ...admin,
+    storage: {
+      from: () => ({
+        createSignedUrls: (paths: string[]) =>
+          Promise.resolve({ data: paths.map((path) => ({ path, signedUrl: `https://signed/${path}` })), error: null }),
+      }),
+    },
+  }
+}
+
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => makeAdmin(TABLES, CALL_LOG) as never,
+  createAdminClient: () => makeAdminWithStorage(TABLES, CALL_LOG) as never,
 }))
 
 import { isSiteAccessible, getSitesDashboard } from '@/lib/db/sites-dashboard'
@@ -176,6 +189,71 @@ describe('getSitesDashboard — Counters/Performance (batché, jamais une requê
     expect(CALL_LOG.filter((t) => t === 'site_actions')).toHaveLength(1)
     expect(CALL_LOG.filter((t) => t === 'site_reserve')).toHaveLength(1)
     expect(CALL_LOG.filter((t) => t === 'site_scheduled_events')).toHaveLength(1)
+  })
+})
+
+describe('getSitesDashboard — displayIdentity (RICHNESS §1, client prime sur organisation)', () => {
+  it('client avec logo + organisation avec logo → displayIdentity = client (ex. OCEF, pas BECIB)', async () => {
+    TABLES.sites = [site('site-1', 'org-becib', { client_id: 'client-ocef' })]
+    TABLES.clients = [{ id: 'client-ocef', name: 'OCEF', logo_path: 'clients/org-becib/client-ocef/logo.png' }]
+    const organizationMap: OrganizationIdentityMap = {
+      'org-becib': { id: 'org-becib', name: 'BECIB', slug: 'becib', logoPath: 'p.png', logoUrl: 'https://signed/becib.png', brandColor: null },
+    }
+    const result = await getSitesDashboard(['org-becib'], organizationMap)
+    expect(result[0]?.displayIdentity).toEqual({
+      label: 'OCEF',
+      logoUrl: 'https://signed/clients/org-becib/client-ocef/logo.png',
+      brandColor: null,
+      source: 'client',
+    })
+  })
+
+  it('client sans logo → displayIdentity = client avec logoUrl null (jamais le logo organisation)', async () => {
+    TABLES.sites = [site('site-1', 'org-becib', { client_id: 'client-ocef' })]
+    TABLES.clients = [{ id: 'client-ocef', name: 'OCEF', logo_path: null }]
+    const organizationMap: OrganizationIdentityMap = {
+      'org-becib': { id: 'org-becib', name: 'BECIB', slug: 'becib', logoPath: 'p.png', logoUrl: 'https://signed/becib.png', brandColor: null },
+    }
+    const result = await getSitesDashboard(['org-becib'], organizationMap)
+    expect(result[0]?.displayIdentity).toEqual({ label: 'OCEF', logoUrl: null, brandColor: null, source: 'client' })
+  })
+
+  it('aucun client → displayIdentity = organisation (repli EntityLogo géré côté présentation)', async () => {
+    TABLES.sites = [site('site-1', 'org-becib')]
+    const organizationMap: OrganizationIdentityMap = {
+      'org-becib': { id: 'org-becib', name: 'BECIB', slug: 'becib', logoPath: 'p.png', logoUrl: 'https://signed/becib.png', brandColor: '#ff0000' },
+    }
+    const result = await getSitesDashboard(['org-becib'], organizationMap)
+    expect(result[0]?.displayIdentity).toEqual({
+      label: 'BECIB',
+      logoUrl: 'https://signed/becib.png',
+      brandColor: '#ff0000',
+      source: 'organization',
+    })
+  })
+})
+
+describe('getSitesDashboard — sortMode (RICHNESS §2, portefeuille "Vos chantiers")', () => {
+  it("sortMode 'recent' trie par lastActivityAt DESC sur le portefeuille complet, null en dernier, tie-break par nom", async () => {
+    TABLES.sites = [
+      site('site-1', 'org-a'),
+      site('site-2', 'org-a'),
+      site('site-3', 'org-a'),
+    ]
+    TABLES.site_reports = [
+      { site_id: 'site-1', ended_at: '2026-09-10T00:00:00Z', planned_at: null },
+      { site_id: 'site-2', ended_at: '2026-09-20T00:00:00Z', planned_at: null },
+      // site-3 : aucune activité → lastActivityAt null
+    ]
+    const result = await getSitesDashboard(['org-a'], {}, { sortMode: 'recent' })
+    expect(result.map((r) => r.id)).toEqual(['site-2', 'site-1', 'site-3'])
+  })
+
+  it("sans sortMode (défaut 'priority'), l'ordre reste inchangé (overdue/reserve/actions)", async () => {
+    TABLES.sites = [site('site-1', 'org-a'), site('site-2', 'org-a')]
+    TABLES.site_actions = [{ site_id: 'site-1', status: 'open', due_date: '2020-01-01' }]
+    const result = await getSitesDashboard(['org-a'], {})
+    expect(result[0]?.id).toBe('site-1')
   })
 })
 

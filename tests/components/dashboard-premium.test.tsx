@@ -30,6 +30,7 @@ function site(over: Partial<SiteDashboardItem> = {}): SiteDashboardItem {
     organizationId: 'org-a',
     organization: org(),
     clientName: null,
+    displayIdentity: { label: 'Org A', logoUrl: null, brandColor: null, source: 'organization' },
     activeActionCount: 2,
     overdueActionCount: 0,
     openReserveCount: 1,
@@ -275,27 +276,46 @@ describe('DashboardPremium — Selection (sélecteur de chantier)', () => {
     expect(within(items[1]!).getByText('Zoulou')).toBeInTheDocument()
   })
 
-  it('FIX RECENCE — maximum 5 cartes, sans doublon de l\'actif', () => {
+  it('RICHNESS §2/§6 — maximum 8 cartes, sans doublon de l\'actif', () => {
     const sites = [
       site({ id: 'site-old', name: 'Chantier Ancien', lastActivityAt: '2020-01-01T00:00:00Z' }),
-      site({ id: 'site-1', name: 'Chantier 1', lastActivityAt: '2026-09-10T00:00:00Z' }),
-      site({ id: 'site-2', name: 'Chantier 2', lastActivityAt: '2026-09-11T00:00:00Z' }),
-      site({ id: 'site-3', name: 'Chantier 3', lastActivityAt: '2026-09-12T00:00:00Z' }),
-      site({ id: 'site-4', name: 'Chantier 4', lastActivityAt: '2026-09-13T00:00:00Z' }),
-      site({ id: 'site-5', name: 'Chantier 5', lastActivityAt: '2026-09-14T00:00:00Z' }),
-      site({ id: 'site-6', name: 'Chantier 6', lastActivityAt: '2026-09-15T00:00:00Z' }),
+      site({ id: 'site-1', name: 'Chantier 1', lastActivityAt: '2026-09-08T00:00:00Z' }),
+      site({ id: 'site-2', name: 'Chantier 2', lastActivityAt: '2026-09-09T00:00:00Z' }),
+      site({ id: 'site-3', name: 'Chantier 3', lastActivityAt: '2026-09-10T00:00:00Z' }),
+      site({ id: 'site-4', name: 'Chantier 4', lastActivityAt: '2026-09-11T00:00:00Z' }),
+      site({ id: 'site-5', name: 'Chantier 5', lastActivityAt: '2026-09-12T00:00:00Z' }),
+      site({ id: 'site-6', name: 'Chantier 6', lastActivityAt: '2026-09-13T00:00:00Z' }),
+      site({ id: 'site-7', name: 'Chantier 7', lastActivityAt: '2026-09-14T00:00:00Z' }),
+      site({ id: 'site-8', name: 'Chantier 8', lastActivityAt: '2026-09-15T00:00:00Z' }),
     ]
     render(<DashboardPremium {...baseProps({ sites, activeSiteId: 'site-old' })} />)
     const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
     const items = within(chantiersSection).getAllByRole('listitem')
-    expect(items).toHaveLength(5)
+    expect(items).toHaveLength(8)
     expect(within(items[0]!).getByText('Chantier Ancien')).toBeInTheDocument()
-    expect(within(items[1]!).getByText('Chantier 6')).toBeInTheDocument()
-    expect(within(items[2]!).getByText('Chantier 5')).toBeInTheDocument()
-    expect(within(items[3]!).getByText('Chantier 4')).toBeInTheDocument()
-    expect(within(items[4]!).getByText('Chantier 3')).toBeInTheDocument()
+    expect(within(items[1]!).getByText('Chantier 8')).toBeInTheDocument()
+    expect(within(items[2]!).getByText('Chantier 7')).toBeInTheDocument()
+    expect(within(items[3]!).getByText('Chantier 6')).toBeInTheDocument()
+    expect(within(items[4]!).getByText('Chantier 5')).toBeInTheDocument()
+    expect(within(items[5]!).getByText('Chantier 4')).toBeInTheDocument()
+    expect(within(items[6]!).getByText('Chantier 3')).toBeInTheDocument()
+    expect(within(items[7]!).getByText('Chantier 2')).toBeInTheDocument()
     expect(screen.queryByText('Chantier 1')).not.toBeInTheDocument()
-    expect(screen.queryByText('Chantier 2')).not.toBeInTheDocument()
+  })
+})
+
+describe('DashboardPremium — Identité visuelle (RICHNESS §1)', () => {
+  it('Hero et carte chantier utilisent displayIdentity (client OCEF), pas organization (BECIB)', () => {
+    const s = site({
+      id: 'site-1',
+      organization: org({ id: 'org-becib', name: 'BECIB' }),
+      displayIdentity: { label: 'OCEF', logoUrl: null, brandColor: null, source: 'client' },
+    })
+    render(<DashboardPremium {...baseProps({ sites: [s], activeSiteId: 'site-1' })} />)
+    // EntityLogo sans logoUrl replie sur les initiales du label — "OC" pour "OCEF",
+    // jamais "BE" pour "BECIB" : preuve que displayIdentity (client) prime sur organization.
+    expect(screen.queryByText('BE')).not.toBeInTheDocument()
+    expect(screen.getAllByText('OC').length).toBeGreaterThan(0)
   })
 })
 
@@ -428,6 +448,65 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
     render(<DashboardPremium {...baseProps({ activeReview: { confirmed: [onlyIntervenant], toReview: [] } })} />)
     expect(screen.getByText('Jean Dupont — conducteur de travaux')).toBeInTheDocument()
   })
+
+  it('RICHNESS §3 — une vigilance prime sur un intervenant', () => {
+    const intervenant = confirmedItem({ id: 'ci-int', group: 'Intervenants', title: 'Marc Petit — HSE' })
+    const vigilance = confirmedItem({ id: 'ci-vig', group: 'Points de vigilance', title: 'Accès chantier non sécurisé', href: null })
+    render(<DashboardPremium {...baseProps({ activeReview: { confirmed: [intervenant, vigilance], toReview: [] } })} />)
+    expect(screen.getByText('Accès chantier non sécurisé')).toBeInTheDocument()
+    expect(screen.queryByText('Marc Petit — HSE')).not.toBeInTheDocument()
+  })
+
+  it('RICHNESS §3 — au plus 3 temps forts même si davantage d\'éléments confirmés existent', () => {
+    const items = [
+      confirmedItem({ id: 'ci-1', group: 'Décisions', title: 'Décision A' }),
+      confirmedItem({ id: 'ci-2', group: 'Points de vigilance', title: 'Vigilance B', href: null }),
+      confirmedItem({ id: 'ci-3', group: 'Ce que le chantier sait', title: 'Connaissance C', href: null }),
+      confirmedItem({ id: 'ci-4', group: 'Décisions', title: 'Décision D' }),
+    ]
+    render(<DashboardPremium {...baseProps({ activeReview: { confirmed: items, toReview: [] } })} />)
+    const shown = ['Décision A', 'Vigilance B', 'Connaissance C', 'Décision D'].filter((t) => screen.queryByText(t))
+    expect(shown).toHaveLength(3)
+  })
+
+  it('RICHNESS §3 — au plus 4 compteurs, un par groupe réellement présent (jamais inventé)', () => {
+    const items = [
+      confirmedItem({ id: 'ci-1', group: 'Décisions', title: 'Décision A' }),
+      confirmedItem({ id: 'ci-2', group: 'Points de vigilance', title: 'Vigilance B', href: null }),
+    ]
+    render(<DashboardPremium {...baseProps({ activeReview: { confirmed: items, toReview: [] } })} />)
+    const memorySection = screen.getByText('Mémoire du chantier').closest('section') as HTMLElement
+    expect(within(memorySection).getByText(/1 Décisions/)).toBeInTheDocument()
+    expect(within(memorySection).getByText(/1 Points de vigilance/)).toBeInTheDocument()
+    expect(within(memorySection).queryByText(/Intervenants/)).not.toBeInTheDocument()
+    expect(within(memorySection).queryByText(/Ce que le chantier sait/)).not.toBeInTheDocument()
+  })
+
+  it('RICHNESS §3 — CTA "Voir toute la mémoire" pointe vers la route canonique du chantier', () => {
+    const item = confirmedItem({ group: 'Décisions', title: 'Décision A' })
+    render(
+      <DashboardPremium
+        {...baseProps({ sites: [site({ id: 'site-1' })], activeSiteId: 'site-1', activeReview: { confirmed: [item], toReview: [] } })}
+      />,
+    )
+    const cta = screen.getByRole('link', { name: /Voir toute la mémoire/ })
+    expect(cta).toHaveAttribute('href', '/sites/site-1/memoire')
+  })
+
+  it('RICHNESS §3 — aucun CTA ni contenu périmé quand le chantier n\'a rien à mettre en avant', () => {
+    render(<DashboardPremium {...baseProps({ activeReview: emptyReview() })} />)
+    expect(screen.queryByRole('link', { name: /Voir toute la mémoire/ })).not.toBeInTheDocument()
+  })
+
+  it('RICHNESS §3 — pas de fuite d\'un chantier vers l\'autre lors d\'un changement de sélection', () => {
+    const reviewA: MemoryReview = { confirmed: [confirmedItem({ id: 'a', group: 'Décisions', title: 'Décision du chantier A' })], toReview: [] }
+    const reviewB: MemoryReview = { confirmed: [confirmedItem({ id: 'b', group: 'Points de vigilance', title: 'Vigilance du chantier B', href: null })], toReview: [] }
+    const { rerender } = render(<DashboardPremium {...baseProps({ activeReview: reviewA })} />)
+    expect(screen.getByText('Décision du chantier A')).toBeInTheDocument()
+    rerender(<DashboardPremium {...baseProps({ activeReview: reviewB })} />)
+    expect(screen.queryByText('Décision du chantier A')).not.toBeInTheDocument()
+    expect(screen.getByText('Vigilance du chantier B')).toBeInTheDocument()
+  })
 })
 
 describe('DashboardPremium — Attention ("Ce qui mérite votre attention")', () => {
@@ -454,6 +533,36 @@ describe('DashboardPremium — Attention ("Ce qui mérite votre attention")', ()
     expect(screen.getByText('Rouge')).toBeInTheDocument()
     expect(screen.getByText('Ambre')).toBeInTheDocument()
     expect(screen.getByText('Neutre')).toBeInTheDocument()
+  })
+
+  it('RICHNESS §4 — jusqu\'à 5 cartes affichées (au lieu de 3)', () => {
+    const cards = [1, 2, 3, 4, 5].map((n) => attentionCard({ id: `ac-${n}`, title: `Carte ${n}` }))
+    render(<DashboardPremium {...baseProps({ attentionCards: cards })} />)
+    for (const n of [1, 2, 3, 4, 5]) {
+      expect(screen.getByText(`Carte ${n}`)).toBeInTheDocument()
+    }
+  })
+
+  it('RICHNESS §4 — résumé par ton sous le titre, ex. "2 en retard · 2 à revoir · 1 à traiter"', () => {
+    render(
+      <DashboardPremium
+        {...baseProps({
+          attentionCards: [
+            attentionCard({ id: 'ac-1', tone: 'red', title: 'R1' }),
+            attentionCard({ id: 'ac-2', tone: 'red', title: 'R2' }),
+            attentionCard({ id: 'ac-3', tone: 'amber', title: 'A1' }),
+            attentionCard({ id: 'ac-4', tone: 'amber', title: 'A2' }),
+            attentionCard({ id: 'ac-5', tone: 'neutral', title: 'N1' }),
+          ],
+        })}
+      />,
+    )
+    expect(screen.getByText('2 en retard · 2 à revoir · 1 à traiter')).toBeInTheDocument()
+  })
+
+  it('RICHNESS §4 — aucun résumé quand la liste est vide', () => {
+    render(<DashboardPremium {...baseProps({ attentionCards: [] })} />)
+    expect(screen.queryByText(/à revoir|en retard|à traiter/)).not.toBeInTheDocument()
   })
 })
 

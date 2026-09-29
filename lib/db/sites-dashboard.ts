@@ -1,8 +1,20 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import type { OrganizationIdentity, OrganizationIdentityMap } from '@/lib/db/organisations'
+import { getSignedLogoUrls } from '@/lib/storage/entity-logos'
 import { getDeletedDocumentIds } from '@/lib/documents/historical-source-eligibility'
 
 export type SiteStatus = 'critical' | 'warning' | 'normal'
+
+/** Identité visuelle à afficher pour un chantier — le CLIENT (l'entreprise que
+ *  le conducteur reconnaît, ex. "OCEF") prime sur l'organisation MemorIA
+ *  propriétaire du chantier (ex. "BECIB") dès qu'un client est renseigné, même
+ *  sans logo uploadé (le fallback initiales d'EntityLogo reste alors correct). */
+export type DisplayIdentity = {
+  label: string
+  logoUrl: string | null
+  brandColor: string | null
+  source: 'client' | 'organization'
+}
 
 export type SiteDashboardItem = {
   id: string
@@ -10,6 +22,7 @@ export type SiteDashboardItem = {
   organizationId: string
   organization: OrganizationIdentity
   clientName: string | null
+  displayIdentity: DisplayIdentity
   activeActionCount: number
   overdueActionCount: number
   openReserveCount: number
@@ -133,7 +146,7 @@ async function getPvAndSubjectCounts(
 export async function getSitesDashboard(
   orgIds: string[],
   organizationMap?: OrganizationIdentityMap,
-  opts?: { limit?: number; ensureSiteId?: string | null },
+  opts?: { limit?: number; ensureSiteId?: string | null; sortMode?: 'priority' | 'recent' },
 ): Promise<SiteDashboardItem[]> {
   if (orgIds.length === 0) return []
   const supabase = createAdminClient()
@@ -161,11 +174,30 @@ export async function getSitesDashboard(
 
   const clientIds = [...new Set(sites.map((s) => s.client_id).filter((v): v is string => !!v))]
   const clientNames = new Map<string, string>()
+  const clientLogoPaths = new Map<string, string>()
   if (clientIds.length > 0) {
-    const { data: cls } = await supabase.from('clients').select('id, name').in('id', clientIds)
-    for (const cl of (cls ?? []) as Array<{ id: string; name: string }>) {
+    const { data: cls } = await supabase.from('clients').select('id, name, logo_path').in('id', clientIds)
+    for (const cl of (cls ?? []) as Array<{ id: string; name: string; logo_path: string | null }>) {
       clientNames.set(cl.id, cl.name)
+      if (cl.logo_path) clientLogoPaths.set(cl.id, cl.logo_path)
     }
+  }
+  const clientSignedUrls = await getSignedLogoUrls([...clientLogoPaths.values()])
+  // Priorité identité : le CLIENT (entreprise que le conducteur reconnaît) dès
+  // qu'il est renseigné, même sans logo — sinon l'organisation MemorIA.
+  const displayIdentityFor = (site: SiteRow): DisplayIdentity => {
+    const clientName = site.client_id ? clientNames.get(site.client_id) : undefined
+    if (clientName) {
+      const logoPath = clientLogoPaths.get(site.client_id!)
+      return {
+        label: clientName,
+        logoUrl: logoPath ? (clientSignedUrls[logoPath] ?? null) : null,
+        brandColor: null,
+        source: 'client',
+      }
+    }
+    const org = organizationFor(site.organization_id)
+    return { label: org.name, logoUrl: org.logoUrl, brandColor: org.brandColor, source: 'organization' }
   }
 
   const now = new Date()
@@ -256,6 +288,7 @@ export async function getSitesDashboard(
       organizationId: site.organization_id,
       organization: organizationFor(site.organization_id),
       clientName: site.client_id ? (clientNames.get(site.client_id) ?? null) : null,
+      displayIdentity: displayIdentityFor(site),
       activeActionCount: active,
       overdueActionCount: overdue,
       openReserveCount: reserve,
@@ -268,24 +301,38 @@ export async function getSitesDashboard(
     }
   })
 
-  // overdueActionCount DESC → openReserveCount DESC → activeActionCount DESC →
-  // nextPassageAt ASC NULLS LAST → lastActivityAt DESC NULLS LAST → name ASC
-  items.sort((a, b) => {
-    if (b.overdueActionCount !== a.overdueActionCount) return b.overdueActionCount - a.overdueActionCount
-    if (b.openReserveCount !== a.openReserveCount) return b.openReserveCount - a.openReserveCount
-    if (b.activeActionCount !== a.activeActionCount) return b.activeActionCount - a.activeActionCount
-    if (a.nextPassageAt && !b.nextPassageAt) return -1
-    if (!a.nextPassageAt && b.nextPassageAt) return 1
-    if (a.nextPassageAt && b.nextPassageAt && a.nextPassageAt !== b.nextPassageAt) {
-      return a.nextPassageAt < b.nextPassageAt ? -1 : 1
-    }
-    if (a.lastActivityAt && !b.lastActivityAt) return -1
-    if (!a.lastActivityAt && b.lastActivityAt) return 1
-    if (a.lastActivityAt && b.lastActivityAt && a.lastActivityAt !== b.lastActivityAt) {
-      return a.lastActivityAt < b.lastActivityAt ? 1 : -1
-    }
-    return a.name.localeCompare(b.name, 'fr')
-  })
+  if (opts?.sortMode === 'recent') {
+    // Portefeuille "Vos chantiers" (RICHNESS §2) : récence réelle sur le portefeuille
+    // COMPLET (avant tout limit/ensureSiteId), jamais un pré-tri par urgence.
+    // lastActivityAt DESC, null toujours en dernier, tie-break déterministe par nom.
+    items.sort((a, b) => {
+      if (a.lastActivityAt && !b.lastActivityAt) return -1
+      if (!a.lastActivityAt && b.lastActivityAt) return 1
+      if (a.lastActivityAt && b.lastActivityAt && a.lastActivityAt !== b.lastActivityAt) {
+        return a.lastActivityAt < b.lastActivityAt ? 1 : -1
+      }
+      return a.name.localeCompare(b.name, 'fr')
+    })
+  } else {
+    // overdueActionCount DESC → openReserveCount DESC → activeActionCount DESC →
+    // nextPassageAt ASC NULLS LAST → lastActivityAt DESC NULLS LAST → name ASC
+    items.sort((a, b) => {
+      if (b.overdueActionCount !== a.overdueActionCount) return b.overdueActionCount - a.overdueActionCount
+      if (b.openReserveCount !== a.openReserveCount) return b.openReserveCount - a.openReserveCount
+      if (b.activeActionCount !== a.activeActionCount) return b.activeActionCount - a.activeActionCount
+      if (a.nextPassageAt && !b.nextPassageAt) return -1
+      if (!a.nextPassageAt && b.nextPassageAt) return 1
+      if (a.nextPassageAt && b.nextPassageAt && a.nextPassageAt !== b.nextPassageAt) {
+        return a.nextPassageAt < b.nextPassageAt ? -1 : 1
+      }
+      if (a.lastActivityAt && !b.lastActivityAt) return -1
+      if (!a.lastActivityAt && b.lastActivityAt) return 1
+      if (a.lastActivityAt && b.lastActivityAt && a.lastActivityAt !== b.lastActivityAt) {
+        return a.lastActivityAt < b.lastActivityAt ? 1 : -1
+      }
+      return a.name.localeCompare(b.name, 'fr')
+    })
+  }
 
   const limit = opts?.limit ?? 5
   let result = items.slice(0, limit)
