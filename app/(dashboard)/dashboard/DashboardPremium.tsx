@@ -2,50 +2,34 @@ import Link from 'next/link'
 import {
   AlertTriangle,
   ArrowRight,
-  Calendar,
   CheckCircle2,
-  ChevronRight,
-  Clock3,
-  FileText,
   Info,
   MapPin,
-  ShieldAlert,
   Sparkles,
-  Users,
+  type LucideIcon,
 } from 'lucide-react'
-import type { VisitImpact, SiteImpact } from '@/lib/knowledge/site-events'
-import type { AttentionItem } from '@/lib/db/attention'
 import type { UpcomingDashboardItem } from '@/lib/db/upcoming-items'
 import type { SiteDashboardItem } from '@/lib/db/sites-dashboard'
-import type { LivingASavoirCard } from '@/lib/db/handover'
-import type { NowDashboardItem, NowDashboardSummary } from '@/lib/db/now-dashboard'
 import type { MemoryReview } from '@/lib/knowledge/memory-review'
 import type { DashboardDeadlineToPlan } from '@/lib/db/dashboard-deadlines'
-import type { SiteActionRow } from '@/lib/db/site-actions'
-import { OrganizationBadge, type OrgLabels } from '@/components/dashboard/OrgBadge'
+import type { OrgLabels } from '@/components/dashboard/OrgBadge'
 import type { OrganizationIdentityMap } from '@/lib/db/organisations'
-import type { MemorySignal } from '@/lib/memory/signals/operational-contract'
 import type { AttentionCard } from '@/lib/situations/attention/types'
-import { sortAttentionCards } from '@/lib/situations/attention/project'
-import type { NowCard } from '@/lib/situations/now/types'
-import { CockpitNow, PriorityActionList } from './CockpitNow'
+import type { HomeHeroDelta, HeroDeltaMetrics } from '@/lib/documents/home-hero-delta'
+import { EntityLogo } from '@/components/ui/EntityLogo'
 import { SituationAttentionCard } from './SituationAttentionCard'
-import { MemoryInbox } from '@/app/(field)/m/site/[siteId]/MemoryReviewPanel'
 
 type Props = {
   firstName: string
   orgNames: string[]
   attentionCards: AttentionCard[]
-  nowCards: NowCard[]
-  visit: VisitImpact
   upcoming: UpcomingDashboardItem[]
   sites: SiteDashboardItem[]
-  aSavoir: LivingASavoirCard[]
+  activeSiteId: string | null
+  heroDelta: HomeHeroDelta | null
+  activeReview: MemoryReview
   orgLabels: OrgLabels
   organizationMap: OrganizationIdentityMap
-  now: { items: NowDashboardItem[]; summary: NowDashboardSummary; actions: SiteActionRow[] }
-  nowSignals: MemorySignal[]
-  visitReviews: Record<string, MemoryReview>
   deadlinesToPlan: DashboardDeadlineToPlan[]
 }
 
@@ -55,11 +39,7 @@ function dateLabel(iso: string) {
   return new Date(iso).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
-function timeLabel(iso: string) {
-  return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-}
-
-function Metric({ icon: Icon, value, label, tone }: { icon: typeof FileText; value: number; label: string; tone: string }) {
+function Metric({ icon: Icon, value, label, tone }: { icon: LucideIcon; value: number; label: string; tone: string }) {
   return (
     <div className="flex min-w-0 items-center gap-3 border-b border-[#edf0f6] pb-4 last:border-0 last:pb-0 sm:border-b-0 sm:border-r sm:pb-0 sm:pr-4 sm:last:border-r-0">
       <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${tone}`}><Icon className="h-4 w-4" /></span>
@@ -68,109 +48,262 @@ function Metric({ icon: Icon, value, label, tone }: { icon: typeof FileText; val
   )
 }
 
-function AttentionSection({ cards, organizationMap }: { cards: AttentionCard[]; organizationMap: OrganizationIdentityMap }) {
-  const sortedCards = sortAttentionCards(cards)
-  return (
-    <section className={`${surface} p-5 sm:p-7`}>
-      <div className="mb-5 flex items-center gap-2 text-[#f0525f]"><AlertTriangle className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Ce qui mérite votre attention aujourd&apos;hui</h2></div>
-      {sortedCards.length === 0 ? (
-        <p className="rounded-2xl bg-[#f3fbf6] px-4 py-5 text-sm text-[#258657]">Tout est en rythme aujourd&apos;hui.</p>
-      ) : (
-        <div className="space-y-2">{sortedCards.map((card) => <SituationAttentionCard key={card.id} card={card} />)}</div>
-      )}
-      <Link href="/actions" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">Voir toutes les alertes <ArrowRight className="h-3.5 w-3.5" /></Link>
-    </section>
-  )
+/**
+ * Dérivation déterministe, PAS une IA : priorité résolus → évolutions →
+ * nouveaux → non mentionnés, cf. mapping figé de home-hero-delta.ts. Aucune
+ * fabrication si le chantier n'a pas encore de deuxième PV ou si rien n'a bougé.
+ */
+function heroTeachings(heroDelta: HomeHeroDelta | null): string[] {
+  if (!heroDelta) return []
+  if (!heroDelta.metrics) return ['Premier PV intégré — le suivi des évolutions commencera au prochain PV.']
+  const m = heroDelta.metrics
+  const lines: string[] = []
+  if (m.resolus.length > 0) lines.push(`${m.resolus.length} sujet${m.resolus.length > 1 ? 's' : ''} résolu${m.resolus.length > 1 ? 's' : ''} depuis le PV précédent`)
+  if (m.evolutions.length > 0) lines.push(`${m.evolutions.length} sujet${m.evolutions.length > 1 ? 's' : ''} en évolution depuis le PV précédent`)
+  if (m.nouveaux.length > 0) lines.push(`${m.nouveaux.length} nouveau${m.nouveaux.length > 1 ? 'x' : ''} sujet${m.nouveaux.length > 1 ? 's' : ''} identifié${m.nouveaux.length > 1 ? 's' : ''}`)
+  if (m.nonMentionnes.length > 0) lines.push(`${m.nonMentionnes.length} sujet${m.nonMentionnes.length > 1 ? 's' : ''} non mentionné${m.nonMentionnes.length > 1 ? 's' : ''} dans le dernier PV`)
+  return lines.length > 0 ? lines.slice(0, 3) : ['Aucune évolution détectée depuis le PV précédent.']
 }
 
-function VisitSummary({ site, organizationMap, review }: { site: SiteImpact; organizationMap: OrganizationIdentityMap; review: MemoryReview }) {
-  // Toute proposition encore non traitée passe par le même centre d'action :
-  // action, échéance, intervenant, décision, connaissance ou vigilance.
-  const toPlan = review.toReview
-  return (
-    <section className={`${surface} p-5 sm:p-6`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Depuis votre dernière visite</p>
-          <h2 className="mt-2 text-lg font-semibold text-[#101a35]">{site.siteName}</h2>
-          <p className="mt-1 flex items-center gap-1 text-xs text-[#65718b]">{organizationMap[site.organizationId] && <OrganizationBadge organization={organizationMap[site.organizationId]} size="xs" />} Synthèse à jour</p>
-        </div>
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eee9ff] text-[#7857d4]"><Sparkles className="h-4 w-4" /></span>
-      </div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-5">{[
-        { icon: FileText, value: site.added.actions, label: 'actions proposées', tone: 'bg-[#eee9ff] text-[#7959d8]' },
-        { icon: ShieldAlert, value: site.added.watchpoints, label: 'points de vigilance', tone: 'bg-[#fff0e7] text-[#ef8e45]' },
-        { icon: Calendar, value: site.added.deadlines, label: 'échéances détectées', tone: 'bg-[#e8f0ff] text-[#4178db]' },
-        { icon: Users, value: site.added.stakeholders, label: 'intervenants identifiés', tone: 'bg-[#e8faf4] text-[#26a67b]' },
-        { icon: Info, value: site.added.knowledge, label: 'informations à savoir', tone: 'bg-[#fff7dc] text-[#dca82b]' },
-      ].map((metric) => <Metric key={metric.label} {...metric} />)}</div>
-      <details open className="mt-5 rounded-2xl bg-[#f8faff] p-3">
-        <summary className="cursor-pointer list-none text-xs font-semibold text-[#1463e8]">Tout ce qui reste à traiter</summary>
-        <div className="mt-4 space-y-4">
-          <p className="text-[11px] text-[#65718b]">{toPlan.length} proposition{toPlan.length !== 1 ? 's' : ''} à traiter</p>
-          {toPlan.length > 0 && <details className="rounded-xl border border-[#f1dfb1] bg-[#fffaf0] px-3 py-2"><summary className="cursor-pointer list-none text-xs font-semibold text-[#9b6b1d]">À planifier / traiter ({toPlan.length})</summary><div className="mt-2"><MemoryInbox siteId={site.siteId} items={toPlan} withFilters /></div></details>}
-          <Link href={`/sites/${site.siteId}`} className="inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Ouvrir le chantier <ArrowRight className="h-3.5 w-3.5" /></Link>
-        </div>
-      </details>
-    </section>
-  )
-}
-
-/* Deprecated duplicate implementation kept out of the dashboard render path during the cockpit transition.
-function LegacyVisitSummary({ site, organizationMap, actions, review, pending }: { site: SiteImpact; organizationMap: OrganizationIdentityMap; actions: SiteActionRow[]; review: MemoryReview; pending: PendingWork }) {
-  const toPlan = review.toReview.filter((item) => item.kind === 'action' || item.kind === 'deadline')
-  const toArbitrate = review.toReview.filter((item) => item.kind !== 'action' && item.kind !== 'deadline')
-  const metrics = [
-    { icon: FileText, value: site.added.actions, label: 'actions proposées', tone: 'bg-[#eee9ff] text-[#7959d8]' },
-    { icon: ShieldAlert, value: site.added.watchpoints, label: 'points de vigilance', tone: 'bg-[#fff0e7] text-[#ef8e45]' },
-    { icon: Calendar, value: site.added.deadlines, label: 'échéances détectées', tone: 'bg-[#e8f0ff] text-[#4178db]' },
-    { icon: Users, value: site.added.stakeholders, label: 'intervenants identifiés', tone: 'bg-[#e8faf4] text-[#26a67b]' },
-    { icon: Info, value: site.added.knowledge, label: 'informations à savoir', tone: 'bg-[#fff7dc] text-[#dca82b]' },
+function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; heroDelta: HomeHeroDelta | null }) {
+  if (!site) {
+    return (
+      <section className={`${surface} p-6`}>
+        <h2 className="text-lg font-semibold text-[#101a35]">Évolution depuis le PV précédent</h2>
+        <p className="mt-4 text-sm text-[#73809a]">Aucun chantier accessible pour le moment.</p>
+      </section>
+    )
+  }
+  const teachings = heroTeachings(heroDelta)
+  const m = heroDelta?.metrics ?? null
+  const metrics: Array<{ icon: LucideIcon; value: number; label: string; tone: string }> = [
+    { icon: Sparkles, value: m?.nouveaux.length ?? 0, label: 'nouveaux', tone: 'bg-[#eee9ff] text-[#7959d8]' },
+    { icon: ArrowRight, value: m?.evolutions.length ?? 0, label: 'évolutions', tone: 'bg-[#fff0e7] text-[#ef8e45]' },
+    { icon: CheckCircle2, value: m?.resolus.length ?? 0, label: 'résolus', tone: 'bg-[#e8faf4] text-[#26a67b]' },
+    { icon: Info, value: m?.nonMentionnes.length ?? 0, label: 'non mentionnés', tone: 'bg-[#f0f3f8] text-[#657493]' },
   ]
   return (
-    <section className={`${surface} p-5 sm:p-6`}>
-      <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Depuis votre dernière visite</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">{site.siteName}</h2><p className="mt-1 flex items-center gap-1 text-xs text-[#65718b]">{organizationMap[site.organizationId] && <OrganizationBadge organization={organizationMap[site.organizationId]} size="xs" />} Synthèse à jour</p></div><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eee9ff] text-[#7857d4]"><Sparkles className="h-4 w-4" /></span></div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-5">{metrics.map((metric) => <Metric key={metric.label} {...metric} />)}</div>
-      {site.deadlines.length > 0 && <div className="mt-6 border-t border-[#edf0f6] pt-5"><h3 className="text-xs font-bold uppercase tracking-[0.14em] text-[#65718b]">Échéances</h3><ul className="mt-3 space-y-2">{site.deadlines.slice(0, 3).map((deadline) => <li key={deadline.id} className="flex items-start gap-2 text-xs text-[#34415c]"><Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#e9a33d]" /><span className="min-w-0 flex-1">{deadline.title}</span><span className="shrink-0 text-[#8b96aa]">{deadline.when}</span></li>)}</ul></div>}
-      <details className="mt-5 rounded-2xl bg-[#f8faff] p-3">
-        <summary className="cursor-pointer list-none text-xs font-semibold text-[#1463e8]">Ouvrir tout ce qui reste à traiter</summary>
-        <div className="mt-4 space-y-4">
-          <p className="text-[11px] text-[#65718b]">{actions.length} action{actions.length !== 1 ? 's' : ''} ouverte{actions.length !== 1 ? 's' : ''} · {pending.deadlines.length} échéance{pending.deadlines.length !== 1 ? 's' : ''} à planifier · {review.toReview.length} proposition{review.toReview.length !== 1 ? 's' : ''} à arbitrer</p>
-          {actions.length > 0 && <details className="rounded-xl border border-[#e8edf5] bg-white px-3 py-2"><summary className="cursor-pointer list-none text-xs font-semibold text-[#34415c]">Déjà dans le chantier ({actions.length})</summary><ul className="mt-2 space-y-2">{actions.map((action) => <li key={action.id} className="flex items-center gap-2"><ActionCheckbox actionId={action.id} siteId={action.site_id} label={action.title} /><Link href={`/sites/${action.site_id}/actions`} className="text-xs text-[#34415c] hover:text-[#1463e8]">{action.title}</Link></li>)}</ul></details>}
-          {pending.deadlines.length > 0 && <details className="rounded-xl border border-[#f1dfb1] bg-[#fffaf0] px-3 py-2"><summary className="cursor-pointer list-none text-xs font-semibold text-[#9b6b1d]">À planifier ({pending.deadlines.length})</summary><ul className="mt-2 space-y-2">{pending.deadlines.map((item) => <li key={item.proposalId} className="flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2 text-xs text-[#34415c]"><span>{item.title}</span><span className="shrink-0 text-[10px] font-semibold text-[#e39a35]">Ajouter au planning</span></li>)}</ul></details>}
-          {review.toReview.length > 0 && <details className="rounded-xl border border-[#e8edf5] bg-white px-3 py-2"><summary className="cursor-pointer list-none text-xs font-semibold text-[#34415c]">À arbitrer ({review.toReview.length})</summary><div className="mt-2"><MemoryInbox siteId={site.siteId} items={review.toReview} withFilters /></div></details>}
-          <Link href={`/sites/${site.siteId}`} className="inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Ouvrir le chantier <ArrowRight className="h-3.5 w-3.5" /></Link>
+    <section className={`${surface} p-5 sm:p-7`}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Évolution depuis le PV précédent</p>
+      <div className="mt-3 flex items-center gap-3">
+        <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="md" />
+        <div className="min-w-0">
+          <h2 className="truncate text-lg font-semibold text-[#101a35]">{site.name}</h2>
+          <p className="mt-0.5 text-xs text-[#65718b]">
+            {heroDelta ? `Dernier PV intégré : ${new Date(heroDelta.toEffectiveDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Aucun PV intégré'}
+            {' · '}{site.pvCount} PV analysé{site.pvCount > 1 ? 's' : ''}
+            {' · '}{site.subjectCount} sujet{site.subjectCount > 1 ? 's' : ''} suivi{site.subjectCount > 1 ? 's' : ''}
+          </p>
         </div>
-      </details>
+      </div>
+      <div className="mt-6 grid gap-4 sm:grid-cols-4">{metrics.map((metric) => <Metric key={metric.label} {...metric} />)}</div>
+      {teachings.length > 0 && (
+        <ul className="mt-5 space-y-1.5">
+          {teachings.map((line) => (
+            <li key={line} className="flex items-start gap-2 text-xs text-[#34415c]">
+              <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-[#7857d4]" />{line}
+            </li>
+          ))}
+        </ul>
+      )}
+      <Link href={`/sites/${site.id}/historique?view=avant-apres`} className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">
+        Voir ce qui a changé <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
     </section>
   )
 }
 
-*/
-function Agenda({ items, organizationMap, deadlinesToPlan }: { items: UpcomingDashboardItem[]; organizationMap: OrganizationIdentityMap; deadlinesToPlan: DashboardDeadlineToPlan[] }) {
-  return <section className={`${surface} p-5 sm:p-6`}><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Votre journée</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">Passages et échéances à organiser</h2><div className="mt-5"><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">Planifiés</p>{items.length === 0 ? <p className="rounded-xl bg-[#f8faff] px-3 py-3 text-xs italic text-[#73809a]">Aucun passage planifié dans les 30 prochains jours.</p> : <ul className="space-y-3">{items.slice(0, 5).map((item) => <li key={`${item.sourceType}:${item.id}`}><Link href={item.href} className="group flex items-start gap-3"><span className="rounded-lg bg-[#edf3ff] px-2 py-1 text-[10px] font-bold text-[#3c67b3]">{item.isToday ? "Aujourd'hui" : dateLabel(item.startsAt)}</span><span className="min-w-0 flex-1"><strong className="block truncate text-xs font-semibold text-[#17213a]">{item.title}</strong><span className="mt-1 flex items-center gap-1 truncate text-[11px] text-[#748098]">{item.siteName} · {timeLabel(item.startsAt)}{organizationMap[item.organization.id] && <> · <OrganizationBadge organization={item.organization} size="xs" /></>}</span></span><ChevronRight className="mt-1 h-3.5 w-3.5 text-[#a4afc0]" /></Link></li>)}</ul>}</div><div className="mt-5"><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[#65718b]">À planifier</p>{deadlinesToPlan.length === 0 ? <p className="rounded-xl bg-[#f3fbf6] px-3 py-3 text-xs text-[#258657]">Aucune échéance à organiser.</p> : <ul className="space-y-2">{deadlinesToPlan.slice(0, 5).map((deadline) => <li key={deadline.id} className="rounded-xl bg-[#fff9ed] px-3 py-2.5"><div className="flex items-start gap-2"><span className="min-w-0 flex-1"><strong className="block text-xs font-semibold text-[#34415c]">{deadline.title}</strong><span className="mt-1 flex items-center gap-1 text-[10px] text-[#7b879d]"><OrganizationBadge organization={deadline.organization} size="xs" /> {deadline.siteName}</span><span className="mt-1 block text-[10px] text-[#c4872a]">{deadline.constraintText || 'Date à choisir'}</span></span><Link href={deadline.href} className="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-semibold text-[#c4872a] ring-1 ring-[#f1d494]">Planifier</Link></div></li>)}</ul>}</div><Link href="/mois" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir le planning complet <ArrowRight className="h-3.5 w-3.5" /></Link></section>
+function ChantierCard({ site, isActive, heroMetrics }: { site: SiteDashboardItem; isActive: boolean; heroMetrics: HeroDeltaMetrics | null }) {
+  // L'actif seul reçoit les compteurs de delta (déjà calculés pour le hero, aucun
+  // coût supplémentaire). Les cartes inactives restent sur les données légères
+  // déjà batchées — jamais un getPvDelta par carte (doctrine deux-tiers Home V2).
+  const counters = isActive && heroMetrics
+    ? [
+        { label: 'nouveaux', value: heroMetrics.nouveaux.length },
+        { label: 'évolutions', value: heroMetrics.evolutions.length },
+        { label: 'résolus', value: heroMetrics.resolus.length },
+        { label: 'réserves', value: site.openReserveCount },
+      ]
+    : [
+        { label: 'actions', value: site.activeActionCount },
+        { label: 'en retard', value: site.overdueActionCount },
+        { label: 'réserves', value: site.openReserveCount },
+      ]
+  return (
+    <div className={`relative rounded-2xl border p-4 transition-colors ${isActive ? 'border-[#3c6fe0] bg-[#f5f8ff]' : 'border-[#e8edf5] bg-white hover:border-[#cbd9f7]'}`}>
+      <Link
+        href={`/dashboard?chantier=${site.id}`}
+        scroll={false}
+        aria-current={isActive ? 'true' : undefined}
+        className="absolute inset-0 z-0 rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3c6fe0]"
+      >
+        <span className="sr-only">Sélectionner {site.name}</span>
+      </Link>
+      <div className="relative z-10 flex min-w-0 items-center gap-2">
+        <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="sm" />
+        <div className="min-w-0">
+          <strong className="block truncate text-sm font-semibold text-[#17213a]">{site.name}</strong>
+          <span className="block truncate text-[11px] text-[#7b879d]">{site.pvCount} PV · {site.subjectCount} sujets suivis</span>
+        </div>
+      </div>
+      <p className="relative z-10 mt-2 truncate text-[11px] text-[#7b879d]">
+        {site.lastActivityAt ? `Dernière activité : ${dateLabel(site.lastActivityAt)}` : 'Aucune activité récente'}
+      </p>
+      <div className="relative z-10 mt-3 flex gap-2">
+        {counters.map((c) => (
+          <div key={c.label} className="flex-1 rounded-lg bg-white/70 px-2 py-1.5 text-center">
+            <strong className="block text-sm font-semibold text-[#17213a]">{c.value}</strong>
+            <span className="block text-[9px] uppercase tracking-wide text-[#8b96aa]">{c.label}</span>
+          </div>
+        ))}
+      </div>
+      <Link href={site.href} className="relative z-10 mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-[#1463e8] hover:text-[#0c4dbd]">
+        Ouvrir le chantier <ArrowRight className="h-3 w-3" />
+      </Link>
+    </div>
+  )
 }
 
-function SitesTable({ sites, organizationMap }: { sites: SiteDashboardItem[]; organizationMap: OrganizationIdentityMap }) {
-  return <section className={`${surface} p-5 sm:p-6`}><div className="flex items-start justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Vos lieux</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">Vos chantiers</h2></div><MapPin className="h-5 w-5 text-[#5c7bd9]" /></div><div className="mt-5 space-y-2">{sites.slice(0, 5).map((site) => <Link key={site.id} href={site.href} className="group grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-2xl px-2 py-2 transition-colors hover:bg-[#f7f9fd]"><span className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-semibold ${site.status === 'critical' ? 'bg-[#ffe8e8] text-[#e35b63]' : site.status === 'warning' ? 'bg-[#fff1d9] text-[#d18d28]' : 'bg-[#e7f8f0] text-[#2b9c72]'}`}>{site.name.slice(0, 1).toUpperCase()}</span><span className="min-w-0"><strong className="flex items-center gap-1 truncate text-xs font-semibold text-[#17213a]">{organizationMap[site.organizationId] && <OrganizationBadge organization={site.organization} size="xs" />} {site.name}</strong><span className="block truncate text-[11px] text-[#7b879d]">{site.clientName ?? 'Organisation'} · {site.activeActionCount} action{site.activeActionCount > 1 ? 's' : ''} à suivre</span></span><span className="text-right text-[10px] font-medium text-[#e25b63]">{site.overdueActionCount > 0 ? `${site.overdueActionCount} en retard` : site.openReserveCount > 0 ? `${site.openReserveCount} réserve` : 'À jour'}</span></Link>)}</div><Link href="/sites" className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir tous les chantiers <ArrowRight className="h-3.5 w-3.5" /></Link></section>
+function ChantierSelector({ sites, activeSiteId, heroMetrics }: { sites: SiteDashboardItem[]; activeSiteId: string | null; heroMetrics: HeroDeltaMetrics | null }) {
+  return (
+    <section className={`${surface} p-5 sm:p-6`}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Vos lieux</p>
+          <h2 className="mt-2 text-lg font-semibold text-[#101a35]">Vos chantiers</h2>
+        </div>
+        <MapPin className="h-5 w-5 text-[#5c7bd9]" />
+      </div>
+      {sites.length === 0 ? (
+        <p className="mt-5 text-sm italic text-[#73809a]">Aucun chantier accessible.</p>
+      ) : (
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          {sites.map((site) => (
+            <ChantierCard key={site.id} site={site} isActive={site.id === activeSiteId} heroMetrics={site.id === activeSiteId ? heroMetrics : null} />
+          ))}
+        </div>
+      )}
+      <Link href="/sites" className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir tous les chantiers <ArrowRight className="h-3.5 w-3.5" /></Link>
+    </section>
+  )
 }
 
-function PriorityActions({ items, organizationMap }: { items: AttentionItem[]; organizationMap: OrganizationIdentityMap }) {
-  return <section className={`${surface} p-5 sm:p-6`}><div className="flex items-start justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">À décider ou lancer</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">Actions prioritaires</h2></div><CheckCircle2 className="h-5 w-5 text-[#6077b7]" /></div><ul className="mt-5 space-y-3">{items.slice(0, 4).map((item, index) => <li key={`${item.href}-${index}`}><Link href={item.href} className="flex items-start gap-3"><span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#f0f3f8] text-[#657493]"><CheckCircle2 className="h-3.5 w-3.5" /></span><span className="min-w-0 flex-1"><strong className="block text-xs font-medium leading-snug text-[#17213a]">{item.what}</strong><span className="mt-1 flex items-center gap-1 text-[11px] text-[#7b879d]"><OrganizationBadge organization={organizationMap[item.organizationId]} size="xs" /> {item.where}</span></span><span className="text-[10px] font-semibold text-[#e35d65]">À traiter</span></Link></li>)}</ul><Link href="/actions" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir toutes mes actions <ArrowRight className="h-3.5 w-3.5" /></Link></section>
+function MemorySouvient({ site, review }: { site: SiteDashboardItem | null; review: MemoryReview }) {
+  // Choix déterministe : le premier élément de `confirmed`, déjà ordonné
+  // connaissance durable d'abord par getMemoryReview — jamais un nouveau tri.
+  const item = review.confirmed[0] ?? null
+  return (
+    <section className={`${surface} p-5 sm:p-6`}>
+      <div className="flex items-center gap-2 text-[#26a67b]"><Sparkles className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">MemorIA se souvient</h2></div>
+      {!site ? (
+        <p className="mt-4 text-sm italic text-[#73809a]">Aucun chantier actif.</p>
+      ) : !item ? (
+        <p className="mt-4 text-sm italic text-[#73809a]">Rien de confirmé à retenir pour {site.name} pour le moment.</p>
+      ) : (
+        <div className="mt-4">
+          <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]">{item.group}</p>
+          {item.href ? (
+            <Link href={item.href} className="mt-1 block text-sm font-medium text-[#17213a] hover:text-[#1463e8]">{item.title}</Link>
+          ) : (
+            <p className="mt-1 text-sm font-medium text-[#17213a]">{item.title}</p>
+          )}
+          {item.nature && <p className="mt-1 text-xs text-[#65718b]">{item.nature}</p>}
+        </div>
+      )}
+    </section>
+  )
 }
 
-function MemoryCards({ items, organizationMap }: { items: LivingASavoirCard[]; organizationMap: OrganizationIdentityMap }) {
-  return <section className={`${surface} p-5 sm:p-6`}><div className="flex items-center justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Connaissances du terrain</p><h2 className="mt-2 text-lg font-semibold text-[#101a35]">Mémoire utile pour aujourd&apos;hui</h2></div><Info className="h-5 w-5 text-[#5e7bd3]" /></div>{items.length === 0 ? <p className="mt-6 text-sm italic text-[#73809a]">Aucune capsule disponible pour le moment.</p> : <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{items.slice(0, 4).map((item, index) => <Link key={item.id} href={`/sites/${item.site_id}`} className="group rounded-2xl border border-[#e8edf5] bg-[#fbfcff] p-4 transition-all hover:-translate-y-0.5 hover:border-[#cbd9f7] hover:shadow-sm"><span className={`flex h-9 w-9 items-center justify-center rounded-xl ${['bg-[#e5f8ef] text-[#2ba577]', 'bg-[#eee8ff] text-[#7756d7]', 'bg-[#fff0df] text-[#ed8b43]', 'bg-[#e8f0ff] text-[#4779dc]'][index]}`}><Sparkles className="h-4 w-4" /></span><p className="mt-3 line-clamp-3 text-xs font-medium leading-relaxed text-[#27334e]">{item.body}</p><p className="mt-4 flex items-center gap-1 truncate text-[10px] text-[#7b879d]">{item.site_name} · {organizationMap[item.organizationId] && <OrganizationBadge organization={organizationMap[item.organizationId]} size="xs" />}</p></Link>)}</div>}<Link href="/memoire" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir toutes les capsules <ArrowRight className="h-3.5 w-3.5" /></Link></section>
+const ATTENTION_BADGE: Record<AttentionCard['tone'], string> = {
+  red: 'En retard',
+  amber: 'À revoir',
+  neutral: 'À traiter',
+}
+const ATTENTION_BADGE_CLASS: Record<AttentionCard['tone'], string> = {
+  red: 'bg-[#ffe3e5] text-[#e35c66]',
+  amber: 'bg-[#fff0d7] text-[#c4872a]',
+  neutral: 'bg-[#eef4ff] text-[#4973dd]',
 }
 
-export function DashboardPremium({ firstName, orgNames, attentionCards, nowCards, visit, upcoming, sites, aSavoir, organizationMap, now, nowSignals, visitReviews, deadlinesToPlan }: Props) {
-  return <div className="min-h-screen w-full bg-[#f8fafc] px-1 pb-12 pt-1 sm:px-2"><div className="w-full space-y-5">
-    <header className="flex items-end justify-between gap-5 px-1 py-4 sm:px-2"><div><h1 className="text-3xl font-semibold tracking-[-0.035em] text-[#101a35]">Bonjour {firstName} 👋</h1><p className="mt-1 text-sm text-[#68758d]">Voici ce qui demande votre attention aujourd&apos;hui.</p>{orgNames.length > 1 && <p className="mt-3 text-xs font-medium text-[#6b7891]">{orgNames.join(' · ')}</p>}</div><div className="hidden items-center gap-2 text-xs text-[#7a879f] lg:flex"><span className="rounded-full border border-[#e2e8f2] bg-white px-4 py-2">Rechercher un chantier, une action, un document…</span><span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e2e8f2] bg-white"><Info className="h-4 w-4" /></span></div></header>
-    <AttentionSection cards={attentionCards} organizationMap={organizationMap} />
-    <CockpitNow signals={nowSignals} nowCards={nowCards} summary={now.summary} organizationMap={organizationMap} showOrganizationBadge={Object.keys(organizationMap).length > 1} />
-    <div className="space-y-5">{visit.sites.length > 0 ? visit.sites.map((site) => <VisitSummary key={site.siteId} site={site} organizationMap={organizationMap} review={visitReviews[site.siteId] ?? { confirmed: [], toReview: [] }} />) : <section className={`${surface} p-6`}><h2 className="text-lg font-semibold text-[#101a35]">Depuis votre dernière visite</h2><p className="mt-4 text-sm text-[#73809a]">Aucune évolution récente à afficher.</p></section>}<Agenda items={upcoming} organizationMap={organizationMap} deadlinesToPlan={deadlinesToPlan} /></div>
-    <div className="grid gap-5 xl:grid-cols-2"><SitesTable sites={sites} organizationMap={organizationMap} /><PriorityActionList actions={now.actions} organizationMap={organizationMap} /></div>
-    <MemoryCards items={aSavoir} organizationMap={organizationMap} />
-    <div className="grid gap-5 md:grid-cols-3"><section className={`${surface} p-5`}><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6a7892]">État de la continuité</p><p className="mt-4 flex items-center gap-2 text-sm font-medium text-[#21845c]"><CheckCircle2 className="h-4 w-4" /> Continuité stable — rien à signaler</p></section><section className={`${surface} p-5 md:col-span-2`}><p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#6a7892]">Mémoire opérationnelle</p><div className="mt-4 flex items-center gap-2 text-xs text-[#65718b]"><span className="h-3 w-3 rounded-[3px] bg-[#61c98b]" /><span className="h-3 w-3 rounded-[3px] bg-[#f4c95e]" /><span className="h-3 w-3 rounded-[3px] bg-[#72a5ed]" /> Les traces récentes restent disponibles dans les fiches des lieux.</div></section></div>
-  </div></div>
+function AttentionSection({ cards }: { cards: AttentionCard[] }) {
+  // `cards` arrive déjà curées et triées par page.tsx (chantier actif d'abord,
+  // complété seulement si besoin) — ne jamais re-trier ici au risque de repousser
+  // une carte du chantier actif derrière une carte d'un autre chantier.
+  return (
+    <section className={`${surface} p-5 sm:p-7`}>
+      <div className="mb-5 flex items-center gap-2 text-[#f0525f]"><AlertTriangle className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Ce qui mérite votre attention</h2></div>
+      {cards.length === 0 ? (
+        <p className="rounded-2xl bg-[#f3fbf6] px-4 py-5 text-sm text-[#258657]">Tout est en rythme.</p>
+      ) : (
+        <div className="space-y-2">
+          {cards.map((card) => (
+            <div key={card.id} className="relative">
+              <span className={`absolute right-3 top-3 z-10 rounded-full px-2 py-0.5 text-[10px] font-semibold ${ATTENTION_BADGE_CLASS[card.tone]}`}>{ATTENTION_BADGE[card.tone]}</span>
+              <SituationAttentionCard card={card} />
+            </div>
+          ))}
+        </div>
+      )}
+      <Link href="/actions" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">Voir toutes les actions <ArrowRight className="h-3.5 w-3.5" /></Link>
+    </section>
+  )
+}
+
+function Agenda({ items, deadlinesToPlan }: { items: UpcomingDashboardItem[]; deadlinesToPlan: DashboardDeadlineToPlan[] }) {
+  const nextItem = items[0] ?? null
+  const nextDeadline = deadlinesToPlan[0] ?? null
+  return (
+    <section className={`${surface} p-5 sm:p-6`}>
+      <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">À organiser</p>
+      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#34415c]">
+        <span><strong className="font-semibold text-[#101a35]">{items.length}</strong> passage{items.length > 1 ? 's' : ''} à venir</span>
+        <span><strong className="font-semibold text-[#101a35]">{deadlinesToPlan.length}</strong> échéance{deadlinesToPlan.length > 1 ? 's' : ''} à planifier</span>
+      </div>
+      {nextDeadline ? (
+        <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-[#fff9ed] px-3 py-2.5">
+          <div className="min-w-0">
+            <strong className="block truncate text-xs font-semibold text-[#34415c]">{nextDeadline.title}</strong>
+            <span className="block truncate text-[10px] text-[#7b879d]">{nextDeadline.siteName}</span>
+          </div>
+          <Link href={nextDeadline.href} className="shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-semibold text-[#c4872a] ring-1 ring-[#f1d494]">Planifier</Link>
+        </div>
+      ) : nextItem ? (
+        <div className="mt-4 rounded-xl bg-[#f8faff] px-3 py-2.5 text-xs text-[#34415c]">
+          <strong className="font-semibold">{nextItem.title}</strong> · {nextItem.siteName} · {nextItem.isToday ? "Aujourd'hui" : dateLabel(nextItem.startsAt)}
+        </div>
+      ) : (
+        <p className="mt-4 text-xs italic text-[#73809a]">Rien à organiser pour le moment.</p>
+      )}
+      <Link href="/mois" className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8]">Voir le planning complet <ArrowRight className="h-3.5 w-3.5" /></Link>
+    </section>
+  )
+}
+
+export function DashboardPremium({ firstName, orgNames, attentionCards, upcoming, sites, activeSiteId, heroDelta, activeReview, deadlinesToPlan }: Props) {
+  const activeSite = sites.find((s) => s.id === activeSiteId) ?? null
+  return (
+    <div className="min-h-screen w-full bg-[#f8fafc] px-1 pb-12 pt-1 sm:px-2">
+      <div className="w-full space-y-5">
+        <header className="flex items-end justify-between gap-5 px-1 py-4 sm:px-2">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-[-0.035em] text-[#101a35]">Bonjour {firstName} 👋</h1>
+            <p className="mt-1 text-sm text-[#68758d]">Reprenez vos chantiers là où vous les aviez laissés.</p>
+            <p className="mt-0.5 text-sm text-[#68758d]">MemorIA vous montre ce qui a évolué, ce qui mérite votre attention et ce qu&apos;il ne faut pas oublier.</p>
+            {orgNames.length > 1 && <p className="mt-3 text-xs font-medium text-[#6b7891]">{orgNames.join(' · ')}</p>}
+          </div>
+          <div className="hidden items-center gap-2 text-xs text-[#7a879f] lg:flex">
+            <span className="rounded-full border border-[#e2e8f2] bg-white px-4 py-2">Rechercher un chantier, une action, un document…</span>
+            <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e2e8f2] bg-white"><Info className="h-4 w-4" /></span>
+          </div>
+        </header>
+        <ChantierSelector sites={sites} activeSiteId={activeSiteId} heroMetrics={heroDelta?.metrics ?? null} />
+        <Hero site={activeSite} heroDelta={heroDelta} />
+        <div className="grid gap-5 xl:grid-cols-3">
+          <div className="xl:col-span-2"><AttentionSection cards={attentionCards} /></div>
+          <MemorySouvient site={activeSite} review={activeReview} />
+        </div>
+        <Agenda items={upcoming} deadlinesToPlan={deadlinesToPlan} />
+      </div>
+    </div>
+  )
 }
