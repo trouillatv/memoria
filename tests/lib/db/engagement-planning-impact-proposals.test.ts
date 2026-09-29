@@ -86,14 +86,18 @@ async function makeQualifiedProposal(contractEffect: Record<string, unknown>) {
   return proposalId
 }
 
-async function materializeEffectWithPayload(proposalId: string, payload: Record<string, unknown>) {
+async function materializeEffectWithPayload(
+  proposalId: string,
+  payload: Record<string, unknown>,
+  newEngagementParams?: { category: string; kind: string; measurable: boolean },
+) {
   const db = createAdminClient()
   const { data, error } = await db.rpc('materialize_engagement_contract_effect', {
     p_proposal_id: proposalId,
     p_user_id: adminUserId,
-    p_category: null,
-    p_kind: null,
-    p_measurable: null,
+    p_category: newEngagementParams?.category ?? null,
+    p_kind: newEngagementParams?.kind ?? null,
+    p_measurable: newEngagementParams?.measurable ?? null,
     p_effect_payload: payload,
   })
   if (error) throw error
@@ -144,25 +148,31 @@ beforeAll(async () => {
   docId = (await db.from('documents').insert({ organization_id: memberOrgId, document_type: 'ordre_service', storage_path: `${TAG}/os.pdf`, filename: 'os.pdf' }).select('id').single()).data!.id as string
   runId = (await db.from('document_extraction_run').insert({ organization_id: memberOrgId, document_id: docId, extractor_key: 'test' }).select('id').single()).data!.id as string
 
-  newEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} new` })
   modifyEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} modify` })
   modifyNonPlanningEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} modify non planning` })
-  suspendEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} suspend` })
   confirmOnlyEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} confirm-only` })
   crossOrgEngagementId = await insertEngagement({ site_id: outsiderSiteId, organization_id: outsiderOrgId, short_label: `${TAG} cross-org` })
-  os15NewEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} os15 new` })
   os15ModifyEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} os15 modify` })
-  os15SuspendEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} os15 suspend` })
 
+  // TEST_DEFECT corrigé (mandat DB INTEGRATION Vincent 2026-09-30) : pour
+  // l'effet 'new', la RPC materialize_engagement_contract_effect (445, jamais
+  // changé sur ce point) IGNORE targetEngagementId et crée systématiquement un
+  // nouvel Engagement — elle exige aussi p_category/p_kind/p_measurable.
+  // L'Engagement fondateur d'un scénario NEW/SUSPEND doit donc être
+  // l'engagement_id RENVOYÉ par la RPC, jamais un id pré-créé séparément.
   const newProposal = await makeQualifiedProposal({
     effect: 'new',
     temporality: 'permanent',
     scope: 'whole_engagement',
     scopeKey: 'whole_engagement',
     startsOn: '2026-10-01',
-    targetEngagementId: newEngagementId,
   })
-  await materializeEffectWithPayload(newProposal, { cadence: { count: 1, period: 'week' } })
+  const newResult = await materializeEffectWithPayload(
+    newProposal,
+    { cadence: { count: 1, period: 'week' } },
+    { category: 'other', kind: 'obligation', measurable: false },
+  )
+  newEngagementId = newResult.engagement_id
 
   const modifyPermanentProposal = await makeQualifiedProposal({
     effect: 'modify',
@@ -186,6 +196,7 @@ beforeAll(async () => {
     scope: 'frequency',
     scopeKey: 'frequency',
     startsOn: '2026-12-01',
+    endsOn: '2026-12-31',
     targetEngagementId: modifyEngagementId,
   })
   await materializeEffectWithPayload(modifyBoundedProposal, {
@@ -215,12 +226,13 @@ beforeAll(async () => {
     scopeKey: 'reporting',
     startsOn: '2026-12-01',
     endsOn: '2027-01-31',
-    targetEngagementId: os15NewEngagementId,
   })
-  await materializeEffectWithPayload(os15NewProposal, {
-    description: 'Relevé photo hebdomadaire zone Z2',
-    cadence: { count: 1, period: 'week' },
-  })
+  const os15NewResult = await materializeEffectWithPayload(
+    os15NewProposal,
+    { description: 'Relevé photo hebdomadaire zone Z2', cadence: { count: 1, period: 'week' } },
+    { category: 'other', kind: 'obligation', measurable: false },
+  )
+  os15NewEngagementId = os15NewResult.engagement_id
 
   // OS15 — golden witness MODIFY : 2 passages/semaine → 3 passages/semaine au
   // 2026-12-01 ("from" resolu depuis l'effet permanent antérieur).
@@ -239,7 +251,7 @@ beforeAll(async () => {
 
   const os15ModifyProposal = await makeQualifiedProposal({
     effect: 'modify',
-    temporality: 'bounded',
+    temporality: 'permanent',
     scope: 'frequency',
     scopeKey: 'frequency',
     startsOn: '2026-12-01',
@@ -261,9 +273,13 @@ beforeAll(async () => {
     scope: 'whole_engagement',
     scopeKey: 'whole_engagement',
     startsOn: '2026-01-01',
-    targetEngagementId: os15SuspendEngagementId,
   })
-  await materializeEffectWithPayload(os15SuspendFounderProposal, { cadence: { count: 2, period: 'week' } })
+  const os15SuspendFounderResult = await materializeEffectWithPayload(
+    os15SuspendFounderProposal,
+    { cadence: { count: 2, period: 'week' } },
+    { category: 'other', kind: 'obligation', measurable: false },
+  )
+  os15SuspendEngagementId = os15SuspendFounderResult.engagement_id
 
   const os15SuspendProposal = await makeQualifiedProposal({
     effect: 'suspend',
@@ -283,9 +299,13 @@ beforeAll(async () => {
     scope: 'whole_engagement',
     scopeKey: 'whole_engagement',
     startsOn: '2026-01-01',
-    targetEngagementId: suspendEngagementId,
   })
-  await materializeEffectWithPayload(suspendFounderProposal, { cadence: { count: 2, period: 'week' } })
+  const suspendFounderResult = await materializeEffectWithPayload(
+    suspendFounderProposal,
+    { cadence: { count: 2, period: 'week' } },
+    { category: 'other', kind: 'obligation', measurable: false },
+  )
+  suspendEngagementId = suspendFounderResult.engagement_id
 
   const suspendProposal = await makeQualifiedProposal({
     effect: 'suspend',
@@ -308,7 +328,7 @@ beforeAll(async () => {
     targetEngagementId: confirmOnlyEngagementId,
   })
   await materializeEffectWithPayload(confirmProposal, {})
-})
+}, 30000)
 
 afterAll(async () => {
   const db = createAdminClient()
@@ -368,8 +388,12 @@ describe('generatePlanningImpactProposalsForEngagement — génération', () => 
     const result = await generatePlanningImpactProposalsForEngagement(suspendEngagementId, currentUser())
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.proposals).toHaveLength(1)
-    expect(result.proposals[0].proposalPayload).toEqual({
+    // Fondation NEW structurée (cadence 2/semaine) sur ce même Engagement produit
+    // elle-même une proposition operation=new distincte (cf. fix TEST_DEFECT
+    // ci-dessus) — le témoin ne porte que sur la proposition operation=suspend.
+    const suspend = result.proposals.find((p) => p.proposalPayload.operation === 'suspend')
+    expect(suspend).toBeTruthy()
+    expect(suspend!.proposalPayload).toEqual({
       operation: 'suspend',
       effectiveFrom: '2026-08-01',
       effectiveTo: '2026-09-01',
@@ -546,8 +570,14 @@ describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness, intég
     const generated = await generatePlanningImpactProposalsForEngagement(os15SuspendEngagementId, currentUser())
     expect(generated.ok).toBe(true)
     if (!generated.ok) return
-    expect(generated.proposals).toHaveLength(1)
-    expect(generated.proposals[0].proposalPayload).toEqual({
+    // Fondation NEW structurée (cadence 2/semaine) sur ce même Engagement
+    // produit elle-même une proposition operation=new distincte — la RPC crée
+    // désormais réellement les deux effets sur le même Engagement (fix
+    // TEST_DEFECT ci-dessus), le témoin ne porte que sur la proposition
+    // operation=suspend.
+    const suspend = generated.proposals.find((p) => p.proposalPayload.operation === 'suspend')
+    expect(suspend).toBeTruthy()
+    expect(suspend!.proposalPayload).toEqual({
       operation: 'suspend',
       effectiveFrom: '2026-12-10',
       effectiveTo: '2026-12-14',
@@ -557,7 +587,8 @@ describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness, intég
     const listed = await listPlanningImpactProposalsForEngagement(os15SuspendEngagementId, currentUser())
     expect(listed.ok).toBe(true)
     if (!listed.ok) return
-    expect(listed.proposals[0].capability.readiness).toBe('blocked_by_planning_model')
+    const listedSuspend = listed.proposals.find((p) => p.proposalPayload.operation === 'suspend')
+    expect(listedSuspend!.capability.readiness).toBe('blocked_by_planning_model')
   })
 
   it('3. NEW — relevé photo hebdomadaire 2026-12-01→2027-01-31 : partially_representable, cadence structurée jamais dérivée de la description', async () => {
