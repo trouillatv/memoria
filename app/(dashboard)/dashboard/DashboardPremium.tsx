@@ -194,13 +194,32 @@ function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: b
   )
 }
 
+const CAROUSEL_MAX = 5
+
+/**
+ * Tri de présentation par récence — FIX RECENCE CARROUSEL. `lastActivityAt`
+ * existant uniquement (aucun nouveau tracking, aucune notion `lastViewed`) :
+ * DESC, `null` toujours en dernier, tie-break déterministe par nom.
+ */
+function compareByRecency(a: SiteDashboardItem, b: SiteDashboardItem): number {
+  if (a.lastActivityAt && !b.lastActivityAt) return -1
+  if (!a.lastActivityAt && b.lastActivityAt) return 1
+  if (a.lastActivityAt && b.lastActivityAt && a.lastActivityAt !== b.lastActivityAt) {
+    return a.lastActivityAt > b.lastActivityAt ? -1 : 1
+  }
+  return a.name.localeCompare(b.name, 'fr')
+}
+
 function ChantierSelector({ sites, activeSiteId }: { sites: SiteDashboardItem[]; activeSiteId: string | null }) {
-  // Présentation uniquement : le chantier actif toujours en tête du carrousel ;
-  // le reste conserve l'ordre métier déjà trié par getSitesDashboard (urgence/
-  // activité) — aucun nouveau tri, aucun tracking de consultation (lot UX polish).
-  const orderedSites = activeSiteId
-    ? [...sites.filter((s) => s.id === activeSiteId), ...sites.filter((s) => s.id !== activeSiteId)]
-    : sites
+  // Présentation uniquement : le chantier actif toujours en tête du carrousel,
+  // puis les autres triés par récence réelle (lastActivityAt) — aucun nouveau
+  // tri de getSitesDashboard, aucune donnée modifiée, aucun N+1 (le pool est
+  // déjà entièrement chargé par page.tsx). Plafonné à CAROUSEL_MAX cartes.
+  const rest = sites.filter((s) => s.id !== activeSiteId).sort(compareByRecency)
+  const active = activeSiteId ? sites.find((s) => s.id === activeSiteId) : undefined
+  const orderedSites = active
+    ? [active, ...rest].slice(0, CAROUSEL_MAX)
+    : rest.slice(0, CAROUSEL_MAX)
   return (
     <section className={`${surface} p-5 sm:p-6`}>
       <div className="flex items-start justify-between">

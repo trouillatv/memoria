@@ -218,6 +218,85 @@ describe('DashboardPremium — Selection (sélecteur de chantier)', () => {
     const items = within(chantiersSection).getAllByRole('listitem')
     expect(within(items[0]!).getByText('Chantier Beta')).toBeInTheDocument()
   })
+
+  it('FIX RECENCE — actif ancien + plusieurs sites : l\'actif reste premier, les suivants sont triés par lastActivityAt DESC', () => {
+    render(
+      <DashboardPremium
+        {...baseProps({
+          sites: [
+            site({ id: 'site-1', name: 'Chantier Alpha', lastActivityAt: '2026-01-01T00:00:00Z' }),
+            site({ id: 'site-2', name: 'Chantier Beta', lastActivityAt: '2026-09-20T00:00:00Z' }),
+            site({ id: 'site-3', name: 'Chantier Gamma', lastActivityAt: '2026-09-25T00:00:00Z' }),
+          ],
+          activeSiteId: 'site-1',
+        })}
+      />,
+    )
+    const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
+    const items = within(chantiersSection).getAllByRole('listitem')
+    expect(within(items[0]!).getByText('Chantier Alpha')).toBeInTheDocument()
+    expect(within(items[1]!).getByText('Chantier Gamma')).toBeInTheDocument()
+    expect(within(items[2]!).getByText('Chantier Beta')).toBeInTheDocument()
+  })
+
+  it('FIX RECENCE — lastActivityAt null toujours en dernier', () => {
+    render(
+      <DashboardPremium
+        {...baseProps({
+          sites: [
+            site({ id: 'site-1', name: 'Chantier Alpha', lastActivityAt: null }),
+            site({ id: 'site-2', name: 'Chantier Beta', lastActivityAt: '2026-09-20T00:00:00Z' }),
+          ],
+          activeSiteId: null,
+        })}
+      />,
+    )
+    const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
+    const items = within(chantiersSection).getAllByRole('listitem')
+    expect(within(items[0]!).getByText('Chantier Beta')).toBeInTheDocument()
+    expect(within(items[1]!).getByText('Chantier Alpha')).toBeInTheDocument()
+  })
+
+  it('FIX RECENCE — tie-break déterministe par nom quand lastActivityAt est identique', () => {
+    render(
+      <DashboardPremium
+        {...baseProps({
+          sites: [
+            site({ id: 'site-1', name: 'Zoulou', lastActivityAt: '2026-09-20T00:00:00Z' }),
+            site({ id: 'site-2', name: 'Alpha', lastActivityAt: '2026-09-20T00:00:00Z' }),
+          ],
+          activeSiteId: null,
+        })}
+      />,
+    )
+    const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
+    const items = within(chantiersSection).getAllByRole('listitem')
+    expect(within(items[0]!).getByText('Alpha')).toBeInTheDocument()
+    expect(within(items[1]!).getByText('Zoulou')).toBeInTheDocument()
+  })
+
+  it('FIX RECENCE — maximum 5 cartes, sans doublon de l\'actif', () => {
+    const sites = [
+      site({ id: 'site-old', name: 'Chantier Ancien', lastActivityAt: '2020-01-01T00:00:00Z' }),
+      site({ id: 'site-1', name: 'Chantier 1', lastActivityAt: '2026-09-10T00:00:00Z' }),
+      site({ id: 'site-2', name: 'Chantier 2', lastActivityAt: '2026-09-11T00:00:00Z' }),
+      site({ id: 'site-3', name: 'Chantier 3', lastActivityAt: '2026-09-12T00:00:00Z' }),
+      site({ id: 'site-4', name: 'Chantier 4', lastActivityAt: '2026-09-13T00:00:00Z' }),
+      site({ id: 'site-5', name: 'Chantier 5', lastActivityAt: '2026-09-14T00:00:00Z' }),
+      site({ id: 'site-6', name: 'Chantier 6', lastActivityAt: '2026-09-15T00:00:00Z' }),
+    ]
+    render(<DashboardPremium {...baseProps({ sites, activeSiteId: 'site-old' })} />)
+    const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
+    const items = within(chantiersSection).getAllByRole('listitem')
+    expect(items).toHaveLength(5)
+    expect(within(items[0]!).getByText('Chantier Ancien')).toBeInTheDocument()
+    expect(within(items[1]!).getByText('Chantier 6')).toBeInTheDocument()
+    expect(within(items[2]!).getByText('Chantier 5')).toBeInTheDocument()
+    expect(within(items[3]!).getByText('Chantier 4')).toBeInTheDocument()
+    expect(within(items[4]!).getByText('Chantier 3')).toBeInTheDocument()
+    expect(screen.queryByText('Chantier 1')).not.toBeInTheDocument()
+    expect(screen.queryByText('Chantier 2')).not.toBeInTheDocument()
+  })
 })
 
 describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)', () => {
