@@ -836,7 +836,7 @@ export function ProposalCard({
                     </select>
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    Nombre de passages par période, saisi explicitement — jamais déduit de la fréquence brute ci-dessus.
+                    Nombre de fois par période, saisi explicitement — jamais déduit de la fréquence brute ci-dessus.
                   </p>
                 </div>
               )}

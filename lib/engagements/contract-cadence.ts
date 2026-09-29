@@ -48,6 +48,20 @@ export function buildCadenceEffectPayloadFragment(cadence: ContractCadence): { c
   return { cadence: { count: cadence.count, period: cadence.period } }
 }
 
+/**
+ * FIX_REQUIRED 1B4-B0 (revue Vincent 2026-09-30, FIX 1) — invariant SERVEUR :
+ * une cadence structurée n'a de sens contractuel que pour NEW (fondation) ou
+ * MODIFY sur la portée `frequency` (bascule de rythme). Sur SUSPEND/CONFIRM/
+ * tout autre scope_key, une cadence fournie doit être explicitement refusée,
+ * jamais ignorée silencieusement. Fonction pure partagée par le Server Action
+ * (setContractEffectAction) et ses tests — une restriction UI seule ne
+ * constitue pas une frontière de sécurité (un appel FormData peut la
+ * contourner).
+ */
+export function isCadenceAllowedForEffect(effect: string, scopeKey: string | null): boolean {
+  return effect === 'new' || (effect === 'modify' && scopeKey === 'frequency')
+}
+
 /** Lit EXCLUSIVEMENT la clé `cadence` d'un effect_payload déjà matérialisé —
  *  ne lit jamais `description`, `frequency_raw`, `source_excerpt` ni `label`. */
 export function extractCadenceFromEffectPayload(payload: Record<string, unknown> | null | undefined): ContractCadence | null {

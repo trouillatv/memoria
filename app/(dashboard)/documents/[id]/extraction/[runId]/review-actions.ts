@@ -13,7 +13,7 @@ import { materializeEngagementCreateNew, materializeEngagementLinkExisting, fina
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
 import type { ContractEffect, ContractTemporality, ContractEffectQualification } from '@/lib/engagements/contract-effect'
 import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNewForDocument, effectAllowsLinkExistingForDocument, effectRequiresScopeKey, isValidScopeKeyFormat, effectRequiresPayload, effectBlocksMaterialization } from '@/lib/engagements/contract-effect'
-import { isValidCadence, buildCadenceEffectPayloadFragment, type ContractCadence } from '@/lib/engagements/contract-cadence'
+import { isValidCadence, buildCadenceEffectPayloadFragment, isCadenceAllowedForEffect, type ContractCadence } from '@/lib/engagements/contract-cadence'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -297,6 +297,16 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
       return { ok: false, error: 'Cadence contractuelle invalide (nombre entier positif et période parmi jour/semaine/mois)' }
     }
     cadence = candidate
+  }
+  // FIX_REQUIRED 1B4-B0 (revue Vincent 2026-09-30, FIX 1) : une cadence
+  // structurée n'a de sens contractuel que pour NEW (fondation) ou MODIFY sur
+  // la portée frequency (bascule de rythme). Sur SUSPEND/CONFIRM/tout autre
+  // scope_key, une cadence fournie n'est jamais ignorée silencieusement —
+  // c'est un invariant SERVEUR, pas une simple restriction d'affichage
+  // (l'UI ne montre déjà les champs que dans ces deux cas, mais un appel
+  // FormData forgé ne doit pas pouvoir contourner cette règle).
+  if (cadence && !isCadenceAllowedForEffect(effect, scopeKey)) {
+    return { ok: false, error: 'Cadence contractuelle réservée à un effet Nouveau ou à une Modification sur la portée « frequency »' }
   }
 
   // Invariants métier du modèle EFFET × TEMPORALITÉ appliqués côté serveur
