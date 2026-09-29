@@ -27,6 +27,7 @@ import {
   type PlanningImpactProposalPayload,
   type PlanningApplicationCapability,
 } from '@/lib/engagements/planning-impact-proposal'
+import { resolveContractCadenceAtDate, type ContractCadence } from '@/lib/engagements/contract-cadence'
 import { addDaysLocal } from '@/lib/time/local-date'
 import type { DbUser } from '@/types/db'
 
@@ -147,6 +148,22 @@ function resolvePriorScopeValue(
   return state.scopes.find((s) => s.scopeKey === scopeKey)?.value ?? null
 }
 
+/** Cadence contractuelle structurée connue au jour civil précédant
+ *  `startsOn` (mandat GO 1B4-B, règle 2 pour MODIFY frequency, règle 3 pour
+ *  SUSPEND) — `null` si non résolvable ou non connue structurellement.
+ *  Jamais écrite dans l'effet lui-même, uniquement injectée dans la
+ *  proposition Planning dérivée. */
+function resolvePriorCadence(
+  engagementId: string,
+  effects: EngagementContractEffectRow[],
+  startsOn: string | null,
+): ContractCadence | null {
+  if (!startsOn) return null
+  const dayBefore = addDaysLocal(startsOn, -1)
+  const state = resolveEngagementAtDate({ engagementId, effects }, dayBefore)
+  return resolveContractCadenceAtDate(effects, state)
+}
+
 export type GeneratePlanningImpactProposalsError = 'access_denied' | 'write_failed'
 
 export type GeneratePlanningImpactProposalsResult =
@@ -234,8 +251,14 @@ export async function generatePlanningImpactProposalsForEngagement(
   for (const effect of materializable) {
     const impactKind = effect.effect as PlanningImpactKind
     const priorScopeValue =
-      impactKind === 'modify' ? resolvePriorScopeValue(engagementId, effects, effect.scopeKey, effect.startsOn) : undefined
-    const payload = buildPlanningImpactProposalPayload(effect, priorScopeValue)
+      impactKind === 'modify' && effect.scopeKey !== 'frequency'
+        ? resolvePriorScopeValue(engagementId, effects, effect.scopeKey, effect.startsOn)
+        : undefined
+    const priorCadence =
+      (impactKind === 'modify' && effect.scopeKey === 'frequency') || impactKind === 'suspend'
+        ? resolvePriorCadence(engagementId, effects, effect.startsOn)
+        : undefined
+    const payload = buildPlanningImpactProposalPayload(effect, { priorScopeValue, priorCadence })
     if (!payload) continue
 
     const effectExisting = existing.filter((r) => r.contract_effect_id === effect.id)

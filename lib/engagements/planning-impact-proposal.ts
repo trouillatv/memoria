@@ -5,8 +5,9 @@
 //
 // Contraintes d'architecture (mandat, non négociables, même discipline que
 // resolve-contract-state.ts) :
-//   - AUCUNE dépendance Supabase/DB — reçoit l'effet (et, pour MODIFY, la
-//     valeur de portée précédente) déjà résolus par l'appelant.
+//   - AUCUNE dépendance Supabase/DB — reçoit l'effet (et, pour MODIFY/SUSPEND,
+//     le contexte contractuel déjà résolu par l'appelant : valeur de portée
+//     précédente, cadence structurée antérieure) déjà résolus par l'appelant.
 //   - proposal_payload ne contient JAMAIS de donnée Planning/application
 //     (jour, heure, équipe, planning_cycle_id, occurrence) — uniquement
 //     l'impact contractuel interprété. L'application est 1B4-C, HOLD.
@@ -18,24 +19,21 @@
 //     FIX_REQUIRED Vincent 2026-09-30, problème 3). Ce résultat n'est JAMAIS
 //     persisté (il deviendrait une vérité périmée si le Planning évolue).
 //
-// GAP CONNU, NON RÉSOLU (mandat FIX_REQUIRED Vincent 2026-09-30, 2e revue,
-// FIX E) : tout effet NEW et tout effet SUSPEND produit aujourd'hui
-// inconditionnellement une proposition d'impact Planning, alors qu'un
-// Engagement NEW ou SUSPEND peut porter une obligation sans aucun rythme
-// calendaire (ex. exigence documentaire, obligation de conformité). Contraire
-// à PLANNING_RELEVANT_MODIFY_SCOPE_KEYS pour MODIFY, aucun filtrage
-// équivalent n'existe ici : l'audit FIX C (READ-ONLY, 2e revue) a confirmé
-// qu'aucun champ structuré du domaine Engagement (`engagements.category`,
-// `kind`, `measurable`, `scope_key`) ne permet de distinguer, de façon
-// canonique, un NEW/SUSPEND Planning-relevant d'un NEW/SUSPEND purement
-// documentaire — seule Planning (intervention_templates) porte une
-// récurrence structurée, domaine distinct, non ponté à Engagement. Point
-// volontairement NON corrigé ici (aucune heuristique inventée) : nécessite
-// une décision d'architecture (nouveau champ structuré sur `engagements` ou
-// `engagement_contract_effects` ?) hors du périmètre de ce fichier.
+// GAP RÉSOLU (mandat GO Vincent 2026-09-30, « STRUCTURED PLANNING RELEVANCE »)
+// — l'audit FIX C (READ-ONLY, 2e revue) avait confirmé qu'aucun champ
+// structuré du domaine Engagement ne permettait de distinguer un NEW/SUSPEND
+// Planning-relevant d'un NEW/SUSPEND purement documentaire. La brique cadence
+// structurée (DOC-CONTRACT-OS-1B4-B0, effect_payload.cadence = { count,
+// period }) fournit désormais cette preuve : NEW et MODIFY(frequency) ne
+// génèrent une proposition QUE si une cadence structurée valide est connue ;
+// SUSPEND ne génère une proposition QUE si l'Engagement cible possédait une
+// cadence structurée juste avant `startsOn`. AUCUNE dérivation depuis
+// `description`/`frequency_raw`/`category`/`measurable` — un contrat sans
+// cadence structurée reste honnêtement hors périmètre Planning aujourd'hui.
 
 import { createHash } from 'node:crypto'
 import { canonicalStringify } from '@/lib/knowledge/tracked-point-fingerprint'
+import { extractCadenceFromEffectPayload, type ContractCadence } from './contract-cadence'
 import type { ContractTemporality } from './contract-effect'
 import type { EngagementContractEffectRow, MaterializedContractEffect } from './resolve-contract-state'
 
@@ -56,10 +54,24 @@ export type NewPlanningImpactPayload = {
   effectiveFrom: string | null
   effectiveTo: string | null
   scopeKey: string
-  effectPayload: Record<string, unknown>
+  cadence: ContractCadence
 }
 
-export type ModifyPlanningImpactPayload = {
+/** MODIFY sur `frequency` — seul cas MODIFY dont la preuve Planning est
+ *  structurée (cadence avant/après), cf. mandat GO 1B4-B, règle 2. */
+export type ModifyFrequencyPlanningImpactPayload = {
+  operation: 'change_frequency'
+  scopeKey: 'frequency'
+  effectiveFrom: string | null
+  effectiveTo: string | null
+  fromCadence: ContractCadence | null
+  toCadence: ContractCadence
+}
+
+/** MODIFY sur un scope_key Planning-relevant hors `frequency` (ex.
+ *  `schedule`) — hors périmètre du mandat GO 1B4-B (aucune cadence
+ *  structurée n'existe pour ce scope), comportement opaque inchangé. */
+export type ModifyScopePlanningImpactPayload = {
   operation: string
   scopeKey: string
   effectiveFrom: string | null
@@ -68,28 +80,44 @@ export type ModifyPlanningImpactPayload = {
   to: Record<string, unknown>
 }
 
+export type ModifyPlanningImpactPayload = ModifyFrequencyPlanningImpactPayload | ModifyScopePlanningImpactPayload
+
 export type SuspendPlanningImpactPayload = {
   operation: 'suspend'
   effectiveFrom: string
   effectiveTo: string | null
   resumeOn: string | null
+  // Cadence contractuelle connue au jour civil précédant `effectiveFrom` —
+  // dérivée par l'appelant via resolveContractCadenceAtDate, JAMAIS écrite
+  // dans l'effet SUSPEND lui-même (mandat GO 1B4-B, règle 3).
+  priorCadence: ContractCadence
 }
 
 export type PlanningImpactProposalPayload =
   | NewPlanningImpactPayload
-  | ModifyPlanningImpactPayload
+  | ModifyFrequencyPlanningImpactPayload
+  | ModifyScopePlanningImpactPayload
   | SuspendPlanningImpactPayload
+
+export type BuildPlanningImpactProposalContext = {
+  /** Uniquement pertinent pour MODIFY hors `frequency` — la valeur de la
+   *  portée `effect.scopeKey` juste avant `effect.startsOn`, déjà résolue par
+   *  l'appelant (via `resolveEngagementAtDate` sur l'historique complet, à
+   *  `startsOn - 1 jour`). */
+  priorScopeValue?: unknown
+  /** Uniquement pertinent pour MODIFY `frequency` (cadence avant bascule) et
+   *  SUSPEND (cadence connue au jour civil précédant `startsOn`) — déjà
+   *  résolue par l'appelant via `resolveContractCadenceAtDate`. `null`/
+   *  `undefined` si aucune cadence structurée n'est connue à cette date. */
+  priorCadence?: ContractCadence | null
+}
 
 /**
  * Construit la proposition d'impact Planning d'un effet contractuel
  * matérialisé. Rend `null` pour CONFIRM (provenance pure, jamais un impact
- * Planning — doctrine 8 de resolve-contract-state.ts).
- *
- * `priorScopeValue` : uniquement pertinent pour MODIFY — la valeur de la
- * portée `effect.scopeKey` juste avant `effect.startsOn`, déjà résolue par
- * l'appelant (via `resolveEngagementAtDate` sur l'historique complet, à
- * `startsOn - 1 jour`). `null`/`undefined` si non résolvable (ex. MODIFY sans
- * `startsOn`, effective immédiatement) — jamais recalculée ici.
+ * Planning — doctrine 8 de resolve-contract-state.ts) et, depuis le mandat GO
+ * 1B4-B, pour tout NEW/MODIFY(frequency)/SUSPEND dont la preuve Planning
+ * structurée (cadence) est absente — cf. commentaire de tête « GAP RÉSOLU ».
  *
  * MODIFY sur un `scopeKey` hors PLANNING_RELEVANT_MODIFY_SCOPE_KEYS rend
  * `null` : l'effet contractuel est réel (matérialisé dans
@@ -97,29 +125,47 @@ export type PlanningImpactProposalPayload =
  */
 export function buildPlanningImpactProposalPayload(
   effect: EngagementContractEffectRow,
-  priorScopeValue?: unknown,
+  context?: BuildPlanningImpactProposalContext,
 ): PlanningImpactProposalPayload | null {
   switch (effect.effect) {
-    case 'new':
+    case 'new': {
+      const cadence = extractCadenceFromEffectPayload(effect.effectPayload)
+      if (!cadence) return null
       return {
         operation: 'new',
         temporality: effect.temporality,
         effectiveFrom: effect.startsOn,
         effectiveTo: effect.endsOn,
         scopeKey: effect.scopeKey,
-        effectPayload: effect.effectPayload,
+        cadence,
       }
-    case 'modify':
+    }
+    case 'modify': {
+      if (effect.scopeKey === 'frequency') {
+        const toCadence = extractCadenceFromEffectPayload(effect.effectPayload)
+        if (!toCadence) return null
+        return {
+          operation: 'change_frequency',
+          scopeKey: 'frequency',
+          effectiveFrom: effect.startsOn,
+          effectiveTo: effect.endsOn,
+          fromCadence: context?.priorCadence ?? null,
+          toCadence,
+        }
+      }
       if (!PLANNING_RELEVANT_MODIFY_SCOPE_KEYS.has(effect.scopeKey)) return null
       return {
         operation: `change_${effect.scopeKey}`,
         scopeKey: effect.scopeKey,
         effectiveFrom: effect.startsOn,
         effectiveTo: effect.endsOn,
-        from: priorScopeValue ?? null,
+        from: context?.priorScopeValue ?? null,
         to: effect.effectPayload,
       }
-    case 'suspend':
+    }
+    case 'suspend': {
+      const priorCadence = context?.priorCadence ?? null
+      if (!priorCadence) return null
       return {
         operation: 'suspend',
         // CHECK engagement_contract_effects_suspend_starts_check (445) garantit
@@ -127,7 +173,9 @@ export function buildPlanningImpactProposalPayload(
         effectiveFrom: effect.startsOn as string,
         effectiveTo: effect.endsOn,
         resumeOn: effect.resumeOn,
+        priorCadence,
       }
+    }
     case 'confirm':
       return null
   }

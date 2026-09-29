@@ -23,7 +23,10 @@ import {
   listPlanningImpactProposalsForEngagement,
   dismissPlanningImpactProposal,
 } from '@/lib/db/engagement-planning-impact-proposals'
-import type { ModifyPlanningImpactPayload, NewPlanningImpactPayload } from '@/lib/engagements/planning-impact-proposal'
+import type {
+  ModifyFrequencyPlanningImpactPayload,
+  NewPlanningImpactPayload,
+} from '@/lib/engagements/planning-impact-proposal'
 
 const TAG = `__test_planning_impact_proposals_${Math.floor(Date.now() / 1000)}__`
 
@@ -159,7 +162,7 @@ beforeAll(async () => {
     startsOn: '2026-10-01',
     targetEngagementId: newEngagementId,
   })
-  await materializeEffectWithPayload(newProposal, {})
+  await materializeEffectWithPayload(newProposal, { cadence: { count: 1, period: 'week' } })
 
   const modifyPermanentProposal = await makeQualifiedProposal({
     effect: 'modify',
@@ -169,9 +172,13 @@ beforeAll(async () => {
     startsOn: '2026-01-01',
     targetEngagementId: modifyEngagementId,
   })
-  // effect_payload réel : toujours { description: <texte libre> } — jamais de
-  // champ structuré (cf. review-actions.ts, aucune structure générique).
-  await materializeEffectWithPayload(modifyPermanentProposal, { description: 'fréquence mensuelle' })
+  // FIX 1B4-B (mandat Vincent 2026-09-30) : la pertinence Planning d'un MODIFY
+  // sur `frequency` exige désormais une cadence structurée dans effect_payload
+  // — une description seule ne suffit plus (cf. planning-impact-proposal.ts).
+  await materializeEffectWithPayload(modifyPermanentProposal, {
+    description: 'fréquence mensuelle',
+    cadence: { count: 1, period: 'month' },
+  })
 
   const modifyBoundedProposal = await makeQualifiedProposal({
     effect: 'modify',
@@ -181,7 +188,10 @@ beforeAll(async () => {
     startsOn: '2026-12-01',
     targetEngagementId: modifyEngagementId,
   })
-  await materializeEffectWithPayload(modifyBoundedProposal, { description: 'fréquence hebdomadaire' })
+  await materializeEffectWithPayload(modifyBoundedProposal, {
+    description: 'fréquence hebdomadaire',
+    cadence: { count: 1, period: 'week' },
+  })
 
   // FIX 4 (mandat Vincent 2026-09-30) : MODIFY sur un scope_key hors
   // PLANNING_RELEVANT_MODIFY_SCOPE_KEYS est un effet contractuel réel mais ne
@@ -207,7 +217,10 @@ beforeAll(async () => {
     endsOn: '2027-01-31',
     targetEngagementId: os15NewEngagementId,
   })
-  await materializeEffectWithPayload(os15NewProposal, { description: 'Relevé photo hebdomadaire zone Z2' })
+  await materializeEffectWithPayload(os15NewProposal, {
+    description: 'Relevé photo hebdomadaire zone Z2',
+    cadence: { count: 1, period: 'week' },
+  })
 
   // OS15 — golden witness MODIFY : 2 passages/semaine → 3 passages/semaine au
   // 2026-12-01 ("from" resolu depuis l'effet permanent antérieur).
@@ -219,7 +232,10 @@ beforeAll(async () => {
     startsOn: '2026-11-01',
     targetEngagementId: os15ModifyEngagementId,
   })
-  await materializeEffectWithPayload(os15ModifyPriorProposal, { description: '2 passages par semaine' })
+  await materializeEffectWithPayload(os15ModifyPriorProposal, {
+    description: '2 passages par semaine',
+    cadence: { count: 2, period: 'week' },
+  })
 
   const os15ModifyProposal = await makeQualifiedProposal({
     effect: 'modify',
@@ -229,9 +245,26 @@ beforeAll(async () => {
     startsOn: '2026-12-01',
     targetEngagementId: os15ModifyEngagementId,
   })
-  await materializeEffectWithPayload(os15ModifyProposal, { description: 'passage de 2 à 3 passages par semaine' })
+  await materializeEffectWithPayload(os15ModifyProposal, {
+    description: 'passage de 2 à 3 passages par semaine',
+    cadence: { count: 3, period: 'week' },
+  })
 
-  // OS15 — golden witness SUSPEND : 2026-12-10 → 2026-12-14, reprise 2026-12-15.
+  // OS15 — golden witness SUSPEND : cadence connue au 2026-12-09 (fondation
+  // NEW structurée antérieure), SUSPEND 2026-12-10 → 2026-12-14, reprise
+  // 2026-12-15 (mandat 1B4-B, règle 3 : la pertinence Planning d'un SUSPEND se
+  // décide sur l'état contractuel de l'Engagement, jamais sur son propre
+  // payload — cf. resolveContractCadenceAtDate).
+  const os15SuspendFounderProposal = await makeQualifiedProposal({
+    effect: 'new',
+    temporality: 'permanent',
+    scope: 'whole_engagement',
+    scopeKey: 'whole_engagement',
+    startsOn: '2026-01-01',
+    targetEngagementId: os15SuspendEngagementId,
+  })
+  await materializeEffectWithPayload(os15SuspendFounderProposal, { cadence: { count: 2, period: 'week' } })
+
   const os15SuspendProposal = await makeQualifiedProposal({
     effect: 'suspend',
     temporality: 'bounded',
@@ -243,6 +276,16 @@ beforeAll(async () => {
     targetEngagementId: os15SuspendEngagementId,
   })
   await materializeEffectWithPayload(os15SuspendProposal, {})
+
+  const suspendFounderProposal = await makeQualifiedProposal({
+    effect: 'new',
+    temporality: 'permanent',
+    scope: 'whole_engagement',
+    scopeKey: 'whole_engagement',
+    startsOn: '2026-01-01',
+    targetEngagementId: suspendEngagementId,
+  })
+  await materializeEffectWithPayload(suspendFounderProposal, { cadence: { count: 2, period: 'week' } })
 
   const suspendProposal = await makeQualifiedProposal({
     effect: 'suspend',
@@ -288,22 +331,30 @@ describe('generatePlanningImpactProposalsForEngagement — génération', () => 
       impactKind: 'new',
       status: 'proposed',
       proposalVersion: 1,
-      proposalPayload: { operation: 'new', temporality: 'permanent', effectiveFrom: '2026-10-01', effectiveTo: null },
+      proposalPayload: {
+        operation: 'new',
+        temporality: 'permanent',
+        effectiveFrom: '2026-10-01',
+        effectiveTo: null,
+        cadence: { count: 1, period: 'week' },
+      },
     })
   })
 
-  it('MODIFY — deux effets produisent deux propositions distinctes, "from" résolu depuis l\'historique', async () => {
+  it('MODIFY — deux effets produisent deux propositions distinctes, "fromCadence" résolu depuis l\'historique', async () => {
     const result = await generatePlanningImpactProposalsForEngagement(modifyEngagementId, currentUser())
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.proposals).toHaveLength(2)
     const bounded = result.proposals.find(
-      (p) => p.proposalPayload.operation === 'change_frequency' && (p.proposalPayload as ModifyPlanningImpactPayload).effectiveFrom === '2026-12-01',
+      (p) =>
+        p.proposalPayload.operation === 'change_frequency' &&
+        (p.proposalPayload as ModifyFrequencyPlanningImpactPayload).effectiveFrom === '2026-12-01',
     )
     expect(bounded).toBeTruthy()
-    const boundedPayload = bounded!.proposalPayload as ModifyPlanningImpactPayload
-    expect(boundedPayload.from).toEqual({ description: 'fréquence mensuelle' })
-    expect(boundedPayload.to).toEqual({ description: 'fréquence hebdomadaire' })
+    const boundedPayload = bounded!.proposalPayload as ModifyFrequencyPlanningImpactPayload
+    expect(boundedPayload.fromCadence).toEqual({ count: 1, period: 'month' })
+    expect(boundedPayload.toCadence).toEqual({ count: 1, period: 'week' })
   })
 
   it('MODIFY sur scope_key non Planning-relevant (quantity) — aucune proposition générée (FIX 4)', async () => {
@@ -323,6 +374,7 @@ describe('generatePlanningImpactProposalsForEngagement — génération', () => 
       effectiveFrom: '2026-08-01',
       effectiveTo: '2026-09-01',
       resumeOn: '2026-09-15',
+      priorCadence: { count: 2, period: 'week' },
     })
   })
 
@@ -459,31 +511,34 @@ describe('dismissPlanningImpactProposal — décision humaine', () => {
   })
 })
 
-// OS15 — véritable témoin de fermeture DOC-CONTRACT-OS-1B4-B (mandat
-// FIX_REQUIRED Vincent 2026-09-30, 2e revue), volet intégration. Reprend en
-// base réelle le golden witness exact (NEW relevé photo hebdomadaire
-// 2026-12-01→2027-01-31 ; MODIFY 2→3 passages/semaine au 2026-12-01 ; SUSPEND
-// 2026-12-10→2026-12-14 reprise 2026-12-15 ; CONFIRM sans impact). Chaque
-// payload reste un passthrough opaque de effect_payload.description — aucune
-// fréquence structurée n'est ni requise ni synthétisée (audit FIX C READ-ONLY :
-// aucune source structurée de fréquence n'existe dans ce domaine).
+// OS15 — véritable témoin de fermeture DOC-CONTRACT-OS-1B4-B (mandat GO
+// Vincent 2026-09-30, structured planning relevance), volet intégration.
+// Reprend en base réelle le golden witness exact (NEW relevé photo
+// hebdomadaire 2026-12-01→2027-01-31 ; MODIFY 2→3 passages/semaine au
+// 2026-12-01 ; SUSPEND 2026-12-10→2026-12-14 reprise 2026-12-15, cadence
+// connue au 2026-12-09 via une fondation NEW structurée ; CONFIRM sans
+// impact). La pertinence Planning et le contenu structuré de chaque
+// proposition dérivent EXCLUSIVEMENT de `effect_payload.cadence` — jamais de
+// `description`/`frequency_raw`/`source_excerpt`/`label`.
 describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness, intégration)', () => {
   it('1. MODIFY — 2 à 3 passages/semaine au 2026-12-01 : partially_representable', async () => {
     const generated = await generatePlanningImpactProposalsForEngagement(os15ModifyEngagementId, currentUser())
     expect(generated.ok).toBe(true)
     if (!generated.ok) return
     const golden = generated.proposals.find(
-      (p) => (p.proposalPayload as ModifyPlanningImpactPayload).effectiveFrom === '2026-12-01',
+      (p) => (p.proposalPayload as ModifyFrequencyPlanningImpactPayload).effectiveFrom === '2026-12-01',
     )
     expect(golden).toBeTruthy()
-    const payload = golden!.proposalPayload as ModifyPlanningImpactPayload
-    expect(payload.from).toEqual({ description: '2 passages par semaine' })
-    expect(payload.to).toEqual({ description: 'passage de 2 à 3 passages par semaine' })
+    const payload = golden!.proposalPayload as ModifyFrequencyPlanningImpactPayload
+    expect(payload.fromCadence).toEqual({ count: 2, period: 'week' })
+    expect(payload.toCadence).toEqual({ count: 3, period: 'week' })
 
     const listed = await listPlanningImpactProposalsForEngagement(os15ModifyEngagementId, currentUser())
     expect(listed.ok).toBe(true)
     if (!listed.ok) return
-    const listedGolden = listed.proposals.find((p) => (p.proposalPayload as ModifyPlanningImpactPayload).effectiveFrom === '2026-12-01')
+    const listedGolden = listed.proposals.find(
+      (p) => (p.proposalPayload as ModifyFrequencyPlanningImpactPayload).effectiveFrom === '2026-12-01',
+    )
     expect(listedGolden!.capability.readiness).toBe('partially_representable')
   })
 
@@ -497,6 +552,7 @@ describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness, intég
       effectiveFrom: '2026-12-10',
       effectiveTo: '2026-12-14',
       resumeOn: '2026-12-15',
+      priorCadence: { count: 2, period: 'week' },
     })
     const listed = await listPlanningImpactProposalsForEngagement(os15SuspendEngagementId, currentUser())
     expect(listed.ok).toBe(true)
@@ -504,7 +560,7 @@ describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness, intég
     expect(listed.proposals[0].capability.readiness).toBe('blocked_by_planning_model')
   })
 
-  it('3. NEW — relevé photo hebdomadaire 2026-12-01→2027-01-31 : partially_representable, payload jamais parsé', async () => {
+  it('3. NEW — relevé photo hebdomadaire 2026-12-01→2027-01-31 : partially_representable, cadence structurée jamais dérivée de la description', async () => {
     const generated = await generatePlanningImpactProposalsForEngagement(os15NewEngagementId, currentUser())
     expect(generated.ok).toBe(true)
     if (!generated.ok) return
@@ -512,10 +568,8 @@ describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness, intég
     const payload = generated.proposals[0].proposalPayload as NewPlanningImpactPayload
     expect(payload.effectiveFrom).toBe('2026-12-01')
     expect(payload.effectiveTo).toBe('2027-01-31')
-    expect(payload.effectPayload).toEqual({ description: 'Relevé photo hebdomadaire zone Z2' })
+    expect(payload.cadence).toEqual({ count: 1, period: 'week' })
     expect(payload.scopeKey).toBe('reporting')
-    // Aucune fréquence structurée synthétisée : la seule clé est la description brute.
-    expect(Object.keys(payload.effectPayload)).toEqual(['description'])
 
     const listed = await listPlanningImpactProposalsForEngagement(os15NewEngagementId, currentUser())
     expect(listed.ok).toBe(true)
