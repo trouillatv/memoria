@@ -299,14 +299,23 @@ describe('effectAllowsCreateNewForDocument / effectAllowsLinkExistingForDocument
     expect(effectAllowsLinkExistingForDocument('avenant', null)).toBe(false)
   })
 
-  it('ordre_service + new qualifié — create autorisé (la matrice prime dès qu\'un effet existe)', () => {
-    expect(effectAllowsCreateNewForDocument('ordre_service', 'new')).toBe(true)
+  // Durci DOC-CONTRACT-OS-1B1-UX-BRIDGE (revue Vincent/ChatGPT 2026-09-29,
+  // défaut 1) : un effet déjà qualifié — même NEW/CONFIRM — ne rouvre plus le
+  // chemin legacy create_new/link_existing. Seule la primitive canonique 1B1
+  // (materializeContractEffectAction) matérialise un effet qualifié.
+  it('ordre_service + new qualifié — create ET link refusés (seul 1B1 matérialise)', () => {
+    expect(effectAllowsCreateNewForDocument('ordre_service', 'new')).toBe(false)
     expect(effectAllowsLinkExistingForDocument('ordre_service', 'new')).toBe(false)
   })
 
-  it('ordre_service + confirm qualifié — link autorisé', () => {
+  it('ordre_service + confirm qualifié — create ET link refusés (seul 1B1 matérialise)', () => {
     expect(effectAllowsCreateNewForDocument('ordre_service', 'confirm')).toBe(false)
-    expect(effectAllowsLinkExistingForDocument('ordre_service', 'confirm')).toBe(true)
+    expect(effectAllowsLinkExistingForDocument('ordre_service', 'confirm')).toBe(false)
+  })
+
+  it('cctp (legacy) + new qualifié — create ET link refusés malgré le document legacy', () => {
+    expect(effectAllowsCreateNewForDocument('cctp', 'new')).toBe(false)
+    expect(effectAllowsLinkExistingForDocument('cctp', 'confirm')).toBe(false)
   })
 })
 
@@ -377,11 +386,13 @@ describe('linkEngagementToProposalAction — garde EFFET × TEMPORALITÉ (DOC-CO
     expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
   })
 
-  it('confirm + cible qualifiée — autorisé (link_existing uniquement)', async () => {
-    mocks.materializeEngagementLinkExisting.mockResolvedValue('eng-1')
+  // Durci DOC-CONTRACT-OS-1B1-UX-BRIDGE (revue Vincent/ChatGPT 2026-09-29,
+  // défaut 1) : un CONFIRM qualifié n'autorise plus link_existing (legacy) —
+  // il doit passer exclusivement par materializeContractEffectAction (1B1).
+  it('confirm + cible qualifiée — refus (link_existing legacy jamais permis pour un effet qualifié)', async () => {
     const result = await linkEngagementToProposalAction(buildEngagementForm('confirm', { targetEngagementId: 'eng-1' }))
-    expect(result).toMatchObject({ ok: true, engagementId: 'eng-1' })
-    expect(mocks.materializeEngagementLinkExisting).toHaveBeenCalledWith('prop-1', 'eng-1', 'user-admin')
+    expect(result).toMatchObject({ ok: false, error: 'Cet effet contractuel ne permet pas de rattacher un Engagement existant' })
+    expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
   })
 
   it("modify — refus, aucune matérialisation tant que DOC-CONTRACT-OS-1B n'existe pas", async () => {
@@ -445,18 +456,23 @@ describe('createEngagementFromProposalAction / linkEngagementToProposalAction �
     expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
   })
 
-  it('ordre_service + effet NEW qualifié — create autorisé', async () => {
+  // Durci DOC-CONTRACT-OS-1B1-UX-BRIDGE (revue Vincent/ChatGPT 2026-09-29,
+  // défaut 1) : un NEW/CONFIRM qualifié ne doit plus jamais matérialiser via les
+  // anciennes RPC create_new/link_existing — seul materializeContractEffectAction
+  // (1B1) le fait. Avant ce durcissement, ces deux tests attendaient encore
+  // { ok: true } : c'était exactement le trou d'exclusivité signalé en revue.
+  it('ordre_service + effet NEW qualifié — create refusé, jamais routé vers l’ancienne RPC', async () => {
     mocks.from.mockImplementation(buildAccessMock({ documentType: 'ordre_service', sourcePayload: { contract_effect: { effect: 'new' } } }))
-    mocks.materializeEngagementCreateNew.mockResolvedValue('eng-x')
     const result = await createEngagementFromProposalAction(buildForm({ category: 'sla', kind: 'controle', measurable: 'true' }))
-    expect(result).toMatchObject({ ok: true, engagementId: 'eng-x' })
+    expect(result).toMatchObject({ ok: false, error: 'Cet effet contractuel ne permet pas de créer un nouvel Engagement' })
+    expect(mocks.materializeEngagementCreateNew).not.toHaveBeenCalled()
   })
 
-  it('ordre_service + effet CONFIRM qualifié — link autorisé', async () => {
+  it('ordre_service + effet CONFIRM qualifié — link refusé, jamais routé vers l’ancienne RPC', async () => {
     mocks.from.mockImplementation(buildAccessMock({ documentType: 'ordre_service', sourcePayload: { contract_effect: { effect: 'confirm', targetEngagementId: 'eng-1' } } }))
-    mocks.materializeEngagementLinkExisting.mockResolvedValue('eng-1')
     const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-1' }))
-    expect(result).toMatchObject({ ok: true, engagementId: 'eng-1' })
+    expect(result).toMatchObject({ ok: false, error: 'Cet effet contractuel ne permet pas de rattacher un Engagement existant' })
+    expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
   })
 })
 
@@ -465,27 +481,32 @@ describe('createEngagementFromProposalAction / linkEngagementToProposalAction �
 // CONFIRM oblige déjà l'utilisateur à choisir contract_effect.targetEngagementId
 // pendant la qualification. Le serveur ne doit plus jamais faire confiance à un
 // engagement_id différent envoyé par le client — seule la cible persistée fait foi.
-
+//
+// Durci DOC-CONTRACT-OS-1B1-UX-BRIDGE (revue Vincent/ChatGPT 2026-09-29, défaut 1) :
+// un CONFIRM qualifié est désormais refusé par effectAllowsLinkExistingForDocument
+// avant même d'atteindre cette vérification de cible — link_existing legacy n'est
+// plus jamais atteignable pour un effet qualifié, cible correcte ou non. Le
+// verrouillage de cible reste correct pour le CCTP historique (non qualifié),
+// seul cas où link_existing legacy s'exécute encore.
 describe('linkEngagementToProposalAction — cible verrouillée pour CONFIRM (micro-fix continuité)', () => {
-  it('CONFIRM cible A → tentative de rattacher B → refus serveur', async () => {
+  it('CONFIRM cible A → tentative de rattacher B → refus serveur (gate 1B1, avant même la vérification de cible)', async () => {
     mocks.from.mockImplementation(buildAccessMock({
       documentType: 'ordre_service',
       sourcePayload: { contract_effect: { effect: 'confirm', targetEngagementId: 'eng-A' } },
     }))
     const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-B' }))
-    expect(result).toEqual({ ok: false, error: 'Cet Engagement ne correspond pas à la cible validée lors de la qualification' })
+    expect(result).toEqual({ ok: false, error: 'Cet effet contractuel ne permet pas de rattacher un Engagement existant' })
     expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
   })
 
-  it('CONFIRM cible A → rattacher A → autorisé', async () => {
+  it('CONFIRM cible A → rattacher A → refus quand même (seul 1B1 matérialise un effet qualifié)', async () => {
     mocks.from.mockImplementation(buildAccessMock({
       documentType: 'ordre_service',
       sourcePayload: { contract_effect: { effect: 'confirm', targetEngagementId: 'eng-A' } },
     }))
-    mocks.materializeEngagementLinkExisting.mockResolvedValue('eng-A')
     const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-A' }))
-    expect(result).toMatchObject({ ok: true, engagementId: 'eng-A' })
-    expect(mocks.materializeEngagementLinkExisting).toHaveBeenCalledWith('prop-1', 'eng-A', 'user-admin')
+    expect(result).toEqual({ ok: false, error: 'Cet effet contractuel ne permet pas de rattacher un Engagement existant' })
+    expect(mocks.materializeEngagementLinkExisting).not.toHaveBeenCalled()
   })
 })
 
@@ -544,10 +565,28 @@ describe('materializeContractEffectAction — chemin canonique unique (DOC-CONTR
     expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
   })
 
-  it('modify qualifié sans effectPayload — refus (CHECK migration 445)', async () => {
+  // Durci DOC-CONTRACT-OS-1B1-UX-BRIDGE, correctif défaut 2 (revue Vincent/ChatGPT
+  // 2026-09-29) : cette UX ne collecte qu'un texte libre humain pour MODIFY,
+  // jamais une structure effect_payload générique — l'application est bloquée
+  // ici quel que soit l'état du payload de qualification, avant même d'atteindre
+  // la RPC. La qualification elle-même (setContractEffectAction) reste possible,
+  // seule cette matérialisation est suspendue.
+  it('modify qualifié sans effectPayload — refus (application indisponible)', async () => {
     const fd = buildMaterializeForm('modify', { targetEngagementId: 'eng-1', effectPayload: null })
     const result = await materializeContractEffectAction(fd)
-    expect(result).toEqual({ ok: false, error: 'Qualification incomplète : valeur modifiée non décrite' })
+    expect(result).toMatchObject({ ok: false })
+    expect(result.error).toMatch(/indisponible/)
+    expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
+  })
+
+  it('modify qualifié avec effectPayload renseigné — refus quand même, jamais matérialisé avec un texte libre', async () => {
+    const fd = buildMaterializeForm('modify', {
+      targetEngagementId: 'eng-1',
+      effectPayload: { description: 'fréquence trimestrielle' },
+    })
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toMatchObject({ ok: false })
+    expect(result.error).toMatch(/indisponible/)
     expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
   })
 
@@ -568,19 +607,6 @@ describe('materializeContractEffectAction — chemin canonique unique (DOC-CONTR
     expect(result).toEqual({ ok: true, engagementId: 'eng-A', effectId: 'effect-2' })
     expect(mocks.materializeEngagementContractEffect).toHaveBeenCalledWith('prop-1', 'user-admin', {
       category: null, kind: null, measurable: null, effectPayload: undefined,
-    })
-  })
-
-  it('modify qualifié avec effectPayload renseigné — appelle la RPC avec le payload', async () => {
-    mocks.materializeEngagementContractEffect.mockResolvedValue({ engagementId: 'eng-1', effectId: 'effect-3' })
-    const fd = buildMaterializeForm('modify', {
-      targetEngagementId: 'eng-1',
-      effectPayload: { description: 'fréquence trimestrielle' },
-    })
-    const result = await materializeContractEffectAction(fd)
-    expect(result).toEqual({ ok: true, engagementId: 'eng-1', effectId: 'effect-3' })
-    expect(mocks.materializeEngagementContractEffect).toHaveBeenCalledWith('prop-1', 'user-admin', {
-      category: null, kind: null, measurable: null, effectPayload: { description: 'fréquence trimestrielle' },
     })
   })
 

@@ -176,7 +176,12 @@ describe('finalizeAcceptedEngagementsForRun — garde EFFET × TEMPORALITÉ (DOC
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('new — comportement historique conservé (création normale)', async () => {
+  // Durci DOC-CONTRACT-OS-1B1-UX-BRIDGE (revue Vincent/ChatGPT 2026-09-29,
+  // défaut 1) : un NEW qualifié sort lui aussi du chemin bulk/legacy — seule
+  // materializeContractEffectAction (1B1), un geste humain explicite par
+  // proposition, peut le matérialiser. Le bulk ne doit jamais y être routé
+  // silencieusement : la proposition reste comptée en needsReviewCount.
+  it('new qualifié — jamais créé par le bulk, compté en needsReviewCount, aucun appel RPC legacy', async () => {
     proposalsResult = {
       data: [{
         id: 'p1',
@@ -184,12 +189,11 @@ describe('finalizeAcceptedEngagementsForRun — garde EFFET × TEMPORALITÉ (DOC
       }],
       error: null,
     }
-    rpc.mockResolvedValue({ data: 'eng-x', error: null })
 
     const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1' })
 
-    expect(result).toEqual({ ok: true, createdCount: 1, needsReviewCount: 0 })
-    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(result).toEqual({ ok: true, createdCount: 0, needsReviewCount: 1 })
+    expect(rpc).not.toHaveBeenCalled()
   })
 
   it('sans contract_effect (CCTP historique, jamais qualifié) — comportement historique conservé', async () => {
@@ -247,7 +251,8 @@ describe('finalizeAcceptedEngagementsForRun — documentType (DOC-CONTRACT-OS-1A
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('ordre_service + effet NEW qualifié — bulk crée (la matrice prime dès qu\'un effet existe)', async () => {
+  // Durci DOC-CONTRACT-OS-1B1-UX-BRIDGE (revue Vincent/ChatGPT 2026-09-29, défaut 1).
+  it('ordre_service + effet NEW qualifié — bulk ne crée rien, needsReviewCount, aucun appel RPC legacy', async () => {
     proposalsResult = {
       data: [{
         id: 'p1',
@@ -255,11 +260,11 @@ describe('finalizeAcceptedEngagementsForRun — documentType (DOC-CONTRACT-OS-1A
       }],
       error: null,
     }
-    rpc.mockResolvedValue({ data: 'eng-x', error: null })
 
     const result = await finalizeAcceptedEngagementsForRun({ runId: 'run-1', userId: 'user-1', documentType: 'ordre_service' })
 
-    expect(result).toEqual({ ok: true, createdCount: 1, needsReviewCount: 0 })
+    expect(result).toEqual({ ok: true, createdCount: 0, needsReviewCount: 1 })
+    expect(rpc).not.toHaveBeenCalled()
   })
 
   it('documentType absent (comportement legacy par défaut) — équivalent à CCTP, bulk crée normalement', async () => {

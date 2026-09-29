@@ -15,6 +15,12 @@ export default defineConfig({
     // par fichier ; quick fix = série fichier-à-fichier. Les tests à l'intérieur
     // d'un même fichier restent en parallèle (rapide).
     fileParallelism: false,
+    // Exclut les worktrees Git imbriqués sous .claude/worktrees/ : un filtre de
+    // fichier CLI (`vitest run tests/foo.test.ts`) matche par sous-chaîne et
+    // peut donc aussi sélectionner la copie du même fichier dans un worktree
+    // détaché, qui a son propre node_modules/react → deux copies de React
+    // chargées dans le même process → "Invalid hook call".
+    exclude: [...configDefaults.exclude, '.claude/**'],
     // Deux projets : `unit` (pur, sans base — joué en CI) et `integration`
     // (vraie Supabase — joué en local / job DB dédié). `vitest run` sans
     // `--project` lance les deux (run local complet inchangé). Le CI fait
@@ -24,7 +30,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          exclude: [...configDefaults.exclude, ...INTEGRATION_TESTS],
+          exclude: [...configDefaults.exclude, '.claude/**', ...INTEGRATION_TESTS],
         },
       },
       {

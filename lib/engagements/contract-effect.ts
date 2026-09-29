@@ -132,13 +132,19 @@ export function documentRequiresContractEffectQualification(documentType: string
   return !!documentType && DOCUMENT_TYPES_REQUIRING_QUALIFICATION.includes(documentType)
 }
 
+// Correctif DOC-CONTRACT-OS-1B1-UX-BRIDGE (revue Vincent/ChatGPT 2026-09-29,
+// défaut 1) : dès qu'un effet contractuel est qualifié (effect !== null), seule
+// la primitive canonique 1B1 (materializeContractEffectAction) peut matérialiser
+// — plus jamais les anciennes RPC create_new/link_existing, y compris pour un
+// NEW/CONFIRM qui aurait pu leur « correspondre ». Le chemin legacy reste
+// réservé exclusivement au CCTP historique jamais qualifié (effect === null).
 export function effectAllowsCreateNewForDocument(documentType: string | null | undefined, effect: ContractEffect | null): boolean {
-  if (effect !== null) return effectAllowsCreateNew(effect)
+  if (effect !== null) return false
   return !documentRequiresContractEffectQualification(documentType)
 }
 
 export function effectAllowsLinkExistingForDocument(documentType: string | null | undefined, effect: ContractEffect | null): boolean {
-  if (effect !== null) return effectAllowsLinkExisting(effect)
+  if (effect !== null) return false
   return !documentRequiresContractEffectQualification(documentType)
 }
 

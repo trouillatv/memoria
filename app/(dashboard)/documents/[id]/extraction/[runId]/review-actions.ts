@@ -543,6 +543,24 @@ export async function materializeContractEffectAction(fd: FormData): Promise<{
     }
   }
 
+  // DOC-CONTRACT-OS-1B1-UX-BRIDGE, correctif défaut 2 (revue Vincent/ChatGPT
+  // 2026-09-29) : cette UX ne collecte qu'un texte libre humain (« Valeur
+  // modifiée ») pour MODIFY — aucune structure effect_payload générique
+  // n'existe encore que ce champ puisse remplir correctement (le CHECK
+  // migration 445 n'exige que la non-vacuité, jamais une forme précise).
+  // Écrire ce texte tel quel dans engagement_contract_effects.effect_payload
+  // produirait une donnée contractuelle durablement mal modélisée — jamais
+  // acceptable même pour fermer ce bridge. Bloqué ici tant que DOC-CONTRACT-OS-1B
+  // ne définit pas ce modèle ; la qualification (effet/scope_key/description)
+  // reste enregistrable normalement via setContractEffectAction, seule la
+  // matérialisation est suspendue.
+  if (qualifiedEffect === 'modify') {
+    return {
+      ok: false,
+      error: 'Application de « Modification » indisponible pour l’instant : aucune structure de valeur modifiée n’est encore définie (DOC-CONTRACT-OS-1B). La qualification reste enregistrée.',
+    }
+  }
+
   let category: EngagementCategory | null = null
   let kind: EngagementKind | null = null
   let measurable: boolean | null = null
@@ -559,10 +577,6 @@ export async function materializeContractEffectAction(fd: FormData): Promise<{
     category = categoryRaw as EngagementCategory
     kind = kindRaw as EngagementKind
     measurable = measurableRaw === 'true'
-  }
-
-  if (effectRequiresPayload(qualifiedEffect) && !qualification?.effectPayload) {
-    return { ok: false, error: 'Qualification incomplète : valeur modifiée non décrite' }
   }
 
   try {

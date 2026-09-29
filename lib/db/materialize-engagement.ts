@@ -115,9 +115,12 @@ export async function finalizeAcceptedEngagementsForRun(input: {
     const payload = (p.source_payload as Record<string, unknown> | null) ?? {}
 
     // Qualification EFFET × TEMPORALITÉ (DOC-CONTRACT-OS-1A, mandat de fermeture
-    // Vincent 2026-09-28) : une proposition qualifiée conflict, non_engagement,
-    // confirm, modify ou suspend ne doit JAMAIS être créée automatiquement comme
-    // nouvel Engagement par ce geste groupé. Absence de qualification (CCTP
+    // Vincent 2026-09-28 ; durci DOC-CONTRACT-OS-1B1-UX-BRIDGE, revue 2026-09-29
+    // défaut 1) : dès qu'un effet contractuel est qualifié — y compris NEW —
+    // cette proposition sort du chemin legacy/groupé et compte en
+    // needsReviewCount. L'application d'un effet contractuel qualifié reste un
+    // geste humain explicite, un par un, via materializeContractEffectAction —
+    // jamais routée silencieusement ici. Absence de qualification (CCTP
     // historique) = comportement inchangé.
     const contractEffect = payload.contract_effect as { effect?: unknown } | undefined
     const qualifiedEffect = typeof contractEffect?.effect === 'string' ? (contractEffect.effect as ContractEffect) : null

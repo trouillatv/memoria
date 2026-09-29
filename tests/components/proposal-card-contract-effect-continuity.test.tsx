@@ -242,6 +242,27 @@ describe('ProposalCard — DOC-CONTRACT-OS-1A-UX — continuité carte OS/Avenan
     expect(fd.get('engagement_id')).toBeNull()
   })
 
+  // Correctif défaut 2 (revue Vincent/ChatGPT 2026-09-29) : MODIFY validé ne
+  // doit jamais afficher « Appliquer l'effet contractuel » — cette UX ne
+  // collecte qu'un texte libre humain, aucune structure effect_payload
+  // générique n'existe encore. La qualification reste visible comme validée ;
+  // seule l'application est expliquée comme indisponible.
+  it('OS MODIFY validé → pas de CTA Appliquer, message d’indisponibilité affiché', () => {
+    renderOsCard({
+      source_payload: {
+        kind: 'controle', category: 'compliance', measurable: true,
+        frequency_raw: 'mensuel', ai_confidence: 0.9,
+        contract_effect: {
+          effect: 'modify', temporality: 'permanent', targetEngagementId: 'eng-1',
+          startsOn: null, endsOn: null, resumeOn: null, scope: 'Zone Z2',
+          scopeKey: 'frequency', effectPayload: { description: 'passage à 3x/semaine' },
+        },
+      },
+    })
+    expect(screen.queryByText('Appliquer l’effet contractuel')).not.toBeInTheDocument()
+    expect(screen.getByText(/Application indisponible pour l’instant/)).toBeInTheDocument()
+  })
+
   it('qualification validée puis champ modifié → CTA disparaît jusqu’à revalidation', () => {
     renderOsCard({
       source_payload: {

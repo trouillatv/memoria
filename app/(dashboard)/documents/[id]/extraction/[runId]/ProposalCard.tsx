@@ -382,7 +382,14 @@ export function ProposalCard({
   const canCreateEngagement = acceptedOrEdited && validatedEffect === null && effectAllowsCreateNewForDocument(documentType, validatedEffect)
   const canLinkEngagement = acceptedOrEdited && validatedEffect === null && effectAllowsLinkExistingForDocument(documentType, validatedEffect)
   const canMaterializeEngagement = canCreateEngagement || canLinkEngagement
-  const canApplyContractEffect = acceptedOrEdited && effectIsMaterializableViaRpc(validatedEffect)
+  // Correctif défaut 2 (revue Vincent/ChatGPT 2026-09-29) : MODIFY est qualifiable
+  // (la RPC 1B1 sait techniquement le matérialiser) mais cette UX ne collecte
+  // qu'un texte libre humain pour la valeur modifiée — aucune structure
+  // effect_payload générique n'existe encore que ce champ puisse remplir
+  // correctement. Bloqué côté serveur (materializeContractEffectAction) ; ce
+  // garde client évite en plus d'afficher un CTA qui échouerait systématiquement.
+  const modifyPayloadUnsupported = validatedEffect === 'modify'
+  const canApplyContractEffect = acceptedOrEdited && effectIsMaterializableViaRpc(validatedEffect) && !modifyPayloadUnsupported
   const requiresQualificationFirst = acceptedOrEdited && !validatedEffect && documentRequiresContractEffectQualification(documentType)
   // Un effet choisi localement mais pas encore validé ne doit afficher ni Créer/Rattacher
   // ni le message « qualifiez d'abord » — un message dédié invite à valider d'abord.
@@ -945,9 +952,11 @@ export function ProposalCard({
                   ? (validatedEffect === 'conflict'
                       ? 'Conflit documentaire non résolu — la matérialisation est bloquée tant que l’effet n’est pas requalifié.'
                       : 'Effet « Non-Engagement » — cette proposition ne doit jamais devenir un Engagement.')
-                  : requiresQualificationFirst
-                    ? 'Qualifiez d’abord l’effet contractuel de ce document avant de créer ou rattacher un Engagement.'
-                    : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
+                  : modifyPayloadUnsupported
+                    ? 'Qualification enregistrée. Application indisponible pour l’instant : aucune structure de valeur modifiée n’est encore définie (DOC-CONTRACT-OS-1B).'
+                    : requiresQualificationFirst
+                      ? 'Qualifiez d’abord l’effet contractuel de ce document avant de créer ou rattacher un Engagement.'
+                      : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
             </p>
           )}
         </div>
