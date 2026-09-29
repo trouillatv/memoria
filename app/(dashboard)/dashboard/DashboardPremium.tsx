@@ -18,6 +18,7 @@ import type { OrganizationIdentityMap } from '@/lib/db/organisations'
 import type { HomeHeroDelta } from '@/lib/documents/home-hero-delta'
 import type { PvSubjectRef } from '@/lib/documents/occurrence-pv-summary'
 import type { SiteActionsPilotage } from '@/lib/knowledge/actions-pilotage'
+import { buildVisiblePilotageActions } from '@/lib/knowledge/actions-pilotage'
 import { EntityLogo } from '@/components/ui/EntityLogo'
 
 type Props = {
@@ -42,6 +43,10 @@ const surface = 'rounded-[24px] border border-[#e5eaf3] bg-white shadow-[0_10px_
 
 function dateLabel(iso: string) {
   return new Date(iso).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+}
+
+function dueDateLabel(iso: string) {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
 function Metric({ icon: Icon, value, label, tone }: { icon: LucideIcon; value: number; label: string; tone: string }) {
@@ -70,18 +75,30 @@ function heroTeachings(heroDelta: HomeHeroDelta | null): string[] {
   return lines.length > 0 ? lines.slice(0, 3) : ['Aucune évolution détectée depuis le PV précédent.']
 }
 
-/** Section 3 — un groupe du détail scrollable du Hero (« NOUVEAUX (3) » + liste). */
-function HeroDetailGroup({ title, items, siteId }: { title: string; items: PvSubjectRef[]; siteId: string }) {
+/** Section 3 — une colonne du détail du Hero (« NOUVEAUX (3) » + liste), bornée en
+ *  hauteur et défilante indépendamment des 3 autres. `muted` = rendu plus neutre
+ *  pour « Non mentionnés » (jamais présenté comme un changement au même titre). */
+function HeroDetailGroup({
+  title,
+  items,
+  siteId,
+  muted,
+}: {
+  title: string
+  items: PvSubjectRef[]
+  siteId: string
+  muted?: boolean
+}) {
   if (items.length === 0) return null
   return (
-    <div>
+    <div className={`rounded-xl border p-3 ${muted ? 'border-[#eef1f6] bg-[#fafbfd]' : 'border-[#eef1f6]'}`}>
       <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#7b879d]">{title} ({items.length})</p>
-      <ul className="mt-1.5 space-y-1">
+      <ul className="mt-1.5 max-h-[220px] space-y-1 overflow-y-auto pr-1">
         {items.map((ref) => (
           <li key={ref.canonicalSubjectId}>
             <Link
               href={`/sites/${siteId}/historique/sujets/${ref.canonicalSubjectId}`}
-              className="text-sm text-[#34415c] hover:text-[#1463e8]"
+              className={`text-sm hover:text-[#1463e8] ${muted ? 'text-[#7b879d]' : 'text-[#34415c]'}`}
             >
               {ref.label}
             </Link>
@@ -120,10 +137,13 @@ export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; hero
         <EntityLogo src={site.displayIdentity.logoUrl} label={site.displayIdentity.label} size="xl" />
         <div className="min-w-0">
           <h2 className="truncate text-xl font-bold tracking-tight text-[#101a35] sm:text-2xl">{site.name}</h2>
+          {/* FIX 1 (review ChatGPT/Vincent SHA 40a4ba65) — `site.subjectCount` (population
+              proposition/thread STI, read-model cartes) et le delta ci-dessous (population
+              canonicale proposition UNION canonical_subject_occurrence, `getPvDelta`) sont
+              deux read-models distincts et non comparables : ne jamais les juxtaposer ici. */}
           <p className="mt-1 text-xs text-[#65718b]">
             {heroDelta ? `Dernier PV intégré : ${new Date(heroDelta.toEffectiveDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Aucun PV intégré'}
             {' · '}{site.pvCount} PV analysé{site.pvCount > 1 ? 's' : ''}
-            {' · '}{site.subjectCount} sujet{site.subjectCount > 1 ? 's' : ''} suivi{site.subjectCount > 1 ? 's' : ''}
           </p>
         </div>
       </div>
@@ -146,11 +166,11 @@ export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; hero
           {m && (m.nouveaux.length > 0 || m.evolutions.length > 0 || m.resolus.length > 0 || m.nonMentionnes.length > 0) && (
             <div className="mt-6 border-t border-[#edf0f6] pt-5">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Détail des changements</p>
-              <div className="mt-3 max-h-[320px] space-y-4 overflow-y-auto pr-1">
+              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <HeroDetailGroup title="Nouveaux" items={m.nouveaux} siteId={site.id} />
                 <HeroDetailGroup title="Évolutions" items={m.evolutions} siteId={site.id} />
                 <HeroDetailGroup title="Résolus" items={m.resolus} siteId={site.id} />
-                <HeroDetailGroup title="Non mentionnés" items={m.nonMentionnes} siteId={site.id} />
+                <HeroDetailGroup title="Non mentionnés" items={m.nonMentionnes} siteId={site.id} muted />
               </div>
             </div>
           )}
@@ -300,15 +320,17 @@ const memoryGroupLabel = (group: string, count: number) => (count > 1 ? group : 
 
 export type HomeMemoryCounter = { group: string; count: number }
 export type HomeMemoryHighlight = { id: string; group: string; title: string; href: string | null; nature: string | null }
-export type HomeMemorySummary = { counters: HomeMemoryCounter[]; highlights: HomeMemoryHighlight[] }
+export type HomeMemoryGroupBlock = { group: string; items: HomeMemoryHighlight[] }
+export type HomeMemorySummary = { counters: HomeMemoryCounter[]; groups: HomeMemoryGroupBlock[] }
 
 /**
  * Présentateur pur (aucun appel réseau/IA, aucune modification de
  * `getMemoryReview`) : synthétise la mémoire déjà chargée du chantier actif en
  * au plus 4 compteurs (uniquement les groupes réellement présents) et TOUS les
- * temps forts (Section 7 — liste complète, scrollable côté rendu). Les
- * intervenants ne sont mis en avant qu'à défaut de tout autre groupe — jamais
- * si une décision, une vigilance ou une connaissance existe déjà.
+ * `review.confirmed`, regroupés par `group` — AUCUNE exclusion (fix review
+ * ChatGPT/Vincent SHA 40a4ba65 : les Intervenants n'étaient plus affichés dès
+ * qu'un autre groupe existait, contraire à la maquette). Ordre des groupes =
+ * `memoryGroupRank`, ordre des items conservé à l'intérieur de chaque groupe.
  */
 function buildHomeMemorySummary(review: MemoryReview): HomeMemorySummary {
   const countByGroup = new Map<string, number>()
@@ -320,13 +342,15 @@ function buildHomeMemorySummary(review: MemoryReview): HomeMemorySummary {
     .sort((a, b) => memoryGroupRank(a.group) - memoryGroupRank(b.group))
     .slice(0, 4)
 
-  const hasNonIntervenant = review.confirmed.some((c) => c.group !== 'Intervenants')
-  const highlightPool = hasNonIntervenant ? review.confirmed.filter((c) => c.group !== 'Intervenants') : review.confirmed
-  const highlights = [...highlightPool]
-    .sort((a, b) => memoryGroupRank(a.group) - memoryGroupRank(b.group))
-    .map((item) => ({ id: item.id, group: item.group, title: item.title, href: item.href, nature: item.nature }))
+  const groupOrder = [...countByGroup.keys()].sort((a, b) => memoryGroupRank(a) - memoryGroupRank(b))
+  const groups: HomeMemoryGroupBlock[] = groupOrder.map((group) => ({
+    group,
+    items: review.confirmed
+      .filter((c) => c.group === group)
+      .map((item) => ({ id: item.id, group: item.group, title: item.title, href: item.href, nature: item.nature })),
+  }))
 
-  return { counters, highlights }
+  return { counters, groups }
 }
 
 export function MemorySouvient({ site, review }: { site: SiteDashboardItem | null; review: MemoryReview }) {
@@ -337,7 +361,7 @@ export function MemorySouvient({ site, review }: { site: SiteDashboardItem | nul
       <p className="mt-1 text-xs text-[#7b879d]">Ce que MemorIA sait déjà de ce chantier.</p>
       {!site ? (
         <p className="mt-4 text-sm italic text-[#73809a]">Aucun chantier actif.</p>
-      ) : summary.highlights.length === 0 ? (
+      ) : summary.groups.length === 0 ? (
         <p className="mt-4 text-sm italic text-[#73809a]">Aucun élément de mémoire utile mis en avant pour ce chantier pour le moment.</p>
       ) : (
         <>
@@ -350,22 +374,28 @@ export function MemorySouvient({ site, review }: { site: SiteDashboardItem | nul
               ))}
             </div>
           )}
-          <div className="mt-4 max-h-[400px] space-y-3 overflow-y-auto pr-1">
-            {summary.highlights.map((item) => (
-              <div key={item.id}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]">{item.group}</p>
-                {item.href ? (
-                  <Link href={item.href} className="mt-1 block text-sm font-medium text-[#17213a] hover:text-[#1463e8]">{item.title}</Link>
-                ) : (
-                  <p className="mt-1 text-sm font-medium text-[#17213a]">{item.title}</p>
-                )}
-                {item.nature && <p className="mt-1 text-xs text-[#65718b]">{item.nature}</p>}
+          <div className="mt-4 max-h-[400px] space-y-4 overflow-y-auto pr-1">
+            {summary.groups.map((block) => (
+              <div key={block.group}>
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]">{block.group}</p>
+                <div className="mt-1.5 space-y-2">
+                  {block.items.map((item) => (
+                    <div key={item.id}>
+                      {item.href ? (
+                        <Link href={item.href} className="block text-sm font-medium text-[#17213a] hover:text-[#1463e8]">{item.title}</Link>
+                      ) : (
+                        <p className="text-sm font-medium text-[#17213a]">{item.title}</p>
+                      )}
+                      {item.nature && <p className="mt-0.5 text-xs text-[#65718b]">{item.nature}</p>}
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
         </>
       )}
-      {site && summary.highlights.length > 0 && (
+      {site && summary.groups.length > 0 && (
         <Link href={`/sites/${site.id}/memoire`} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">
           Voir toute la mémoire <ArrowRight className="h-3.5 w-3.5" />
         </Link>
@@ -386,24 +416,28 @@ export function MemorySouvientSkeleton() {
 }
 
 /**
- * Section 6 — « Actions du chantier » : strictement `activeSiteId`-scopé, liste
- * aplatie de `pilotage.subjects[].cbos` actifs dans l'ordre canonique déjà établi
- * par `getSiteActionsPilotage` (aucun re-tri ici). `lateCount` vient du pipeline
- * temporel dédié (rawOpen → groupActionsByThread → isActionOverdue) calculé côté
- * page.tsx, car `PilotageCbo` ne porte pas `dueDateStatus`.
+ * Section 6 — « Actions du chantier » : strictement `activeSiteId`-scopé, population
+ * EXHAUSTIVE = CBO actifs rattachés à un sujet PLUS `pilotage.unattachedActions`
+ * (fix review ChatGPT/Vincent SHA 40a4ba65 — ces dernières étaient invisibles alors
+ * que `getSiteActionsPilotage` documente qu'elles ne doivent jamais le devenir),
+ * via `buildVisiblePilotageActions` (aucun re-tri ici). Le compteur affiché =
+ * `items.length`, la même population réellement rendue — plus `pilotage.kpi.activeCbo`
+ * qui excluait les actions non rattachées. `overdueDaysByActionId` vient du pipeline
+ * temporel dédié (targetActionId → raw due_date_status → isActionOverdue) calculé
+ * côté page.tsx, car `PilotageCbo` ne porte pas `dueDateStatus`.
  */
 export function ActionsDuChantier({
   site,
   pilotage,
   lateCount,
+  overdueDaysByActionId,
 }: {
   site: SiteDashboardItem | null
   pilotage: SiteActionsPilotage
   lateCount: number
+  overdueDaysByActionId: Record<string, number>
 }) {
-  const items = pilotage.subjects.flatMap((subject) =>
-    subject.cbos.filter((cbo) => cbo.active).map((cbo) => ({ subject, cbo })),
-  )
+  const items = buildVisiblePilotageActions(pilotage)
   return (
     <section className={`${surface} p-5 sm:p-6`}>
       <div className="flex items-center gap-2 text-[#ef8e45]"><ListTodo className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Actions du chantier</h2></div>
@@ -413,22 +447,37 @@ export function ActionsDuChantier({
       ) : (
         <>
           <p className="mt-3 text-xs font-medium text-[#65718b]">
-            {pilotage.kpi.activeCbo} action{pilotage.kpi.activeCbo > 1 ? 's' : ''} · {lateCount} en retard
+            {items.length} action{items.length > 1 ? 's' : ''} · {lateCount} en retard
           </p>
           {items.length === 0 ? (
             <p className="mt-4 text-sm italic text-[#73809a]">Aucune action en cours sur ce chantier.</p>
           ) : (
             <div className="mt-4 max-h-[400px] space-y-2 overflow-y-auto pr-1">
-              {items.map(({ subject, cbo }) => (
-                <Link
-                  key={cbo.cboId}
-                  href={cbo.targetActionId ? `/sites/${site.id}/actions?actionId=${cbo.targetActionId}` : `/sites/${site.id}/actions`}
-                  className="block rounded-xl border border-[#eef1f6] px-3 py-2.5 hover:border-[#cbd9f7]"
-                >
-                  <p className="truncate text-[10px] font-semibold uppercase tracking-[0.1em] text-[#7b879d]">{subject.label}</p>
-                  <p className="mt-0.5 truncate text-sm font-medium text-[#17213a]">{cbo.label}</p>
-                </Link>
-              ))}
+              {items.map(({ subject, cbo }) => {
+                const overdueDays = cbo.targetActionId ? overdueDaysByActionId[cbo.targetActionId] : undefined
+                return (
+                  <Link
+                    key={cbo.cboId}
+                    href={cbo.targetActionId ? `/sites/${site.id}/actions?actionId=${cbo.targetActionId}` : `/sites/${site.id}/actions`}
+                    className="block rounded-xl border border-[#eef1f6] px-3 py-2.5 hover:border-[#cbd9f7]"
+                  >
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-[0.1em] text-[#7b879d]">
+                      {subject ? subject.label : 'Action non rattachée'}
+                    </p>
+                    <p className="mt-0.5 truncate text-sm font-medium text-[#17213a]">{cbo.label}</p>
+                    {(cbo.dueDate || overdueDays !== undefined) && (
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        {cbo.dueDate && <span className="text-xs text-[#7b879d]">Échéance {dueDateLabel(cbo.dueDate)}</span>}
+                        {overdueDays !== undefined && (
+                          <span className="rounded-full bg-[#fdecea] px-2 py-0.5 text-[10px] font-semibold text-[#b4553f]">
+                            En retard{overdueDays > 0 ? ` de ${overdueDays} j` : ''}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </Link>
+                )
+              })}
             </div>
           )}
           <Link href={`/sites/${site.id}/actions`} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">

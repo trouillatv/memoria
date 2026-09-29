@@ -9,9 +9,9 @@ import { getUpcomingItems } from '@/lib/db/upcoming-items'
 import { getSitesDashboard, isSiteAccessible, type SiteDashboardItem } from '@/lib/db/sites-dashboard'
 import { getMemoryReview, type MemoryReview } from '@/lib/knowledge/memory-review'
 import { getHomeHeroDelta } from '@/lib/documents/home-hero-delta'
-import { getSiteActionsPilotage, emptyActionsPilotage } from '@/lib/knowledge/actions-pilotage'
-import { readSiteActionSummaries, groupActionsByThread } from '@/lib/knowledge/repository'
-import { isActionOverdue } from '@/lib/knowledge/overdue-action'
+import { getSiteActionsPilotage, emptyActionsPilotage, buildVisiblePilotageActions } from '@/lib/knowledge/actions-pilotage'
+import { readSiteActionSummaries } from '@/lib/knowledge/repository'
+import { isActionOverdue, daysBetween } from '@/lib/knowledge/overdue-action'
 import { todayLocalIso } from '@/lib/time/local-date'
 import { getDashboardDeadlinesToPlan } from '@/lib/db/dashboard-deadlines'
 import { WelcomeCard } from './WelcomeCard'
@@ -49,12 +49,22 @@ async function ActiveActions({ site }: { site: SiteDashboardItem }) {
     readSiteActionSummaries(site.id).catch(() => []),
   ])
   const today = todayLocalIso()
-  const rawOpen = rawRows.filter((a) => a.status === 'open' || a.status === 'planned')
-  const groups = groupActionsByThread(rawOpen)
-  const lateCount = groups.filter((g) =>
-    isActionOverdue(g.representative.status, g.representative.due_date, g.representative.due_date_status, today),
-  ).length
-  return <ActionsDuChantier site={site} pilotage={pilotage} lateCount={lateCount} />
+  const rawById = new Map(rawRows.map((r) => [r.id, r]))
+  // FIX 3/4 (review ChatGPT/Vincent SHA 40a4ba65) — lateCount reconcilié par
+  // targetActionId sur la population RÉELLEMENT visible, jamais une approximation
+  // par thread (l'ancien groupActionsByThread ne couvrait pas unattachedActions).
+  const visible = buildVisiblePilotageActions(pilotage)
+  const overdueDaysByActionId: Record<string, number> = {}
+  for (const { cbo } of visible) {
+    if (!cbo.targetActionId) continue
+    const raw = rawById.get(cbo.targetActionId)
+    if (!raw) continue
+    if (isActionOverdue(raw.status, raw.due_date, raw.due_date_status, today)) {
+      overdueDaysByActionId[cbo.targetActionId] = daysBetween(raw.due_date as string, today)
+    }
+  }
+  const lateCount = Object.keys(overdueDaysByActionId).length
+  return <ActionsDuChantier site={site} pilotage={pilotage} lateCount={lateCount} overdueDaysByActionId={overdueDaysByActionId} />
 }
 
 export default async function DashboardPage({
@@ -133,7 +143,7 @@ export default async function DashboardPage({
       <ActiveActions site={activeSite} />
     </Suspense>
   ) : (
-    <ActionsDuChantier site={null} pilotage={emptyActionsPilotage()} lateCount={0} />
+    <ActionsDuChantier site={null} pilotage={emptyActionsPilotage()} lateCount={0} overdueDaysByActionId={{}} />
   )
 
   return (

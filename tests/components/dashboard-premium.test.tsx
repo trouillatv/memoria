@@ -150,6 +150,7 @@ type BaseOverrides = Omit<Partial<Props>, 'heroSlot' | 'memorySlot' | 'actionsSl
   activeReview?: MemoryReview
   activePilotage?: SiteActionsPilotage
   activeLateCount?: number
+  activeOverdueDaysByActionId?: Record<string, number>
 }
 
 function baseProps(over: BaseOverrides = {}): Props {
@@ -158,6 +159,7 @@ function baseProps(over: BaseOverrides = {}): Props {
     activeReview = emptyReview(),
     activePilotage = emptyActionsPilotage(),
     activeLateCount = 0,
+    activeOverdueDaysByActionId = {},
     sites = [site()],
     activeSiteId = 'site-1',
     ...rest
@@ -171,7 +173,14 @@ function baseProps(over: BaseOverrides = {}): Props {
     activeSiteId,
     heroSlot: <Hero site={activeSite} heroDelta={heroDelta} />,
     memorySlot: <MemorySouvient site={activeSite} review={activeReview} />,
-    actionsSlot: <ActionsDuChantier site={activeSite} pilotage={activePilotage} lateCount={activeLateCount} />,
+    actionsSlot: (
+      <ActionsDuChantier
+        site={activeSite}
+        pilotage={activePilotage}
+        lateCount={activeLateCount}
+        overdueDaysByActionId={activeOverdueDaysByActionId}
+      />
+    ),
     orgLabels: { 'org-a': 'org-a' },
     organizationMap,
     deadlinesToPlan: [],
@@ -396,9 +405,52 @@ describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)'
     expect(hero.getByText('2 sujets en évolution depuis le PV précédent')).toBeInTheDocument()
     expect(hero.getByText('1 nouveau sujet identifié')).toBeInTheDocument()
     expect(hero.getByText(/4 PV analysés/)).toBeInTheDocument()
-    expect(hero.getByText(/9 sujets suivis/)).toBeInTheDocument()
     const cta = screen.getByRole('link', { name: /Voir ce qui a changé/ })
     expect(cta).toHaveAttribute('href', '/sites/site-1/historique?view=avant-apres')
+  })
+
+  it('FIX 1 (review SHA 40a4ba65) — subjectCount (population proposition/thread) n\'est jamais présenté à côté du delta (population canonicale) : deux read-models non comparables', () => {
+    const heroDelta: HomeHeroDelta = {
+      toRunId: 'run-3',
+      toEffectiveDate: '2026-09-15',
+      fromRunId: 'run-2',
+      metrics: {
+        nouveaux: [{ canonicalSubjectId: 'a', label: 'a' }],
+        evolutions: [],
+        resolus: [],
+        nonMentionnes: [{ canonicalSubjectId: 'z', label: 'z' }],
+      },
+      metricsFailed: false,
+    }
+    render(<DashboardPremium {...baseProps({ heroDelta, sites: [site({ id: 'site-1', pvCount: 4, subjectCount: 47 })] })} />)
+    const hero = within(screen.getByText('Évolution depuis le PV précédent').closest('section') as HTMLElement)
+    expect(hero.queryByText(/sujets? suivis?/)).not.toBeInTheDocument()
+    expect(hero.queryByText(/47/)).not.toBeInTheDocument()
+  })
+
+  it('FIX 4 — le détail des changements affiche les quatre groupes (Nouveaux/Évolutions/Résolus/Non mentionnés)', () => {
+    const heroDelta: HomeHeroDelta = {
+      toRunId: 'run-3',
+      toEffectiveDate: '2026-09-15',
+      fromRunId: 'run-2',
+      metrics: {
+        nouveaux: [{ canonicalSubjectId: 'a', label: 'Sujet nouveau' }],
+        evolutions: [{ canonicalSubjectId: 'b', label: 'Sujet évolution' }],
+        resolus: [{ canonicalSubjectId: 'c', label: 'Sujet résolu' }],
+        nonMentionnes: [{ canonicalSubjectId: 'd', label: 'Sujet non mentionné' }],
+      },
+      metricsFailed: false,
+    }
+    render(<DashboardPremium {...baseProps({ heroDelta })} />)
+    const hero = within(screen.getByText('Évolution depuis le PV précédent').closest('section') as HTMLElement)
+    expect(hero.getByText(/Nouveaux \(1\)/)).toBeInTheDocument()
+    expect(hero.getByText(/Évolutions \(1\)/)).toBeInTheDocument()
+    expect(hero.getByText(/Résolus \(1\)/)).toBeInTheDocument()
+    expect(hero.getByText(/Non mentionnés \(1\)/)).toBeInTheDocument()
+    expect(hero.getByText('Sujet nouveau')).toBeInTheDocument()
+    expect(hero.getByText('Sujet évolution')).toBeInTheDocument()
+    expect(hero.getByText('Sujet résolu')).toBeInTheDocument()
+    expect(hero.getByText('Sujet non mentionné')).toBeInTheDocument()
   })
 
   it('FIX #4 — échec technique du calcul (metricsFailed) → état d\'indisponibilité explicite, jamais "Aucune évolution détectée" ni compteurs fabriqués', () => {
@@ -452,24 +504,24 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
     expect(screen.queryByRole('link', { name: 'Connaissance durable X' })).not.toBeInTheDocument()
   })
 
-  it('un intervenant en tête mais une décision présente → la décision est mise en avant (sans retrier getMemoryReview)', () => {
-    const weakIntervenant = confirmedItem({
+  it('FIX 2 (review SHA 40a4ba65) — un intervenant ET une décision sont TOUS DEUX affichés, chacun sous son groupe (aucune exclusion)', () => {
+    const intervenant = confirmedItem({
       id: 'ci-intervenant',
       group: 'Intervenants',
       title: 'Jean-Pierre Chauvin — Directeur HSE',
     })
-    const richDecision = confirmedItem({
+    const decision = confirmedItem({
       id: 'ci-decision',
       group: 'Décisions',
       title: 'Décision structurante sur le lot gros œuvre',
     })
     render(
       <DashboardPremium
-        {...baseProps({ activeReview: { confirmed: [weakIntervenant, richDecision], toReview: [] } })}
+        {...baseProps({ activeReview: { confirmed: [intervenant, decision], toReview: [] } })}
       />,
     )
     expect(screen.getByText('Décision structurante sur le lot gros œuvre')).toBeInTheDocument()
-    expect(screen.queryByText('Jean-Pierre Chauvin — Directeur HSE')).not.toBeInTheDocument()
+    expect(screen.getByText('Jean-Pierre Chauvin — Directeur HSE')).toBeInTheDocument()
   })
 
   it("seul un intervenant existe → il reste affiché (repli sur confirmed[0])", () => {
@@ -478,12 +530,35 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
     expect(screen.getByText('Jean Dupont — conducteur de travaux')).toBeInTheDocument()
   })
 
-  it('RICHNESS §3 — une vigilance prime sur un intervenant', () => {
+  it('FIX 2 (review SHA 40a4ba65) — une vigilance ET un intervenant sont TOUS DEUX affichés (aucune exclusion)', () => {
     const intervenant = confirmedItem({ id: 'ci-int', group: 'Intervenants', title: 'Marc Petit — HSE' })
     const vigilance = confirmedItem({ id: 'ci-vig', group: 'Points de vigilance', title: 'Accès chantier non sécurisé', href: null })
     render(<DashboardPremium {...baseProps({ activeReview: { confirmed: [intervenant, vigilance], toReview: [] } })} />)
     expect(screen.getByText('Accès chantier non sécurisé')).toBeInTheDocument()
-    expect(screen.queryByText('Marc Petit — HSE')).not.toBeInTheDocument()
+    expect(screen.getByText('Marc Petit — HSE')).toBeInTheDocument()
+  })
+
+  it('FIX 2 (review SHA 40a4ba65) — TOUS les review.confirmed sont rendus (2 Décisions + 2 Vigilances + 2 Connaissances + 2 Intervenants = 8), un seul header par groupe', () => {
+    const items = [
+      confirmedItem({ id: 'd1', group: 'Décisions', title: 'Décision 1' }),
+      confirmedItem({ id: 'd2', group: 'Décisions', title: 'Décision 2' }),
+      confirmedItem({ id: 'v1', group: 'Points de vigilance', title: 'Vigilance 1', href: null }),
+      confirmedItem({ id: 'v2', group: 'Points de vigilance', title: 'Vigilance 2', href: null }),
+      confirmedItem({ id: 'c1', group: 'Ce que le chantier sait', title: 'Connaissance 1', href: null }),
+      confirmedItem({ id: 'c2', group: 'Ce que le chantier sait', title: 'Connaissance 2', href: null }),
+      confirmedItem({ id: 'i1', group: 'Intervenants', title: 'Intervenant 1' }),
+      confirmedItem({ id: 'i2', group: 'Intervenants', title: 'Intervenant 2' }),
+    ]
+    render(<DashboardPremium {...baseProps({ activeReview: { confirmed: items, toReview: [] } })} />)
+    const memorySection = screen.getByText('Mémoire du chantier').closest('section') as HTMLElement
+    for (const title of ['Décision 1', 'Décision 2', 'Vigilance 1', 'Vigilance 2', 'Connaissance 1', 'Connaissance 2', 'Intervenant 1', 'Intervenant 2']) {
+      expect(within(memorySection).getByText(title)).toBeInTheDocument()
+    }
+    // Un seul header visuel par groupe — pas de répétition du libellé de groupe par item.
+    expect(within(memorySection).getAllByText('Décisions')).toHaveLength(1)
+    expect(within(memorySection).getAllByText('Points de vigilance')).toHaveLength(1)
+    expect(within(memorySection).getAllByText('Ce que le chantier sait')).toHaveLength(1)
+    expect(within(memorySection).getAllByText('Intervenants')).toHaveLength(1)
   })
 
   it('SECTION 7 — TOUS les temps forts sont affichés (liste complète, scrollable), aucun plafond à 3', () => {
@@ -579,10 +654,10 @@ describe('DashboardPremium — Actions du chantier (SECTION 6)', () => {
       label: 'Façades',
       cbos: [pilotageCbo({ cboId: 'cbo-1', label: 'Reprendre les enduits', targetActionId: 'action-1' })],
     })
-    const p = pilotage({ kpi: { ...emptyActionsPilotage().kpi, activeCbo: 3 }, subjects: [subject] })
+    const p = pilotage({ subjects: [subject] })
     render(<DashboardPremium {...baseProps({ activePilotage: p, activeLateCount: 1 })} />)
     const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
-    expect(within(section).getByText('3 actions · 1 en retard')).toBeInTheDocument()
+    expect(within(section).getByText('1 action · 1 en retard')).toBeInTheDocument()
     const link = within(section).getByRole('link', { name: /Reprendre les enduits/ })
     expect(link).toHaveAttribute('href', '/sites/site-1/actions?actionId=action-1')
   })
@@ -599,6 +674,57 @@ describe('DashboardPremium — Actions du chantier (SECTION 6)', () => {
     const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
     expect(within(section).getByText('CBO actif')).toBeInTheDocument()
     expect(within(section).queryByText('CBO terminé')).not.toBeInTheDocument()
+  })
+
+  it('FIX 3 (review SHA 40a4ba65) — une pilotage.unattachedActions apparaît dans la liste, avec le libellé de repli "Action non rattachée"', () => {
+    const p = pilotage({
+      subjects: [],
+      unattachedActions: [pilotageCbo({ cboId: 'raw-action-2', label: 'Action orpheline', targetActionId: 'action-2' })],
+    })
+    render(<DashboardPremium {...baseProps({ activePilotage: p })} />)
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    expect(within(section).getByText('Action orpheline')).toBeInTheDocument()
+    expect(within(section).getByText('Action non rattachée')).toBeInTheDocument()
+    const link = within(section).getByRole('link', { name: /Action orpheline/ })
+    expect(link).toHaveAttribute('href', '/sites/site-1/actions?actionId=action-2')
+  })
+
+  it('FIX 3 (review SHA 40a4ba65) — le compteur "N actions" correspond à la population réellement visible (CBO rattachés + unattachedActions), pas à kpi.activeCbo', () => {
+    const subject = pilotageSubject({
+      cbos: [pilotageCbo({ cboId: 'cbo-1', label: 'Action rattachée', targetActionId: 'action-1' })],
+    })
+    const p = pilotage({
+      kpi: { ...emptyActionsPilotage().kpi, activeCbo: 1 },
+      subjects: [subject],
+      unattachedActions: [pilotageCbo({ cboId: 'raw-action-2', label: 'Action orpheline', targetActionId: 'action-2' })],
+    })
+    render(<DashboardPremium {...baseProps({ activePilotage: p })} />)
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    expect(within(section).getByText('2 actions · 0 en retard')).toBeInTheDocument()
+  })
+
+  it('FIX 4 — l\'échéance (cbo.dueDate) est rendue au format jj/mm/aaaa quand elle existe', () => {
+    const subject = pilotageSubject({
+      cbos: [pilotageCbo({ cboId: 'cbo-1', label: 'Contrôle potence Accès Est', targetActionId: 'action-1', dueDate: '2026-10-04' })],
+    })
+    const p = pilotage({ subjects: [subject] })
+    render(<DashboardPremium {...baseProps({ activePilotage: p })} />)
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    expect(within(section).getByText(/Échéance 04\/10\/2026/)).toBeInTheDocument()
+  })
+
+  it('FIX 4 — une action en retard (overdueDaysByActionId) affiche le badge "En retard de N j"', () => {
+    const subject = pilotageSubject({
+      cbos: [pilotageCbo({ cboId: 'cbo-1', label: 'Plan de gestion des eaux', targetActionId: 'action-1', dueDate: '2026-09-16' })],
+    })
+    const p = pilotage({ subjects: [subject] })
+    render(
+      <DashboardPremium
+        {...baseProps({ activePilotage: p, activeLateCount: 1, activeOverdueDaysByActionId: { 'action-1': 13 } })}
+      />,
+    )
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    expect(within(section).getByText(/En retard de 13 j/)).toBeInTheDocument()
   })
 
   it('CTA "Voir toutes les actions" pointe vers la route Actions du chantier', () => {

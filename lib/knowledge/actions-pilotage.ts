@@ -374,3 +374,36 @@ export async function getSiteActionsPilotage(siteId: string): Promise<SiteAction
   }
   return { ...pilotage, unattachedActions }
 }
+
+/** Une action visible dans « Actions du chantier » : `subject` est `null` pour une
+ *  action de `unattachedActions` (aucun sujet ne lui est fabriqué). */
+export interface VisiblePilotageAction {
+  subject: PilotageSubject | null
+  cbo: PilotageCbo
+}
+
+/** Home V2 FIX 3 — population EXHAUSTIVE des actions à afficher : CBO actifs rattachés
+ *  à un sujet PLUS actions ouvertes/planifiées non rattachées (`unattachedActions`),
+ *  jamais l'une sans l'autre (cf. doc `SiteActionsPilotage.unattachedActions`). Dédoublonnée
+ *  par `targetActionId` (repli sur `cboId` si absent). */
+export function buildVisiblePilotageActions(pilotage: SiteActionsPilotage): VisiblePilotageAction[] {
+  const seen = new Set<string>()
+  const result: VisiblePilotageAction[] = []
+  for (const subject of pilotage.subjects) {
+    for (const cbo of subject.cbos) {
+      if (!cbo.active) continue
+      const key = cbo.targetActionId ?? cbo.cboId
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push({ subject, cbo })
+    }
+  }
+  for (const cbo of pilotage.unattachedActions) {
+    if (!cbo.active) continue
+    const key = cbo.targetActionId ?? cbo.cboId
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push({ subject: null, cbo })
+  }
+  return result
+}
