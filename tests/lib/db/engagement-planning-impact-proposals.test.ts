@@ -616,3 +616,255 @@ describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness, intég
     expect(result.proposals).toHaveLength(0)
   })
 })
+
+// PREUVES PERMANENTES DB INTEGRATION (mandat Vincent 2026-09-30, sur revue des
+// probes jetables 1B4-B) — la revue a relevé que les témoins existants ne
+// démontrent jamais une VRAIE bascule de version sur UN SEUL et même
+// contract_effect_id (seulement deux effets différents), et que la contrainte
+// UNIQUE (contract_effect_id, proposal_version) n'était vérifiée que par un
+// script jetable. Les 4 preuves ci-dessous ferment ces deux trous, en base
+// réelle, de façon permanente.
+
+describe('PROOF 1 — réelle bascule de version sur UN SEUL contract_effect_id (mandat DB INTEGRATION 1B4-B)', () => {
+  let proof1EngagementId: string
+  let proof1ModifyEffectId: string
+
+  beforeAll(async () => {
+    // Fondation NEW structurée (cadence 1/jour) au 2026-01-01.
+    const founderProposal = await makeQualifiedProposal({
+      effect: 'new',
+      temporality: 'permanent',
+      scope: 'whole_engagement',
+      scopeKey: 'whole_engagement',
+      startsOn: '2026-01-01',
+    })
+    const founderResult = await materializeEffectWithPayload(
+      founderProposal,
+      { cadence: { count: 1, period: 'day' } },
+      { category: 'other', kind: 'obligation', measurable: false },
+    )
+    proof1EngagementId = founderResult.engagement_id
+
+    // Effet CIBLE, unique tout du long : MODIFY frequency au 2026-06-01.
+    const modifyProposal = await makeQualifiedProposal({
+      effect: 'modify',
+      temporality: 'permanent',
+      scope: 'frequency',
+      scopeKey: 'frequency',
+      startsOn: '2026-06-01',
+      targetEngagementId: proof1EngagementId,
+    })
+    const modifyResult = await materializeEffectWithPayload(modifyProposal, {
+      description: 'fréquence mensuelle (PROOF 1)',
+      cadence: { count: 1, period: 'month' },
+    })
+    proof1ModifyEffectId = modifyResult.effect_id
+  }, 30000)
+
+  afterAll(async () => {
+    const db = createAdminClient()
+    await db.from('engagements').delete().eq('id', proof1EngagementId)
+  })
+
+  it('v1 résout fromCadence depuis la fondation NEW ; l\'insertion réelle d\'un effet antécédent fait naître v2 pour LE MÊME contract_effect_id, v1 restant intacte', async () => {
+    const db = createAdminClient()
+
+    const v1result = await generatePlanningImpactProposalsForEngagement(proof1EngagementId, currentUser())
+    expect(v1result.ok).toBe(true)
+    if (!v1result.ok) return
+    const v1 = v1result.proposals.find((p) => p.contractEffectId === proof1ModifyEffectId)
+    expect(v1).toBeTruthy()
+    expect(v1!.proposalVersion).toBe(1)
+    const v1Payload = v1!.proposalPayload as ModifyFrequencyPlanningImpactPayload
+    expect(v1Payload.fromCadence).toEqual({ count: 1, period: 'day' })
+    expect(v1Payload.toCadence).toEqual({ count: 1, period: 'month' })
+    const v1Id = v1!.id
+    const v1Fingerprint = v1!.proposalFingerprint
+
+    // Effet réellement matérialisé APRÈS coup, qui change la cadence
+    // résolvable la veille du startsOn de l'effet cible — l'effet cible
+    // lui-même n'est jamais touché.
+    const antecedentProposal = await makeQualifiedProposal({
+      effect: 'modify',
+      temporality: 'permanent',
+      scope: 'frequency',
+      scopeKey: 'frequency',
+      startsOn: '2026-05-01',
+      targetEngagementId: proof1EngagementId,
+    })
+    await materializeEffectWithPayload(antecedentProposal, {
+      description: 'fréquence bihebdomadaire (antécédent PROOF 1)',
+      cadence: { count: 2, period: 'week' },
+    })
+
+    const v2result = await generatePlanningImpactProposalsForEngagement(proof1EngagementId, currentUser())
+    expect(v2result.ok).toBe(true)
+    if (!v2result.ok) return
+    const v2 = v2result.proposals.find((p) => p.contractEffectId === proof1ModifyEffectId)
+    expect(v2).toBeTruthy()
+    expect(v2!.proposalVersion).toBe(2)
+    const v2Payload = v2!.proposalPayload as ModifyFrequencyPlanningImpactPayload
+    expect(v2Payload.fromCadence).toEqual({ count: 2, period: 'week' })
+    expect(v2Payload.toCadence).toEqual({ count: 1, period: 'month' })
+    expect(v2!.proposalFingerprint).not.toBe(v1Fingerprint)
+
+    // Deux lignes réelles persistent pour LE MÊME contract_effect_id ; la
+    // ligne v1 n'est ni réécrite ni supprimée.
+    const { data: rows, error } = await db
+      .from('engagement_planning_impact_proposals')
+      .select('id, proposal_version, proposal_fingerprint, proposal_payload')
+      .eq('contract_effect_id', proof1ModifyEffectId)
+      .order('proposal_version', { ascending: true })
+    expect(error).toBeNull()
+    expect(rows).toHaveLength(2)
+    const persistedV1 = (rows as Array<{ id: string; proposal_version: number; proposal_fingerprint: string; proposal_payload: unknown }>).find(
+      (r) => r.proposal_version === 1,
+    )
+    const persistedV2 = (rows as Array<{ id: string; proposal_version: number }>).find((r) => r.proposal_version === 2)
+    expect(persistedV1!.id).toBe(v1Id)
+    expect(persistedV1!.proposal_fingerprint).toBe(v1Fingerprint)
+    expect(persistedV1!.proposal_payload).toEqual(v1Payload)
+    expect(persistedV2!.id).toBe(v2!.id)
+
+    // La lecture ne rend QUE la dernière version pour ce contract_effect_id.
+    const listed = await listPlanningImpactProposalsForEngagement(proof1EngagementId, currentUser())
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) return
+    const listedForEffect = listed.proposals.filter((p) => p.contractEffectId === proof1ModifyEffectId)
+    expect(listedForEffect).toHaveLength(1)
+    expect(listedForEffect[0].proposalVersion).toBe(2)
+  })
+})
+
+describe('PROOF 2 — NEW réel sans cadence structurée en base : aucune proposition (mandat DB INTEGRATION 1B4-B)', () => {
+  let proof2EngagementId: string
+
+  beforeAll(async () => {
+    const proposal = await makeQualifiedProposal({
+      effect: 'new',
+      temporality: 'permanent',
+      scope: 'whole_engagement',
+      scopeKey: 'whole_engagement',
+      startsOn: '2026-07-01',
+    })
+    const result = await materializeEffectWithPayload(
+      proposal,
+      { description: 'obligation décrite en texte libre, sans cadence structurée (PROOF 2)' },
+      { category: 'other', kind: 'obligation', measurable: false },
+    )
+    proof2EngagementId = result.engagement_id
+  }, 30000)
+
+  afterAll(async () => {
+    const db = createAdminClient()
+    await db.from('engagements').delete().eq('id', proof2EngagementId)
+  })
+
+  it('aucune proposition générée pour un effet NEW réellement matérialisé sans cadence', async () => {
+    const result = await generatePlanningImpactProposalsForEngagement(proof2EngagementId, currentUser())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.proposals).toHaveLength(0)
+  })
+})
+
+describe('PROOF 3 — SUSPEND réel sans cadence structurée résolvable dans l\'historique : aucune proposition (mandat DB INTEGRATION 1B4-B)', () => {
+  let proof3EngagementId: string
+
+  beforeAll(async () => {
+    const founderProposal = await makeQualifiedProposal({
+      effect: 'new',
+      temporality: 'permanent',
+      scope: 'whole_engagement',
+      scopeKey: 'whole_engagement',
+      startsOn: '2026-01-01',
+    })
+    const founderResult = await materializeEffectWithPayload(
+      founderProposal,
+      { description: 'engagement matérialisé sans aucune cadence structurée (PROOF 3)' },
+      { category: 'other', kind: 'obligation', measurable: false },
+    )
+    proof3EngagementId = founderResult.engagement_id
+
+    const suspendProposal = await makeQualifiedProposal({
+      effect: 'suspend',
+      temporality: 'bounded',
+      scope: 'whole_engagement',
+      scopeKey: 'whole_engagement',
+      startsOn: '2026-12-10',
+      endsOn: '2026-12-14',
+      resumeOn: '2026-12-15',
+      targetEngagementId: proof3EngagementId,
+    })
+    // Jamais de cadence dans le payload du SUSPEND lui-même (mandat 1B4-B, règle 3).
+    await materializeEffectWithPayload(suspendProposal, {})
+  }, 30000)
+
+  afterAll(async () => {
+    const db = createAdminClient()
+    await db.from('engagements').delete().eq('id', proof3EngagementId)
+  })
+
+  it('aucune proposition SUSPEND générée : aucune cadence structurée résolvable dans l\'historique', async () => {
+    const result = await generatePlanningImpactProposalsForEngagement(proof3EngagementId, currentUser())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const suspend = result.proposals.find((p) => p.proposalPayload.operation === 'suspend')
+    expect(suspend).toBeUndefined()
+  })
+})
+
+describe('PROOF 4 — contrainte DB permanente engagement_planning_impact_proposals_effect_version_unique (mandat DB INTEGRATION 1B4-B)', () => {
+  it('un second insert au même (contract_effect_id, proposal_version) mais fingerprint différent est refusé par PostgreSQL (23505)', async () => {
+    const db = createAdminClient()
+
+    const proposal = await makeQualifiedProposal({
+      effect: 'new',
+      temporality: 'permanent',
+      scope: 'whole_engagement',
+      scopeKey: 'whole_engagement',
+      startsOn: '2026-08-01',
+    })
+    const result = await materializeEffectWithPayload(
+      proposal,
+      { cadence: { count: 1, period: 'week' } },
+      { category: 'other', kind: 'obligation', measurable: false },
+    )
+    const effectId = result.effect_id
+    const engagementId = result.engagement_id
+
+    try {
+      const first = await db
+        .from('engagement_planning_impact_proposals')
+        .insert({
+          organization_id: memberOrgId,
+          engagement_id: engagementId,
+          contract_effect_id: effectId,
+          impact_kind: 'new',
+          proposal_payload: { operation: 'new', probe: 'proof4-1' },
+          proposal_fingerprint: `${TAG}proof4fp1`,
+          proposal_version: 999,
+        })
+        .select('id')
+      expect(first.error).toBeNull()
+
+      const second = await db
+        .from('engagement_planning_impact_proposals')
+        .insert({
+          organization_id: memberOrgId,
+          engagement_id: engagementId,
+          contract_effect_id: effectId,
+          impact_kind: 'new',
+          proposal_payload: { operation: 'new', probe: 'proof4-2' },
+          proposal_fingerprint: `${TAG}proof4fp2`,
+          proposal_version: 999,
+        })
+        .select('id')
+      expect(second.error).toBeTruthy()
+      expect(second.error!.code).toBe('23505')
+      expect(second.error!.message).toMatch(/engagement_planning_impact_proposals_effect_version_unique/)
+    } finally {
+      await db.from('engagements').delete().eq('id', engagementId)
+    }
+  })
+})
