@@ -283,7 +283,7 @@ export function ProposalCard({
       resumeOn: string | null
       scope: string | null
       scopeKey: string | null
-      effectPayload: { description?: string } | null
+      effectPayload: { description?: string; cadence?: { count: number; period: 'day' | 'week' | 'month' } } | null
     } | null
   } | null
   const relevanceScore = sourcePayload?.relevanceScore ?? null
@@ -325,6 +325,12 @@ export function ProposalCard({
   const [localScope, setLocalScope] = useState(contractEffect?.scope ?? '')
   const [localScopeKey, setLocalScopeKey] = useState(contractEffect?.scopeKey ?? '')
   const [localEffectPayloadDescription, setLocalEffectPayloadDescription] = useState(contractEffect?.effectPayload?.description ?? '')
+  // DOC-CONTRACT-OS-1B4-B0 (mandat Vincent 2026-09-30) : cadence contractuelle
+  // structurée, saisie humaine explicite — jamais dérivée de frequency_raw.
+  const [localCadenceCount, setLocalCadenceCount] = useState(
+    contractEffect?.effectPayload?.cadence ? String(contractEffect.effectPayload.cadence.count) : ''
+  )
+  const [localCadencePeriod, setLocalCadencePeriod] = useState(contractEffect?.effectPayload?.cadence?.period ?? '')
   const [effectTargetSearch, setEffectTargetSearch] = useState('')
   const isQualificationSaved = !!contractEffect
     && contractEffect.effect === localEffect
@@ -336,6 +342,8 @@ export function ProposalCard({
     && (contractEffect.scope ?? '') === localScope
     && (contractEffect.scopeKey ?? '') === localScopeKey
     && (contractEffect.effectPayload?.description ?? '') === localEffectPayloadDescription
+    && (contractEffect.effectPayload?.cadence ? String(contractEffect.effectPayload.cadence.count) : '') === localCadenceCount
+    && (contractEffect.effectPayload?.cadence?.period ?? '') === localCadencePeriod
   // Le geste suivant (Créer / Rattacher) ne doit jamais réagir à un choix de
   // formulaire non encore validé (fix de continuité, revue Vincent 2026-09-28) —
   // seule la qualification effectivement enregistrée (isQualificationSaved) peut
@@ -365,6 +373,8 @@ export function ProposalCard({
     if (localScope) fd.set('scope', localScope)
     if (localScopeKey) fd.set('scope_key', localScopeKey)
     if (localEffectPayloadDescription.trim()) fd.set('effect_payload_description', localEffectPayloadDescription.trim())
+    if (localCadenceCount.trim()) fd.set('cadence_count', localCadenceCount.trim())
+    if (localCadencePeriod) fd.set('cadence_period', localCadencePeriod)
     handleAction(() => setContractEffectAction(fd), () => {
       setLocalStatus('edited')
       setMsg({ ok: true, text: 'Qualification validée' })
@@ -784,7 +794,7 @@ export function ProposalCard({
               {localEffect && effectRequiresPayload(localEffect) && (
                 <div>
                   <label className="text-[11px] text-muted-foreground mb-1 block">
-                    Valeur modifiée (requis pour une modification)
+                    Valeur modifiée (texte libre — ou cadence structurée ci-dessous)
                   </label>
                   <input
                     type="text"
@@ -794,6 +804,40 @@ export function ProposalCard({
                     placeholder="ex : passage de 2 à 3 fois par semaine"
                     className="w-full rounded border bg-background px-2 py-1.5 text-xs"
                   />
+                </div>
+              )}
+
+              {(localEffect === 'new' || (localEffect === 'modify' && localScopeKey === 'frequency')) && (
+                <div>
+                  <label className="text-[11px] text-muted-foreground mb-1 block">
+                    Cadence contractuelle structurée (optionnel)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={localCadenceCount}
+                      onChange={(e) => setLocalCadenceCount(e.target.value)}
+                      disabled={pending}
+                      placeholder="ex : 1"
+                      className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                    />
+                    <select
+                      value={localCadencePeriod}
+                      onChange={(e) => setLocalCadencePeriod(e.target.value)}
+                      disabled={pending}
+                      className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                    >
+                      <option value="">— période —</option>
+                      <option value="day">par jour</option>
+                      <option value="week">par semaine</option>
+                      <option value="month">par mois</option>
+                    </select>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Nombre de passages par période, saisi explicitement — jamais déduit de la fréquence brute ci-dessus.
+                  </p>
                 </div>
               )}
 
@@ -808,7 +852,7 @@ export function ProposalCard({
                   size="sm"
                   variant="outline"
                   onClick={onSaveContractEffect}
-                  disabled={pending || !localEffect || !localTemporality || isQualificationSaved || (localEffect === 'modify' && !localScopeKey) || (!!localEffect && effectRequiresPayload(localEffect) && !localEffectPayloadDescription.trim())}
+                  disabled={pending || !localEffect || !localTemporality || isQualificationSaved || (localEffect === 'modify' && !localScopeKey) || (!!localEffect && effectRequiresPayload(localEffect) && !localEffectPayloadDescription.trim() && !(localCadenceCount.trim() && localCadencePeriod))}
                 >
                   {pending ? '…' : 'Valider la qualification'}
                 </Button>

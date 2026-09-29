@@ -13,6 +13,7 @@ import { materializeEngagementCreateNew, materializeEngagementLinkExisting, fina
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
 import type { ContractEffect, ContractTemporality, ContractEffectQualification } from '@/lib/engagements/contract-effect'
 import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNewForDocument, effectAllowsLinkExistingForDocument, effectRequiresScopeKey, isValidScopeKeyFormat, effectRequiresPayload, effectBlocksMaterialization } from '@/lib/engagements/contract-effect'
+import { isValidCadence, buildCadenceEffectPayloadFragment, type ContractCadence } from '@/lib/engagements/contract-cadence'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -276,12 +277,26 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
   const scope = fd.get('scope')?.toString()?.trim() || null
   const scopeKey = fd.get('scope_key')?.toString()?.trim() || null
   const effectPayloadDescription = fd.get('effect_payload_description')?.toString()?.trim() || null
+  const cadenceCountRaw = fd.get('cadence_count')?.toString()?.trim() || null
+  const cadencePeriodRaw = fd.get('cadence_period')?.toString()?.trim() || null
 
   if (!proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
   if (!effect || !VALID_CONTRACT_EFFECTS.has(effect)) return { ok: false, error: 'Effet invalide' }
   if (!temporality || !VALID_CONTRACT_TEMPORALITIES.has(temporality)) return { ok: false, error: 'Temporalité invalide' }
   for (const d of [startsOn, endsOn, resumeOn]) {
     if (d && !ISO_DATE_RE.test(d)) return { ok: false, error: 'Date invalide (AAAA-MM-JJ attendu)' }
+  }
+
+  // DOC-CONTRACT-OS-1B4-B0 (mandat Vincent 2026-09-30) : cadence contractuelle
+  // structurée, optionnelle, saisie humaine explicite uniquement — jamais
+  // dérivée de frequency_raw ou d'un autre champ texte libre.
+  let cadence: ContractCadence | null = null
+  if (cadenceCountRaw || cadencePeriodRaw) {
+    const candidate = { count: cadenceCountRaw ? Number(cadenceCountRaw) : Number.NaN, period: cadencePeriodRaw }
+    if (!isValidCadence(candidate)) {
+      return { ok: false, error: 'Cadence contractuelle invalide (nombre entier positif et période parmi jour/semaine/mois)' }
+    }
+    cadence = candidate
   }
 
   // Invariants métier du modèle EFFET × TEMPORALITÉ appliqués côté serveur
@@ -313,8 +328,8 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
   // engagement_contract_effects.effect_payload a un CHECK `<> '{}'::jsonb` pour
   // MODIFY (migration 445) — sans valeur décrite ici, la RPC refuserait la
   // matérialisation (DOC-CONTRACT-OS-1B1-UX-BRIDGE).
-  if (effectRequiresPayload(effect) && !effectPayloadDescription) {
-    return { ok: false, error: 'Cet effet nécessite de décrire la valeur modifiée' }
+  if (effectRequiresPayload(effect) && !effectPayloadDescription && !cadence) {
+    return { ok: false, error: 'Cet effet nécessite de décrire la valeur modifiée (texte ou cadence structurée)' }
   }
 
   const access = await verifyReviewAccess(documentId)
@@ -364,7 +379,12 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
     return { ok: false, error: 'Proposition déjà matérialisée : la qualification ne peut plus être modifiée' }
   }
 
-  const effectPayload = effectPayloadDescription ? { description: effectPayloadDescription } : null
+  const effectPayload = effectPayloadDescription || cadence
+    ? {
+        ...(effectPayloadDescription ? { description: effectPayloadDescription } : {}),
+        ...(cadence ? buildCadenceEffectPayloadFragment(cadence) : {}),
+      }
+    : null
 
   const newPayload = {
     ...((proposal.source_payload as Record<string, unknown>) ?? {}),
