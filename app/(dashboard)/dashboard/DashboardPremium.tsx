@@ -59,20 +59,18 @@ function Metric({ icon: Icon, value, label, tone }: { icon: LucideIcon; value: n
 }
 
 /**
- * Dérivation déterministe, PAS une IA : priorité résolus → évolutions →
- * nouveaux → non mentionnés, cf. mapping figé de home-hero-delta.ts. Aucune
- * fabrication si le chantier n'a pas encore de deuxième PV ou si rien n'a bougé.
+ * FIX HERO REDONDANCE (review Vincent 2026-09-29) — les phrases qui reformulaient
+ * chaque compteur (« N sujets résolus depuis le PV précédent », etc.) faisaient
+ * doublon avec les 4 cartes Metric ET le détail à 4 colonnes juste en dessous :
+ * supprimées. Seuls restent les deux messages qui apportent une information que
+ * rien d'autre n'affiche (pas encore de 2e PV, ou aucune évolution du tout).
  */
 function heroTeachings(heroDelta: HomeHeroDelta | null): string[] {
   if (!heroDelta) return []
   if (!heroDelta.metrics) return ['Premier PV intégré — le suivi des évolutions commencera au prochain PV.']
   const m = heroDelta.metrics
-  const lines: string[] = []
-  if (m.resolus.length > 0) lines.push(`${m.resolus.length} sujet${m.resolus.length > 1 ? 's' : ''} résolu${m.resolus.length > 1 ? 's' : ''} depuis le PV précédent`)
-  if (m.evolutions.length > 0) lines.push(`${m.evolutions.length} sujet${m.evolutions.length > 1 ? 's' : ''} en évolution depuis le PV précédent`)
-  if (m.nouveaux.length > 0) lines.push(`${m.nouveaux.length} nouveau${m.nouveaux.length > 1 ? 'x' : ''} sujet${m.nouveaux.length > 1 ? 's' : ''} identifié${m.nouveaux.length > 1 ? 's' : ''}`)
-  if (m.nonMentionnes.length > 0) lines.push(`${m.nonMentionnes.length} sujet${m.nonMentionnes.length > 1 ? 's' : ''} non mentionné${m.nonMentionnes.length > 1 ? 's' : ''} dans le dernier PV`)
-  return lines.length > 0 ? lines.slice(0, 3) : ['Aucune évolution détectée depuis le PV précédent.']
+  const hasChanges = m.resolus.length > 0 || m.evolutions.length > 0 || m.nouveaux.length > 0 || m.nonMentionnes.length > 0
+  return hasChanges ? [] : ['Aucune évolution détectée depuis le PV précédent.']
 }
 
 /** Section 3 — une colonne du détail du Hero (« NOUVEAUX (3) » + liste), bornée en
@@ -203,8 +201,19 @@ export function HeroSkeleton() {
 }
 
 function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: boolean }) {
+  // FIX COMPTEUR ACTIONS (review Vincent 2026-09-29) — `activeActionCount` est un
+  // compte brut `site_actions.status in (open, planned)`, batché sur tout le
+  // portefeuille (tier LÉGER, cf. lib/db/sites-dashboard.ts). Le panneau « Actions
+  // du chantier » affiche `buildVisiblePilotageActions(...).length`, une population
+  // dédupliquée par CBO/sujet canonique, coûteuse et donc limitée au seul chantier
+  // actif (tier LOURD, cf. lib/knowledge/actions-pilotage.ts). Les deux nombres
+  // divergent légitimement (ex. Ocef : 58 vs 42) ; les harmoniser demanderait soit
+  // un N+1 sur tout le portefeuille, soit une nouvelle agrégation CBO multi-site —
+  // une vraie évolution d'architecture, hors périmètre de cette passe. En attendant
+  // ce GO, le libellé de la carte est explicite ("ouvertes") pour ne pas laisser
+  // croire aux deux mêmes chiffres sous le même mot.
   const counters = [
-    { label: 'actions', value: site.activeActionCount },
+    { label: 'ouvertes', value: site.activeActionCount },
     { label: 'points', value: site.pointCount },
     { label: 'réserves', value: site.openReserveCount },
   ]
@@ -283,7 +292,12 @@ function ChantierSelector({ sites, activeSiteId }: { sites: SiteDashboardItem[];
       {sites.length === 0 ? (
         <p className="mt-5 text-sm italic text-[#73809a]">Aucun chantier accessible.</p>
       ) : (
-        <div role="list" className="-mx-1 mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2">
+        // FIX CARROUSEL (review Vincent 2026-09-29) — le chantier actif est déjà placé
+        // en tête de `orderedSites`, mais ce conteneur défilant garde son `scrollLeft`
+        // d'une navigation à l'autre (App Router ne recrée pas le noeud DOM sur un simple
+        // changement de `?chantier=`). `key={activeSiteId}` force un remount → scrollLeft
+        // revient à 0, donc le chantier actif redevient réellement visible sans scroll.
+        <div key={activeSiteId ?? 'none'} role="list" className="-mx-1 mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2">
           {orderedSites.map((site) => (
             <div key={site.id} role="listitem" className="w-[78%] shrink-0 snap-start xs:w-64 sm:w-64 lg:w-72">
               <ChantierCard site={site} isActive={site.id === activeSiteId} />
@@ -317,6 +331,20 @@ const MEMORY_GROUP_SINGULAR: Record<string, string> = {
   'Intervenants': 'Intervenant',
 }
 const memoryGroupLabel = (group: string, count: number) => (count > 1 ? group : (MEMORY_GROUP_SINGULAR[group] ?? group))
+
+/** FIX MÉMOIRE NAVIGATION (review Vincent 2026-09-29) — ancre HTML pure (pas de
+ *  state client) pour que cliquer une pastille fasse défiler jusqu'à son groupe
+ *  dans la liste interne. Slug déterministe basé sur le NOM du groupe (jamais un
+ *  index) : `counters` est tronqué à 4 éléments mais `groups` ne l'est pas, les
+ *  deux tableaux ne sont donc pas garantis alignés. */
+function slugifyMemoryGroup(group: string): string {
+  return group
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
 
 export type HomeMemoryCounter = { group: string; count: number }
 export type HomeMemoryHighlight = { id: string; group: string; title: string; href: string | null; nature: string | null }
@@ -367,17 +395,34 @@ export function MemorySouvient({ site, review }: { site: SiteDashboardItem | nul
         <>
           {summary.counters.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-1.5">
+              {summary.groups.length > 1 && (
+                <a
+                  href={`#mem-group-${slugifyMemoryGroup(summary.groups[0].group)}`}
+                  className="rounded-full bg-[#eef4ff] px-2.5 py-1 text-[10px] font-semibold text-[#4973dd] hover:bg-[#e1ebff]"
+                >
+                  Tout
+                </a>
+              )}
               {summary.counters.map((c) => (
-                <span key={c.group} className="rounded-full bg-[#eef4ff] px-2.5 py-1 text-[10px] font-semibold text-[#4973dd]">
+                <a
+                  key={c.group}
+                  href={`#mem-group-${slugifyMemoryGroup(c.group)}`}
+                  className="rounded-full bg-[#eef4ff] px-2.5 py-1 text-[10px] font-semibold text-[#4973dd] hover:bg-[#e1ebff]"
+                >
                   {c.count} {memoryGroupLabel(c.group, c.count)}
-                </span>
+                </a>
               ))}
             </div>
           )}
-          <div className="mt-4 max-h-[400px] space-y-4 overflow-y-auto pr-1">
+          <div className="mt-4 max-h-[400px] scroll-smooth space-y-4 overflow-y-auto pr-1">
             {summary.groups.map((block) => (
               <div key={block.group}>
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]">{block.group}</p>
+                <p
+                  id={`mem-group-${slugifyMemoryGroup(block.group)}`}
+                  className="sticky top-0 z-10 bg-white py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]"
+                >
+                  {block.group}
+                </p>
                 <div className="mt-1.5 space-y-2">
                   {block.items.map((item) => (
                     <div key={item.id}>

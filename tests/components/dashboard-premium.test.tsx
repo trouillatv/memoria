@@ -383,7 +383,7 @@ describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)'
     ).toBeInTheDocument()
   })
 
-  it('2+ PV avec métriques → les 4 compteurs, les enseignements et le CTA vers l\'avant-après', () => {
+  it('2+ PV avec métriques → les 4 compteurs et le CTA vers l\'avant-après, jamais les phrases redondantes avec le détail 4 colonnes', () => {
     const heroDelta: HomeHeroDelta = {
       toRunId: 'run-3',
       toEffectiveDate: '2026-09-15',
@@ -401,9 +401,11 @@ describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)'
     }
     render(<DashboardPremium {...baseProps({ heroDelta, sites: [site({ id: 'site-1', pvCount: 4, subjectCount: 9 })] })} />)
     const hero = within(screen.getByText('Évolution depuis le PV précédent').closest('section') as HTMLElement)
-    expect(hero.getByText('1 sujet résolu depuis le PV précédent')).toBeInTheDocument()
-    expect(hero.getByText('2 sujets en évolution depuis le PV précédent')).toBeInTheDocument()
-    expect(hero.getByText('1 nouveau sujet identifié')).toBeInTheDocument()
+    // FIX HERO REDONDANCE (review Vincent 2026-09-29) — ces phrases reformulaient les
+    // 4 cartes Metric ET le détail à 4 colonnes juste en dessous : supprimées.
+    expect(hero.queryByText(/résolu depuis le PV précédent/)).not.toBeInTheDocument()
+    expect(hero.queryByText(/en évolution depuis le PV précédent/)).not.toBeInTheDocument()
+    expect(hero.queryByText(/nouveau sujet identifié/)).not.toBeInTheDocument()
     expect(hero.getByText(/4 PV analysés/)).toBeInTheDocument()
     const cta = screen.getByRole('link', { name: /Voir ce qui a changé/ })
     expect(cta).toHaveAttribute('href', '/sites/site-1/historique?view=avant-apres')
@@ -622,6 +624,24 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
   it('RICHNESS §3 — aucun CTA ni contenu périmé quand le chantier n\'a rien à mettre en avant', () => {
     render(<DashboardPremium {...baseProps({ activeReview: emptyReview() })} />)
     expect(screen.queryByRole('link', { name: /Voir toute la mémoire/ })).not.toBeInTheDocument()
+  })
+
+  it('FIX MÉMOIRE NAVIGATION (review Vincent 2026-09-29) — chaque pastille de compteur pointe vers l\'ancre de son groupe, et un pill "Tout" pointe vers le premier groupe', () => {
+    const items = [
+      confirmedItem({ id: 'd1', group: 'Décisions', title: 'Décision A' }),
+      confirmedItem({ id: 'v1', group: 'Points de vigilance', title: 'Vigilance B', href: null }),
+    ]
+    render(<DashboardPremium {...baseProps({ activeReview: { confirmed: items, toReview: [] } })} />)
+    const memorySection = screen.getByText('Mémoire du chantier').closest('section') as HTMLElement
+    const decisionsPill = within(memorySection).getByText('1 Décision')
+    expect(decisionsPill).toHaveAttribute('href', '#mem-group-decisions')
+    const vigilancePill = within(memorySection).getByText('1 Point de vigilance')
+    expect(vigilancePill).toHaveAttribute('href', '#mem-group-points-de-vigilance')
+    const toutPill = within(memorySection).getByText('Tout')
+    expect(toutPill).toHaveAttribute('href', '#mem-group-decisions')
+    // Chaque en-tête de groupe porte l'ancre correspondante (repère sticky pendant le scroll).
+    expect(memorySection.querySelector('#mem-group-decisions')).toHaveTextContent('Décisions')
+    expect(memorySection.querySelector('#mem-group-points-de-vigilance')).toHaveTextContent('Points de vigilance')
   })
 
   it('RICHNESS §3 — pas de fuite d\'un chantier vers l\'autre lors d\'un changement de sélection', () => {
