@@ -9,10 +9,10 @@ import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { reviewProposal, linkProposalEvidence, acceptAllPendingForRun, pinAllSnapshotsForRun } from '@/lib/db/document-extractions'
 import { runHistoricalImportPostProcessing } from '@/lib/subjects/historical-import-post-processing'
 import { materializeHistoricalRun } from '@/lib/documents/materialize-historical-run'
-import { materializeEngagementCreateNew, materializeEngagementLinkExisting, finalizeAcceptedEngagementsForRun } from '@/lib/db/materialize-engagement'
+import { materializeEngagementCreateNew, materializeEngagementLinkExisting, finalizeAcceptedEngagementsForRun, materializeEngagementContractEffect } from '@/lib/db/materialize-engagement'
 import type { DocumentProposalFamily, DocumentEvidenceRelationType, EngagementCategory, EngagementKind } from '@/types/db'
 import type { ContractEffect, ContractTemporality, ContractEffectQualification } from '@/lib/engagements/contract-effect'
-import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNewForDocument, effectAllowsLinkExistingForDocument, effectRequiresScopeKey, isValidScopeKeyFormat } from '@/lib/engagements/contract-effect'
+import { effectRequiresTarget, temporalityRequiresDates, effectAllowsCreateNewForDocument, effectAllowsLinkExistingForDocument, effectRequiresScopeKey, isValidScopeKeyFormat, effectRequiresPayload, effectBlocksMaterialization } from '@/lib/engagements/contract-effect'
 
 type ActionResult = { ok: boolean; error?: string }
 
@@ -275,6 +275,7 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
   const resumeOn = fd.get('resume_on')?.toString() || null
   const scope = fd.get('scope')?.toString()?.trim() || null
   const scopeKey = fd.get('scope_key')?.toString()?.trim() || null
+  const effectPayloadDescription = fd.get('effect_payload_description')?.toString()?.trim() || null
 
   if (!proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
   if (!effect || !VALID_CONTRACT_EFFECTS.has(effect)) return { ok: false, error: 'Effet invalide' }
@@ -308,6 +309,12 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
   }
   if (effectRequiresScopeKey(effect) && !scopeKey) {
     return { ok: false, error: 'Cet effet nécessite une portée canonique (scope_key)' }
+  }
+  // engagement_contract_effects.effect_payload a un CHECK `<> '{}'::jsonb` pour
+  // MODIFY (migration 445) — sans valeur décrite ici, la RPC refuserait la
+  // matérialisation (DOC-CONTRACT-OS-1B1-UX-BRIDGE).
+  if (effectRequiresPayload(effect) && !effectPayloadDescription) {
+    return { ok: false, error: 'Cet effet nécessite de décrire la valeur modifiée' }
   }
 
   const access = await verifyReviewAccess(documentId)
@@ -357,9 +364,11 @@ export async function setContractEffectAction(fd: FormData): Promise<ActionResul
     return { ok: false, error: 'Proposition déjà matérialisée : la qualification ne peut plus être modifiée' }
   }
 
+  const effectPayload = effectPayloadDescription ? { description: effectPayloadDescription } : null
+
   const newPayload = {
     ...((proposal.source_payload as Record<string, unknown>) ?? {}),
-    contract_effect: { effect, temporality, targetEngagementId, startsOn, endsOn, resumeOn, scope, scopeKey },
+    contract_effect: { effect, temporality, targetEngagementId, startsOn, endsOn, resumeOn, scope, scopeKey, effectPayload },
   }
 
   // Fix DOC-CONTRACT-OS-1B1 (2e revue Vincent, défaut A) : la lecture de
@@ -490,6 +499,78 @@ export async function linkEngagementToProposalAction(fd: FormData): Promise<{
   try {
     const linkedId = await materializeEngagementLinkExisting(proposalId, engagementId, access.userId)
     return { ok: true, engagementId: linkedId }
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : 'Erreur inconnue' }
+  }
+}
+
+// ─── Application d'un effet contractuel qualifié (DOC-CONTRACT-OS-1B1-UX-BRIDGE) ──
+// Seul chemin qui écrit dans engagement_contract_effects : NEW/MODIFY/SUSPEND/CONFIRM
+// qualifiés passent tous par la primitive canonique 1B1 (migration 447), jamais par
+// materializeEngagementCreateNew/LinkExisting (chemin legacy réservé au CCTP non
+// qualifié). Ne fait jamais confiance à l'état client (canApplyContractEffect côté
+// ProposalCard n'est qu'un confort d'affichage) — la qualification est relue ici,
+// et la RPC elle-même la relit une deuxième fois sous verrou de ligne avant d'écrire.
+export async function materializeContractEffectAction(fd: FormData): Promise<{
+  ok: boolean; engagementId?: string; effectId?: string; error?: string
+}> {
+  const proposalId = fd.get('proposal_id')?.toString()
+  const documentId = fd.get('document_id')?.toString()
+  const categoryRaw = fd.get('category')?.toString()
+  const kindRaw = fd.get('kind')?.toString()
+  const measurableRaw = fd.get('measurable')?.toString()
+
+  if (!proposalId || !documentId) return { ok: false, error: 'Paramètres manquants' }
+
+  const access = await verifyReviewAccess(documentId)
+  if (!access.ok) return { ok: false, error: access.error }
+
+  const ownership = await verifyEngagementProposal(proposalId, documentId)
+  if (!ownership.ok) return ownership
+
+  const qualification = await getQualifiedContractEffectQualification(proposalId)
+  const qualifiedEffect = qualification?.effect ?? null
+
+  if (!qualifiedEffect) {
+    return { ok: false, error: 'Qualifiez d’abord l’effet contractuel de ce document' }
+  }
+  if (effectBlocksMaterialization(qualifiedEffect)) {
+    return {
+      ok: false,
+      error: qualifiedEffect === 'conflict'
+        ? 'Conflit documentaire non résolu — requalifiez avant toute matérialisation'
+        : 'Effet « Non-Engagement » — ne doit jamais être matérialisé',
+    }
+  }
+
+  let category: EngagementCategory | null = null
+  let kind: EngagementKind | null = null
+  let measurable: boolean | null = null
+  if (qualifiedEffect === 'new') {
+    if (!categoryRaw || !VALID_ENGAGEMENT_CATEGORIES.has(categoryRaw as EngagementCategory)) {
+      return { ok: false, error: 'Catégorie invalide' }
+    }
+    if (!kindRaw || !VALID_ENGAGEMENT_KINDS.has(kindRaw as EngagementKind)) {
+      return { ok: false, error: 'Nature invalide' }
+    }
+    if (measurableRaw !== 'true' && measurableRaw !== 'false') {
+      return { ok: false, error: 'Mesurable invalide' }
+    }
+    category = categoryRaw as EngagementCategory
+    kind = kindRaw as EngagementKind
+    measurable = measurableRaw === 'true'
+  }
+
+  if (effectRequiresPayload(qualifiedEffect) && !qualification?.effectPayload) {
+    return { ok: false, error: 'Qualification incomplète : valeur modifiée non décrite' }
+  }
+
+  try {
+    const result = await materializeEngagementContractEffect(proposalId, access.userId, {
+      category, kind, measurable,
+      effectPayload: qualification?.effectPayload ?? undefined,
+    })
+    return { ok: true, engagementId: result.engagementId, effectId: result.effectId }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : 'Erreur inconnue' }
   }

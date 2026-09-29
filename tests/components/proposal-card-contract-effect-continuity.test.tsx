@@ -6,6 +6,16 @@
 // ensuite afficher le geste suivant. Le comportement CCTP legacy (documentType
 // non fourni) reste couvert par tests/components/proposal-card-engagement.test.tsx,
 // inchangé par ce correctif.
+//
+// Mis à jour DOC-CONTRACT-OS-1B1-UX-BRIDGE (mandat Vincent 2026-09-29) : pour un
+// effet qualifié (NEW/MODIFY/SUSPEND/CONFIRM) sur OS/Avenant, le geste suivant
+// n'est plus « Créer un nouvel Engagement »/« Rattacher à un Engagement existant »
+// (anciennes RPC materializeEngagementCreateNew/LinkExisting — n'écrivaient jamais
+// dans engagement_contract_effects) mais le bouton unique « Appliquer l'effet
+// contractuel », qui passe par la primitive canonique 1B1
+// (materializeContractEffectAction → materialize_engagement_contract_effect).
+// Les anciens boutons Créer/Rattacher restent réservés au CCTP historique jamais
+// qualifié (validatedEffect === null).
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
@@ -23,6 +33,7 @@ const mockReject = vi.fn()
 const mockReset = vi.fn()
 const mockEdit = vi.fn()
 const mockSetContractEffect = vi.fn()
+const mockMaterializeContractEffect = vi.fn()
 
 vi.mock('@/app/(dashboard)/documents/[id]/extraction/[runId]/review-actions', () => ({
   acceptProposalAction: (...args: unknown[]) => mockAccept(...args),
@@ -33,6 +44,7 @@ vi.mock('@/app/(dashboard)/documents/[id]/extraction/[runId]/review-actions', ()
   createEngagementFromProposalAction: (...args: unknown[]) => mockCreate(...args),
   linkEngagementToProposalAction: (...args: unknown[]) => mockLink(...args),
   setContractEffectAction: (...args: unknown[]) => mockSetContractEffect(...args),
+  materializeContractEffectAction: (...args: unknown[]) => mockMaterializeContractEffect(...args),
 }))
 
 function makeOsProposal(overrides: Partial<DbDocumentExtractionProposal> = {}): DbDocumentExtractionProposal {
@@ -131,7 +143,7 @@ describe('ProposalCard — DOC-CONTRACT-OS-1A-UX — continuité carte OS/Avenan
     expect(screen.getByText('Validez la qualification avant de poursuivre.')).toBeInTheDocument()
   })
 
-  it('OS NEW validé → Créer visible', async () => {
+  it('OS NEW validé → Appliquer l’effet contractuel visible', async () => {
     mockSetContractEffect.mockResolvedValue({ ok: true })
     const { rerender } = renderOsCard()
     fireEvent.change(effetSelect(), { target: { value: 'new' } })
@@ -159,7 +171,7 @@ describe('ProposalCard — DOC-CONTRACT-OS-1A-UX — continuité carte OS/Avenan
         documentType="ordre_service"
       />,
     )
-    expect(screen.getByText('Créer un nouvel Engagement')).toBeInTheDocument()
+    expect(screen.getByText('Appliquer l’effet contractuel')).toBeInTheDocument()
   })
 
   it('OS CONFIRM sélectionné mais non validé → pas de Rattacher', () => {
@@ -169,7 +181,7 @@ describe('ProposalCard — DOC-CONTRACT-OS-1A-UX — continuité carte OS/Avenan
     expect(screen.getByText('Validez la qualification avant de poursuivre.')).toBeInTheDocument()
   })
 
-  it('OS CONFIRM validé → Rattacher visible', async () => {
+  it('OS CONFIRM validé → Appliquer l’effet contractuel visible', async () => {
     mockSetContractEffect.mockResolvedValue({ ok: true })
     const { rerender } = renderOsCard()
     fireEvent.change(effetSelect(), { target: { value: 'confirm' } })
@@ -195,7 +207,7 @@ describe('ProposalCard — DOC-CONTRACT-OS-1A-UX — continuité carte OS/Avenan
         documentType="ordre_service"
       />,
     )
-    expect(screen.getByText('Rattacher à un Engagement existant')).toBeInTheDocument()
+    expect(screen.getByText('Appliquer l’effet contractuel')).toBeInTheDocument()
   })
 
   it('CONFIRM cible A validé → CTA verrouillé sur A, pas de picker générique', () => {
@@ -214,16 +226,20 @@ describe('ProposalCard — DOC-CONTRACT-OS-1A-UX — continuité carte OS/Avenan
     )
 
     // Le libellé apparaît deux fois : dans le formulaire de qualification (déjà
-    // rempli avec la cible persistée) et dans le nouveau bandeau de confirmation
+    // rempli avec la cible persistée) et dans le bandeau de confirmation
     // verrouillée — seule la présence compte ici, pas l'unicité.
     expect(screen.getAllByText('Signalement incendie — Engagement A').length).toBeGreaterThan(0)
-    expect(screen.getByText('Rattacher à cet Engagement')).toBeInTheDocument()
+    expect(screen.getByText('Appliquer l’effet contractuel')).toBeInTheDocument()
+    expect(screen.queryByText('Rattacher à cet Engagement')).not.toBeInTheDocument()
     expect(screen.queryByText('Rattacher à un Engagement existant')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Rattacher à cet Engagement'))
-    expect(mockLink).toHaveBeenCalledTimes(1)
-    const fd = mockLink.mock.calls[0][0] as FormData
-    expect(fd.get('engagement_id')).toBe('eng-A')
+    fireEvent.click(screen.getByText('Appliquer l’effet contractuel'))
+    expect(mockMaterializeContractEffect).toHaveBeenCalledTimes(1)
+    expect(mockLink).not.toHaveBeenCalled()
+    const fd = mockMaterializeContractEffect.mock.calls[0][0] as FormData
+    expect(fd.get('proposal_id')).toBe('prop-os-1')
+    expect(fd.get('document_id')).toBe('doc-os-1')
+    expect(fd.get('engagement_id')).toBeNull()
   })
 
   it('qualification validée puis champ modifié → CTA disparaît jusqu’à revalidation', () => {
@@ -237,12 +253,13 @@ describe('ProposalCard — DOC-CONTRACT-OS-1A-UX — continuité carte OS/Avenan
         },
       },
     })
-    // Qualification déjà validée dès le rendu initial — Créer visible.
-    expect(screen.getByText('Créer un nouvel Engagement')).toBeInTheDocument()
+    // Qualification déjà validée dès le rendu initial — CTA visible.
+    expect(screen.getByText('Appliquer l’effet contractuel')).toBeInTheDocument()
 
     // L'utilisateur modifie l'effet : la qualification redevient dirty.
     fireEvent.change(effetSelect(), { target: { value: 'confirm' } })
 
+    expect(screen.queryByText('Appliquer l’effet contractuel')).not.toBeInTheDocument()
     expect(screen.queryByText('Créer un nouvel Engagement')).not.toBeInTheDocument()
     expect(screen.queryByText('Rattacher à un Engagement existant')).not.toBeInTheDocument()
     expect(screen.getByText('Validez la qualification avant de poursuivre.')).toBeInTheDocument()

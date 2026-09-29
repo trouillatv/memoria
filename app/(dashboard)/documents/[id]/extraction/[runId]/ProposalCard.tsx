@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction, updatePersonAttendanceAction, createEngagementFromProposalAction, linkEngagementToProposalAction, setContractEffectAction } from './review-actions'
+import { acceptProposalAction, editProposalAction, rejectProposalAction, resetProposalAction, updatePersonAttendanceAction, createEngagementFromProposalAction, linkEngagementToProposalAction, setContractEffectAction, materializeContractEffectAction } from './review-actions'
 import type { DbDocumentExtractionProposal, DbDocumentExtractionEvidence, DocumentEvidenceRelationType, DbEngagement, DbDocumentProposalMaterialization, EngagementCategory, EngagementKind } from '@/types/db'
 import {
   type ContractEffect,
@@ -18,6 +18,8 @@ import {
   effectAllowsCreateNewForDocument,
   effectAllowsLinkExistingForDocument,
   documentRequiresContractEffectQualification,
+  effectRequiresPayload,
+  effectIsMaterializableViaRpc,
 } from '@/lib/engagements/contract-effect'
 
 // ─── Labels ──────────────────────────────────────────────────────────────────
@@ -281,6 +283,7 @@ export function ProposalCard({
       resumeOn: string | null
       scope: string | null
       scopeKey: string | null
+      effectPayload: { description?: string } | null
     } | null
   } | null
   const relevanceScore = sourcePayload?.relevanceScore ?? null
@@ -321,6 +324,7 @@ export function ProposalCard({
   const [localResumeOn, setLocalResumeOn] = useState(contractEffect?.resumeOn ?? '')
   const [localScope, setLocalScope] = useState(contractEffect?.scope ?? '')
   const [localScopeKey, setLocalScopeKey] = useState(contractEffect?.scopeKey ?? '')
+  const [localEffectPayloadDescription, setLocalEffectPayloadDescription] = useState(contractEffect?.effectPayload?.description ?? '')
   const [effectTargetSearch, setEffectTargetSearch] = useState('')
   const isQualificationSaved = !!contractEffect
     && contractEffect.effect === localEffect
@@ -331,6 +335,7 @@ export function ProposalCard({
     && (contractEffect.resumeOn ?? '') === localResumeOn
     && (contractEffect.scope ?? '') === localScope
     && (contractEffect.scopeKey ?? '') === localScopeKey
+    && (contractEffect.effectPayload?.description ?? '') === localEffectPayloadDescription
   // Le geste suivant (Créer / Rattacher) ne doit jamais réagir à un choix de
   // formulaire non encore validé (fix de continuité, revue Vincent 2026-09-28) —
   // seule la qualification effectivement enregistrée (isQualificationSaved) peut
@@ -359,6 +364,7 @@ export function ProposalCard({
     if (localResumeOn) fd.set('resume_on', localResumeOn)
     if (localScope) fd.set('scope', localScope)
     if (localScopeKey) fd.set('scope_key', localScopeKey)
+    if (localEffectPayloadDescription.trim()) fd.set('effect_payload_description', localEffectPayloadDescription.trim())
     handleAction(() => setContractEffectAction(fd), () => {
       setLocalStatus('edited')
       setMsg({ ok: true, text: 'Qualification validée' })
@@ -367,14 +373,16 @@ export function ProposalCard({
 
   // Une proposition n'est matérialisable qu'après validation humaine explicite —
   // jamais depuis 'pending' (cf. audit P0-2C section 11, précondition de la RPC).
-  // Geste par geste, alignés sur la matrice serveur (mandat de fermeture Vincent
-  // 2026-09-28) : NEW→create, CONFIRM→link, MODIFY/SUSPEND/CONFLICT/NON_ENGAGEMENT→aucun.
-  // Sans qualification enregistrée, un ordre_service/avenant n'a plus droit au
-  // comportement legacy « null = autorisé » — seul le CCTP historique le conserve.
+  // DOC-CONTRACT-OS-1B1-UX-BRIDGE (mandat de fermeture Vincent 2026-09-29) : NEW/
+  // MODIFY/SUSPEND/CONFIRM qualifiés passent tous désormais par la primitive
+  // canonique 1B1 (canApplyContractEffect). Créer/Rattacher (OLD RPCs) ne reste
+  // ouvert que pour le CCTP historique jamais qualifié (validatedEffect === null) —
+  // jamais les deux routes disponibles pour un même effet qualifié.
   const acceptedOrEdited = isEngagement && (localStatus === 'accepted' || localStatus === 'edited')
-  const canCreateEngagement = acceptedOrEdited && effectAllowsCreateNewForDocument(documentType, validatedEffect)
-  const canLinkEngagement = acceptedOrEdited && effectAllowsLinkExistingForDocument(documentType, validatedEffect)
+  const canCreateEngagement = acceptedOrEdited && validatedEffect === null && effectAllowsCreateNewForDocument(documentType, validatedEffect)
+  const canLinkEngagement = acceptedOrEdited && validatedEffect === null && effectAllowsLinkExistingForDocument(documentType, validatedEffect)
   const canMaterializeEngagement = canCreateEngagement || canLinkEngagement
+  const canApplyContractEffect = acceptedOrEdited && effectIsMaterializableViaRpc(validatedEffect)
   const requiresQualificationFirst = acceptedOrEdited && !validatedEffect && documentRequiresContractEffectQualification(documentType)
   // Un effet choisi localement mais pas encore validé ne doit afficher ni Créer/Rattacher
   // ni le message « qualifiez d'abord » — un message dédié invite à valider d'abord.
@@ -404,6 +412,29 @@ export function ProposalCard({
       setLocalStatus('materialized')
       setShowLinkPicker(false)
       setMsg({ ok: true, text: 'Rattaché à l’Engagement existant' })
+    })
+  }
+
+  // DOC-CONTRACT-OS-1B1-UX-BRIDGE — chemin canonique unique pour NEW/MODIFY/
+  // SUSPEND/CONFIRM qualifiés (RPC materialize_engagement_contract_effect,
+  // migration 447). category/kind/measurable ne sont utiles qu'à NEW ; les
+  // autres effets sont déjà entièrement qualifiés (scope_key, cible, payload).
+  function onApplyContractEffect() {
+    if (validatedEffect === 'new' && !localKind) {
+      setMsg({ ok: false, text: 'Choisissez une nature avant d’appliquer cet effet' })
+      return
+    }
+    const fd = new FormData()
+    fd.set('proposal_id', proposal.id)
+    fd.set('document_id', documentId)
+    if (validatedEffect === 'new') {
+      fd.set('category', localCategory)
+      fd.set('kind', localKind)
+      fd.set('measurable', String(localMeasurable))
+    }
+    handleAction(() => materializeContractEffectAction(fd), () => {
+      setLocalStatus('materialized')
+      setMsg({ ok: true, text: 'Effet contractuel appliqué' })
     })
   }
 
@@ -743,6 +774,22 @@ export function ProposalCard({
                 </div>
               )}
 
+              {localEffect && effectRequiresPayload(localEffect) && (
+                <div>
+                  <label className="text-[11px] text-muted-foreground mb-1 block">
+                    Valeur modifiée (requis pour une modification)
+                  </label>
+                  <input
+                    type="text"
+                    value={localEffectPayloadDescription}
+                    onChange={(e) => setLocalEffectPayloadDescription(e.target.value)}
+                    disabled={pending}
+                    placeholder="ex : passage de 2 à 3 fois par semaine"
+                    className="w-full rounded border bg-background px-2 py-1.5 text-xs"
+                  />
+                </div>
+              )}
+
               <div className="flex items-center justify-between gap-2">
                 {isQualificationSaved ? (
                   <span className="text-[11px] text-emerald-700 dark:text-emerald-400">✓ Qualification validée</span>
@@ -754,7 +801,7 @@ export function ProposalCard({
                   size="sm"
                   variant="outline"
                   onClick={onSaveContractEffect}
-                  disabled={pending || !localEffect || !localTemporality || isQualificationSaved || (localEffect === 'modify' && !localScopeKey)}
+                  disabled={pending || !localEffect || !localTemporality || isQualificationSaved || (localEffect === 'modify' && !localScopeKey) || (!!localEffect && effectRequiresPayload(localEffect) && !localEffectPayloadDescription.trim())}
                 >
                   {pending ? '…' : 'Valider la qualification'}
                 </Button>
@@ -762,7 +809,7 @@ export function ProposalCard({
             </div>
           )}
 
-          {!isMaterialized && (
+          {!isMaterialized && (validatedEffect === null || validatedEffect === 'new') && (
             <div className="grid grid-cols-2 gap-2 pt-1">
               <div>
                 <label className="text-[11px] text-muted-foreground mb-1 block">Catégorie</label>
@@ -871,7 +918,26 @@ export function ProposalCard({
               )}
             </div>
           )}
-          {!isMaterialized && !canMaterializeEngagement && (
+
+          {!isMaterialized && canApplyContractEffect && (
+            <div className="pt-1 space-y-2">
+              {lockedLinkTargetId && (
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  ✓ Confirmation validée — Engagement concerné : <span className="font-medium">{lockedLinkTargetLabel}</span>
+                </p>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                onClick={onApplyContractEffect}
+                disabled={pending || (validatedEffect === 'new' && !localKind)}
+              >
+                {pending ? '…' : 'Appliquer l’effet contractuel'}
+              </Button>
+            </div>
+          )}
+
+          {!isMaterialized && !canMaterializeEngagement && !canApplyContractEffect && (
             <p className="text-xs text-muted-foreground">
               {hasUnsavedEffectChoice
                 ? 'Validez la qualification avant de poursuivre.'
@@ -879,11 +945,9 @@ export function ProposalCard({
                   ? (validatedEffect === 'conflict'
                       ? 'Conflit documentaire non résolu — la matérialisation est bloquée tant que l’effet n’est pas requalifié.'
                       : 'Effet « Non-Engagement » — cette proposition ne doit jamais devenir un Engagement.')
-                  : (acceptedOrEdited && (validatedEffect === 'modify' || validatedEffect === 'suspend'))
-                    ? 'Effet qualifié — application au contrat disponible dans DOC-CONTRACT-OS-1B.'
-                    : requiresQualificationFirst
-                      ? 'Qualifiez d’abord l’effet contractuel de ce document avant de créer ou rattacher un Engagement.'
-                      : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
+                  : requiresQualificationFirst
+                    ? 'Qualifiez d’abord l’effet contractuel de ce document avant de créer ou rattacher un Engagement.'
+                    : 'Acceptez ou corrigez la proposition avant de créer/rattacher un Engagement.'}
             </p>
           )}
         </div>

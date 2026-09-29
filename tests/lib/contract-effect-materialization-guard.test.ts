@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getOrgIdsOfUser: vi.fn(),
   materializeEngagementCreateNew: vi.fn(),
   materializeEngagementLinkExisting: vi.fn(),
+  materializeEngagementContractEffect: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -40,6 +41,7 @@ vi.mock('@/lib/auth/memberships', () => ({
 vi.mock('@/lib/db/materialize-engagement', () => ({
   materializeEngagementCreateNew: mocks.materializeEngagementCreateNew,
   materializeEngagementLinkExisting: mocks.materializeEngagementLinkExisting,
+  materializeEngagementContractEffect: mocks.materializeEngagementContractEffect,
   finalizeAcceptedEngagementsForRun: vi.fn(),
 }))
 
@@ -47,6 +49,7 @@ import {
   setContractEffectAction,
   createEngagementFromProposalAction,
   linkEngagementToProposalAction,
+  materializeContractEffectAction,
 } from '../../app/(dashboard)/documents/[id]/extraction/[runId]/review-actions'
 import {
   effectAllowsCreateNew,
@@ -483,5 +486,108 @@ describe('linkEngagementToProposalAction — cible verrouillée pour CONFIRM (mi
     const result = await linkEngagementToProposalAction(buildForm({ engagement_id: 'eng-A' }))
     expect(result).toMatchObject({ ok: true, engagementId: 'eng-A' })
     expect(mocks.materializeEngagementLinkExisting).toHaveBeenCalledWith('prop-1', 'eng-A', 'user-admin')
+  })
+})
+
+// ─── materializeContractEffectAction — chemin canonique unique (DOC-CONTRACT-OS-1B1-UX-BRIDGE) ──
+// Seul chemin qui écrit dans engagement_contract_effects : NEW/MODIFY/SUSPEND/CONFIRM
+// qualifiés passent tous par materializeEngagementContractEffect (RPC migration 447),
+// jamais par materializeEngagementCreateNew/LinkExisting (chemin legacy CCTP).
+
+describe('materializeContractEffectAction — chemin canonique unique (DOC-CONTRACT-OS-1B1-UX-BRIDGE)', () => {
+  function buildMaterializeForm(effect: string | null, extra: Record<string, unknown> = {}, formFields: Record<string, string> = {}) {
+    mocks.from.mockImplementation(buildAccessMock({
+      sourcePayload: effect ? { contract_effect: { effect, ...extra } } : {},
+    }))
+    return buildForm(formFields)
+  }
+
+  it('non qualifié — refus, aucun appel RPC', async () => {
+    const fd = buildMaterializeForm(null)
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toEqual({ ok: false, error: 'Qualifiez d’abord l’effet contractuel de ce document' })
+    expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
+  })
+
+  it('conflict — refus bloqué (OS14), aucun appel RPC', async () => {
+    const fd = buildMaterializeForm('conflict')
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toEqual({ ok: false, error: 'Conflit documentaire non résolu — requalifiez avant toute matérialisation' })
+    expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
+  })
+
+  it('non_engagement — refus bloqué, aucun appel RPC', async () => {
+    const fd = buildMaterializeForm('non_engagement')
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toEqual({ ok: false, error: 'Effet « Non-Engagement » — ne doit jamais être matérialisé' })
+    expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
+  })
+
+  it('new sans catégorie — refus, aucun appel RPC', async () => {
+    const fd = buildMaterializeForm('new')
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toMatchObject({ ok: false, error: 'Catégorie invalide' })
+    expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
+  })
+
+  it('new avec catégorie mais sans nature — refus', async () => {
+    const fd = buildMaterializeForm('new', {}, { category: 'sla' })
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toMatchObject({ ok: false, error: 'Nature invalide' })
+    expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
+  })
+
+  it('new avec catégorie/nature mais measurable invalide — refus', async () => {
+    const fd = buildMaterializeForm('new', {}, { category: 'sla', kind: 'controle', measurable: 'peut-être' })
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toMatchObject({ ok: false, error: 'Mesurable invalide' })
+    expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
+  })
+
+  it('modify qualifié sans effectPayload — refus (CHECK migration 445)', async () => {
+    const fd = buildMaterializeForm('modify', { targetEngagementId: 'eng-1', effectPayload: null })
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toEqual({ ok: false, error: 'Qualification incomplète : valeur modifiée non décrite' })
+    expect(mocks.materializeEngagementContractEffect).not.toHaveBeenCalled()
+  })
+
+  it('new qualifié complet — appelle la RPC canonique avec category/kind/measurable', async () => {
+    mocks.materializeEngagementContractEffect.mockResolvedValue({ engagementId: 'eng-new', effectId: 'effect-1' })
+    const fd = buildMaterializeForm('new', {}, { category: 'sla', kind: 'controle', measurable: 'true' })
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toEqual({ ok: true, engagementId: 'eng-new', effectId: 'effect-1' })
+    expect(mocks.materializeEngagementContractEffect).toHaveBeenCalledWith('prop-1', 'user-admin', {
+      category: 'sla', kind: 'controle', measurable: true, effectPayload: undefined,
+    })
+  })
+
+  it('confirm qualifié — appelle la RPC sans category/kind/measurable (null)', async () => {
+    mocks.materializeEngagementContractEffect.mockResolvedValue({ engagementId: 'eng-A', effectId: 'effect-2' })
+    const fd = buildMaterializeForm('confirm', { targetEngagementId: 'eng-A' })
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toEqual({ ok: true, engagementId: 'eng-A', effectId: 'effect-2' })
+    expect(mocks.materializeEngagementContractEffect).toHaveBeenCalledWith('prop-1', 'user-admin', {
+      category: null, kind: null, measurable: null, effectPayload: undefined,
+    })
+  })
+
+  it('modify qualifié avec effectPayload renseigné — appelle la RPC avec le payload', async () => {
+    mocks.materializeEngagementContractEffect.mockResolvedValue({ engagementId: 'eng-1', effectId: 'effect-3' })
+    const fd = buildMaterializeForm('modify', {
+      targetEngagementId: 'eng-1',
+      effectPayload: { description: 'fréquence trimestrielle' },
+    })
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toEqual({ ok: true, engagementId: 'eng-1', effectId: 'effect-3' })
+    expect(mocks.materializeEngagementContractEffect).toHaveBeenCalledWith('prop-1', 'user-admin', {
+      category: null, kind: null, measurable: null, effectPayload: { description: 'fréquence trimestrielle' },
+    })
+  })
+
+  it('RPC lève une erreur (ex. concurrence) — propagée en résultat ok:false', async () => {
+    mocks.materializeEngagementContractEffect.mockRejectedValue(new Error('Qualification introuvable ou modifiée depuis (concurrence)'))
+    const fd = buildMaterializeForm('new', {}, { category: 'sla', kind: 'controle', measurable: 'true' })
+    const result = await materializeContractEffectAction(fd)
+    expect(result).toEqual({ ok: false, error: 'Qualification introuvable ou modifiée depuis (concurrence)' })
   })
 })

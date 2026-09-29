@@ -90,6 +90,13 @@ export function effectRequiresScopeKey(effect: ContractEffect): boolean {
   return effect === 'modify'
 }
 
+// engagement_contract_effects.effect_payload a un CHECK `<> '{}'::jsonb` pour
+// MODIFY (migration 445) — une modification doit porter la valeur qu'elle
+// change, jamais un effet vide (DOC-CONTRACT-OS-1B1-UX-BRIDGE).
+export function effectRequiresPayload(effect: ContractEffect | null): boolean {
+  return effect === 'modify'
+}
+
 export function temporalityRequiresDates(temporality: ContractTemporality): boolean {
   return temporality === 'bounded'
 }
@@ -135,6 +142,14 @@ export function effectAllowsLinkExistingForDocument(documentType: string | null 
   return !documentRequiresContractEffectQualification(documentType)
 }
 
+// Effets que la RPC canonique `materialize_engagement_contract_effect` (DOC-CONTRACT-OS-1B1,
+// migration 447) sait matérialiser — NEW/MODIFY/SUSPEND/CONFIRM. CONFLICT/NON_ENGAGEMENT
+// et l'absence de qualification restent hors de ce chemin (DOC-CONTRACT-OS-1B1-UX-BRIDGE,
+// mandat de fermeture Vincent 2026-09-29).
+export function effectIsMaterializableViaRpc(effect: ContractEffect | null): boolean {
+  return !!effect && !effectBlocksMaterialization(effect)
+}
+
 export type ContractEffectQualification = {
   effect: ContractEffect
   temporality: ContractTemporality
@@ -144,6 +159,7 @@ export type ContractEffectQualification = {
   resumeOn: string | null
   scope: string | null
   scopeKey: string | null
+  effectPayload: Record<string, unknown> | null
 }
 
 // DOC-CONTRACT-OS-1A-UX (mandat Vincent 2026-09-28) — synthèse de revue contractuelle
