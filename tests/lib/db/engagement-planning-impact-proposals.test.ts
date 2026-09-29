@@ -44,6 +44,8 @@ let suspendEngagementId: string
 let confirmOnlyEngagementId: string
 let crossOrgEngagementId: string
 let os15NewEngagementId: string
+let os15ModifyEngagementId: string
+let os15SuspendEngagementId: string
 
 const currentUser = () => ({ id: adminUserId })
 
@@ -146,6 +148,8 @@ beforeAll(async () => {
   confirmOnlyEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} confirm-only` })
   crossOrgEngagementId = await insertEngagement({ site_id: outsiderSiteId, organization_id: outsiderOrgId, short_label: `${TAG} cross-org` })
   os15NewEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} os15 new` })
+  os15ModifyEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} os15 modify` })
+  os15SuspendEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} os15 suspend` })
 
   const newProposal = await makeQualifiedProposal({
     effect: 'new',
@@ -192,16 +196,53 @@ beforeAll(async () => {
   })
   await materializeEffectWithPayload(modifyNonPlanningProposal, { description: '+10% de surface' })
 
-  // OS15 — NEW qualifié avec une valeur métier riche (FIX 5).
+  // OS15 — golden witness exact du mandat FIX_REQUIRED (2e revue Vincent
+  // 2026-09-30) : NEW relevé photo hebdomadaire, 2026-12-01 → 2027-01-31.
   const os15NewProposal = await makeQualifiedProposal({
     effect: 'new',
-    temporality: 'permanent',
-    scope: 'whole_engagement',
-    scopeKey: 'whole_engagement',
-    startsOn: '2026-10-01',
+    temporality: 'bounded',
+    scope: 'reporting',
+    scopeKey: 'reporting',
+    startsOn: '2026-12-01',
+    endsOn: '2027-01-31',
     targetEngagementId: os15NewEngagementId,
   })
   await materializeEffectWithPayload(os15NewProposal, { description: 'Relevé photo hebdomadaire zone Z2' })
+
+  // OS15 — golden witness MODIFY : 2 passages/semaine → 3 passages/semaine au
+  // 2026-12-01 ("from" resolu depuis l'effet permanent antérieur).
+  const os15ModifyPriorProposal = await makeQualifiedProposal({
+    effect: 'modify',
+    temporality: 'permanent',
+    scope: 'frequency',
+    scopeKey: 'frequency',
+    startsOn: '2026-11-01',
+    targetEngagementId: os15ModifyEngagementId,
+  })
+  await materializeEffectWithPayload(os15ModifyPriorProposal, { description: '2 passages par semaine' })
+
+  const os15ModifyProposal = await makeQualifiedProposal({
+    effect: 'modify',
+    temporality: 'bounded',
+    scope: 'frequency',
+    scopeKey: 'frequency',
+    startsOn: '2026-12-01',
+    targetEngagementId: os15ModifyEngagementId,
+  })
+  await materializeEffectWithPayload(os15ModifyProposal, { description: 'passage de 2 à 3 passages par semaine' })
+
+  // OS15 — golden witness SUSPEND : 2026-12-10 → 2026-12-14, reprise 2026-12-15.
+  const os15SuspendProposal = await makeQualifiedProposal({
+    effect: 'suspend',
+    temporality: 'bounded',
+    scope: 'whole_engagement',
+    scopeKey: 'whole_engagement',
+    startsOn: '2026-12-10',
+    endsOn: '2026-12-14',
+    resumeOn: '2026-12-15',
+    targetEngagementId: os15SuspendEngagementId,
+  })
+  await materializeEffectWithPayload(os15SuspendProposal, {})
 
   const suspendProposal = await makeQualifiedProposal({
     effect: 'suspend',
@@ -229,7 +270,7 @@ beforeAll(async () => {
 afterAll(async () => {
   const db = createAdminClient()
   // engagements cascade → engagement_contract_effects → engagement_planning_impact_proposals
-  await db.from('engagements').delete().in('id', [newEngagementId, modifyEngagementId, modifyNonPlanningEngagementId, suspendEngagementId, confirmOnlyEngagementId, crossOrgEngagementId, os15NewEngagementId])
+  await db.from('engagements').delete().in('id', [newEngagementId, modifyEngagementId, modifyNonPlanningEngagementId, suspendEngagementId, confirmOnlyEngagementId, crossOrgEngagementId, os15NewEngagementId, os15ModifyEngagementId, os15SuspendEngagementId])
   await db.from('documents').delete().eq('id', docId)
   await db.from('sites').delete().in('id', [siteId, outsiderSiteId])
   await db.from('clients').delete().in('id', [clientId, outsiderClientId])
@@ -418,26 +459,75 @@ describe('dismissPlanningImpactProposal — décision humaine', () => {
   })
 })
 
-// OS15 — témoin de fermeture DOC-CONTRACT-OS-1B4-B (mandat FIX_REQUIRED
-// Vincent 2026-09-30), volet intégration. Couvre en base réelle ce que le
-// test pur (planning-impact-proposal.test.ts) couvre en mémoire : NEW porte
-// une qualification humaine riche (problème 5) sans jamais devenir
-// applicable (problème 3), et le calcul de capacité lu par
-// listPlanningImpactProposalsForEngagement reflète bien le nouveau modèle.
-describe('OS15 — témoin de fermeture 1B4-B (intégration)', () => {
-  it('NEW qualifié avec effect_payload riche : la proposition le porte, la capacité reste no_application', async () => {
+// OS15 — véritable témoin de fermeture DOC-CONTRACT-OS-1B4-B (mandat
+// FIX_REQUIRED Vincent 2026-09-30, 2e revue), volet intégration. Reprend en
+// base réelle le golden witness exact (NEW relevé photo hebdomadaire
+// 2026-12-01→2027-01-31 ; MODIFY 2→3 passages/semaine au 2026-12-01 ; SUSPEND
+// 2026-12-10→2026-12-14 reprise 2026-12-15 ; CONFIRM sans impact). Chaque
+// payload reste un passthrough opaque de effect_payload.description — aucune
+// fréquence structurée n'est ni requise ni synthétisée (audit FIX C READ-ONLY :
+// aucune source structurée de fréquence n'existe dans ce domaine).
+describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness, intégration)', () => {
+  it('1. MODIFY — 2 à 3 passages/semaine au 2026-12-01 : partially_representable', async () => {
+    const generated = await generatePlanningImpactProposalsForEngagement(os15ModifyEngagementId, currentUser())
+    expect(generated.ok).toBe(true)
+    if (!generated.ok) return
+    const golden = generated.proposals.find(
+      (p) => (p.proposalPayload as ModifyPlanningImpactPayload).effectiveFrom === '2026-12-01',
+    )
+    expect(golden).toBeTruthy()
+    const payload = golden!.proposalPayload as ModifyPlanningImpactPayload
+    expect(payload.from).toEqual({ description: '2 passages par semaine' })
+    expect(payload.to).toEqual({ description: 'passage de 2 à 3 passages par semaine' })
+
+    const listed = await listPlanningImpactProposalsForEngagement(os15ModifyEngagementId, currentUser())
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) return
+    const listedGolden = listed.proposals.find((p) => (p.proposalPayload as ModifyPlanningImpactPayload).effectiveFrom === '2026-12-01')
+    expect(listedGolden!.capability.readiness).toBe('partially_representable')
+  })
+
+  it('2. SUSPEND — 2026-12-10 → 2026-12-14, reprise 2026-12-15 : blocked_by_planning_model', async () => {
+    const generated = await generatePlanningImpactProposalsForEngagement(os15SuspendEngagementId, currentUser())
+    expect(generated.ok).toBe(true)
+    if (!generated.ok) return
+    expect(generated.proposals).toHaveLength(1)
+    expect(generated.proposals[0].proposalPayload).toEqual({
+      operation: 'suspend',
+      effectiveFrom: '2026-12-10',
+      effectiveTo: '2026-12-14',
+      resumeOn: '2026-12-15',
+    })
+    const listed = await listPlanningImpactProposalsForEngagement(os15SuspendEngagementId, currentUser())
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) return
+    expect(listed.proposals[0].capability.readiness).toBe('blocked_by_planning_model')
+  })
+
+  it('3. NEW — relevé photo hebdomadaire 2026-12-01→2027-01-31 : partially_representable, payload jamais parsé', async () => {
     const generated = await generatePlanningImpactProposalsForEngagement(os15NewEngagementId, currentUser())
     expect(generated.ok).toBe(true)
     if (!generated.ok) return
     expect(generated.proposals).toHaveLength(1)
     const payload = generated.proposals[0].proposalPayload as NewPlanningImpactPayload
+    expect(payload.effectiveFrom).toBe('2026-12-01')
+    expect(payload.effectiveTo).toBe('2027-01-31')
     expect(payload.effectPayload).toEqual({ description: 'Relevé photo hebdomadaire zone Z2' })
-    expect(payload.scopeKey).toBe('whole_engagement')
+    expect(payload.scopeKey).toBe('reporting')
+    // Aucune fréquence structurée synthétisée : la seule clé est la description brute.
+    expect(Object.keys(payload.effectPayload)).toEqual(['description'])
 
     const listed = await listPlanningImpactProposalsForEngagement(os15NewEngagementId, currentUser())
     expect(listed.ok).toBe(true)
     if (!listed.ok) return
-    expect(listed.proposals[0].capability.readiness).toBe('no_application')
+    expect(listed.proposals[0].capability.readiness).toBe('partially_representable')
     expect(listed.proposals[0].capability.blockingReason).toBe('new_requires_human_scheduling')
+  })
+
+  it('4. CONFIRM — jamais un impact Planning, aucune proposition générée', async () => {
+    const result = await generatePlanningImpactProposalsForEngagement(confirmOnlyEngagementId, currentUser())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.proposals).toHaveLength(0)
   })
 })

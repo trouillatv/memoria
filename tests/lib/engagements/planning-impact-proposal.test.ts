@@ -157,10 +157,10 @@ describe('computePlanningImpactProposalFingerprint', () => {
 })
 
 describe('resolvePlanningApplicationCapability', () => {
-  it('NEW — no_application, décisions manquantes = jour/heure/équipe/durée', () => {
+  it('NEW — partially_representable (verdict 1B4-A FINAL CLOSED), décisions manquantes = jour/heure/équipe/durée', () => {
     const payload: NewPlanningImpactPayload = { operation: 'new', temporality: 'permanent', effectiveFrom: null, effectiveTo: null, scopeKey: 'whole_engagement', effectPayload: {} }
     const capability = resolvePlanningApplicationCapability('new', payload)
-    expect(capability.readiness).toBe('no_application')
+    expect(capability.readiness).toBe('partially_representable')
     expect(capability.blockingReason).toBe('new_requires_human_scheduling')
     expect(capability.missingDecisions).toEqual(['jour', 'heure', 'équipe', 'durée'])
   })
@@ -189,54 +189,100 @@ describe('resolvePlanningApplicationCapability', () => {
   })
 })
 
-// OS15 — témoin de fermeture DOC-CONTRACT-OS-1B4-B (mandat FIX_REQUIRED
-// Vincent 2026-09-30) : couvre explicitement les 4 problèmes numérotés du
-// verdict, chacun dans son propre cas.
-describe('OS15 — témoin de fermeture 1B4-B', () => {
-  it('problème 5 — NEW peut porter une qualification humaine riche (scope_key + effect_payload.description)', () => {
+// OS15 — véritable témoin de fermeture DOC-CONTRACT-OS-1B4-B (mandat
+// FIX_REQUIRED Vincent 2026-09-30, 2e revue « STRUCTURED PLANNING RELEVANCE +
+// TRUE OS15 ») : reprend EXACTEMENT le golden witness du verdict (NEW relevé
+// photo hebdomadaire 2026-12-01→2027-01-31 ; MODIFY 2→3 passages/semaine au
+// 2026-12-01 ; SUSPEND 2026-12-10→2026-12-14, reprise 2026-12-15 ; CONFIRM
+// sans impact). Chaque cas vérifie explicitement qu'aucune fréquence
+// structurée n'est dérivée du texte libre de effect_payload.description — la
+// 1re revue avait fabriqué un faux témoin en traitant cette description comme
+// une donnée métier ; l'audit FIX C (READ-ONLY) a confirmé qu'aucune source
+// structurée de fréquence/récurrence n'existe dans le domaine
+// Engagement/contract-effect (seule Planning, via intervention_templates,
+// porte une récurrence structurée — domaine distinct, non pontée ici).
+describe('OS15 — véritable témoin de fermeture 1B4-B (golden witness)', () => {
+  it('NEW — relevé photo hebdomadaire (2026-12-01→2027-01-31) : payload opaque préservé tel quel, jamais parsé', () => {
     const effect = row({
       id: 'e-os15-new',
       effect: 'new',
-      temporality: 'permanent',
-      startsOn: '2026-10-01',
-      endsOn: null,
-      scopeKey: 'whole_engagement',
+      temporality: 'bounded',
+      startsOn: '2026-12-01',
+      endsOn: '2027-01-31',
+      scopeKey: 'reporting',
       effectPayload: { description: 'Relevé photo hebdomadaire zone Z2' },
     })
     const payload = buildPlanningImpactProposalPayload(effect) as NewPlanningImpactPayload
-    expect(payload.effectPayload).toEqual({ description: 'Relevé photo hebdomadaire zone Z2' })
-    expect(payload.scopeKey).toBe('whole_engagement')
-  })
+    expect(payload).toEqual({
+      operation: 'new',
+      temporality: 'bounded',
+      effectiveFrom: '2026-12-01',
+      effectiveTo: '2027-01-31',
+      scopeKey: 'reporting',
+      effectPayload: { description: 'Relevé photo hebdomadaire zone Z2' },
+    })
+    // Aucune fréquence structurée n'est synthétisée depuis le texte : la seule
+    // clé transportée est la description humaine brute.
+    expect(Object.keys(payload.effectPayload)).toEqual(['description'])
 
-  it('problème 5 (suite) — la richesse du payload NEW ne rend jamais la capacité applicable (readiness reste no_application)', () => {
-    const effect = row({
-      id: 'e-os15-new-2',
-      effect: 'new',
-      temporality: 'permanent',
-      startsOn: '2026-10-01',
-      endsOn: null,
-      effectPayload: { description: 'Relevé photo hebdomadaire zone Z2' },
-    })
-    const payload = buildPlanningImpactProposalPayload(effect) as NewPlanningImpactPayload
     const capability = resolvePlanningApplicationCapability('new', payload)
-    expect(capability.readiness).toBe('no_application')
+    expect(capability.readiness).toBe('partially_representable')
+    expect(capability.blockingReason).toBe('new_requires_human_scheduling')
+    expect(capability.missingDecisions).toEqual(['jour', 'heure', 'équipe', 'durée'])
   })
 
-  it('problème 3 — MODIFY fréquence n\'est plus classé "jamais applicable" : un mécanisme natif existe (partially_representable)', () => {
+  it('MODIFY — 2 à 3 passages/semaine au 2026-12-01 : from/to opaques préservés, jamais un frequency structuré inventé', () => {
     const effect = row({
       id: 'e-os15-mod-freq',
       effect: 'modify',
       scopeKey: 'frequency',
       startsOn: '2026-12-01',
-      effectPayload: { description: 'passage à hebdomadaire' },
+      endsOn: null,
+      effectPayload: { description: 'passage de 2 à 3 passages par semaine' },
     })
-    const payload = buildPlanningImpactProposalPayload(effect)
-    expect(payload).not.toBeNull()
+    const priorScopeValue = { description: '2 passages par semaine' }
+    const payload = buildPlanningImpactProposalPayload(effect, priorScopeValue)
+    expect(payload).toEqual({
+      operation: 'change_frequency',
+      scopeKey: 'frequency',
+      effectiveFrom: '2026-12-01',
+      effectiveTo: null,
+      from: { description: '2 passages par semaine' },
+      to: { description: 'passage de 2 à 3 passages par semaine' },
+    })
+    expect(Object.keys((payload as { to: Record<string, unknown> }).to)).toEqual(['description'])
+
     const capability = resolvePlanningApplicationCapability('modify', payload!)
     expect(capability.readiness).toBe('partially_representable')
+    expect(capability.blockingReason).toBe('recurring_change_requires_mission_targeting')
   })
 
-  it('problème 4 — MODIFY sur un scope_key non lié au Planning ne produit aucune proposition (effet ≠ impact Planning)', () => {
+  it('SUSPEND — 2026-12-10 → 2026-12-14, reprise 2026-12-15 : dates structurées reprises exactement', () => {
+    const effect = row({
+      id: 'e-os15-suspend',
+      effect: 'suspend',
+      startsOn: '2026-12-10',
+      endsOn: '2026-12-14',
+      resumeOn: '2026-12-15',
+    })
+    const payload = buildPlanningImpactProposalPayload(effect)
+    expect(payload).toEqual({
+      operation: 'suspend',
+      effectiveFrom: '2026-12-10',
+      effectiveTo: '2026-12-14',
+      resumeOn: '2026-12-15',
+    })
+    const capability = resolvePlanningApplicationCapability('suspend', payload!)
+    expect(capability.readiness).toBe('blocked_by_planning_model')
+    expect(capability.blockingReason).toBe('no_native_suspend_resume')
+  })
+
+  it('CONFIRM — jamais un impact Planning, rend null', () => {
+    const effect = row({ id: 'e-os15-confirm', effect: 'confirm' })
+    expect(buildPlanningImpactProposalPayload(effect)).toBeNull()
+  })
+
+  it('MODIFY sur scope_key non Planning-relevant (quantity) — aucune proposition, effet ≠ impact Planning', () => {
     const effect = row({
       id: 'e-os15-mod-lot',
       effect: 'modify',

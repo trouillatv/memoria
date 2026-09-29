@@ -17,6 +17,22 @@
 //     construit (jamais un lookup statique par impact_kind seul — cf. mandat
 //     FIX_REQUIRED Vincent 2026-09-30, problème 3). Ce résultat n'est JAMAIS
 //     persisté (il deviendrait une vérité périmée si le Planning évolue).
+//
+// GAP CONNU, NON RÉSOLU (mandat FIX_REQUIRED Vincent 2026-09-30, 2e revue,
+// FIX E) : tout effet NEW et tout effet SUSPEND produit aujourd'hui
+// inconditionnellement une proposition d'impact Planning, alors qu'un
+// Engagement NEW ou SUSPEND peut porter une obligation sans aucun rythme
+// calendaire (ex. exigence documentaire, obligation de conformité). Contraire
+// à PLANNING_RELEVANT_MODIFY_SCOPE_KEYS pour MODIFY, aucun filtrage
+// équivalent n'existe ici : l'audit FIX C (READ-ONLY, 2e revue) a confirmé
+// qu'aucun champ structuré du domaine Engagement (`engagements.category`,
+// `kind`, `measurable`, `scope_key`) ne permet de distinguer, de façon
+// canonique, un NEW/SUSPEND Planning-relevant d'un NEW/SUSPEND purement
+// documentaire — seule Planning (intervention_templates) porte une
+// récurrence structurée, domaine distinct, non ponté à Engagement. Point
+// volontairement NON corrigé ici (aucune heuristique inventée) : nécessite
+// une décision d'architecture (nouveau champ structuré sur `engagements` ou
+// `engagement_contract_effects` ?) hors du périmètre de ce fichier.
 
 import { createHash } from 'node:crypto'
 import { canonicalStringify } from '@/lib/knowledge/tracked-point-fingerprint'
@@ -134,14 +150,16 @@ export function computePlanningImpactProposalFingerprint(input: PlanningImpactPr
 
 // PARTIALLY_REPRESENTABLE : un mécanisme Planning natif existe (ex.
 // fn_plan_supersede_cycle_exclusive, migration 444, bascule versionnée d'un
-// cycle publié) mais requiert une traduction humaine (quelle Mission cible,
-// quels slots/ancre/longueur de cycle) — jamais une application automatique.
+// cycle publié ; intervention_templates pour une création) mais requiert une
+// traduction humaine (quelle Mission cible, jour/heure/équipe, quels
+// slots/ancre/longueur de cycle) — jamais une application automatique. NEW
+// est ici (verdict 1B4-A FINAL CLOSED : le Planning sait représenter une
+// récurrence bornée, ce qui manque est la décision humaine, pas le modèle).
 // BLOCKED_BY_PLANNING_MODEL : aucun mécanisme natif n'existe aujourd'hui pour
 // ce cas, quelle que soit la richesse de la proposition.
 // NO_APPLICATION : l'effet contractuel n'a structurellement aucune vocation
-// à s'appliquer dans le Planning (NEW = création hors modèle Planning tant
-// qu'aucun jour/heure/équipe n'est décidé humainement ; MODIFY sur un
-// scope_key non lié au rythme d'intervention).
+// à s'appliquer dans le Planning (MODIFY sur un scope_key non lié au rythme
+// d'intervention).
 export type PlanningApplicationReadiness = 'partially_representable' | 'blocked_by_planning_model' | 'no_application'
 
 export type PlanningApplicationBlockingReason =
@@ -169,7 +187,7 @@ export function resolvePlanningApplicationCapability(
   switch (impactKind) {
     case 'new':
       return {
-        readiness: 'no_application',
+        readiness: 'partially_representable',
         blockingReason: 'new_requires_human_scheduling',
         missingDecisions: ['jour', 'heure', 'équipe', 'durée'],
       }
