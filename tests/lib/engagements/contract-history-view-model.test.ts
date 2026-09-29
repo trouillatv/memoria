@@ -194,6 +194,86 @@ describe('buildEngagementContractHistoryViewModel — séparation dates contract
   })
 })
 
+describe('buildEngagementContractHistoryViewModel — SUSPEND bornée avec trou de reprise', () => {
+  it('resumeOn > endsOn + 1 jour : le trou indéterminé est rendu explicite dans le récit', () => {
+    const state = baseState({
+      scopes: [baseScope({ scopeKey: 'whole_engagement', applicability: 'suspended' })],
+      provenanceTrail: [
+        entry({
+          effectId: 'suspend-gap-1',
+          effect: 'suspend',
+          scopeKey: 'whole_engagement',
+          temporality: 'bounded',
+          startsOn: '2026-12-10',
+          endsOn: '2026-12-14',
+          resumeOn: '2026-12-19',
+        }),
+      ],
+    })
+    const vm = buildEngagementContractHistoryViewModel(state)
+    const [e] = vm.entries
+    expect(e.dateLine).toBe(
+      'Suspension du 10 décembre 2026 au 14 décembre 2026. Reprise le 19 décembre 2026. ' +
+        'Statut indéterminé du 15 décembre 2026 au 18 décembre 2026 — aucune règle contractuelle ne couvre cet intervalle.',
+    )
+  })
+
+  it('resumeOn = endsOn + 1 jour (reprise immédiate) : aucun trou signalé', () => {
+    const state = baseState({
+      provenanceTrail: [
+        entry({
+          effectId: 'suspend-clean-1',
+          effect: 'suspend',
+          scopeKey: 'whole_engagement',
+          temporality: 'bounded',
+          startsOn: '2026-12-10',
+          endsOn: '2026-12-14',
+          resumeOn: '2026-12-15',
+        }),
+      ],
+    })
+    const vm = buildEngagementContractHistoryViewModel(state)
+    expect(vm.entries[0].dateLine).toBe('Suspension du 10 décembre 2026 au 14 décembre 2026. Reprise le 15 décembre 2026.')
+    expect(vm.entries[0].dateLine).not.toMatch(/indéterminé/)
+  })
+})
+
+describe('buildEngagementContractHistoryViewModel — SUSPEND one_off', () => {
+  it('affiche uniquement le jour de suspension, sans fenêtre ni reprise', () => {
+    const state = baseState({
+      provenanceTrail: [
+        entry({
+          effectId: 'suspend-oneoff-1',
+          effect: 'suspend',
+          scopeKey: 'whole_engagement',
+          temporality: 'one_off',
+          startsOn: '2026-12-24',
+        }),
+      ],
+    })
+    const vm = buildEngagementContractHistoryViewModel(state)
+    expect(vm.entries[0].dateLine).toBe('Suspension le 24 décembre 2026 uniquement.')
+  })
+})
+
+describe('buildEngagementContractHistoryViewModel — NEW one_off', () => {
+  it('décrit une existence limitée au jour unique, jamais une fenêtre ni un scope', () => {
+    const state = baseState({
+      provenanceTrail: [
+        entry({
+          effectId: 'new-oneoff-1',
+          effect: 'new',
+          scopeKey: 'whole_engagement',
+          temporality: 'one_off',
+          startsOn: '2026-12-24',
+        }),
+      ],
+    })
+    const vm = buildEngagementContractHistoryViewModel(state)
+    expect(vm.entries[0].headline).toBe('Engagement applicable uniquement le 24 décembre 2026.')
+  })
+})
+
 describe('buildEngagementContractHistoryViewModel — SUSPEND event_driven indéterminé', () => {
   it('jamais de reprise inventée + motif moteur repris verbatim', () => {
     const reason = 'Statut de reprise non confirmé (fenêtre de reprise explicite non atteinte) ou suspension déclenchée par événement sans mécanisme de clôture démontré.'

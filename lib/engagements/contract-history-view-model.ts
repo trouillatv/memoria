@@ -27,7 +27,7 @@ import type {
   ProvenanceEntry,
 } from './resolve-contract-state'
 import type { ContractTemporality } from './contract-effect'
-import { frDayMonthYearLocal } from '@/lib/time/local-date'
+import { addDaysLocal, frDayMonthYearLocal } from '@/lib/time/local-date'
 
 const RESTRICTED_DOCUMENT_LABEL = 'document à accès restreint'
 
@@ -129,17 +129,38 @@ function buildModifyDateLine(temporality: ContractTemporality, startsOn: string 
   }
 }
 
+// Le moteur (`suspendIndeterminateAt`, resolve-contract-state.ts) traite déjà
+// tout jour strictement entre endsOn et resumeOn comme indéterminé dès que
+// resumeOn n'est pas le lendemain civil d'endsOn. Ici, aucune résolution :
+// seule une comparaison arithmétique de dates (addDaysLocal) pour rendre ce
+// même trou VISIBLE dans le récit, plutôt que de le laisser implicite tant
+// que personne ne consulte cette fenêtre précise.
+function buildBoundedResumeGapPhrase(rawEndsOn: string | null, rawResumeOn: string | null): string | null {
+  if (!rawEndsOn || !rawResumeOn) return null
+  const dayAfterEnd = addDaysLocal(rawEndsOn, 1)
+  if (dayAfterEnd === rawResumeOn) return null
+  const gapStart = frDayMonthYearLocal(dayAfterEnd)
+  const gapEnd = frDayMonthYearLocal(addDaysLocal(rawResumeOn, -1))
+  return `Statut indéterminé du ${gapStart} au ${gapEnd} — aucune règle contractuelle ne couvre cet intervalle.`
+}
+
 function buildSuspendDateLine(
   temporality: ContractTemporality,
   startsOn: string | null,
   endsOn: string | null,
   resumeOn: string | null,
+  rawEndsOn: string | null,
+  rawResumeOn: string | null,
 ): string {
   switch (temporality) {
-    case 'bounded':
-      if (startsOn && endsOn && resumeOn) return `Suspension du ${startsOn} au ${endsOn}. Reprise le ${resumeOn}.`
+    case 'bounded': {
+      if (startsOn && endsOn && resumeOn) {
+        const gapPhrase = buildBoundedResumeGapPhrase(rawEndsOn, rawResumeOn)
+        return `Suspension du ${startsOn} au ${endsOn}. Reprise le ${resumeOn}.${gapPhrase ? ` ${gapPhrase}` : ''}`
+      }
       if (startsOn && endsOn) return `Suspension du ${startsOn} au ${endsOn}.`
       return startsOn ? `Suspension à partir du ${startsOn}.` : 'Suspension bornée, dates non déterminées.'
+    }
     case 'one_off':
       return startsOn ? `Suspension le ${startsOn} uniquement.` : 'Suspension ponctuelle, date non déterminée.'
     case 'event_driven':
@@ -193,7 +214,7 @@ function buildEntry(
         : null
   } else if (entry.effect === 'suspend') {
     headline = `Suspension — ${entry.scopeKey}`
-    dateLine = buildSuspendDateLine(entry.temporality, startsOnFmt, endsOnFmt, resumeOnFmt)
+    dateLine = buildSuspendDateLine(entry.temporality, startsOnFmt, endsOnFmt, resumeOnFmt, entry.endsOn, entry.resumeOn)
   } else {
     // confirm — provenance-only (doctrine 8), jamais une valeur/existence.
     headline = sourceLabel !== RESTRICTED_DOCUMENT_LABEL ? `Confirmé par ${sourceLabel}` : 'Confirmation documentaire enregistrée'
