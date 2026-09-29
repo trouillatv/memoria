@@ -10,13 +10,13 @@
 
 import { describe, it, expect } from 'vitest'
 import { render, screen, within, fireEvent } from '@testing-library/react'
-import { DashboardPremium, Hero, MemorySouvient } from '@/app/(dashboard)/dashboard/DashboardPremium'
+import { DashboardPremium, Hero, MemorySouvient, ActionsDuChantier } from '@/app/(dashboard)/dashboard/DashboardPremium'
 import type { SiteDashboardItem } from '@/lib/db/sites-dashboard'
-import type { AttentionCard } from '@/lib/situations/attention/types'
 import type { MemoryReview, ConfirmedItem } from '@/lib/knowledge/memory-review'
 import type { UpcomingDashboardItem } from '@/lib/db/upcoming-items'
 import type { DashboardDeadlineToPlan } from '@/lib/db/dashboard-deadlines'
 import type { HomeHeroDelta } from '@/lib/documents/home-hero-delta'
+import { emptyActionsPilotage, type SiteActionsPilotage, type PilotageCbo, type PilotageSubject } from '@/lib/knowledge/actions-pilotage'
 import type { OrganizationIdentity, OrganizationIdentityMap } from '@/lib/db/organisations'
 
 function org(over: Partial<OrganizationIdentity> = {}): OrganizationIdentity {
@@ -40,6 +40,7 @@ function site(over: Partial<SiteDashboardItem> = {}): SiteDashboardItem {
     href: '/sites/site-1',
     pvCount: 3,
     subjectCount: 7,
+    pointCount: 5,
     ...over,
   }
 }
@@ -63,20 +64,42 @@ function confirmedItem(over: Partial<ConfirmedItem> = {}): ConfirmedItem {
   }
 }
 
-function attentionCard(over: Partial<AttentionCard> = {}): AttentionCard {
+function pilotageCbo(over: Partial<PilotageCbo> = {}): PilotageCbo {
   return {
-    id: 'ac-1',
-    icon: 'warning',
-    tone: 'red',
-    priority: 10,
-    title: 'Réserve non levée depuis 40 jours',
-    description: 'Détail de la réserve.',
-    siteLabel: 'Chantier Alpha',
-    secondaryActions: [],
-    subject: null,
-    resolutions: [],
+    cboId: 'cbo-1',
+    label: 'Reprendre les enduits',
+    computedCurrentState: 'open',
+    active: true,
+    terminal: false,
+    stateBasis: [],
+    conflicts: [],
+    documentaryDivergences: [],
+    targetActionId: 'action-1',
     ...over,
   }
+}
+
+function pilotageSubject(over: Partial<PilotageSubject> = {}): PilotageSubject {
+  return {
+    canonicalSubjectId: 'cs-1',
+    label: 'Façades',
+    displayState: 'open',
+    activeCboCount: 1,
+    completedCboCount: 0,
+    unknownCboCount: 0,
+    totalCboCount: 1,
+    lastMeaningfulChangeAt: null,
+    pvCount: 1,
+    cbos: [pilotageCbo()],
+    formulations: [],
+    formulationPvCount: 0,
+    ...over,
+  }
+}
+
+function pilotage(over: Partial<SiteActionsPilotage> = {}): SiteActionsPilotage {
+  const base = emptyActionsPilotage()
+  return { ...base, ...over }
 }
 
 function upcomingItem(over: Partial<UpcomingDashboardItem> = {}): UpcomingDashboardItem {
@@ -118,26 +141,37 @@ const organizationMap: OrganizationIdentityMap = { 'org-a': org() }
 
 type Props = React.ComponentProps<typeof DashboardPremium>
 
-// heroSlot/memorySlot sont désormais pré-rendus par page.tsx (Async Server Component
-// + Suspense, cf. fix Suspense Home V2) : les tests les construisent ici à partir de
-// heroDelta/activeReview, comme le ferait ActiveHero/ActiveMemory.
-type BaseOverrides = Omit<Partial<Props>, 'heroSlot' | 'memorySlot'> & {
+// heroSlot/memorySlot/actionsSlot sont désormais pré-rendus par page.tsx (Async Server
+// Component + Suspense, cf. fix Suspense Home V2) : les tests les construisent ici à
+// partir de heroDelta/activeReview/activePilotage, comme le ferait
+// ActiveHero/ActiveMemory/ActiveActions.
+type BaseOverrides = Omit<Partial<Props>, 'heroSlot' | 'memorySlot' | 'actionsSlot'> & {
   heroDelta?: HomeHeroDelta | null
   activeReview?: MemoryReview
+  activePilotage?: SiteActionsPilotage
+  activeLateCount?: number
 }
 
 function baseProps(over: BaseOverrides = {}): Props {
-  const { heroDelta = null, activeReview = emptyReview(), sites = [site()], activeSiteId = 'site-1', ...rest } = over
+  const {
+    heroDelta = null,
+    activeReview = emptyReview(),
+    activePilotage = emptyActionsPilotage(),
+    activeLateCount = 0,
+    sites = [site()],
+    activeSiteId = 'site-1',
+    ...rest
+  } = over
   const activeSite = sites.find((s) => s.id === activeSiteId) ?? null
   return {
     firstName: 'Vincent',
     orgNames: ['Org A'],
-    attentionCards: [],
     upcoming: [],
     sites,
     activeSiteId,
     heroSlot: <Hero site={activeSite} heroDelta={heroDelta} />,
     memorySlot: <MemorySouvient site={activeSite} review={activeReview} />,
+    actionsSlot: <ActionsDuChantier site={activeSite} pilotage={activePilotage} lateCount={activeLateCount} />,
     orgLabels: { 'org-a': 'org-a' },
     organizationMap,
     deadlinesToPlan: [],
@@ -276,7 +310,7 @@ describe('DashboardPremium — Selection (sélecteur de chantier)', () => {
     expect(within(items[1]!).getByText('Zoulou')).toBeInTheDocument()
   })
 
-  it('RICHNESS §2/§6 — maximum 8 cartes, sans doublon de l\'actif', () => {
+  it('SECTION 1 — tous les chantiers accessibles sont affichés, aucun plafond', () => {
     const sites = [
       site({ id: 'site-old', name: 'Chantier Ancien', lastActivityAt: '2020-01-01T00:00:00Z' }),
       site({ id: 'site-1', name: 'Chantier 1', lastActivityAt: '2026-09-08T00:00:00Z' }),
@@ -291,16 +325,10 @@ describe('DashboardPremium — Selection (sélecteur de chantier)', () => {
     render(<DashboardPremium {...baseProps({ sites, activeSiteId: 'site-old' })} />)
     const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
     const items = within(chantiersSection).getAllByRole('listitem')
-    expect(items).toHaveLength(8)
+    expect(items).toHaveLength(9)
     expect(within(items[0]!).getByText('Chantier Ancien')).toBeInTheDocument()
     expect(within(items[1]!).getByText('Chantier 8')).toBeInTheDocument()
-    expect(within(items[2]!).getByText('Chantier 7')).toBeInTheDocument()
-    expect(within(items[3]!).getByText('Chantier 6')).toBeInTheDocument()
-    expect(within(items[4]!).getByText('Chantier 5')).toBeInTheDocument()
-    expect(within(items[5]!).getByText('Chantier 4')).toBeInTheDocument()
-    expect(within(items[6]!).getByText('Chantier 3')).toBeInTheDocument()
-    expect(within(items[7]!).getByText('Chantier 2')).toBeInTheDocument()
-    expect(screen.queryByText('Chantier 1')).not.toBeInTheDocument()
+    expect(within(items[8]!).getByText('Chantier 1')).toBeInTheDocument()
   })
 })
 
@@ -399,7 +427,8 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
 
   it('aucun chantier actif → "Aucun chantier actif."', () => {
     render(<DashboardPremium {...baseProps({ sites: [], activeSiteId: null })} />)
-    expect(screen.getByText('Aucun chantier actif.')).toBeInTheDocument()
+    const memorySection = screen.getByText('Mémoire du chantier').closest('section') as HTMLElement
+    expect(within(memorySection).getByText('Aucun chantier actif.')).toBeInTheDocument()
   })
 
   it('chantier actif sans confirmé → message de repli exact', () => {
@@ -457,7 +486,7 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
     expect(screen.queryByText('Marc Petit — HSE')).not.toBeInTheDocument()
   })
 
-  it('RICHNESS §3 — au plus 3 temps forts même si davantage d\'éléments confirmés existent', () => {
+  it('SECTION 7 — TOUS les temps forts sont affichés (liste complète, scrollable), aucun plafond à 3', () => {
     const items = [
       confirmedItem({ id: 'ci-1', group: 'Décisions', title: 'Décision A' }),
       confirmedItem({ id: 'ci-2', group: 'Points de vigilance', title: 'Vigilance B', href: null }),
@@ -465,8 +494,9 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
       confirmedItem({ id: 'ci-4', group: 'Décisions', title: 'Décision D' }),
     ]
     render(<DashboardPremium {...baseProps({ activeReview: { confirmed: items, toReview: [] } })} />)
-    const shown = ['Décision A', 'Vigilance B', 'Connaissance C', 'Décision D'].filter((t) => screen.queryByText(t))
-    expect(shown).toHaveLength(3)
+    for (const title of ['Décision A', 'Vigilance B', 'Connaissance C', 'Décision D']) {
+      expect(screen.getByText(title)).toBeInTheDocument()
+    }
   })
 
   it('RICHNESS §3 — au plus 4 compteurs, un par groupe réellement présent (jamais inventé)', () => {
@@ -476,10 +506,31 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
     ]
     render(<DashboardPremium {...baseProps({ activeReview: { confirmed: items, toReview: [] } })} />)
     const memorySection = screen.getByText('Mémoire du chantier').closest('section') as HTMLElement
-    expect(within(memorySection).getByText(/1 Décisions/)).toBeInTheDocument()
-    expect(within(memorySection).getByText(/1 Points de vigilance/)).toBeInTheDocument()
     expect(within(memorySection).queryByText(/Intervenants/)).not.toBeInTheDocument()
     expect(within(memorySection).queryByText(/Ce que le chantier sait/)).not.toBeInTheDocument()
+  })
+
+  it('SECTION 7 — pluralisation correcte des compteurs : "1 Décision" et "1 Point de vigilance" (jamais "1 Décisions")', () => {
+    const items = [
+      confirmedItem({ id: 'ci-1', group: 'Décisions', title: 'Décision A' }),
+      confirmedItem({ id: 'ci-2', group: 'Points de vigilance', title: 'Vigilance B', href: null }),
+    ]
+    render(<DashboardPremium {...baseProps({ activeReview: { confirmed: items, toReview: [] } })} />)
+    const memorySection = screen.getByText('Mémoire du chantier').closest('section') as HTMLElement
+    expect(within(memorySection).getByText('1 Décision')).toBeInTheDocument()
+    expect(within(memorySection).getByText('1 Point de vigilance')).toBeInTheDocument()
+    expect(within(memorySection).queryByText('1 Décisions')).not.toBeInTheDocument()
+    expect(within(memorySection).queryByText('1 Points de vigilance')).not.toBeInTheDocument()
+  })
+
+  it('SECTION 7 — pluriel conservé à partir de 2 : "2 Décisions"', () => {
+    const items = [
+      confirmedItem({ id: 'ci-1', group: 'Décisions', title: 'Décision A' }),
+      confirmedItem({ id: 'ci-2', group: 'Décisions', title: 'Décision B' }),
+    ]
+    render(<DashboardPremium {...baseProps({ activeReview: { confirmed: items, toReview: [] } })} />)
+    const memorySection = screen.getByText('Mémoire du chantier').closest('section') as HTMLElement
+    expect(within(memorySection).getByText('2 Décisions')).toBeInTheDocument()
   })
 
   it('RICHNESS §3 — CTA "Voir toute la mémoire" pointe vers la route canonique du chantier', () => {
@@ -509,60 +560,52 @@ describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
   })
 })
 
-describe('DashboardPremium — Attention ("Ce qui mérite votre attention")', () => {
-  it('aucune carte → "Tout est en rythme."', () => {
-    render(<DashboardPremium {...baseProps({ attentionCards: [] })} />)
-    expect(screen.getByText('Tout est en rythme.')).toBeInTheDocument()
+describe('DashboardPremium — Actions du chantier (SECTION 6)', () => {
+  it('aucun chantier actif → "Aucun chantier actif."', () => {
+    render(<DashboardPremium {...baseProps({ sites: [], activeSiteId: null })} />)
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    expect(within(section).getByText('Aucun chantier actif.')).toBeInTheDocument()
   })
 
-  it('tone red → badge "En retard" ; tone amber → "À revoir" ; tone neutral → "À traiter"', () => {
-    render(
-      <DashboardPremium
-        {...baseProps({
-          attentionCards: [
-            attentionCard({ id: 'ac-red', tone: 'red', title: 'Rouge' }),
-            attentionCard({ id: 'ac-amber', tone: 'amber', title: 'Ambre' }),
-            attentionCard({ id: 'ac-neutral', tone: 'neutral', title: 'Neutre' }),
-          ],
-        })}
-      />,
-    )
-    expect(screen.getByText('En retard')).toBeInTheDocument()
-    expect(screen.getByText('À revoir')).toBeInTheDocument()
-    expect(screen.getByText('À traiter')).toBeInTheDocument()
-    expect(screen.getByText('Rouge')).toBeInTheDocument()
-    expect(screen.getByText('Ambre')).toBeInTheDocument()
-    expect(screen.getByText('Neutre')).toBeInTheDocument()
+  it('chantier actif sans CBO actif → état vide dédié, jamais "Aucun chantier actif."', () => {
+    render(<DashboardPremium {...baseProps({ activePilotage: emptyActionsPilotage(), activeLateCount: 0 })} />)
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    expect(within(section).getByText('Aucune action en cours sur ce chantier.')).toBeInTheDocument()
   })
 
-  it('RICHNESS §4 — jusqu\'à 5 cartes affichées (au lieu de 3)', () => {
-    const cards = [1, 2, 3, 4, 5].map((n) => attentionCard({ id: `ac-${n}`, title: `Carte ${n}` }))
-    render(<DashboardPremium {...baseProps({ attentionCards: cards })} />)
-    for (const n of [1, 2, 3, 4, 5]) {
-      expect(screen.getByText(`Carte ${n}`)).toBeInTheDocument()
-    }
+  it('en-tête "N actions · M en retard" + liste des CBO actifs, liens vers l\'action ciblée', () => {
+    const subject = pilotageSubject({
+      canonicalSubjectId: 'cs-1',
+      label: 'Façades',
+      cbos: [pilotageCbo({ cboId: 'cbo-1', label: 'Reprendre les enduits', targetActionId: 'action-1' })],
+    })
+    const p = pilotage({ kpi: { ...emptyActionsPilotage().kpi, activeCbo: 3 }, subjects: [subject] })
+    render(<DashboardPremium {...baseProps({ activePilotage: p, activeLateCount: 1 })} />)
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    expect(within(section).getByText('3 actions · 1 en retard')).toBeInTheDocument()
+    const link = within(section).getByRole('link', { name: /Reprendre les enduits/ })
+    expect(link).toHaveAttribute('href', '/sites/site-1/actions?actionId=action-1')
   })
 
-  it('RICHNESS §4 — résumé par ton sous le titre, ex. "2 en retard · 2 à revoir · 1 à traiter"', () => {
-    render(
-      <DashboardPremium
-        {...baseProps({
-          attentionCards: [
-            attentionCard({ id: 'ac-1', tone: 'red', title: 'R1' }),
-            attentionCard({ id: 'ac-2', tone: 'red', title: 'R2' }),
-            attentionCard({ id: 'ac-3', tone: 'amber', title: 'A1' }),
-            attentionCard({ id: 'ac-4', tone: 'amber', title: 'A2' }),
-            attentionCard({ id: 'ac-5', tone: 'neutral', title: 'N1' }),
-          ],
-        })}
-      />,
-    )
-    expect(screen.getByText('2 en retard · 2 à revoir · 1 à traiter')).toBeInTheDocument()
+  it('un CBO inactif n\'apparaît pas dans la liste (seuls les CBO actifs sont affichés)', () => {
+    const subject = pilotageSubject({
+      cbos: [
+        pilotageCbo({ cboId: 'cbo-active', label: 'CBO actif', active: true }),
+        pilotageCbo({ cboId: 'cbo-done', label: 'CBO terminé', active: false, terminal: true }),
+      ],
+    })
+    const p = pilotage({ subjects: [subject] })
+    render(<DashboardPremium {...baseProps({ activePilotage: p })} />)
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    expect(within(section).getByText('CBO actif')).toBeInTheDocument()
+    expect(within(section).queryByText('CBO terminé')).not.toBeInTheDocument()
   })
 
-  it('RICHNESS §4 — aucun résumé quand la liste est vide', () => {
-    render(<DashboardPremium {...baseProps({ attentionCards: [] })} />)
-    expect(screen.queryByText(/à revoir|en retard|à traiter/)).not.toBeInTheDocument()
+  it('CTA "Voir toutes les actions" pointe vers la route Actions du chantier', () => {
+    render(<DashboardPremium {...baseProps()} />)
+    const section = screen.getByText('Actions du chantier').closest('section') as HTMLElement
+    const cta = within(section).getByRole('link', { name: /Voir toutes les actions/ })
+    expect(cta).toHaveAttribute('href', '/sites/site-1/actions')
   })
 })
 
@@ -615,7 +658,7 @@ describe('DashboardPremium — Regression (rendu global, header, anciens blocs d
           {...baseProps({
             orgNames: ['Org A', 'Org B'],
             sites: [site({ id: 'site-1' }), site({ id: 'site-2', name: 'Chantier Beta' })],
-            attentionCards: [attentionCard()],
+            activePilotage: pilotage({ subjects: [pilotageSubject()] }),
             upcoming: [upcomingItem()],
             deadlinesToPlan: [deadline()],
             activeReview: { confirmed: [confirmedItem()], toReview: [] },

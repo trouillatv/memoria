@@ -5,23 +5,25 @@ import { getOnboardingProgress } from '@/lib/db/onboarding'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getOrganizationIdentityMap } from '@/lib/db/organisations'
 import type { OrgLabels } from '@/components/dashboard/OrgBadge'
-import { getAttentionDigest } from '@/lib/db/attention'
 import { getUpcomingItems } from '@/lib/db/upcoming-items'
 import { getSitesDashboard, isSiteAccessible, type SiteDashboardItem } from '@/lib/db/sites-dashboard'
-import { getNowDashboard } from '@/lib/db/now-dashboard'
 import { getMemoryReview, type MemoryReview } from '@/lib/knowledge/memory-review'
 import { getHomeHeroDelta } from '@/lib/documents/home-hero-delta'
+import { getSiteActionsPilotage, emptyActionsPilotage } from '@/lib/knowledge/actions-pilotage'
+import { readSiteActionSummaries, groupActionsByThread } from '@/lib/knowledge/repository'
+import { isActionOverdue } from '@/lib/knowledge/overdue-action'
+import { todayLocalIso } from '@/lib/time/local-date'
 import { getDashboardDeadlinesToPlan } from '@/lib/db/dashboard-deadlines'
-import { getStructuredPromiseRecords } from '@/lib/db/promise-candidates'
-import { attentionItemToMemorySignal } from '@/lib/memory/signals/lot1-adapters'
-import { detectPromiseSignalsFromRecords } from '@/lib/memory/signals/promise-pipeline'
-import { detectActionDueSoonSignals } from '@/lib/memory/signals/action-due-soon-detector'
-import { getForgottenVisitCandidates } from '@/lib/db/forgotten-visits'
-import { detectMissedVisitSignals } from '@/lib/memory/signals/missed-visit-detector'
-import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
-import { sortAttentionCards } from '@/lib/situations/attention/project'
 import { WelcomeCard } from './WelcomeCard'
-import { DashboardPremium, Hero, HeroSkeleton, MemorySouvient, MemorySouvientSkeleton } from './DashboardPremium'
+import {
+  DashboardPremium,
+  Hero,
+  HeroSkeleton,
+  MemorySouvient,
+  MemorySouvientSkeleton,
+  ActionsDuChantier,
+  ActionsDuChantierSkeleton,
+} from './DashboardPremium'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,11 +43,19 @@ async function ActiveMemory({ site }: { site: SiteDashboardItem }) {
   return <MemorySouvient site={site} review={review} />
 }
 
-const ATTENTION_MAX = 5
-
-// RICHNESS §2 — portefeuille "Vos chantiers" trié par récence réelle sur TOUT
-// le portefeuille accessible (multi-org), plafonné à 8 cartes affichées.
-const SITE_CARDS_LIMIT = 8
+async function ActiveActions({ site }: { site: SiteDashboardItem }) {
+  const [pilotage, rawRows] = await Promise.all([
+    getSiteActionsPilotage(site.id).catch(() => emptyActionsPilotage()),
+    readSiteActionSummaries(site.id).catch(() => []),
+  ])
+  const today = todayLocalIso()
+  const rawOpen = rawRows.filter((a) => a.status === 'open' || a.status === 'planned')
+  const groups = groupActionsByThread(rawOpen)
+  const lateCount = groups.filter((g) =>
+    isActionOverdue(g.representative.status, g.representative.due_date, g.representative.due_date_status, today),
+  ).length
+  return <ActionsDuChantier site={site} pilotage={pilotage} lateCount={lateCount} />
+}
 
 export default async function DashboardPage({
   searchParams,
@@ -84,15 +94,14 @@ export default async function DashboardPage({
   const requestedSiteValid = requestedSiteId ? await isSiteAccessible(requestedSiteId, orgIds) : false
   const ensureSiteId = requestedSiteValid ? requestedSiteId : null
 
-  // Tier LÉGER : portefeuille "Vos chantiers" (max SITE_CARDS_LIMIT, aucun
-  // delta par site) — tri par récence réelle sur le portefeuille complet déjà
-  // fait côté serveur (sortMode: 'recent'), ChantierSelector affiche l'ordre reçu.
-  const [attention, upcoming, siteCards, deadlinesToPlan, promiseRecords] = await Promise.all([
-    getAttentionDigest(5),
+  // Tier LÉGER : portefeuille "Vos chantiers" (aucune limite, cf. Section 1 —
+  // le scroll horizontal gère le volume) — tri par récence réelle sur le
+  // portefeuille complet déjà fait côté serveur (sortMode: 'recent'),
+  // ChantierSelector affiche l'ordre reçu.
+  const [upcoming, siteCards, deadlinesToPlan] = await Promise.all([
     getUpcomingItems(orgIds, 30, organizationMap),
-    getSitesDashboard(orgIds, organizationMap, { limit: SITE_CARDS_LIMIT, ensureSiteId, sortMode: 'recent' }),
+    getSitesDashboard(orgIds, organizationMap, { limit: null, ensureSiteId, sortMode: 'recent' }),
     getDashboardDeadlinesToPlan(orgIds, organizationMap),
-    getStructuredPromiseRecords(orgIds),
   ])
 
   // Le chantier actif : la requête si valide, sinon le premier chantier de
@@ -119,42 +128,24 @@ export default async function DashboardPage({
   ) : (
     <MemorySouvient site={null} review={{ confirmed: [], toReview: [] }} />
   )
-
-  const promiseSignals = detectPromiseSignalsFromRecords(promiseRecords)
-  const now = await getNowDashboard(orgIds, upcoming, organizationMap)
-  const legacyAttentionSignals = [
-    ...attention.red.map((item) => attentionItemToMemorySignal(item)),
-    ...attention.orange.map((item) => attentionItemToMemorySignal(item)),
-  ].filter((signal): signal is NonNullable<typeof signal> => signal !== null)
-  const actionDueSoonSignals = detectActionDueSoonSignals(now.actions)
-  const missedVisitSignals = detectMissedVisitSignals(
-    await getForgottenVisitCandidates(orgIds).catch(() => ({ overduePlanned: [], staleSites: [] })),
+  const actionsSlot = activeSite ? (
+    <Suspense key={activeSite.id} fallback={<ActionsDuChantierSkeleton />}>
+      <ActiveActions site={activeSite} />
+    </Suspense>
+  ) : (
+    <ActionsDuChantier site={null} pilotage={emptyActionsPilotage()} lateCount={0} />
   )
-  const siteIdsToday = new Set(upcoming.filter((i) => i.isToday).map((i) => i.siteId))
-  const allSignals = [...promiseSignals, ...legacyAttentionSignals, ...actionDueSoonSignals, ...missedVisitSignals]
-
-  // « Ce qui mérite votre attention » : priorité au chantier actif ; le reste ne
-  // complète que s'il manque des places, et jamais en repoussant une carte du
-  // chantier actif (siteLabel distingue déjà visuellement l'appartenance).
-  const activeSignals = allSignals.filter((s) => s.siteId === activeSiteId)
-  const otherSignals = allSignals.filter((s) => s.siteId !== activeSiteId)
-  const activeCards = sortAttentionCards(composeAttentionCardsFromSignals(activeSignals, { siteIdsToday })).slice(0, ATTENTION_MAX)
-  const fillCount = ATTENTION_MAX - activeCards.length
-  const otherCards = fillCount > 0
-    ? sortAttentionCards(composeAttentionCardsFromSignals(otherSignals, { siteIdsToday })).slice(0, fillCount)
-    : []
-  const attentionCards = [...activeCards, ...otherCards]
 
   return (
     <DashboardPremium
       firstName={user.full_name?.split(' ')[0] ?? ''}
       orgNames={orgNames}
-      attentionCards={attentionCards}
       upcoming={upcoming}
       sites={siteCards}
       activeSiteId={activeSiteId}
       heroSlot={heroSlot}
       memorySlot={memorySlot}
+      actionsSlot={actionsSlot}
       orgLabels={orgLabels}
       organizationMap={organizationMap}
       deadlinesToPlan={deadlinesToPlan}

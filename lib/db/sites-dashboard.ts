@@ -38,6 +38,11 @@ export type SiteDashboardItem = {
    *  chantier, regroupés par canonical_subject_id quand lié (subject_thread_identity sans
    *  filtre site_id, comme le chemin canonique), sinon comptés un par un (ungrouped). */
   subjectCount: number
+  /** COCKPIT §2 — total des Points de suivi non fusionnés (`tracked_point.status != 'merged'`),
+   *  TOTAL brut (pas seulement « ouverts ») : même population que `readModelPoints` de
+   *  `loadTrackedPointReadModel`, mais via un simple COUNT batché — jamais le reducer CBO/
+   *  lifecycle complet (trop coûteux pour tourner sur toutes les cartes du carrousel). */
+  pointCount: number
 }
 
 /**
@@ -143,10 +148,33 @@ async function getPvAndSubjectCounts(
   return { pvCounts, subjectCounts }
 }
 
+/**
+ * Batch, pour TOUS les siteIds fournis, le nombre total de Points de suivi non fusionnés
+ * (`tracked_point.status != 'merged'`) — même correspondance 1:1 que `readModelPoints` dans
+ * `loadTrackedPointReadModel` (un point fusionné n'y apparaît jamais, cf. tracked-point-read-model.ts),
+ * mais un simple COUNT groupé, jamais le reducer CBO/lifecycle par chantier.
+ */
+async function getPointCounts(
+  supabase: ReturnType<typeof createAdminClient>,
+  siteIds: string[],
+): Promise<Map<string, number>> {
+  const { data } = await supabase
+    .from('tracked_point')
+    .select('site_id')
+    .in('site_id', siteIds)
+    .not('status', 'eq', 'merged')
+
+  const pointCounts = new Map<string, number>()
+  for (const row of (data ?? []) as Array<{ site_id: string }>) {
+    pointCounts.set(row.site_id, (pointCounts.get(row.site_id) ?? 0) + 1)
+  }
+  return pointCounts
+}
+
 export async function getSitesDashboard(
   orgIds: string[],
   organizationMap?: OrganizationIdentityMap,
-  opts?: { limit?: number; ensureSiteId?: string | null; sortMode?: 'priority' | 'recent' },
+  opts?: { limit?: number | null; ensureSiteId?: string | null; sortMode?: 'priority' | 'recent' },
 ): Promise<SiteDashboardItem[]> {
   if (orgIds.length === 0) return []
   const supabase = createAdminClient()
@@ -204,7 +232,7 @@ export async function getSitesDashboard(
   const nowIso = now.toISOString()
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Noumea' }).format(now)
 
-  const [actionRes, reserveRes, reportRes, pvAndSubjectCounts, eventRes] = await Promise.all([
+  const [actionRes, reserveRes, reportRes, pvAndSubjectCounts, pointCounts, eventRes] = await Promise.all([
     supabase
       .from('site_actions')
       .select('site_id, status, due_date')
@@ -223,6 +251,7 @@ export async function getSitesDashboard(
       .order('created_at', { ascending: false })
       .limit(siteIds.length * 10),
     getPvAndSubjectCounts(supabase, siteIds),
+    getPointCounts(supabase, siteIds),
     supabase
       .from('site_scheduled_events')
       .select('site_id, planned_start')
@@ -298,6 +327,7 @@ export async function getSitesDashboard(
       href: `/sites/${site.id}`,
       pvCount: pvAndSubjectCounts.pvCounts.get(site.id) ?? 0,
       subjectCount: pvAndSubjectCounts.subjectCounts.get(site.id) ?? 0,
+      pointCount: pointCounts.get(site.id) ?? 0,
     }
   })
 
@@ -334,6 +364,11 @@ export async function getSitesDashboard(
     })
   }
 
+  // COCKPIT §1 — `limit: null` signifie explicitement « aucune troncature » (carrousel
+  // complet, tous chantiers accessibles) : `opts.limit` non fourni garde le défaut 5
+  // pour les autres appelants existants, `null` désactive la troncature. L'actif fait
+  // déjà partie de `items` (même requête `sites`), aucun préfixage nécessaire ici.
+  if (opts && 'limit' in opts && opts.limit === null) return items
   const limit = opts?.limit ?? 5
   let result = items.slice(0, limit)
   // L'actif doit toujours apparaître dans les cartes visibles — s'il n'est pas

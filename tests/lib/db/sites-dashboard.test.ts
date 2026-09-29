@@ -96,6 +96,7 @@ beforeEach(() => {
     document_extraction_proposal: [],
     documents: [],
     site_scheduled_events: [],
+    tracked_point: [],
   }
 })
 
@@ -276,5 +277,26 @@ describe('getSitesDashboard — Selection (max `limit` cartes, chantier actif to
     const result = await getSitesDashboard(['org-a'], {}, { limit: 3, ensureSiteId: 'site-1' })
     expect(result).toHaveLength(3)
     expect(result.filter((r) => r.id === 'site-1')).toHaveLength(1)
+  })
+
+  it("limit: null → AUCUNE troncature, le portefeuille COMPLET est renvoyé (COCKPIT §1)", async () => {
+    const result = await getSitesDashboard(['org-a'], {}, { limit: null })
+    expect(result).toHaveLength(5) // site-1,2,4,5,6 (org-a) — site-3 est org-b
+  })
+})
+
+describe('getSitesDashboard — pointCount (COCKPIT §2, batché, jamais le reducer CBO)', () => {
+  it('compte les tracked_point non fusionnés par chantier, en UNE requête, sans boucle', async () => {
+    TABLES.tracked_point = [
+      { site_id: 'site-1', status: 'active' },
+      { site_id: 'site-1', status: 'active' },
+      { site_id: 'site-1', status: 'merged' }, // exclu : fusionné dans un autre point
+      { site_id: 'site-2', status: 'retired' }, // retiré mais pas fusionné → compté (TOTAL brut)
+    ]
+    const result = await getSitesDashboard(['org-a'], {}, { limit: null })
+    expect(result.find((r) => r.id === 'site-1')?.pointCount).toBe(2)
+    expect(result.find((r) => r.id === 'site-2')?.pointCount).toBe(1)
+    expect(result.find((r) => r.id === 'site-4')?.pointCount).toBe(0)
+    expect(CALL_LOG.filter((t) => t === 'tracked_point')).toHaveLength(1)
   })
 })

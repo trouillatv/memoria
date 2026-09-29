@@ -1,10 +1,10 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import {
-  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   Info,
+  ListTodo,
   MapPin,
   Sparkles,
   type LucideIcon,
@@ -15,23 +15,24 @@ import type { MemoryReview } from '@/lib/knowledge/memory-review'
 import type { DashboardDeadlineToPlan } from '@/lib/db/dashboard-deadlines'
 import type { OrgLabels } from '@/components/dashboard/OrgBadge'
 import type { OrganizationIdentityMap } from '@/lib/db/organisations'
-import type { AttentionCard } from '@/lib/situations/attention/types'
 import type { HomeHeroDelta } from '@/lib/documents/home-hero-delta'
+import type { PvSubjectRef } from '@/lib/documents/occurrence-pv-summary'
+import type { SiteActionsPilotage } from '@/lib/knowledge/actions-pilotage'
 import { EntityLogo } from '@/components/ui/EntityLogo'
-import { SituationAttentionCard } from './SituationAttentionCard'
 
 type Props = {
   firstName: string
   orgNames: string[]
-  attentionCards: AttentionCard[]
   upcoming: UpcomingDashboardItem[]
   sites: SiteDashboardItem[]
   activeSiteId: string | null
   // Pré-rendus par page.tsx (Async Server Component + Suspense key={activeSiteId}) :
-  // la zone chantier-dépendante (Hero + mémoire) streame indépendamment du tier léger
-  // ci-dessous, jamais un blocage du rendu initial de la page (cf. fix Suspense Home V2).
+  // la zone chantier-dépendante (Hero + mémoire + actions) streame indépendamment du
+  // tier léger ci-dessous, jamais un blocage du rendu initial de la page (cf. fix
+  // Suspense Home V2).
   heroSlot: ReactNode
   memorySlot: ReactNode
+  actionsSlot: ReactNode
   orgLabels: OrgLabels
   organizationMap: OrganizationIdentityMap
   deadlinesToPlan: DashboardDeadlineToPlan[]
@@ -67,6 +68,28 @@ function heroTeachings(heroDelta: HomeHeroDelta | null): string[] {
   if (m.nouveaux.length > 0) lines.push(`${m.nouveaux.length} nouveau${m.nouveaux.length > 1 ? 'x' : ''} sujet${m.nouveaux.length > 1 ? 's' : ''} identifié${m.nouveaux.length > 1 ? 's' : ''}`)
   if (m.nonMentionnes.length > 0) lines.push(`${m.nonMentionnes.length} sujet${m.nonMentionnes.length > 1 ? 's' : ''} non mentionné${m.nonMentionnes.length > 1 ? 's' : ''} dans le dernier PV`)
   return lines.length > 0 ? lines.slice(0, 3) : ['Aucune évolution détectée depuis le PV précédent.']
+}
+
+/** Section 3 — un groupe du détail scrollable du Hero (« NOUVEAUX (3) » + liste). */
+function HeroDetailGroup({ title, items, siteId }: { title: string; items: PvSubjectRef[]; siteId: string }) {
+  if (items.length === 0) return null
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#7b879d]">{title} ({items.length})</p>
+      <ul className="mt-1.5 space-y-1">
+        {items.map((ref) => (
+          <li key={ref.canonicalSubjectId}>
+            <Link
+              href={`/sites/${siteId}/historique/sujets/${ref.canonicalSubjectId}`}
+              className="text-sm text-[#34415c] hover:text-[#1463e8]"
+            >
+              {ref.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; heroDelta: HomeHeroDelta | null }) {
@@ -120,6 +143,17 @@ export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; hero
               ))}
             </ul>
           )}
+          {m && (m.nouveaux.length > 0 || m.evolutions.length > 0 || m.resolus.length > 0 || m.nonMentionnes.length > 0) && (
+            <div className="mt-6 border-t border-[#edf0f6] pt-5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Détail des changements</p>
+              <div className="mt-3 max-h-[320px] space-y-4 overflow-y-auto pr-1">
+                <HeroDetailGroup title="Nouveaux" items={m.nouveaux} siteId={site.id} />
+                <HeroDetailGroup title="Évolutions" items={m.evolutions} siteId={site.id} />
+                <HeroDetailGroup title="Résolus" items={m.resolus} siteId={site.id} />
+                <HeroDetailGroup title="Non mentionnés" items={m.nonMentionnes} siteId={site.id} />
+              </div>
+            </div>
+          )}
         </>
       )}
       <Link
@@ -151,7 +185,7 @@ export function HeroSkeleton() {
 function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: boolean }) {
   const counters = [
     { label: 'actions', value: site.activeActionCount },
-    { label: 'retard', value: site.overdueActionCount },
+    { label: 'points', value: site.pointCount },
     { label: 'réserves', value: site.openReserveCount },
   ]
   return (
@@ -194,8 +228,6 @@ function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: b
   )
 }
 
-const CAROUSEL_MAX = 8
-
 /**
  * Tri de présentation par récence — FIX RECENCE CARROUSEL. `lastActivityAt`
  * existant uniquement (aucun nouveau tracking, aucune notion `lastViewed`) :
@@ -214,12 +246,11 @@ function ChantierSelector({ sites, activeSiteId }: { sites: SiteDashboardItem[];
   // Présentation uniquement : le chantier actif toujours en tête du carrousel,
   // puis les autres triés par récence réelle (lastActivityAt) — aucun nouveau
   // tri de getSitesDashboard, aucune donnée modifiée, aucun N+1 (le pool est
-  // déjà entièrement chargé par page.tsx). Plafonné à CAROUSEL_MAX cartes.
+  // déjà entièrement chargé par page.tsx). Section 1 — TOUS les chantiers
+  // accessibles sont affichés, le scroll horizontal gère le volume.
   const rest = sites.filter((s) => s.id !== activeSiteId).sort(compareByRecency)
   const active = activeSiteId ? sites.find((s) => s.id === activeSiteId) : undefined
-  const orderedSites = active
-    ? [active, ...rest].slice(0, CAROUSEL_MAX)
-    : rest.slice(0, CAROUSEL_MAX)
+  const orderedSites = active ? [active, ...rest] : rest
   return (
     <section className={`${surface} p-5 sm:p-6`}>
       <div className="flex items-start justify-between">
@@ -258,6 +289,15 @@ const MEMORY_GROUP_PRIORITY: Record<string, number> = {
 }
 const memoryGroupRank = (group: string) => MEMORY_GROUP_PRIORITY[group] ?? 99
 
+/** Section 7 — les libellés de groupe sont stockés au pluriel ; forme singulière
+ *  pour un compteur à 1, jamais "1 Décisions". */
+const MEMORY_GROUP_SINGULAR: Record<string, string> = {
+  'Décisions': 'Décision',
+  'Points de vigilance': 'Point de vigilance',
+  'Intervenants': 'Intervenant',
+}
+const memoryGroupLabel = (group: string, count: number) => (count > 1 ? group : (MEMORY_GROUP_SINGULAR[group] ?? group))
+
 export type HomeMemoryCounter = { group: string; count: number }
 export type HomeMemoryHighlight = { id: string; group: string; title: string; href: string | null; nature: string | null }
 export type HomeMemorySummary = { counters: HomeMemoryCounter[]; highlights: HomeMemoryHighlight[] }
@@ -265,10 +305,10 @@ export type HomeMemorySummary = { counters: HomeMemoryCounter[]; highlights: Hom
 /**
  * Présentateur pur (aucun appel réseau/IA, aucune modification de
  * `getMemoryReview`) : synthétise la mémoire déjà chargée du chantier actif en
- * au plus 4 compteurs (uniquement les groupes réellement présents) et au plus
- * 3 temps forts. Les intervenants ne sont mis en avant qu'à défaut de tout
- * autre groupe — jamais si une décision, une vigilance ou une connaissance
- * existe déjà.
+ * au plus 4 compteurs (uniquement les groupes réellement présents) et TOUS les
+ * temps forts (Section 7 — liste complète, scrollable côté rendu). Les
+ * intervenants ne sont mis en avant qu'à défaut de tout autre groupe — jamais
+ * si une décision, une vigilance ou une connaissance existe déjà.
  */
 function buildHomeMemorySummary(review: MemoryReview): HomeMemorySummary {
   const countByGroup = new Map<string, number>()
@@ -284,7 +324,6 @@ function buildHomeMemorySummary(review: MemoryReview): HomeMemorySummary {
   const highlightPool = hasNonIntervenant ? review.confirmed.filter((c) => c.group !== 'Intervenants') : review.confirmed
   const highlights = [...highlightPool]
     .sort((a, b) => memoryGroupRank(a.group) - memoryGroupRank(b.group))
-    .slice(0, 3)
     .map((item) => ({ id: item.id, group: item.group, title: item.title, href: item.href, nature: item.nature }))
 
   return { counters, highlights }
@@ -306,12 +345,12 @@ export function MemorySouvient({ site, review }: { site: SiteDashboardItem | nul
             <div className="mt-4 flex flex-wrap gap-1.5">
               {summary.counters.map((c) => (
                 <span key={c.group} className="rounded-full bg-[#eef4ff] px-2.5 py-1 text-[10px] font-semibold text-[#4973dd]">
-                  {c.count} {c.group}
+                  {c.count} {memoryGroupLabel(c.group, c.count)}
                 </span>
               ))}
             </div>
           )}
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 max-h-[400px] space-y-3 overflow-y-auto pr-1">
             {summary.highlights.map((item) => (
               <div key={item.id}>
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]">{item.group}</p>
@@ -346,55 +385,68 @@ export function MemorySouvientSkeleton() {
   )
 }
 
-const ATTENTION_BADGE: Record<AttentionCard['tone'], string> = {
-  red: 'En retard',
-  amber: 'À revoir',
-  neutral: 'À traiter',
-}
-const ATTENTION_BADGE_CLASS: Record<AttentionCard['tone'], string> = {
-  red: 'bg-[#ffe3e5] text-[#e35c66]',
-  amber: 'bg-[#fff0d7] text-[#c4872a]',
-  neutral: 'bg-[#eef4ff] text-[#4973dd]',
-}
-
 /**
- * RICHNESS §4 — résumé de présentation par ton ("2 en retard · 2 à revoir ·
- * 1 à traiter"), calculé uniquement à partir des `cards` déjà composées et
- * triées en amont — aucun recalcul métier, mêmes libellés que ATTENTION_BADGE.
+ * Section 6 — « Actions du chantier » : strictement `activeSiteId`-scopé, liste
+ * aplatie de `pilotage.subjects[].cbos` actifs dans l'ordre canonique déjà établi
+ * par `getSiteActionsPilotage` (aucun re-tri ici). `lateCount` vient du pipeline
+ * temporel dédié (rawOpen → groupActionsByThread → isActionOverdue) calculé côté
+ * page.tsx, car `PilotageCbo` ne porte pas `dueDateStatus`.
  */
-function summarizeAttentionCards(cards: AttentionCard[]): string | null {
-  if (cards.length === 0) return null
-  const countByTone = new Map<AttentionCard['tone'], number>()
-  for (const card of cards) countByTone.set(card.tone, (countByTone.get(card.tone) ?? 0) + 1)
-  const order: AttentionCard['tone'][] = ['red', 'amber', 'neutral']
-  return order
-    .filter((tone) => (countByTone.get(tone) ?? 0) > 0)
-    .map((tone) => `${countByTone.get(tone)} ${ATTENTION_BADGE[tone].toLowerCase()}`)
-    .join(' · ')
+export function ActionsDuChantier({
+  site,
+  pilotage,
+  lateCount,
+}: {
+  site: SiteDashboardItem | null
+  pilotage: SiteActionsPilotage
+  lateCount: number
+}) {
+  const items = pilotage.subjects.flatMap((subject) =>
+    subject.cbos.filter((cbo) => cbo.active).map((cbo) => ({ subject, cbo })),
+  )
+  return (
+    <section className={`${surface} p-5 sm:p-6`}>
+      <div className="flex items-center gap-2 text-[#ef8e45]"><ListTodo className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Actions du chantier</h2></div>
+      <p className="mt-1 text-xs text-[#7b879d]">Ce qui est en cours sur ce chantier.</p>
+      {!site ? (
+        <p className="mt-4 text-sm italic text-[#73809a]">Aucun chantier actif.</p>
+      ) : (
+        <>
+          <p className="mt-3 text-xs font-medium text-[#65718b]">
+            {pilotage.kpi.activeCbo} action{pilotage.kpi.activeCbo > 1 ? 's' : ''} · {lateCount} en retard
+          </p>
+          {items.length === 0 ? (
+            <p className="mt-4 text-sm italic text-[#73809a]">Aucune action en cours sur ce chantier.</p>
+          ) : (
+            <div className="mt-4 max-h-[400px] space-y-2 overflow-y-auto pr-1">
+              {items.map(({ subject, cbo }) => (
+                <Link
+                  key={cbo.cboId}
+                  href={cbo.targetActionId ? `/sites/${site.id}/actions?actionId=${cbo.targetActionId}` : `/sites/${site.id}/actions`}
+                  className="block rounded-xl border border-[#eef1f6] px-3 py-2.5 hover:border-[#cbd9f7]"
+                >
+                  <p className="truncate text-[10px] font-semibold uppercase tracking-[0.1em] text-[#7b879d]">{subject.label}</p>
+                  <p className="mt-0.5 truncate text-sm font-medium text-[#17213a]">{cbo.label}</p>
+                </Link>
+              ))}
+            </div>
+          )}
+          <Link href={`/sites/${site.id}/actions`} className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">
+            Voir toutes les actions <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </>
+      )}
+    </section>
+  )
 }
 
-function AttentionSection({ cards }: { cards: AttentionCard[] }) {
-  // `cards` arrive déjà curées et triées par page.tsx (chantier actif d'abord,
-  // complété seulement si besoin) — ne jamais re-trier ici au risque de repousser
-  // une carte du chantier actif derrière une carte d'un autre chantier.
-  const summary = summarizeAttentionCards(cards)
+/** Repli honnête pendant le chargement du tier lourd — jamais le contenu de l'ancien chantier. */
+export function ActionsDuChantierSkeleton() {
   return (
-    <section className={`${surface} p-5 sm:p-7`}>
-      <div className="mb-1 flex items-center gap-2 text-[#f0525f]"><AlertTriangle className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Ce qui mérite votre attention</h2></div>
-      {summary && <p className="mb-4 text-xs text-[#7b879d]">{summary}</p>}
-      {cards.length === 0 ? (
-        <p className="rounded-2xl bg-[#f3fbf6] px-4 py-5 text-sm text-[#258657]">Tout est en rythme.</p>
-      ) : (
-        <div className="space-y-2">
-          {cards.map((card) => (
-            <div key={card.id} className="relative">
-              <span className={`absolute right-3 top-3 z-10 rounded-full px-2 py-0.5 text-[10px] font-semibold ${ATTENTION_BADGE_CLASS[card.tone]}`}>{ATTENTION_BADGE[card.tone]}</span>
-              <SituationAttentionCard card={card} />
-            </div>
-          ))}
-        </div>
-      )}
-      <Link href="/actions" className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">Voir toutes les actions <ArrowRight className="h-3.5 w-3.5" /></Link>
+    <section className={`${surface} p-5 sm:p-6`} aria-busy="true" aria-label="Actions en cours de chargement">
+      <div className="flex items-center gap-2 text-[#ef8e45]"><ListTodo className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Actions du chantier</h2></div>
+      <p className="mt-1 text-xs text-[#7b879d]">Ce qui est en cours sur ce chantier.</p>
+      <div className="mt-4 h-4 w-3/4 animate-pulse rounded bg-[#eef1f6]" />
     </section>
   )
 }
@@ -429,7 +481,7 @@ function Agenda({ items, deadlinesToPlan }: { items: UpcomingDashboardItem[]; de
   )
 }
 
-export function DashboardPremium({ firstName, orgNames, attentionCards, upcoming, sites, activeSiteId, heroSlot, memorySlot, deadlinesToPlan }: Props) {
+export function DashboardPremium({ firstName, orgNames, upcoming, sites, activeSiteId, heroSlot, memorySlot, actionsSlot, deadlinesToPlan }: Props) {
   return (
     <div className="min-h-screen w-full bg-[#f8fafc] px-1 pb-12 pt-1 sm:px-2">
       <div className="w-full space-y-5">
@@ -437,7 +489,7 @@ export function DashboardPremium({ firstName, orgNames, attentionCards, upcoming
           <div>
             <h1 className="text-3xl font-semibold tracking-[-0.035em] text-[#101a35]">Bonjour {firstName} 👋</h1>
             <p className="mt-1 text-sm text-[#68758d]">Reprenez vos chantiers là où vous les aviez laissés.</p>
-            <p className="mt-0.5 text-sm text-[#68758d]">MemorIA vous montre ce qui a évolué, ce qui mérite votre attention et ce qu&apos;il ne faut pas oublier.</p>
+            <p className="mt-0.5 text-sm text-[#68758d]">MemorIA vous montre ce qui a évolué, ce qui est en cours et ce qu&apos;il ne faut pas oublier.</p>
             {orgNames.length > 1 && <p className="mt-3 text-[11px] font-normal text-[#9aa5b8]">{orgNames.join(' · ')}</p>}
           </div>
           <div className="hidden items-center gap-2 text-xs text-[#7a879f] lg:flex">
@@ -448,7 +500,7 @@ export function DashboardPremium({ firstName, orgNames, attentionCards, upcoming
         <ChantierSelector sites={sites} activeSiteId={activeSiteId} />
         {heroSlot}
         <div className="grid gap-5 xl:grid-cols-3">
-          <div className="xl:col-span-2"><AttentionSection cards={attentionCards} /></div>
+          <div className="xl:col-span-2">{actionsSlot}</div>
           {memorySlot}
         </div>
         <Agenda items={upcoming} deadlinesToPlan={deadlinesToPlan} />
