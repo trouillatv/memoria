@@ -91,13 +91,13 @@ export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; hero
     { icon: Info, value: m?.nonMentionnes.length ?? 0, label: 'non mentionnés', tone: 'bg-[#f0f3f8] text-[#657493]' },
   ]
   return (
-    <section className={`${surface} p-5 sm:p-7`}>
+    <section className={`${surface} p-5 sm:p-8`}>
       <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#6a7892]">Évolution depuis le PV précédent</p>
-      <div className="mt-3 flex items-center gap-3">
-        <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="md" />
+      <div className="mt-4 flex items-center gap-4">
+        <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="xl" />
         <div className="min-w-0">
-          <h2 className="truncate text-lg font-semibold text-[#101a35]">{site.name}</h2>
-          <p className="mt-0.5 text-xs text-[#65718b]">
+          <h2 className="truncate text-xl font-bold tracking-tight text-[#101a35] sm:text-2xl">{site.name}</h2>
+          <p className="mt-1 text-xs text-[#65718b]">
             {heroDelta ? `Dernier PV intégré : ${new Date(heroDelta.toEffectiveDate).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Aucun PV intégré'}
             {' · '}{site.pvCount} PV analysé{site.pvCount > 1 ? 's' : ''}
             {' · '}{site.subjectCount} sujet{site.subjectCount > 1 ? 's' : ''} suivi{site.subjectCount > 1 ? 's' : ''}
@@ -105,24 +105,27 @@ export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; hero
         </div>
       </div>
       {metricsFailed ? (
-        <p className="mt-6 text-sm text-[#b4553f]" role="status">
+        <p className="mt-7 text-sm text-[#b4553f]" role="status">
           Synthèse temporairement indisponible — réessayez plus tard.
         </p>
       ) : (
         <>
-          <div className="mt-6 grid gap-4 sm:grid-cols-4">{metrics.map((metric) => <Metric key={metric.label} {...metric} />)}</div>
+          <div className="mt-7 grid gap-5 sm:grid-cols-4">{metrics.map((metric) => <Metric key={metric.label} {...metric} />)}</div>
           {teachings.length > 0 && (
-            <ul className="mt-5 space-y-1.5">
+            <ul className="mt-6 space-y-2">
               {teachings.map((line) => (
-                <li key={line} className="flex items-start gap-2 text-xs text-[#34415c]">
-                  <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-[#7857d4]" />{line}
+                <li key={line} className="flex items-start gap-2 text-sm text-[#34415c]">
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#7857d4]" />{line}
                 </li>
               ))}
             </ul>
           )}
         </>
       )}
-      <Link href={`/sites/${site.id}/historique?view=avant-apres`} className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">
+      <Link
+        href={`/sites/${site.id}/historique?view=avant-apres`}
+        className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1463e8] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#0c4dbd]"
+      >
         Voir ce qui a changé <ArrowRight className="h-3.5 w-3.5" />
       </Link>
     </section>
@@ -132,13 +135,13 @@ export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; hero
 /** Repli honnête pendant le chargement du tier lourd — jamais les chiffres de l'ancien chantier affiché. */
 export function HeroSkeleton() {
   return (
-    <section className={`${surface} p-5 sm:p-7`} aria-busy="true" aria-label="Évolution en cours de chargement">
+    <section className={`${surface} p-5 sm:p-8`} aria-busy="true" aria-label="Évolution en cours de chargement">
       <div className="h-3 w-48 animate-pulse rounded bg-[#eef1f6]" />
-      <div className="mt-4 flex items-center gap-3">
-        <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-[#eef1f6]" />
-        <div className="h-5 w-40 animate-pulse rounded bg-[#eef1f6]" />
+      <div className="mt-4 flex items-center gap-4">
+        <div className="h-14 w-14 shrink-0 animate-pulse rounded-full bg-[#eef1f6]" />
+        <div className="h-6 w-40 animate-pulse rounded bg-[#eef1f6]" />
       </div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-4">
+      <div className="mt-7 grid gap-5 sm:grid-cols-4">
         {[0, 1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-[#f3f5f9]" />)}
       </div>
     </section>
@@ -148,11 +151,11 @@ export function HeroSkeleton() {
 function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: boolean }) {
   const counters = [
     { label: 'actions', value: site.activeActionCount },
-    { label: 'en retard', value: site.overdueActionCount },
+    { label: 'retard', value: site.overdueActionCount },
     { label: 'réserves', value: site.openReserveCount },
   ]
   return (
-    <div className={`relative rounded-2xl border p-4 transition-colors ${isActive ? 'border-[#3c6fe0] bg-[#f5f8ff]' : 'border-[#e8edf5] bg-white hover:border-[#cbd9f7]'}`}>
+    <div className={`relative h-full rounded-2xl border p-4 transition-colors ${isActive ? 'border-[#3c6fe0] bg-[#f5f8ff]' : 'border-[#e8edf5] bg-white hover:border-[#cbd9f7]'}`}>
       <Link
         href={`/dashboard?chantier=${site.id}`}
         scroll={false}
@@ -165,21 +168,21 @@ function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: b
           Link plein-carte ci-dessus — seul "Ouvrir le chantier" (hors de ce bloc) reste
           indépendamment cliquable, cf. fix carte-cliquable Home V2. */}
       <div className="relative z-10 pointer-events-none">
-        <div className="flex min-w-0 items-center gap-2">
-          <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="sm" />
+        <div className="flex min-w-0 items-center gap-3">
+          <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="lg" />
           <div className="min-w-0">
-            <strong className="block truncate text-sm font-semibold text-[#17213a]">{site.name}</strong>
+            <strong className="block truncate text-sm font-bold text-[#17213a]">{site.name}</strong>
             <span className="block truncate text-[11px] text-[#7b879d]">{site.pvCount} PV · {site.subjectCount} sujets suivis</span>
           </div>
         </div>
         <p className="mt-2 truncate text-[11px] text-[#7b879d]">
           {site.lastActivityAt ? `Dernière activité : ${dateLabel(site.lastActivityAt)}` : 'Aucune activité récente'}
         </p>
-        <div className="mt-3 flex gap-2">
+        <div className="mt-3 flex gap-1.5">
           {counters.map((c) => (
-            <div key={c.label} className="flex-1 rounded-lg bg-white/70 px-2 py-1.5 text-center">
-              <strong className="block text-sm font-semibold text-[#17213a]">{c.value}</strong>
-              <span className="block text-[9px] uppercase tracking-wide text-[#8b96aa]">{c.label}</span>
+            <div key={c.label} className="min-w-0 flex-1 overflow-hidden rounded-lg bg-white/70 px-1.5 py-1.5 text-center">
+              <strong className="block truncate text-sm font-semibold tabular-nums text-[#17213a]">{c.value}</strong>
+              <span className="block truncate text-[8px] font-medium uppercase tracking-wide text-[#8b96aa]">{c.label}</span>
             </div>
           ))}
         </div>
@@ -192,6 +195,12 @@ function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: b
 }
 
 function ChantierSelector({ sites, activeSiteId }: { sites: SiteDashboardItem[]; activeSiteId: string | null }) {
+  // Présentation uniquement : le chantier actif toujours en tête du carrousel ;
+  // le reste conserve l'ordre métier déjà trié par getSitesDashboard (urgence/
+  // activité) — aucun nouveau tri, aucun tracking de consultation (lot UX polish).
+  const orderedSites = activeSiteId
+    ? [...sites.filter((s) => s.id === activeSiteId), ...sites.filter((s) => s.id !== activeSiteId)]
+    : sites
   return (
     <section className={`${surface} p-5 sm:p-6`}>
       <div className="flex items-start justify-between">
@@ -204,9 +213,11 @@ function ChantierSelector({ sites, activeSiteId }: { sites: SiteDashboardItem[];
       {sites.length === 0 ? (
         <p className="mt-5 text-sm italic text-[#73809a]">Aucun chantier accessible.</p>
       ) : (
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          {sites.map((site) => (
-            <ChantierCard key={site.id} site={site} isActive={site.id === activeSiteId} />
+        <div role="list" className="-mx-1 mt-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2">
+          {orderedSites.map((site) => (
+            <div key={site.id} role="listitem" className="w-[78%] shrink-0 snap-start xs:w-64 sm:w-64 lg:w-72">
+              <ChantierCard site={site} isActive={site.id === activeSiteId} />
+            </div>
           ))}
         </div>
       )}
@@ -215,17 +226,26 @@ function ChantierSelector({ sites, activeSiteId }: { sites: SiteDashboardItem[];
   )
 }
 
+/**
+ * Choix déterministe du premier élément à mettre en avant : préfère un item
+ * décision/connaissance/vigilance à un simple intervenant, sans jamais retrier
+ * ni recalculer `getMemoryReview` — uniquement un choix de présentation parmi
+ * les items déjà retournés.
+ */
+function pickHighlightedMemoryItem(review: MemoryReview) {
+  return review.confirmed.find((c) => c.group !== 'Intervenants') ?? review.confirmed[0] ?? null
+}
+
 export function MemorySouvient({ site, review }: { site: SiteDashboardItem | null; review: MemoryReview }) {
-  // Choix déterministe : le premier élément de `confirmed`, déjà ordonné
-  // connaissance durable d'abord par getMemoryReview — jamais un nouveau tri.
-  const item = review.confirmed[0] ?? null
+  const item = pickHighlightedMemoryItem(review)
   return (
     <section className={`${surface} p-5 sm:p-6`}>
-      <div className="flex items-center gap-2 text-[#26a67b]"><Sparkles className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">MemorIA se souvient</h2></div>
+      <div className="flex items-center gap-2 text-[#26a67b]"><Sparkles className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Mémoire du chantier</h2></div>
+      <p className="mt-1 text-xs text-[#7b879d]">Ce que MemorIA sait déjà de ce chantier.</p>
       {!site ? (
         <p className="mt-4 text-sm italic text-[#73809a]">Aucun chantier actif.</p>
       ) : !item ? (
-        <p className="mt-4 text-sm italic text-[#73809a]">Rien de confirmé à retenir pour {site.name} pour le moment.</p>
+        <p className="mt-4 text-sm italic text-[#73809a]">Aucun élément de mémoire utile mis en avant pour ce chantier pour le moment.</p>
       ) : (
         <div className="mt-4">
           <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#7b879d]">{item.group}</p>
@@ -245,7 +265,8 @@ export function MemorySouvient({ site, review }: { site: SiteDashboardItem | nul
 export function MemorySouvientSkeleton() {
   return (
     <section className={`${surface} p-5 sm:p-6`} aria-busy="true" aria-label="Mémoire en cours de chargement">
-      <div className="flex items-center gap-2 text-[#26a67b]"><Sparkles className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">MemorIA se souvient</h2></div>
+      <div className="flex items-center gap-2 text-[#26a67b]"><Sparkles className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">Mémoire du chantier</h2></div>
+      <p className="mt-1 text-xs text-[#7b879d]">Ce que MemorIA sait déjà de ce chantier.</p>
       <div className="mt-4 h-4 w-3/4 animate-pulse rounded bg-[#eef1f6]" />
     </section>
   )
@@ -325,7 +346,7 @@ export function DashboardPremium({ firstName, orgNames, attentionCards, upcoming
             <h1 className="text-3xl font-semibold tracking-[-0.035em] text-[#101a35]">Bonjour {firstName} 👋</h1>
             <p className="mt-1 text-sm text-[#68758d]">Reprenez vos chantiers là où vous les aviez laissés.</p>
             <p className="mt-0.5 text-sm text-[#68758d]">MemorIA vous montre ce qui a évolué, ce qui mérite votre attention et ce qu&apos;il ne faut pas oublier.</p>
-            {orgNames.length > 1 && <p className="mt-3 text-xs font-medium text-[#6b7891]">{orgNames.join(' · ')}</p>}
+            {orgNames.length > 1 && <p className="mt-3 text-[11px] font-normal text-[#9aa5b8]">{orgNames.join(' · ')}</p>}
           </div>
           <div className="hidden items-center gap-2 text-xs text-[#7a879f] lg:flex">
             <span className="rounded-full border border-[#e2e8f2] bg-white px-4 py-2">Rechercher un chantier, une action, un document…</span>

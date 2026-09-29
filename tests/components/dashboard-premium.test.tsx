@@ -190,6 +190,34 @@ describe('DashboardPremium — Selection (sélecteur de chantier)', () => {
     expect(openLink.closest('.pointer-events-none')).toBeNull()
     expect(() => fireEvent.click(openLink)).not.toThrow()
   })
+
+  it('le carrousel expose une structure role="list"/"listitem" avec une carte par chantier', () => {
+    render(
+      <DashboardPremium
+        {...baseProps({
+          sites: [site({ id: 'site-1' }), site({ id: 'site-2', name: 'Chantier Beta' })],
+          activeSiteId: 'site-1',
+        })}
+      />,
+    )
+    const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
+    const list = within(chantiersSection).getByRole('list')
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2)
+  })
+
+  it('le chantier actif apparaît en tête du carrousel même s\'il n\'est pas premier dans `sites`', () => {
+    render(
+      <DashboardPremium
+        {...baseProps({
+          sites: [site({ id: 'site-1', name: 'Chantier Alpha' }), site({ id: 'site-2', name: 'Chantier Beta' })],
+          activeSiteId: 'site-2',
+        })}
+      />,
+    )
+    const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
+    const items = within(chantiersSection).getAllByRole('listitem')
+    expect(within(items[0]!).getByText('Chantier Beta')).toBeInTheDocument()
+  })
 })
 
 describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)', () => {
@@ -262,29 +290,64 @@ describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)'
   })
 })
 
-describe('DashboardPremium — Memory ("MemorIA se souvient")', () => {
+describe('DashboardPremium — Memory ("Mémoire du chantier")', () => {
+  it('titre et sous-titre exacts affichés', () => {
+    render(<DashboardPremium {...baseProps({ activeReview: emptyReview() })} />)
+    expect(screen.getByText('Mémoire du chantier')).toBeInTheDocument()
+    expect(screen.getByText('Ce que MemorIA sait déjà de ce chantier.')).toBeInTheDocument()
+    expect(screen.queryByText('MemorIA se souvient')).not.toBeInTheDocument()
+  })
+
   it('aucun chantier actif → "Aucun chantier actif."', () => {
     render(<DashboardPremium {...baseProps({ sites: [], activeSiteId: null })} />)
     expect(screen.getByText('Aucun chantier actif.')).toBeInTheDocument()
   })
 
-  it('chantier actif sans confirmé → message nominatif', () => {
+  it('chantier actif sans confirmé → message de repli exact', () => {
     render(<DashboardPremium {...baseProps({ activeReview: emptyReview() })} />)
-    expect(screen.getByText('Rien de confirmé à retenir pour Chantier Alpha pour le moment.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Aucun élément de mémoire utile mis en avant pour ce chantier pour le moment.'),
+    ).toBeInTheDocument()
   })
 
   it('confirmed[0] avec href → lien cliquable vers la fiche', () => {
-    const item = confirmedItem({ href: '/sites/site-1/intervenants/ci-1', title: 'Jean Dupont' })
+    const item = confirmedItem({ group: 'Décisions', href: '/sites/site-1/intervenants/ci-1', title: 'Jean Dupont' })
     render(<DashboardPremium {...baseProps({ activeReview: { confirmed: [item], toReview: [] } })} />)
     const link = screen.getByRole('link', { name: 'Jean Dupont' })
     expect(link).toHaveAttribute('href', '/sites/site-1/intervenants/ci-1')
   })
 
   it('confirmed[0] sans href → titre en texte, pas un lien', () => {
-    const item = confirmedItem({ href: null, title: 'Connaissance durable X' })
+    const item = confirmedItem({ group: 'Décisions', href: null, title: 'Connaissance durable X' })
     render(<DashboardPremium {...baseProps({ activeReview: { confirmed: [item], toReview: [] } })} />)
     expect(screen.getByText('Connaissance durable X')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Connaissance durable X' })).not.toBeInTheDocument()
+  })
+
+  it('un intervenant en tête mais une décision présente → la décision est mise en avant (sans retrier getMemoryReview)', () => {
+    const weakIntervenant = confirmedItem({
+      id: 'ci-intervenant',
+      group: 'Intervenants',
+      title: 'Jean-Pierre Chauvin — Directeur HSE',
+    })
+    const richDecision = confirmedItem({
+      id: 'ci-decision',
+      group: 'Décisions',
+      title: 'Décision structurante sur le lot gros œuvre',
+    })
+    render(
+      <DashboardPremium
+        {...baseProps({ activeReview: { confirmed: [weakIntervenant, richDecision], toReview: [] } })}
+      />,
+    )
+    expect(screen.getByText('Décision structurante sur le lot gros œuvre')).toBeInTheDocument()
+    expect(screen.queryByText('Jean-Pierre Chauvin — Directeur HSE')).not.toBeInTheDocument()
+  })
+
+  it("seul un intervenant existe → il reste affiché (repli sur confirmed[0])", () => {
+    const onlyIntervenant = confirmedItem({ group: 'Intervenants', title: 'Jean Dupont — conducteur de travaux' })
+    render(<DashboardPremium {...baseProps({ activeReview: { confirmed: [onlyIntervenant], toReview: [] } })} />)
+    expect(screen.getByText('Jean Dupont — conducteur de travaux')).toBeInTheDocument()
   })
 })
 
@@ -392,5 +455,10 @@ describe('DashboardPremium — Regression (rendu global, header, anciens blocs d
   it('aucune trace des anciens blocs legacy (VisitSummary/SitesTable/PriorityActions/MemoryCards)', () => {
     const { container } = render(<DashboardPremium {...baseProps()} />)
     expect(container.innerHTML).not.toMatch(/VisitSummary|SitesTable|PriorityActions|MemoryCards/)
+  })
+
+  it('aucune trace de l\'ancien libellé "MemorIA se souvient" ni de l\'ancien message de repli', () => {
+    const { container } = render(<DashboardPremium {...baseProps()} />)
+    expect(container.innerHTML).not.toMatch(/MemorIA se souvient|Rien de confirmé à retenir/)
   })
 })
