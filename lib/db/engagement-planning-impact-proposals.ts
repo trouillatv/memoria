@@ -343,7 +343,7 @@ export async function listPlanningImpactProposalsForEngagement(
 
   const proposals = [...latestByEffect.values()].map((row) => {
     const mapped = mapProposalRow(row)
-    return { ...mapped, capability: resolvePlanningApplicationCapability(mapped.impactKind) }
+    return { ...mapped, capability: resolvePlanningApplicationCapability(mapped.impactKind, mapped.proposalPayload) }
   })
 
   return { ok: true, proposals }
@@ -356,7 +356,16 @@ export type DismissPlanningImpactProposalResult =
   | { ok: false; error: DismissPlanningImpactProposalError }
 
 /** Idempotent : une proposition déjà `dismissed` n'est jamais réécrite (ni sa
- *  raison, ni son horodatage) — le premier geste humain fait foi. */
+ *  raison, ni son horodatage) — le premier geste humain fait foi.
+ *
+ * Sans oracle : un id inexistant et un id cross-organisation/non-membre
+ * rendent tous deux `access_denied` — jamais `not_found` pour le premier
+ * lookup, sous peine de laisser un appelant distinguer « la ressource
+ * n'existe pas » de « elle existe mais m'est inaccessible » (cf. mandat
+ * FIX_REQUIRED Vincent 2026-09-30, problème 1 ; même discipline que
+ * `list`/`generate` ci-dessus). `not_found` reste réservé à l'échec de
+ * l'UPDATE après un accès déjà prouvé (course avec une suppression
+ * concurrente — pas un oracle, l'appelant a déjà la preuve d'accès). */
 export async function dismissPlanningImpactProposal(
   proposalId: string,
   currentUser: Pick<DbUser, 'id'> | null | undefined,
@@ -369,7 +378,7 @@ export async function dismissPlanningImpactProposal(
     .select(PROPOSAL_SELECT)
     .eq('id', proposalId)
     .maybeSingle()
-  if (proposalError || !proposalRow) return { ok: false, error: 'not_found' }
+  if (proposalError || !proposalRow) return { ok: false, error: 'access_denied' }
   const row = proposalRow as EngagementPlanningImpactProposalDbRow
 
   const access = await resolveResourceAccess({ kind: 'engagement', id: row.engagement_id }, currentUser)

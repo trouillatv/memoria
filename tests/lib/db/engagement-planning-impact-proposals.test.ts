@@ -23,7 +23,7 @@ import {
   listPlanningImpactProposalsForEngagement,
   dismissPlanningImpactProposal,
 } from '@/lib/db/engagement-planning-impact-proposals'
-import type { ModifyPlanningImpactPayload } from '@/lib/engagements/planning-impact-proposal'
+import type { ModifyPlanningImpactPayload, NewPlanningImpactPayload } from '@/lib/engagements/planning-impact-proposal'
 
 const TAG = `__test_planning_impact_proposals_${Math.floor(Date.now() / 1000)}__`
 
@@ -39,9 +39,11 @@ let runId: string
 
 let newEngagementId: string
 let modifyEngagementId: string
+let modifyNonPlanningEngagementId: string
 let suspendEngagementId: string
 let confirmOnlyEngagementId: string
 let crossOrgEngagementId: string
+let os15NewEngagementId: string
 
 const currentUser = () => ({ id: adminUserId })
 
@@ -139,9 +141,11 @@ beforeAll(async () => {
 
   newEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} new` })
   modifyEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} modify` })
+  modifyNonPlanningEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} modify non planning` })
   suspendEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} suspend` })
   confirmOnlyEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} confirm-only` })
   crossOrgEngagementId = await insertEngagement({ site_id: outsiderSiteId, organization_id: outsiderOrgId, short_label: `${TAG} cross-org` })
+  os15NewEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} os15 new` })
 
   const newProposal = await makeQualifiedProposal({
     effect: 'new',
@@ -161,7 +165,9 @@ beforeAll(async () => {
     startsOn: '2026-01-01',
     targetEngagementId: modifyEngagementId,
   })
-  await materializeEffectWithPayload(modifyPermanentProposal, { frequency: 'monthly' })
+  // effect_payload réel : toujours { description: <texte libre> } — jamais de
+  // champ structuré (cf. review-actions.ts, aucune structure générique).
+  await materializeEffectWithPayload(modifyPermanentProposal, { description: 'fréquence mensuelle' })
 
   const modifyBoundedProposal = await makeQualifiedProposal({
     effect: 'modify',
@@ -171,7 +177,31 @@ beforeAll(async () => {
     startsOn: '2026-12-01',
     targetEngagementId: modifyEngagementId,
   })
-  await materializeEffectWithPayload(modifyBoundedProposal, { frequency: 'weekly' })
+  await materializeEffectWithPayload(modifyBoundedProposal, { description: 'fréquence hebdomadaire' })
+
+  // FIX 4 (mandat Vincent 2026-09-30) : MODIFY sur un scope_key hors
+  // PLANNING_RELEVANT_MODIFY_SCOPE_KEYS est un effet contractuel réel mais ne
+  // doit produire AUCUNE proposition d'impact Planning.
+  const modifyNonPlanningProposal = await makeQualifiedProposal({
+    effect: 'modify',
+    temporality: 'permanent',
+    scope: 'quantity',
+    scopeKey: 'quantity',
+    startsOn: '2026-01-01',
+    targetEngagementId: modifyNonPlanningEngagementId,
+  })
+  await materializeEffectWithPayload(modifyNonPlanningProposal, { description: '+10% de surface' })
+
+  // OS15 — NEW qualifié avec une valeur métier riche (FIX 5).
+  const os15NewProposal = await makeQualifiedProposal({
+    effect: 'new',
+    temporality: 'permanent',
+    scope: 'whole_engagement',
+    scopeKey: 'whole_engagement',
+    startsOn: '2026-10-01',
+    targetEngagementId: os15NewEngagementId,
+  })
+  await materializeEffectWithPayload(os15NewProposal, { description: 'Relevé photo hebdomadaire zone Z2' })
 
   const suspendProposal = await makeQualifiedProposal({
     effect: 'suspend',
@@ -199,7 +229,7 @@ beforeAll(async () => {
 afterAll(async () => {
   const db = createAdminClient()
   // engagements cascade → engagement_contract_effects → engagement_planning_impact_proposals
-  await db.from('engagements').delete().in('id', [newEngagementId, modifyEngagementId, suspendEngagementId, confirmOnlyEngagementId, crossOrgEngagementId])
+  await db.from('engagements').delete().in('id', [newEngagementId, modifyEngagementId, modifyNonPlanningEngagementId, suspendEngagementId, confirmOnlyEngagementId, crossOrgEngagementId, os15NewEngagementId])
   await db.from('documents').delete().eq('id', docId)
   await db.from('sites').delete().in('id', [siteId, outsiderSiteId])
   await db.from('clients').delete().in('id', [clientId, outsiderClientId])
@@ -231,8 +261,15 @@ describe('generatePlanningImpactProposalsForEngagement — génération', () => 
     )
     expect(bounded).toBeTruthy()
     const boundedPayload = bounded!.proposalPayload as ModifyPlanningImpactPayload
-    expect(boundedPayload.from).toEqual({ frequency: 'monthly' })
-    expect(boundedPayload.to).toEqual({ frequency: 'weekly' })
+    expect(boundedPayload.from).toEqual({ description: 'fréquence mensuelle' })
+    expect(boundedPayload.to).toEqual({ description: 'fréquence hebdomadaire' })
+  })
+
+  it('MODIFY sur scope_key non Planning-relevant (quantity) — aucune proposition générée (FIX 4)', async () => {
+    const result = await generatePlanningImpactProposalsForEngagement(modifyNonPlanningEngagementId, currentUser())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.proposals).toHaveLength(0)
   })
 
   it('SUSPEND — produit une proposition operation=suspend avec resumeOn', async () => {
@@ -305,8 +342,8 @@ describe('listPlanningImpactProposalsForEngagement — lecture', () => {
     expect(result.proposals).toHaveLength(2)
     for (const proposal of result.proposals) {
       expect(proposal.capability).toEqual({
-        applicable: false,
-        blockingReason: 'no_native_recurring_frequency_change',
+        readiness: 'partially_representable',
+        blockingReason: 'recurring_change_requires_mission_targeting',
         missingDecisions: ['cycle_planning_cible', 'occurrences_a_regenerer'],
       })
     }
@@ -358,9 +395,9 @@ describe('dismissPlanningImpactProposal — décision humaine', () => {
     expect(second.proposal.dismissedAt).toBe(first.proposal.dismissedAt)
   })
 
-  it('id inexistant : refusé proprement', async () => {
+  it('id inexistant : refusé proprement, sans oracle (FIX 1)', async () => {
     const result = await dismissPlanningImpactProposal(randomUUID(), currentUser())
-    expect(result).toEqual({ ok: false, error: 'not_found' })
+    expect(result).toEqual({ ok: false, error: 'access_denied' })
   })
 
   it('utilisateur non membre de l\'organisation ne peut pas écarter la proposition', async () => {
@@ -369,5 +406,38 @@ describe('dismissPlanningImpactProposal — décision humaine', () => {
     if (!generated.ok) return
     const result = await dismissPlanningImpactProposal(generated.proposals[0].id, { id: randomUUID() })
     expect(result).toEqual({ ok: false, error: 'access_denied' })
+  })
+
+  it('aucun oracle : id inexistant et proposition réelle inaccessible rendent le même message externe (FIX 1)', async () => {
+    const generated = await generatePlanningImpactProposalsForEngagement(newEngagementId, currentUser())
+    expect(generated.ok).toBe(true)
+    if (!generated.ok) return
+    const nonexistent = await dismissPlanningImpactProposal(randomUUID(), { id: randomUUID() })
+    const realButUnauthorized = await dismissPlanningImpactProposal(generated.proposals[0].id, { id: randomUUID() })
+    expect(nonexistent).toEqual(realButUnauthorized)
+  })
+})
+
+// OS15 — témoin de fermeture DOC-CONTRACT-OS-1B4-B (mandat FIX_REQUIRED
+// Vincent 2026-09-30), volet intégration. Couvre en base réelle ce que le
+// test pur (planning-impact-proposal.test.ts) couvre en mémoire : NEW porte
+// une qualification humaine riche (problème 5) sans jamais devenir
+// applicable (problème 3), et le calcul de capacité lu par
+// listPlanningImpactProposalsForEngagement reflète bien le nouveau modèle.
+describe('OS15 — témoin de fermeture 1B4-B (intégration)', () => {
+  it('NEW qualifié avec effect_payload riche : la proposition le porte, la capacité reste no_application', async () => {
+    const generated = await generatePlanningImpactProposalsForEngagement(os15NewEngagementId, currentUser())
+    expect(generated.ok).toBe(true)
+    if (!generated.ok) return
+    expect(generated.proposals).toHaveLength(1)
+    const payload = generated.proposals[0].proposalPayload as NewPlanningImpactPayload
+    expect(payload.effectPayload).toEqual({ description: 'Relevé photo hebdomadaire zone Z2' })
+    expect(payload.scopeKey).toBe('whole_engagement')
+
+    const listed = await listPlanningImpactProposalsForEngagement(os15NewEngagementId, currentUser())
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) return
+    expect(listed.proposals[0].capability.readiness).toBe('no_application')
+    expect(listed.proposals[0].capability.blockingReason).toBe('new_requires_human_scheduling')
   })
 })

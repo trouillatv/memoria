@@ -84,7 +84,15 @@ CREATE TABLE public.engagement_planning_impact_proposals (
       (status = 'proposed' AND dismissed_at IS NULL AND dismissed_by IS NULL AND dismissal_reason IS NULL)
     ),
   CONSTRAINT engagement_planning_impact_proposals_fingerprint_unique
-    UNIQUE (proposal_fingerprint)
+    UNIQUE (proposal_fingerprint),
+  -- Un seul (contract_effect_id, proposal_version) : le service de
+  -- génération est l'unique décideur de version (cf. commentaire ci-dessus,
+  -- "toujours le service de génération qui décide de la version") — cette
+  -- contrainte fait respecter l'invariant en base, pas seulement dans le
+  -- `reduce` applicatif qui sélectionne le max côté lecture (cf. mandat
+  -- FIX_REQUIRED Vincent 2026-09-30, problème 2).
+  CONSTRAINT engagement_planning_impact_proposals_effect_version_unique
+    UNIQUE (contract_effect_id, proposal_version)
 );
 
 CREATE INDEX engagement_planning_impact_proposals_engagement_idx

@@ -781,10 +781,12 @@ export function ProposalCard({
                 </div>
               )}
 
-              {localEffect && effectRequiresPayload(localEffect) && (
+              {localEffect && (effectRequiresPayload(localEffect) || localEffect === 'new') && (
                 <div>
                   <label className="text-[11px] text-muted-foreground mb-1 block">
-                    Valeur modifiée (requis pour une modification)
+                    {localEffect === 'new'
+                      ? 'Valeur qualifiée (optionnel — ex : nature de la prestation)'
+                      : 'Valeur modifiée (requis pour une modification)'}
                   </label>
                   <input
                     type="text"

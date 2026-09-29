@@ -10,12 +10,13 @@
 //   - proposal_payload ne contient JAMAIS de donnée Planning/application
 //     (jour, heure, équipe, planning_cycle_id, occurrence) — uniquement
 //     l'impact contractuel interprété. L'application est 1B4-C, HOLD.
-//   - resolvePlanningApplicationCapability est un LOOKUP STATIQUE, jamais un
-//     accès DB : l'audit 1B4-A a établi qu'aucune clé étrangère ne relie
-//     Engagement à un objet Planning précis — une vérification par instance
-//     est donc impossible aujourd'hui, et la capacité d'application ne
-//     dépend que du impact_kind. Ce résultat n'est JAMAIS persisté (il
-//     deviendrait une vérité périmée si le Planning évolue).
+//   - resolvePlanningApplicationCapability n'accède JAMAIS à la DB : l'audit
+//     1B4-A a établi qu'aucune clé étrangère ne relie Engagement à un objet
+//     Planning précis — une vérification par instance est donc impossible
+//     aujourd'hui. Elle dépend de impact_kind ET du proposal_payload déjà
+//     construit (jamais un lookup statique par impact_kind seul — cf. mandat
+//     FIX_REQUIRED Vincent 2026-09-30, problème 3). Ce résultat n'est JAMAIS
+//     persisté (il deviendrait une vérité périmée si le Planning évolue).
 
 import { createHash } from 'node:crypto'
 import { canonicalStringify } from '@/lib/knowledge/tracked-point-fingerprint'
@@ -24,11 +25,22 @@ import type { EngagementContractEffectRow, MaterializedContractEffect } from './
 
 export type PlanningImpactKind = Extract<MaterializedContractEffect, 'new' | 'modify' | 'suspend'>
 
+// Sous-ensemble de scope_key dont la MODIFICATION touche réellement
+// l'organisation Planning (fréquence/rythme d'intervention). Un MODIFY sur
+// tout autre scope_key (ex. "quantity", "access", "equipment") est un fait
+// contractuel réel mais SANS impact Planning — cf. mandat FIX_REQUIRED
+// Vincent 2026-09-30, problème 4 (« effet contractuel ≠ proposition
+// Planning »). Vocabulaire aligné sur le <datalist> de qualification
+// (ProposalCard.tsx) — pas d'enum DB, ajustable sans migration.
+export const PLANNING_RELEVANT_MODIFY_SCOPE_KEYS: ReadonlySet<string> = new Set(['frequency', 'schedule'])
+
 export type NewPlanningImpactPayload = {
   operation: 'new'
   temporality: ContractTemporality
   effectiveFrom: string | null
   effectiveTo: string | null
+  scopeKey: string
+  effectPayload: Record<string, unknown>
 }
 
 export type ModifyPlanningImpactPayload = {
@@ -62,6 +74,10 @@ export type PlanningImpactProposalPayload =
  * l'appelant (via `resolveEngagementAtDate` sur l'historique complet, à
  * `startsOn - 1 jour`). `null`/`undefined` si non résolvable (ex. MODIFY sans
  * `startsOn`, effective immédiatement) — jamais recalculée ici.
+ *
+ * MODIFY sur un `scopeKey` hors PLANNING_RELEVANT_MODIFY_SCOPE_KEYS rend
+ * `null` : l'effet contractuel est réel (matérialisé dans
+ * engagement_contract_effects) mais n'a aucun impact Planning à proposer.
  */
 export function buildPlanningImpactProposalPayload(
   effect: EngagementContractEffectRow,
@@ -74,8 +90,11 @@ export function buildPlanningImpactProposalPayload(
         temporality: effect.temporality,
         effectiveFrom: effect.startsOn,
         effectiveTo: effect.endsOn,
+        scopeKey: effect.scopeKey,
+        effectPayload: effect.effectPayload,
       }
     case 'modify':
+      if (!PLANNING_RELEVANT_MODIFY_SCOPE_KEYS.has(effect.scopeKey)) return null
       return {
         operation: `change_${effect.scopeKey}`,
         scopeKey: effect.scopeKey,
@@ -113,44 +132,67 @@ export function computePlanningImpactProposalFingerprint(input: PlanningImpactPr
   return createHash('sha256').update(canonicalStringify(input)).digest('hex')
 }
 
+// PARTIALLY_REPRESENTABLE : un mécanisme Planning natif existe (ex.
+// fn_plan_supersede_cycle_exclusive, migration 444, bascule versionnée d'un
+// cycle publié) mais requiert une traduction humaine (quelle Mission cible,
+// quels slots/ancre/longueur de cycle) — jamais une application automatique.
+// BLOCKED_BY_PLANNING_MODEL : aucun mécanisme natif n'existe aujourd'hui pour
+// ce cas, quelle que soit la richesse de la proposition.
+// NO_APPLICATION : l'effet contractuel n'a structurellement aucune vocation
+// à s'appliquer dans le Planning (NEW = création hors modèle Planning tant
+// qu'aucun jour/heure/équipe n'est décidé humainement ; MODIFY sur un
+// scope_key non lié au rythme d'intervention).
+export type PlanningApplicationReadiness = 'partially_representable' | 'blocked_by_planning_model' | 'no_application'
+
 export type PlanningApplicationBlockingReason =
   | 'new_requires_human_scheduling'
-  | 'no_native_recurring_frequency_change'
+  | 'recurring_change_requires_mission_targeting'
+  | 'scope_not_planning_related'
   | 'no_native_suspend_resume'
 
 export type PlanningApplicationCapability = {
-  applicable: boolean
+  readiness: PlanningApplicationReadiness
   blockingReason: PlanningApplicationBlockingReason
   missingDecisions: string[]
 }
 
-// Verdict générique par impact_kind (cf. audit DOC-CONTRACT-OS-1B4-A,
-// classification PROPOSAL_READINESS/APPLICATION_READINESS corrigée) :
-// aucun des trois cas n'est aujourd'hui applicable automatiquement dans le
-// Planning — NEW exige un jour/heure/équipe/durée jamais dérivables du
-// contrat seul, MODIFY (fréquence) n'a pas de mécanisme natif de
-// régénération de cycle, SUSPEND n'a pas de mécanisme natif de
-// suspension/reprise. 1B4-C pourra changer ce verdict ; il n'est jamais
-// persisté ici pour ne pas figer une vérité qui deviendrait périmée.
-const CAPABILITY_BY_IMPACT_KIND: Record<PlanningImpactKind, PlanningApplicationCapability> = {
-  new: {
-    applicable: false,
-    blockingReason: 'new_requires_human_scheduling',
-    missingDecisions: ['jour', 'heure', 'équipe', 'durée'],
-  },
-  modify: {
-    applicable: false,
-    blockingReason: 'no_native_recurring_frequency_change',
-    missingDecisions: ['cycle_planning_cible', 'occurrences_a_regenerer'],
-  },
-  suspend: {
-    applicable: false,
-    blockingReason: 'no_native_suspend_resume',
-    missingDecisions: ['occurrences_a_annuler', 'mecanisme_de_reprise'],
-  },
-}
-
-/** Calculée à la volée, JAMAIS persistée (cf. commentaire de tête). */
-export function resolvePlanningApplicationCapability(impactKind: PlanningImpactKind): PlanningApplicationCapability {
-  return CAPABILITY_BY_IMPACT_KIND[impactKind]
+/**
+ * Calculée à la volée, JAMAIS persistée (cf. commentaire de tête) — dépend du
+ * `impactKind` ET du `payload` réellement généré (pas d'un lookup statique
+ * par impact_kind seul, cf. mandat FIX_REQUIRED Vincent 2026-09-30, problème
+ * 3 : la capacité n'est pas uniforme au sein d'un même impact_kind).
+ */
+export function resolvePlanningApplicationCapability(
+  impactKind: PlanningImpactKind,
+  payload: PlanningImpactProposalPayload,
+): PlanningApplicationCapability {
+  switch (impactKind) {
+    case 'new':
+      return {
+        readiness: 'no_application',
+        blockingReason: 'new_requires_human_scheduling',
+        missingDecisions: ['jour', 'heure', 'équipe', 'durée'],
+      }
+    case 'modify': {
+      const scopeKey = (payload as ModifyPlanningImpactPayload).scopeKey
+      if (PLANNING_RELEVANT_MODIFY_SCOPE_KEYS.has(scopeKey)) {
+        return {
+          readiness: 'partially_representable',
+          blockingReason: 'recurring_change_requires_mission_targeting',
+          missingDecisions: ['cycle_planning_cible', 'occurrences_a_regenerer'],
+        }
+      }
+      return {
+        readiness: 'no_application',
+        blockingReason: 'scope_not_planning_related',
+        missingDecisions: [],
+      }
+    }
+    case 'suspend':
+      return {
+        readiness: 'blocked_by_planning_model',
+        blockingReason: 'no_native_suspend_resume',
+        missingDecisions: ['occurrences_a_annuler', 'mecanisme_de_reprise'],
+      }
+  }
 }
