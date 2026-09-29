@@ -117,7 +117,7 @@ describe('buildPlanningImpactProposalPayload', () => {
     expect(buildPlanningImpactProposalPayload(effect, { priorCadence: { count: 2, period: 'week' } })).toBeNull()
   })
 
-  it('MODIFY sur scope_key Planning-relevant hors frequency (schedule) — comportement opaque inchangé', () => {
+  it('MODIFY schedule — aucune proposition tant qu\'aucun modèle schedule structuré canonique n\'existe', () => {
     const effect = row({
       id: 'e-mod-schedule',
       effect: 'modify',
@@ -125,15 +125,7 @@ describe('buildPlanningImpactProposalPayload', () => {
       startsOn: '2026-11-01',
       effectPayload: { description: 'nouveau créneau' },
     })
-    const payload = buildPlanningImpactProposalPayload(effect, { priorScopeValue: { description: 'ancien créneau' } })
-    expect(payload).toEqual({
-      operation: 'change_schedule',
-      scopeKey: 'schedule',
-      effectiveFrom: '2026-11-01',
-      effectiveTo: null,
-      from: { description: 'ancien créneau' },
-      to: { description: 'nouveau créneau' },
-    })
+    expect(buildPlanningImpactProposalPayload(effect)).toBeNull()
   })
 
   it('MODIFY — scope_key hors PLANNING_RELEVANT_MODIFY_SCOPE_KEYS rend null (effet ≠ impact Planning)', () => {
@@ -310,7 +302,7 @@ describe('resolvePlanningApplicationCapability', () => {
     expect(capability.missingDecisions).toEqual(['jour', 'heure', 'équipe', 'durée'])
   })
 
-  it('MODIFY sur scope_key Planning-relevant (frequency/schedule) — partially_representable, mécanisme natif existe mais requiert un ciblage humain', () => {
+  it('MODIFY frequency — partially_representable, mécanisme natif existe mais requiert un ciblage humain', () => {
     const payload: ModifyFrequencyPlanningImpactPayload = {
       operation: 'change_frequency',
       scopeKey: 'frequency',
@@ -323,14 +315,6 @@ describe('resolvePlanningApplicationCapability', () => {
     expect(capability.readiness).toBe('partially_representable')
     expect(capability.blockingReason).toBe('recurring_change_requires_mission_targeting')
     expect(capability.missingDecisions).toEqual(['cycle_planning_cible', 'occurrences_a_regenerer'])
-  })
-
-  it('MODIFY sur scope_key non Planning — no_application, aucune décision ne rendrait le cas applicable', () => {
-    const payload = { operation: 'change_lot_a', scopeKey: 'lot_a', effectiveFrom: '2026-11-01', effectiveTo: null, from: null, to: {} }
-    const capability = resolvePlanningApplicationCapability('modify', payload)
-    expect(capability.readiness).toBe('no_application')
-    expect(capability.blockingReason).toBe('scope_not_planning_related')
-    expect(capability.missingDecisions).toEqual([])
   })
 
   it('SUSPEND — blocked_by_planning_model, pas de mécanisme natif de suspension/reprise', () => {

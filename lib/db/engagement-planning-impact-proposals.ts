@@ -133,21 +133,6 @@ function isPlanningImpactKind(effect: MaterializedContractEffect): effect is Pla
   return effect === 'new' || effect === 'modify' || effect === 'suspend'
 }
 
-/** Valeur de la portée `scopeKey` juste avant `beforeDate` (résolue sur
- *  l'historique COMPLET, jamais un sous-ensemble) — `null` si non résolvable
- *  (aucune date de référence pour MODIFY effectif immédiatement). */
-function resolvePriorScopeValue(
-  engagementId: string,
-  effects: EngagementContractEffectRow[],
-  scopeKey: string,
-  startsOn: string | null,
-): unknown {
-  if (!startsOn) return null
-  const dayBefore = addDaysLocal(startsOn, -1)
-  const state = resolveEngagementAtDate({ engagementId, effects }, dayBefore)
-  return state.scopes.find((s) => s.scopeKey === scopeKey)?.value ?? null
-}
-
 /** Cadence contractuelle structurée connue au jour civil précédant
  *  `startsOn` (mandat GO 1B4-B, règle 2 pour MODIFY frequency, règle 3 pour
  *  SUSPEND) — `null` si non résolvable ou non connue structurellement.
@@ -250,15 +235,11 @@ export async function generatePlanningImpactProposalsForEngagement(
 
   for (const effect of materializable) {
     const impactKind = effect.effect as PlanningImpactKind
-    const priorScopeValue =
-      impactKind === 'modify' && effect.scopeKey !== 'frequency'
-        ? resolvePriorScopeValue(engagementId, effects, effect.scopeKey, effect.startsOn)
-        : undefined
     const priorCadence =
       (impactKind === 'modify' && effect.scopeKey === 'frequency') || impactKind === 'suspend'
         ? resolvePriorCadence(engagementId, effects, effect.startsOn)
         : undefined
-    const payload = buildPlanningImpactProposalPayload(effect, { priorScopeValue, priorCadence })
+    const payload = buildPlanningImpactProposalPayload(effect, { priorCadence })
     if (!payload) continue
 
     const effectExisting = existing.filter((r) => r.contract_effect_id === effect.id)

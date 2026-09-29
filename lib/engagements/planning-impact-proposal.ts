@@ -19,17 +19,22 @@
 //     FIX_REQUIRED Vincent 2026-09-30, problème 3). Ce résultat n'est JAMAIS
 //     persisté (il deviendrait une vérité périmée si le Planning évolue).
 //
-// GAP RÉSOLU (mandat GO Vincent 2026-09-30, « STRUCTURED PLANNING RELEVANCE »)
-// — l'audit FIX C (READ-ONLY, 2e revue) avait confirmé qu'aucun champ
-// structuré du domaine Engagement ne permettait de distinguer un NEW/SUSPEND
-// Planning-relevant d'un NEW/SUSPEND purement documentaire. La brique cadence
-// structurée (DOC-CONTRACT-OS-1B4-B0, effect_payload.cadence = { count,
-// period }) fournit désormais cette preuve : NEW et MODIFY(frequency) ne
-// génèrent une proposition QUE si une cadence structurée valide est connue ;
-// SUSPEND ne génère une proposition QUE si l'Engagement cible possédait une
-// cadence structurée juste avant `startsOn`. AUCUNE dérivation depuis
+// GAP RÉSOLU (mandat GO Vincent 2026-09-30, « STRUCTURED PLANNING RELEVANCE »,
+// FIX_REQUIRED 2e revue « REMOVE OPAQUE SCHEDULE PATH ») — l'audit FIX C
+// (READ-ONLY) avait confirmé qu'aucun champ structuré du domaine Engagement
+// ne permettait de distinguer un NEW/SUSPEND Planning-relevant d'un
+// NEW/SUSPEND purement documentaire. La brique cadence structurée
+// (DOC-CONTRACT-OS-1B4-B0, effect_payload.cadence = { count, period })
+// fournit désormais cette preuve : NEW et MODIFY(frequency) ne génèrent une
+// proposition QUE si une cadence structurée valide est connue ; SUSPEND ne
+// génère une proposition QUE si l'Engagement cible possédait une cadence
+// structurée juste avant `startsOn`. AUCUNE dérivation depuis
 // `description`/`frequency_raw`/`category`/`measurable` — un contrat sans
 // cadence structurée reste honnêtement hors périmètre Planning aujourd'hui.
+// MODIFY sur tout scope_key AUTRE que `frequency` (y compris `schedule`, qui
+// n'a aucun modèle contractuel structuré canonique aujourd'hui) ne génère
+// JAMAIS de proposition — un payload opaque/textuel ne constitue plus une
+// preuve Planning suffisante dans ce lot.
 
 import { createHash } from 'node:crypto'
 import { canonicalStringify } from '@/lib/knowledge/tracked-point-fingerprint'
@@ -39,14 +44,16 @@ import type { EngagementContractEffectRow, MaterializedContractEffect } from './
 
 export type PlanningImpactKind = Extract<MaterializedContractEffect, 'new' | 'modify' | 'suspend'>
 
-// Sous-ensemble de scope_key dont la MODIFICATION touche réellement
-// l'organisation Planning (fréquence/rythme d'intervention). Un MODIFY sur
-// tout autre scope_key (ex. "quantity", "access", "equipment") est un fait
-// contractuel réel mais SANS impact Planning — cf. mandat FIX_REQUIRED
-// Vincent 2026-09-30, problème 4 (« effet contractuel ≠ proposition
-// Planning »). Vocabulaire aligné sur le <datalist> de qualification
-// (ProposalCard.tsx) — pas d'enum DB, ajustable sans migration.
-export const PLANNING_RELEVANT_MODIFY_SCOPE_KEYS: ReadonlySet<string> = new Set(['frequency', 'schedule'])
+// Seul scope_key dont la MODIFICATION est aujourd'hui Planning-relevant :
+// `frequency`, seul à posséder un modèle contractuel structuré (cadence).
+// Tout autre scope_key (ex. "quantity", "access", "equipment", "schedule")
+// est un fait contractuel réel mais SANS impact Planning proposé — cf.
+// mandat FIX_REQUIRED Vincent 2026-09-30, problème 4 (« effet contractuel ≠
+// proposition Planning ») et 2e revue (« REMOVE OPAQUE SCHEDULE PATH » :
+// `schedule` n'a reçu aucun modèle structuré canonique, un payload textuel
+// ne suffit plus). Pas d'enum DB, ajustable sans migration si un modèle
+// structuré `schedule` est défini plus tard.
+export const PLANNING_RELEVANT_MODIFY_SCOPE_KEYS: ReadonlySet<string> = new Set(['frequency'])
 
 export type NewPlanningImpactPayload = {
   operation: 'new'
@@ -68,19 +75,10 @@ export type ModifyFrequencyPlanningImpactPayload = {
   toCadence: ContractCadence
 }
 
-/** MODIFY sur un scope_key Planning-relevant hors `frequency` (ex.
- *  `schedule`) — hors périmètre du mandat GO 1B4-B (aucune cadence
- *  structurée n'existe pour ce scope), comportement opaque inchangé. */
-export type ModifyScopePlanningImpactPayload = {
-  operation: string
-  scopeKey: string
-  effectiveFrom: string | null
-  effectiveTo: string | null
-  from: unknown
-  to: Record<string, unknown>
-}
-
-export type ModifyPlanningImpactPayload = ModifyFrequencyPlanningImpactPayload | ModifyScopePlanningImpactPayload
+/** Seul cas MODIFY produisant une proposition dans ce lot (cf.
+ *  PLANNING_RELEVANT_MODIFY_SCOPE_KEYS) — alias conservé pour lisibilité des
+ *  appelants qui manipulent un impactKind='modify' déjà su Planning-relevant. */
+export type ModifyPlanningImpactPayload = ModifyFrequencyPlanningImpactPayload
 
 export type SuspendPlanningImpactPayload = {
   operation: 'suspend'
@@ -96,15 +94,9 @@ export type SuspendPlanningImpactPayload = {
 export type PlanningImpactProposalPayload =
   | NewPlanningImpactPayload
   | ModifyFrequencyPlanningImpactPayload
-  | ModifyScopePlanningImpactPayload
   | SuspendPlanningImpactPayload
 
 export type BuildPlanningImpactProposalContext = {
-  /** Uniquement pertinent pour MODIFY hors `frequency` — la valeur de la
-   *  portée `effect.scopeKey` juste avant `effect.startsOn`, déjà résolue par
-   *  l'appelant (via `resolveEngagementAtDate` sur l'historique complet, à
-   *  `startsOn - 1 jour`). */
-  priorScopeValue?: unknown
   /** Uniquement pertinent pour MODIFY `frequency` (cadence avant bascule) et
    *  SUSPEND (cadence connue au jour civil précédant `startsOn`) — déjà
    *  résolue par l'appelant via `resolveContractCadenceAtDate`. `null`/
@@ -141,26 +133,16 @@ export function buildPlanningImpactProposalPayload(
       }
     }
     case 'modify': {
-      if (effect.scopeKey === 'frequency') {
-        const toCadence = extractCadenceFromEffectPayload(effect.effectPayload)
-        if (!toCadence) return null
-        return {
-          operation: 'change_frequency',
-          scopeKey: 'frequency',
-          effectiveFrom: effect.startsOn,
-          effectiveTo: effect.endsOn,
-          fromCadence: context?.priorCadence ?? null,
-          toCadence,
-        }
-      }
       if (!PLANNING_RELEVANT_MODIFY_SCOPE_KEYS.has(effect.scopeKey)) return null
+      const toCadence = extractCadenceFromEffectPayload(effect.effectPayload)
+      if (!toCadence) return null
       return {
-        operation: `change_${effect.scopeKey}`,
-        scopeKey: effect.scopeKey,
+        operation: 'change_frequency',
+        scopeKey: 'frequency',
         effectiveFrom: effect.startsOn,
         effectiveTo: effect.endsOn,
-        from: context?.priorScopeValue ?? null,
-        to: effect.effectPayload,
+        fromCadence: context?.priorCadence ?? null,
+        toCadence,
       }
     }
     case 'suspend': {
@@ -205,15 +187,15 @@ export function computePlanningImpactProposalFingerprint(input: PlanningImpactPr
 // récurrence bornée, ce qui manque est la décision humaine, pas le modèle).
 // BLOCKED_BY_PLANNING_MODEL : aucun mécanisme natif n'existe aujourd'hui pour
 // ce cas, quelle que soit la richesse de la proposition.
-// NO_APPLICATION : l'effet contractuel n'a structurellement aucune vocation
-// à s'appliquer dans le Planning (MODIFY sur un scope_key non lié au rythme
-// d'intervention).
-export type PlanningApplicationReadiness = 'partially_representable' | 'blocked_by_planning_model' | 'no_application'
+// (NO_APPLICATION supprimé avec le fix « REMOVE OPAQUE SCHEDULE PATH » —
+// buildPlanningImpactProposalPayload ne produit plus jamais de payload pour
+// un MODIFY non Planning-relevant, cf. PLANNING_RELEVANT_MODIFY_SCOPE_KEYS ;
+// ce statut n'était donc plus jamais atteignable par resolvePlanningApplicationCapability.)
+export type PlanningApplicationReadiness = 'partially_representable' | 'blocked_by_planning_model'
 
 export type PlanningApplicationBlockingReason =
   | 'new_requires_human_scheduling'
   | 'recurring_change_requires_mission_targeting'
-  | 'scope_not_planning_related'
   | 'no_native_suspend_resume'
 
 export type PlanningApplicationCapability = {
@@ -223,13 +205,17 @@ export type PlanningApplicationCapability = {
 }
 
 /**
- * Calculée à la volée, JAMAIS persistée (cf. commentaire de tête) — dépend du
- * `impactKind` ET du `payload` réellement généré (pas d'un lookup statique
- * par impact_kind seul, cf. mandat FIX_REQUIRED Vincent 2026-09-30, problème
- * 3 : la capacité n'est pas uniforme au sein d'un même impact_kind).
+ * Calculée à la volée, JAMAIS persistée (cf. commentaire de tête). Ne dépend
+ * plus que de `impactKind` depuis le fix « REMOVE OPAQUE SCHEDULE PATH » :
+ * chaque impactKind atteignant une proposition a désormais exactement une
+ * forme de payload possible (buildPlanningImpactProposalPayload ne produit
+ * plus jamais qu'un seul shape par impactKind, cf.
+ * PLANNING_RELEVANT_MODIFY_SCOPE_KEYS) — `payload` reste dans la signature
+ * pour ne pas casser les appelants, mais n'est plus inspecté.
  */
 export function resolvePlanningApplicationCapability(
   impactKind: PlanningImpactKind,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signature conservée pour les appelants (lib/db, tests OS15 gelés), cf. commentaire ci-dessus.
   payload: PlanningImpactProposalPayload,
 ): PlanningApplicationCapability {
   switch (impactKind) {
@@ -239,21 +225,16 @@ export function resolvePlanningApplicationCapability(
         blockingReason: 'new_requires_human_scheduling',
         missingDecisions: ['jour', 'heure', 'équipe', 'durée'],
       }
-    case 'modify': {
-      const scopeKey = (payload as ModifyPlanningImpactPayload).scopeKey
-      if (PLANNING_RELEVANT_MODIFY_SCOPE_KEYS.has(scopeKey)) {
-        return {
-          readiness: 'partially_representable',
-          blockingReason: 'recurring_change_requires_mission_targeting',
-          missingDecisions: ['cycle_planning_cible', 'occurrences_a_regenerer'],
-        }
-      }
+    case 'modify':
+      // Un MODIFY présent dans les Planning Impact Proposals est nécessairement
+      // un MODIFY frequency structuré (buildPlanningImpactProposalPayload ne
+      // produit jamais de payload pour un autre scope_key, cf.
+      // PLANNING_RELEVANT_MODIFY_SCOPE_KEYS).
       return {
-        readiness: 'no_application',
-        blockingReason: 'scope_not_planning_related',
-        missingDecisions: [],
+        readiness: 'partially_representable',
+        blockingReason: 'recurring_change_requires_mission_targeting',
+        missingDecisions: ['cycle_planning_cible', 'occurrences_a_regenerer'],
       }
-    }
     case 'suspend':
       return {
         readiness: 'blocked_by_planning_model',
