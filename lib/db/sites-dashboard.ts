@@ -20,8 +20,10 @@ export type SiteDashboardItem = {
   /** Nombre de PV matérialisés éligibles (mêmes règles que canonicalRunsForSite : run
    *  matérialisé via site_reports.extraction_run_id, source document non supprimé). */
   pvCount: number
-  /** Sujets suivis — proxy léger de matrix.rows.length (Historique) : nombre de
-   *  canonical_subject_id distincts liés au chantier via subject_thread_identity. */
+  /** Sujets suivis — reproduit exactement matrix.rows.length (getSiteSubjectMatrix) :
+   *  threads distincts issus de document_extraction_proposal pour les runs éligibles du
+   *  chantier, regroupés par canonical_subject_id quand lié (subject_thread_identity sans
+   *  filtre site_id, comme le chemin canonique), sinon comptés un par un (ungrouped). */
   subjectCount: number
 }
 
@@ -47,45 +49,83 @@ export async function isSiteAccessible(siteId: string, orgIds: string[]): Promis
 /**
  * Batch, pour TOUS les siteIds fournis, le nombre de PV matérialisés éligibles et le
  * nombre de sujets suivis — mêmes règles que getMaterializedRunIdsForSite et
- * matrix.rows.length, mais en UNE lecture groupée (jamais une requête par site).
+ * getSiteSubjectMatrix (lib/documents/pv-history.ts), mais en lectures groupées
+ * (jamais une requête par site).
+ *
+ * subjectCount reproduit exactement matrix.rows.length : threads distincts vus dans
+ * document_extraction_proposal pour les runs éligibles du chantier, puis regroupés par
+ * canonical_subject_id via subject_thread_identity (résolu par ID de thread, SANS filtre
+ * site_id — le chemin canonique ne filtre jamais cette table par site) ; les threads sans
+ * lien canonique restent comptés individuellement (ungrouped).
  */
 async function getPvAndSubjectCounts(
   supabase: ReturnType<typeof createAdminClient>,
   siteIds: string[],
 ): Promise<{ pvCounts: Map<string, number>; subjectCounts: Map<string, number> }> {
-  const [{ data: reportRows }, { data: threadRows }] = await Promise.all([
-    supabase
-      .from('site_reports')
-      .select('site_id, extraction_run_id, source_document_id')
-      .in('site_id', siteIds)
-      .not('extraction_run_id', 'is', null),
-    supabase
-      .from('subject_thread_identity')
-      .select('site_id, canonical_subject_id')
-      .in('site_id', siteIds),
-  ])
+  const { data: reportRows } = await supabase
+    .from('site_reports')
+    .select('site_id, extraction_run_id, source_document_id')
+    .in('site_id', siteIds)
+    .not('extraction_run_id', 'is', null)
 
   type ReportRow = { site_id: string; extraction_run_id: string; source_document_id: string | null }
   const reports = (reportRows ?? []) as ReportRow[]
   const deletedDocIds = await getDeletedDocumentIds(supabase, reports.map((r) => r.source_document_id))
 
   const runIdsBySite = new Map<string, Set<string>>()
+  const siteIdByRunId = new Map<string, string>()
   for (const r of reports) {
     if (r.source_document_id && deletedDocIds.has(r.source_document_id)) continue
     if (!runIdsBySite.has(r.site_id)) runIdsBySite.set(r.site_id, new Set())
     runIdsBySite.get(r.site_id)!.add(r.extraction_run_id)
+    siteIdByRunId.set(r.extraction_run_id, r.site_id)
   }
   const pvCounts = new Map<string, number>()
   for (const [siteId, runIds] of runIdsBySite) pvCounts.set(siteId, runIds.size)
 
-  type ThreadRow = { site_id: string; canonical_subject_id: string }
-  const subjectIdsBySite = new Map<string, Set<string>>()
-  for (const t of (threadRows ?? []) as ThreadRow[]) {
-    if (!subjectIdsBySite.has(t.site_id)) subjectIdsBySite.set(t.site_id, new Set())
-    subjectIdsBySite.get(t.site_id)!.add(t.canonical_subject_id)
-  }
+  const allRunIds = [...siteIdByRunId.keys()]
   const subjectCounts = new Map<string, number>()
-  for (const [siteId, ids] of subjectIdsBySite) subjectCounts.set(siteId, ids.size)
+  if (allRunIds.length === 0) return { pvCounts, subjectCounts }
+
+  type ProposalRow = { extraction_run_id: string; subject_thread_id: string }
+  const { data: proposalRows } = await supabase
+    .from('document_extraction_proposal')
+    .select('extraction_run_id, subject_thread_id')
+    .in('extraction_run_id', allRunIds)
+    .not('subject_thread_id', 'is', null)
+
+  const threadsBySite = new Map<string, Set<string>>()
+  const allThreadIds = new Set<string>()
+  for (const p of (proposalRows ?? []) as ProposalRow[]) {
+    const siteId = siteIdByRunId.get(p.extraction_run_id)
+    if (!siteId) continue
+    if (!threadsBySite.has(siteId)) threadsBySite.set(siteId, new Set())
+    threadsBySite.get(siteId)!.add(p.subject_thread_id)
+    allThreadIds.add(p.subject_thread_id)
+  }
+
+  const canonicalByThread = new Map<string, string>()
+  if (allThreadIds.size > 0) {
+    type ThreadIdentityRow = { subject_thread_id: string; canonical_subject_id: string }
+    const { data: stiRows } = await supabase
+      .from('subject_thread_identity')
+      .select('subject_thread_id, canonical_subject_id')
+      .in('subject_thread_id', [...allThreadIds])
+    for (const r of (stiRows ?? []) as ThreadIdentityRow[]) {
+      canonicalByThread.set(r.subject_thread_id, r.canonical_subject_id)
+    }
+  }
+
+  for (const [siteId, threadIds] of threadsBySite) {
+    const linkedCanonicalIds = new Set<string>()
+    let ungroupedCount = 0
+    for (const threadId of threadIds) {
+      const canonicalId = canonicalByThread.get(threadId)
+      if (canonicalId) linkedCanonicalIds.add(canonicalId)
+      else ungroupedCount += 1
+    }
+    subjectCounts.set(siteId, linkedCanonicalIds.size + ungroupedCount)
+  }
 
   return { pvCounts, subjectCounts }
 }

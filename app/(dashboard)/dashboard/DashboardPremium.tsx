@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import {
   AlertTriangle,
   ArrowRight,
@@ -15,7 +16,7 @@ import type { DashboardDeadlineToPlan } from '@/lib/db/dashboard-deadlines'
 import type { OrgLabels } from '@/components/dashboard/OrgBadge'
 import type { OrganizationIdentityMap } from '@/lib/db/organisations'
 import type { AttentionCard } from '@/lib/situations/attention/types'
-import type { HomeHeroDelta, HeroDeltaMetrics } from '@/lib/documents/home-hero-delta'
+import type { HomeHeroDelta } from '@/lib/documents/home-hero-delta'
 import { EntityLogo } from '@/components/ui/EntityLogo'
 import { SituationAttentionCard } from './SituationAttentionCard'
 
@@ -26,8 +27,11 @@ type Props = {
   upcoming: UpcomingDashboardItem[]
   sites: SiteDashboardItem[]
   activeSiteId: string | null
-  heroDelta: HomeHeroDelta | null
-  activeReview: MemoryReview
+  // Pré-rendus par page.tsx (Async Server Component + Suspense key={activeSiteId}) :
+  // la zone chantier-dépendante (Hero + mémoire) streame indépendamment du tier léger
+  // ci-dessous, jamais un blocage du rendu initial de la page (cf. fix Suspense Home V2).
+  heroSlot: ReactNode
+  memorySlot: ReactNode
   orgLabels: OrgLabels
   organizationMap: OrganizationIdentityMap
   deadlinesToPlan: DashboardDeadlineToPlan[]
@@ -65,7 +69,7 @@ function heroTeachings(heroDelta: HomeHeroDelta | null): string[] {
   return lines.length > 0 ? lines.slice(0, 3) : ['Aucune évolution détectée depuis le PV précédent.']
 }
 
-function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; heroDelta: HomeHeroDelta | null }) {
+export function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; heroDelta: HomeHeroDelta | null }) {
   if (!site) {
     return (
       <section className={`${surface} p-6`}>
@@ -74,8 +78,12 @@ function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; heroDelta: 
       </section>
     )
   }
-  const teachings = heroTeachings(heroDelta)
-  const m = heroDelta?.metrics ?? null
+  // Échec technique du calcul : jamais confondu avec un delta réellement vide
+  // (cf. mandat FIX #4) — ni compteurs à zéro fabriqués, ni "Aucune évolution
+  // détectée" mensonger ; un état d'indisponibilité explicite à la place.
+  const metricsFailed = heroDelta?.metricsFailed ?? false
+  const teachings = metricsFailed ? [] : heroTeachings(heroDelta)
+  const m = metricsFailed ? null : (heroDelta?.metrics ?? null)
   const metrics: Array<{ icon: LucideIcon; value: number; label: string; tone: string }> = [
     { icon: Sparkles, value: m?.nouveaux.length ?? 0, label: 'nouveaux', tone: 'bg-[#eee9ff] text-[#7959d8]' },
     { icon: ArrowRight, value: m?.evolutions.length ?? 0, label: 'évolutions', tone: 'bg-[#fff0e7] text-[#ef8e45]' },
@@ -96,15 +104,23 @@ function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; heroDelta: 
           </p>
         </div>
       </div>
-      <div className="mt-6 grid gap-4 sm:grid-cols-4">{metrics.map((metric) => <Metric key={metric.label} {...metric} />)}</div>
-      {teachings.length > 0 && (
-        <ul className="mt-5 space-y-1.5">
-          {teachings.map((line) => (
-            <li key={line} className="flex items-start gap-2 text-xs text-[#34415c]">
-              <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-[#7857d4]" />{line}
-            </li>
-          ))}
-        </ul>
+      {metricsFailed ? (
+        <p className="mt-6 text-sm text-[#b4553f]" role="status">
+          Synthèse temporairement indisponible — réessayez plus tard.
+        </p>
+      ) : (
+        <>
+          <div className="mt-6 grid gap-4 sm:grid-cols-4">{metrics.map((metric) => <Metric key={metric.label} {...metric} />)}</div>
+          {teachings.length > 0 && (
+            <ul className="mt-5 space-y-1.5">
+              {teachings.map((line) => (
+                <li key={line} className="flex items-start gap-2 text-xs text-[#34415c]">
+                  <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-[#7857d4]" />{line}
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
       )}
       <Link href={`/sites/${site.id}/historique?view=avant-apres`} className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-[#1463e8] hover:text-[#0c4dbd]">
         Voir ce qui a changé <ArrowRight className="h-3.5 w-3.5" />
@@ -113,22 +129,28 @@ function Hero({ site, heroDelta }: { site: SiteDashboardItem | null; heroDelta: 
   )
 }
 
-function ChantierCard({ site, isActive, heroMetrics }: { site: SiteDashboardItem; isActive: boolean; heroMetrics: HeroDeltaMetrics | null }) {
-  // L'actif seul reçoit les compteurs de delta (déjà calculés pour le hero, aucun
-  // coût supplémentaire). Les cartes inactives restent sur les données légères
-  // déjà batchées — jamais un getPvDelta par carte (doctrine deux-tiers Home V2).
-  const counters = isActive && heroMetrics
-    ? [
-        { label: 'nouveaux', value: heroMetrics.nouveaux.length },
-        { label: 'évolutions', value: heroMetrics.evolutions.length },
-        { label: 'résolus', value: heroMetrics.resolus.length },
-        { label: 'réserves', value: site.openReserveCount },
-      ]
-    : [
-        { label: 'actions', value: site.activeActionCount },
-        { label: 'en retard', value: site.overdueActionCount },
-        { label: 'réserves', value: site.openReserveCount },
-      ]
+/** Repli honnête pendant le chargement du tier lourd — jamais les chiffres de l'ancien chantier affiché. */
+export function HeroSkeleton() {
+  return (
+    <section className={`${surface} p-5 sm:p-7`} aria-busy="true" aria-label="Évolution en cours de chargement">
+      <div className="h-3 w-48 animate-pulse rounded bg-[#eef1f6]" />
+      <div className="mt-4 flex items-center gap-3">
+        <div className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-[#eef1f6]" />
+        <div className="h-5 w-40 animate-pulse rounded bg-[#eef1f6]" />
+      </div>
+      <div className="mt-6 grid gap-4 sm:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-[#f3f5f9]" />)}
+      </div>
+    </section>
+  )
+}
+
+function ChantierCard({ site, isActive }: { site: SiteDashboardItem; isActive: boolean }) {
+  const counters = [
+    { label: 'actions', value: site.activeActionCount },
+    { label: 'en retard', value: site.overdueActionCount },
+    { label: 'réserves', value: site.openReserveCount },
+  ]
   return (
     <div className={`relative rounded-2xl border p-4 transition-colors ${isActive ? 'border-[#3c6fe0] bg-[#f5f8ff]' : 'border-[#e8edf5] bg-white hover:border-[#cbd9f7]'}`}>
       <Link
@@ -139,23 +161,28 @@ function ChantierCard({ site, isActive, heroMetrics }: { site: SiteDashboardItem
       >
         <span className="sr-only">Sélectionner {site.name}</span>
       </Link>
-      <div className="relative z-10 flex min-w-0 items-center gap-2">
-        <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="sm" />
-        <div className="min-w-0">
-          <strong className="block truncate text-sm font-semibold text-[#17213a]">{site.name}</strong>
-          <span className="block truncate text-[11px] text-[#7b879d]">{site.pvCount} PV · {site.subjectCount} sujets suivis</span>
-        </div>
-      </div>
-      <p className="relative z-10 mt-2 truncate text-[11px] text-[#7b879d]">
-        {site.lastActivityAt ? `Dernière activité : ${dateLabel(site.lastActivityAt)}` : 'Aucune activité récente'}
-      </p>
-      <div className="relative z-10 mt-3 flex gap-2">
-        {counters.map((c) => (
-          <div key={c.label} className="flex-1 rounded-lg bg-white/70 px-2 py-1.5 text-center">
-            <strong className="block text-sm font-semibold text-[#17213a]">{c.value}</strong>
-            <span className="block text-[9px] uppercase tracking-wide text-[#8b96aa]">{c.label}</span>
+      {/* Surface décorative : pointer-events-none pour laisser le clic traverser vers le
+          Link plein-carte ci-dessus — seul "Ouvrir le chantier" (hors de ce bloc) reste
+          indépendamment cliquable, cf. fix carte-cliquable Home V2. */}
+      <div className="relative z-10 pointer-events-none">
+        <div className="flex min-w-0 items-center gap-2">
+          <EntityLogo src={site.organization.logoUrl} label={site.organization.name} size="sm" />
+          <div className="min-w-0">
+            <strong className="block truncate text-sm font-semibold text-[#17213a]">{site.name}</strong>
+            <span className="block truncate text-[11px] text-[#7b879d]">{site.pvCount} PV · {site.subjectCount} sujets suivis</span>
           </div>
-        ))}
+        </div>
+        <p className="mt-2 truncate text-[11px] text-[#7b879d]">
+          {site.lastActivityAt ? `Dernière activité : ${dateLabel(site.lastActivityAt)}` : 'Aucune activité récente'}
+        </p>
+        <div className="mt-3 flex gap-2">
+          {counters.map((c) => (
+            <div key={c.label} className="flex-1 rounded-lg bg-white/70 px-2 py-1.5 text-center">
+              <strong className="block text-sm font-semibold text-[#17213a]">{c.value}</strong>
+              <span className="block text-[9px] uppercase tracking-wide text-[#8b96aa]">{c.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
       <Link href={site.href} className="relative z-10 mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-[#1463e8] hover:text-[#0c4dbd]">
         Ouvrir le chantier <ArrowRight className="h-3 w-3" />
@@ -164,7 +191,7 @@ function ChantierCard({ site, isActive, heroMetrics }: { site: SiteDashboardItem
   )
 }
 
-function ChantierSelector({ sites, activeSiteId, heroMetrics }: { sites: SiteDashboardItem[]; activeSiteId: string | null; heroMetrics: HeroDeltaMetrics | null }) {
+function ChantierSelector({ sites, activeSiteId }: { sites: SiteDashboardItem[]; activeSiteId: string | null }) {
   return (
     <section className={`${surface} p-5 sm:p-6`}>
       <div className="flex items-start justify-between">
@@ -179,7 +206,7 @@ function ChantierSelector({ sites, activeSiteId, heroMetrics }: { sites: SiteDas
       ) : (
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           {sites.map((site) => (
-            <ChantierCard key={site.id} site={site} isActive={site.id === activeSiteId} heroMetrics={site.id === activeSiteId ? heroMetrics : null} />
+            <ChantierCard key={site.id} site={site} isActive={site.id === activeSiteId} />
           ))}
         </div>
       )}
@@ -188,7 +215,7 @@ function ChantierSelector({ sites, activeSiteId, heroMetrics }: { sites: SiteDas
   )
 }
 
-function MemorySouvient({ site, review }: { site: SiteDashboardItem | null; review: MemoryReview }) {
+export function MemorySouvient({ site, review }: { site: SiteDashboardItem | null; review: MemoryReview }) {
   // Choix déterministe : le premier élément de `confirmed`, déjà ordonné
   // connaissance durable d'abord par getMemoryReview — jamais un nouveau tri.
   const item = review.confirmed[0] ?? null
@@ -210,6 +237,16 @@ function MemorySouvient({ site, review }: { site: SiteDashboardItem | null; revi
           {item.nature && <p className="mt-1 text-xs text-[#65718b]">{item.nature}</p>}
         </div>
       )}
+    </section>
+  )
+}
+
+/** Repli honnête pendant le chargement du tier lourd — jamais le contenu de l'ancien chantier. */
+export function MemorySouvientSkeleton() {
+  return (
+    <section className={`${surface} p-5 sm:p-6`} aria-busy="true" aria-label="Mémoire en cours de chargement">
+      <div className="flex items-center gap-2 text-[#26a67b]"><Sparkles className="h-4 w-4" /><h2 className="text-xs font-bold uppercase tracking-[0.14em]">MemorIA se souvient</h2></div>
+      <div className="mt-4 h-4 w-3/4 animate-pulse rounded bg-[#eef1f6]" />
     </section>
   )
 }
@@ -279,8 +316,7 @@ function Agenda({ items, deadlinesToPlan }: { items: UpcomingDashboardItem[]; de
   )
 }
 
-export function DashboardPremium({ firstName, orgNames, attentionCards, upcoming, sites, activeSiteId, heroDelta, activeReview, deadlinesToPlan }: Props) {
-  const activeSite = sites.find((s) => s.id === activeSiteId) ?? null
+export function DashboardPremium({ firstName, orgNames, attentionCards, upcoming, sites, activeSiteId, heroSlot, memorySlot, deadlinesToPlan }: Props) {
   return (
     <div className="min-h-screen w-full bg-[#f8fafc] px-1 pb-12 pt-1 sm:px-2">
       <div className="w-full space-y-5">
@@ -296,11 +332,11 @@ export function DashboardPremium({ firstName, orgNames, attentionCards, upcoming
             <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[#e2e8f2] bg-white"><Info className="h-4 w-4" /></span>
           </div>
         </header>
-        <ChantierSelector sites={sites} activeSiteId={activeSiteId} heroMetrics={heroDelta?.metrics ?? null} />
-        <Hero site={activeSite} heroDelta={heroDelta} />
+        <ChantierSelector sites={sites} activeSiteId={activeSiteId} />
+        {heroSlot}
         <div className="grid gap-5 xl:grid-cols-3">
           <div className="xl:col-span-2"><AttentionSection cards={attentionCards} /></div>
-          <MemorySouvient site={activeSite} review={activeReview} />
+          {memorySlot}
         </div>
         <Agenda items={upcoming} deadlinesToPlan={deadlinesToPlan} />
       </div>

@@ -11,7 +11,6 @@ import 'server-only'
 import { canonicalRunsForSite, runEffectiveDate } from './pv-history'
 import {
   buildOccurrencePvSummary,
-  emptyOccurrencePvSummary,
   type OccurrencePvSummary,
   type PvSubjectRef,
 } from './occurrence-pv-summary'
@@ -61,9 +60,14 @@ export interface HomeHeroDelta {
   /** `null` si le chantier n'a qu'un seul PV matérialisé — pas de delta possible,
    *  mais la date du dernier PV reste affichable. */
   fromRunId: string | null
-  /** `null` dans le même cas — jamais une fenêtre plus large, jamais une
-   *  comparaison inventée pour compenser l'absence d'un deuxième PV. */
+  /** `null` soit parce qu'un seul PV existe (pas encore comparable, `metricsFailed`
+   *  reste false), soit parce que le calcul du delta a échoué (`metricsFailed` true).
+   *  Jamais une comparaison inventée pour compenser l'un ou l'autre cas. */
   metrics: HeroDeltaMetrics | null
+  /** true si `buildOccurrencePvSummary` a techniquement échoué — distinct d'un
+   *  résultat réellement vide (aucune évolution) : ne jamais confondre les deux,
+   *  jamais fabriquer un delta à zéro pour masquer un échec de calcul. */
+  metricsFailed: boolean
 }
 
 /**
@@ -76,14 +80,25 @@ export async function getHomeHeroDelta(siteId: string): Promise<HomeHeroDelta | 
   if (runs.length === 0) return null
   const to = runs[runs.length - 1]!
   if (runs.length < 2) {
-    return { toRunId: to.id, toEffectiveDate: runEffectiveDate(to), fromRunId: null, metrics: null }
+    return { toRunId: to.id, toEffectiveDate: runEffectiveDate(to), fromRunId: null, metrics: null, metricsFailed: false }
   }
   const from = runs[runs.length - 2]!
-  const summary = await buildOccurrencePvSummary(siteId, from.id, to.id).catch(() => emptyOccurrencePvSummary())
-  return {
-    toRunId: to.id,
-    toEffectiveDate: runEffectiveDate(to),
-    fromRunId: from.id,
-    metrics: mapOccurrenceSummaryToHeroMetrics(summary),
+  try {
+    const summary = await buildOccurrencePvSummary(siteId, from.id, to.id)
+    return {
+      toRunId: to.id,
+      toEffectiveDate: runEffectiveDate(to),
+      fromRunId: from.id,
+      metrics: mapOccurrenceSummaryToHeroMetrics(summary),
+      metricsFailed: false,
+    }
+  } catch {
+    return {
+      toRunId: to.id,
+      toEffectiveDate: runEffectiveDate(to),
+      fromRunId: from.id,
+      metrics: null,
+      metricsFailed: true,
+    }
   }
 }

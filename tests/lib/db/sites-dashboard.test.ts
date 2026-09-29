@@ -80,6 +80,7 @@ beforeEach(() => {
     site_reserve: [],
     site_reports: [],
     subject_thread_identity: [],
+    document_extraction_proposal: [],
     documents: [],
     site_scheduled_events: [],
   }
@@ -131,27 +132,45 @@ describe('getSitesDashboard — Correction A (logo résolu depuis la map, même 
 })
 
 describe('getSitesDashboard — Counters/Performance (batché, jamais une requête par chantier)', () => {
-  it('pvCount/subjectCount corrects et UNE requête par table quel que soit le nombre de chantiers', async () => {
+  it('pvCount/subjectCount reproduisent getSiteSubjectMatrix (merge canonique + ungrouped), UNE requête par table quel que soit le nombre de chantiers', async () => {
     TABLES.site_reports = [
       { site_id: 'site-1', extraction_run_id: 'run-1', source_document_id: 'doc-1', ended_at: null, planned_at: null },
       { site_id: 'site-1', extraction_run_id: 'run-2', source_document_id: 'doc-2', ended_at: null, planned_at: null },
       // run-3 pointe vers un document supprimé → ne doit PAS compter
       { site_id: 'site-1', extraction_run_id: 'run-3', source_document_id: 'doc-deleted', ended_at: null, planned_at: null },
+      { site_id: 'site-2', extraction_run_id: 'run-9', source_document_id: 'doc-9', ended_at: null, planned_at: null },
     ]
     TABLES.documents = [{ id: 'doc-deleted', deleted_at: '2026-01-01T00:00:00Z' }]
+    TABLES.document_extraction_proposal = [
+      // site-1 : thread-a et thread-b partagent le même canonical → 1 seule ligne fusionnée
+      { extraction_run_id: 'run-1', subject_thread_id: 'thread-a' },
+      { extraction_run_id: 'run-2', subject_thread_id: 'thread-b' },
+      // site-1 : thread-c n'a aucun lien canonique → compté individuellement (ungrouped)
+      { extraction_run_id: 'run-2', subject_thread_id: 'thread-c' },
+      // run-3 est exclu (document supprimé) → thread-deleted ne doit jamais compter
+      { extraction_run_id: 'run-3', subject_thread_id: 'thread-deleted' },
+      // site-2 : thread isolé, ne doit jamais contaminer le compte de site-1
+      { extraction_run_id: 'run-9', subject_thread_id: 'thread-z' },
+    ]
     TABLES.subject_thread_identity = [
-      { site_id: 'site-1', canonical_subject_id: 'cs-1' },
-      { site_id: 'site-1', canonical_subject_id: 'cs-2' },
-      { site_id: 'site-1', canonical_subject_id: 'cs-1' }, // doublon, ne doit pas gonfler le compte
+      { subject_thread_id: 'thread-a', canonical_subject_id: 'cs-1' },
+      { subject_thread_id: 'thread-b', canonical_subject_id: 'cs-1' }, // même canonical que thread-a → fusion
+      { subject_thread_id: 'thread-z', canonical_subject_id: 'cs-1' }, // même canonical_subject_id mais site-2 → isolation
+      // thread-c volontairement absent : aucun lien canonique → ungrouped
     ]
 
     const result = await getSitesDashboard(['org-a'], {}, { limit: 6 })
     const s1 = result.find((r) => r.id === 'site-1')
+    const s2 = result.find((r) => r.id === 'site-2')
     expect(s1?.pvCount).toBe(2)
+    // thread-a+thread-b fusionnés (cs-1) = 1, thread-c ungrouped = 1 → 2
     expect(s1?.subjectCount).toBe(2)
+    // cs-1 réapparaît pour site-2 via thread-z, mais reste isolé par chantier → 1
+    expect(s2?.subjectCount).toBe(1)
 
     // Table interrogée une fois pour l'activité/agenda, une fois pour les compteurs PV — jamais une fois par site.
     expect(CALL_LOG.filter((t) => t === 'site_reports')).toHaveLength(2)
+    expect(CALL_LOG.filter((t) => t === 'document_extraction_proposal')).toHaveLength(1)
     expect(CALL_LOG.filter((t) => t === 'subject_thread_identity')).toHaveLength(1)
     expect(CALL_LOG.filter((t) => t === 'documents')).toHaveLength(1)
     expect(CALL_LOG.filter((t) => t === 'site_actions')).toHaveLength(1)

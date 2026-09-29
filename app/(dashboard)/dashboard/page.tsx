@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOnboardingProgress } from '@/lib/db/onboarding'
@@ -6,7 +7,7 @@ import { getOrganizationIdentityMap } from '@/lib/db/organisations'
 import type { OrgLabels } from '@/components/dashboard/OrgBadge'
 import { getAttentionDigest } from '@/lib/db/attention'
 import { getUpcomingItems } from '@/lib/db/upcoming-items'
-import { getSitesDashboard, isSiteAccessible } from '@/lib/db/sites-dashboard'
+import { getSitesDashboard, isSiteAccessible, type SiteDashboardItem } from '@/lib/db/sites-dashboard'
 import { getNowDashboard } from '@/lib/db/now-dashboard'
 import { getMemoryReview, type MemoryReview } from '@/lib/knowledge/memory-review'
 import { getHomeHeroDelta } from '@/lib/documents/home-hero-delta'
@@ -20,9 +21,25 @@ import { detectMissedVisitSignals } from '@/lib/memory/signals/missed-visit-dete
 import { composeAttentionCardsFromSignals } from '@/lib/situations/attention/compose'
 import { sortAttentionCards } from '@/lib/situations/attention/project'
 import { WelcomeCard } from './WelcomeCard'
-import { DashboardPremium } from './DashboardPremium'
+import { DashboardPremium, Hero, HeroSkeleton, MemorySouvient, MemorySouvientSkeleton } from './DashboardPremium'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * Tier LOURD, chantier actif uniquement : Async Server Component streamé sous
+ * Suspense key={site.id}. Un changement de chantier remonte ce sous-arbre
+ * (nouvelle clé) au lieu de réutiliser le rendu précédent — jamais les
+ * chiffres de l'ancien chantier affichés pendant le chargement du nouveau.
+ */
+async function ActiveHero({ site }: { site: SiteDashboardItem }) {
+  const heroDelta = await getHomeHeroDelta(site.id)
+  return <Hero site={site} heroDelta={heroDelta} />
+}
+
+async function ActiveMemory({ site }: { site: SiteDashboardItem }) {
+  const review = await getMemoryReview(site.id, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview)
+  return <MemorySouvient site={site} review={review} />
+}
 
 const ATTENTION_MAX = 3
 
@@ -76,15 +93,26 @@ export default async function DashboardPage({
   // l'ordre déjà trié par getSitesDashboard — jamais un nouveau tri, jamais un
   // état côté client, jamais de tracking de dernière visite.
   const activeSiteId = ensureSiteId ?? siteCards[0]?.id ?? null
+  const activeSite = siteCards.find((s) => s.id === activeSiteId) ?? null
 
-  // Tier LOURD : uniquement le chantier actif — jamais une boucle sur plusieurs
-  // chantiers (cf. doctrine deux-tiers Home V2).
-  const [heroDelta, activeReview] = await Promise.all([
-    activeSiteId ? getHomeHeroDelta(activeSiteId) : Promise.resolve(null),
-    activeSiteId
-      ? getMemoryReview(activeSiteId, { includeWork: true }).catch(() => ({ confirmed: [], toReview: [] }) as MemoryReview)
-      : Promise.resolve({ confirmed: [], toReview: [] } as MemoryReview),
-  ])
+  // Tier LOURD : uniquement le chantier actif, jamais une boucle sur plusieurs
+  // chantiers (cf. doctrine deux-tiers Home V2) — et jamais attendu ici : streamé
+  // sous Suspense (cf. ActiveHero/ActiveMemory) pour que le tier léger (cartes,
+  // attention, agenda) s'affiche sans attendre ce calcul.
+  const heroSlot = activeSite ? (
+    <Suspense key={activeSite.id} fallback={<HeroSkeleton />}>
+      <ActiveHero site={activeSite} />
+    </Suspense>
+  ) : (
+    <Hero site={null} heroDelta={null} />
+  )
+  const memorySlot = activeSite ? (
+    <Suspense key={activeSite.id} fallback={<MemorySouvientSkeleton />}>
+      <ActiveMemory site={activeSite} />
+    </Suspense>
+  ) : (
+    <MemorySouvient site={null} review={{ confirmed: [], toReview: [] }} />
+  )
 
   const promiseSignals = detectPromiseSignalsFromRecords(promiseRecords)
   const now = await getNowDashboard(orgIds, upcoming, organizationMap)
@@ -119,8 +147,8 @@ export default async function DashboardPage({
       upcoming={upcoming}
       sites={siteCards}
       activeSiteId={activeSiteId}
-      heroDelta={heroDelta}
-      activeReview={activeReview}
+      heroSlot={heroSlot}
+      memorySlot={memorySlot}
       orgLabels={orgLabels}
       organizationMap={organizationMap}
       deadlinesToPlan={deadlinesToPlan}

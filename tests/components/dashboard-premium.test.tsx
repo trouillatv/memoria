@@ -9,8 +9,8 @@
 //   - Regression : rendu complet sans exception, pas de traces d'anciens blocs
 
 import { describe, it, expect } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
-import { DashboardPremium } from '@/app/(dashboard)/dashboard/DashboardPremium'
+import { render, screen, within, fireEvent } from '@testing-library/react'
+import { DashboardPremium, Hero, MemorySouvient } from '@/app/(dashboard)/dashboard/DashboardPremium'
 import type { SiteDashboardItem } from '@/lib/db/sites-dashboard'
 import type { AttentionCard } from '@/lib/situations/attention/types'
 import type { MemoryReview, ConfirmedItem } from '@/lib/knowledge/memory-review'
@@ -117,20 +117,30 @@ const organizationMap: OrganizationIdentityMap = { 'org-a': org() }
 
 type Props = React.ComponentProps<typeof DashboardPremium>
 
-function baseProps(over: Partial<Props> = {}): Props {
+// heroSlot/memorySlot sont désormais pré-rendus par page.tsx (Async Server Component
+// + Suspense, cf. fix Suspense Home V2) : les tests les construisent ici à partir de
+// heroDelta/activeReview, comme le ferait ActiveHero/ActiveMemory.
+type BaseOverrides = Omit<Partial<Props>, 'heroSlot' | 'memorySlot'> & {
+  heroDelta?: HomeHeroDelta | null
+  activeReview?: MemoryReview
+}
+
+function baseProps(over: BaseOverrides = {}): Props {
+  const { heroDelta = null, activeReview = emptyReview(), sites = [site()], activeSiteId = 'site-1', ...rest } = over
+  const activeSite = sites.find((s) => s.id === activeSiteId) ?? null
   return {
     firstName: 'Vincent',
     orgNames: ['Org A'],
     attentionCards: [],
     upcoming: [],
-    sites: [site()],
-    activeSiteId: 'site-1',
-    heroDelta: null,
-    activeReview: emptyReview(),
+    sites,
+    activeSiteId,
+    heroSlot: <Hero site={activeSite} heroDelta={heroDelta} />,
+    memorySlot: <MemorySouvient site={activeSite} review={activeReview} />,
     orgLabels: { 'org-a': 'org-a' },
     organizationMap,
     deadlinesToPlan: [],
-    ...over,
+    ...rest,
   }
 }
 
@@ -160,6 +170,26 @@ describe('DashboardPremium — Selection (sélecteur de chantier)', () => {
     const openLink = screen.getByRole('link', { name: /Ouvrir le chantier/ })
     expect(openLink).toHaveAttribute('href', '/sites/site-1')
   })
+
+  it('la zone décorative (nom, compteurs, activité) est neutralisée au clic — pointer-events-none — pour laisser le clic traverser vers la carte pleine, sans bloquer "Ouvrir le chantier" ni créer de lien imbriqué', () => {
+    const { container } = render(
+      <DashboardPremium {...baseProps({ sites: [site({ id: 'site-1', href: '/sites/site-1' })] })} />,
+    )
+    // Aucun <a> ne doit contenir un autre <a> (HTML invalide, cible de clic ambiguë).
+    for (const anchor of Array.from(container.querySelectorAll('a'))) {
+      expect(anchor.querySelector('a')).toBeNull()
+    }
+    // Le nom du chantier (zone décorative) est neutralisé au clic : le clic ne doit
+    // jamais rester capté ici, il doit traverser vers le Link plein-carte en dessous.
+    // Scopé à la section "Vos chantiers" : le Hero rend aussi {site.name} dans son <h2>.
+    const chantiersSection = screen.getByText('Vos chantiers').closest('section') as HTMLElement
+    const decorativeWrapper = within(chantiersSection).getByText('Chantier Alpha').closest('.pointer-events-none')
+    expect(decorativeWrapper).not.toBeNull()
+    // "Ouvrir le chantier" reste HORS de cette zone neutralisée — un vrai clic dessus fonctionne.
+    const openLink = within(chantiersSection).getByRole('link', { name: /Ouvrir le chantier/ })
+    expect(openLink.closest('.pointer-events-none')).toBeNull()
+    expect(() => fireEvent.click(openLink)).not.toThrow()
+  })
 })
 
 describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)', () => {
@@ -180,6 +210,7 @@ describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)'
       toEffectiveDate: '2026-09-01',
       fromRunId: null,
       metrics: null,
+      metricsFailed: false,
     }
     render(<DashboardPremium {...baseProps({ heroDelta })} />)
     expect(screen.getByText(/Dernier PV intégré/)).toBeInTheDocument()
@@ -202,6 +233,7 @@ describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)'
         resolus: [{ canonicalSubjectId: 'd', label: 'd' }],
         nonMentionnes: [],
       },
+      metricsFailed: false,
     }
     render(<DashboardPremium {...baseProps({ heroDelta, sites: [site({ id: 'site-1', pvCount: 4, subjectCount: 9 })] })} />)
     const hero = within(screen.getByText('Évolution depuis le PV précédent').closest('section') as HTMLElement)
@@ -212,6 +244,21 @@ describe('DashboardPremium — Hero (contenu figé, jamais de contenu périmé)'
     expect(hero.getByText(/9 sujets suivis/)).toBeInTheDocument()
     const cta = screen.getByRole('link', { name: /Voir ce qui a changé/ })
     expect(cta).toHaveAttribute('href', '/sites/site-1/historique?view=avant-apres')
+  })
+
+  it('FIX #4 — échec technique du calcul (metricsFailed) → état d\'indisponibilité explicite, jamais "Aucune évolution détectée" ni compteurs fabriqués', () => {
+    const heroDelta: HomeHeroDelta = {
+      toRunId: 'run-2',
+      toEffectiveDate: '2026-09-15',
+      fromRunId: 'run-1',
+      metrics: null,
+      metricsFailed: true,
+    }
+    render(<DashboardPremium {...baseProps({ heroDelta })} />)
+    const hero = within(screen.getByText('Évolution depuis le PV précédent').closest('section') as HTMLElement)
+    expect(hero.getByText('Synthèse temporairement indisponible — réessayez plus tard.')).toBeInTheDocument()
+    expect(hero.queryByText(/Aucune évolution détectée/)).not.toBeInTheDocument()
+    expect(hero.queryByText(/résolu depuis le PV précédent/)).not.toBeInTheDocument()
   })
 })
 

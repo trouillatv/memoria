@@ -101,6 +101,7 @@ describe('getHomeHeroDelta — 0/1/2+ PV, jamais de boucle multi-chantier', () =
       toEffectiveDate: '2026-09-01',
       fromRunId: null,
       metrics: null,
+      metricsFailed: false,
     })
     expect(buildOccurrencePvSummary).not.toHaveBeenCalled()
   })
@@ -121,9 +122,10 @@ describe('getHomeHeroDelta — 0/1/2+ PV, jamais de boucle multi-chantier', () =
     expect(result?.fromRunId).toBe('run-2')
     expect(result?.metrics?.nouveaux).toEqual([ref('a')])
     expect(result?.metrics?.resolus).toEqual([ref('b')])
+    expect(result?.metricsFailed).toBe(false)
   })
 
-  it('échec du delta (buildOccurrencePvSummary rejette) → repli sur un résumé vide, jamais une exception', async () => {
+  it('échec du delta (buildOccurrencePvSummary rejette) → metricsFailed=true, metrics null, jamais un résumé vide fabriqué', async () => {
     canonicalRunsForSite.mockResolvedValue([
       { id: 'run-1', effectiveDate: '2026-08-01' },
       { id: 'run-2', effectiveDate: '2026-09-01' },
@@ -132,6 +134,12 @@ describe('getHomeHeroDelta — 0/1/2+ PV, jamais de boucle multi-chantier', () =
 
     const result = await getHomeHeroDelta('site-1')
 
-    expect(result?.metrics).toEqual({ nouveaux: [], evolutions: [], resolus: [], nonMentionnes: [] })
+    expect(result).toEqual({
+      toRunId: 'run-2',
+      toEffectiveDate: '2026-09-01',
+      fromRunId: 'run-1',
+      metrics: null,
+      metricsFailed: true,
+    })
   })
 })
