@@ -135,13 +135,23 @@ export default async function EquipesPage({
   // jamais utilisé en parallèle d'eux dans le même Promise.all.
   const orgIds = await getOrgIdsOfUser()
 
+  // INCIDENT /equipes (2026-09-30) — le pulse est un enrichissement « wow »,
+  // jamais une donnée critique : sa défaillance ne doit plus jamais faire
+  // tomber toute la page (contrairement aux items CORE ci-dessus — teams,
+  // orphelins, personnes assignables, org — qui restent bloquants à dessein).
+  // Jamais de faux compteurs à 0 : `null` déclenche un état dégradé explicite
+  // dans TeamsGlobalPulseRow, la vraie requête reste corrigée ci-dessous, pas
+  // contournée.
   const [teams, orphans, availableUsers, orgs, teamDrawerData, pulse] = await Promise.all([
     listTeamsWithMemberCount(),
     listOrphanUsers(),
     listAssignableMembers(orgIds),
     getOrgsForSelector(),
     sp.team ? loadTeamDrawerData(sp.team, orgIds) : Promise.resolve(null),
-    getTeamsGlobalPulse(),
+    getTeamsGlobalPulse().catch((error: unknown) => {
+      console.error('[equipes] pulse indisponible', error)
+      return null
+    }),
   ])
 
   const personDrawerData = sp.person

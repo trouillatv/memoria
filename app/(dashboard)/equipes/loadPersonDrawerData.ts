@@ -104,7 +104,9 @@ export async function loadPersonDrawerData(
       listPhotosForUser(personId, orgIds, { sinceIso, limit: 24 }),
       admin
         .from('team_members')
-        .select('team:teams!inner(id, name, deleted_at, organization_id)')
+        // INCIDENT /equipes (2026-09-30) — hint `!team_id` obligatoire : deux FK
+        // team_members → teams existent (cf. lib/db/teams.ts listOrphanUsers).
+        .select('team:teams!team_id!inner(id, name, deleted_at, organization_id)')
         .eq('user_id', personId)
         .is('left_at', null),
     ])

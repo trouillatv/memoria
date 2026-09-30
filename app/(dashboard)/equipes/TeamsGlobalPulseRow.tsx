@@ -9,7 +9,10 @@ import type { TeamsGlobalPulse } from '@/lib/db/team-pulse'
 import { Card, CardContent } from '@/components/ui/card'
 
 interface Props {
-  pulse: TeamsGlobalPulse
+  // INCIDENT /equipes (2026-09-30) — `null` = le pulse a échoué côté serveur
+  // (cf. page.tsx, .catch() dédié). Jamais de faux compteurs à 0 : on affiche
+  // un état dégradé explicite, la page reste utilisable pour autant.
+  pulse: TeamsGlobalPulse | null
 }
 
 function Stat({ value, label }: { value: number; label: string }) {
@@ -22,6 +25,16 @@ function Stat({ value, label }: { value: number; label: string }) {
 }
 
 export function TeamsGlobalPulseRow({ pulse }: Props) {
+  if (!pulse) {
+    return (
+      <Card className="bg-muted/30">
+        <CardContent className="py-3 text-xs text-muted-foreground">
+          Indicateurs indisponibles pour l’instant.
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
     <Card className="bg-muted/30">
       <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-2 py-3">

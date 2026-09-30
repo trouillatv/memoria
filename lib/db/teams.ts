@@ -620,9 +620,12 @@ export async function listOrphanUsers(): Promise<OrphanUser[]> {
 
   // 3) Tous les userIds qui ont au moins un membership actif dans une équipe
   //    elle-même active, non supprimée, ET dans une organisation du viewer.
+  // INCIDENT /equipes (2026-09-30) — hint `!team_id` obligatoire : team_members
+  // a DEUX FK vers teams (team_id seul, et (team_id, organization_id) depuis la
+  // migration 237). Sans hint, PostgREST refuse l'embed (PGRST201, ambiguïté).
   const { data: memberships, error: mErr } = await supabase
     .from('team_members')
-    .select('user_id, team:teams!inner(active, deleted_at, organization_id)')
+    .select('user_id, team:teams!team_id!inner(active, deleted_at, organization_id)')
     .is('left_at', null)
     .in('user_id', users.map((u) => u.id))
   if (mErr) throw mErr

@@ -37,6 +37,7 @@ export const INTEGRATION_TESTS: string[] = [
   'tests/lib/contract-entity.test.ts',
   'tests/lib/dashboard.test.ts',
   'tests/lib/engagements.test.ts',
+  'tests/lib/equipes-team-embed-postgrest.test.ts',
   'tests/lib/ensure-today.test.ts',
   'tests/lib/insert-evidence.test.ts',
   'tests/lib/intervenants-scope.test.ts',
