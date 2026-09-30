@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { transcribeDictationAction } from '@/app/(field)/m/site/[siteId]/capture-actions'
 
-export type DictationState = 'idle' | 'recording' | 'transcribing' | 'error'
+export type DictationState = 'idle' | 'preparing' | 'recording' | 'transcribing' | 'error'
 
 const SILENCE_TIMEOUT_MS = 2500
 const SILENCE_RMS_THRESHOLD = 0.02
@@ -98,6 +98,12 @@ export function useCaptionDictation(siteId: string) {
   // se fier à son propre état React (stale dans la même fonction async).
   // `onAutoStop` : appelé UNIQUEMENT si l'arrêt vient du silence détecté (pas
   // de doublon avec le retour de `stop()` sur un arrêt manuel).
+  //
+  // État 'preparing' entre l'obtention du flux et l'événement `onstart` réel
+  // du MediaRecorder : tant que ce signal n'est pas reçu, le moteur n'est pas
+  // réellement prêt et l'appelant ne doit jamais afficher « Je vous écoute »
+  // (Vincent, fix timing micro 2026-09-30). Jamais de setTimeout de
+  // substitution ici — seul l'événement réel fait foi.
   const start = useCallback(async (onAutoStop?: (text: string | null) => void): Promise<boolean> => {
     if (startingRef.current || recorderRef.current) return false
     startingRef.current = true
@@ -108,8 +114,15 @@ export function useCaptionDictation(siteId: string) {
       chunksRef.current = []
       rec.ondataavailable = (ev) => { if (ev.data.size) chunksRef.current.push(ev.data) }
       recorderRef.current = rec
-      rec.start()
       setError(null)
+      setState('preparing')
+      await new Promise<void>((resolve) => {
+        rec.onstart = () => resolve()
+        rec.start()
+      })
+      // Annulé (cancel) ou déjà en cours d'arrêt (stop) pendant la préparation :
+      // ne pas ressusciter un état 'recording' après coup.
+      if (recorderRef.current !== rec || stoppingRef.current) return false
       setState('recording')
       autoStopCallbackRef.current = onAutoStop ?? null
       startSilenceWatch(stream)

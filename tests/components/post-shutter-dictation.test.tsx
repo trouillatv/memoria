@@ -11,10 +11,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react'
 
 const appendCaptionByClientUuidAction = vi.fn()
+const setCaptionByClientUuidAction = vi.fn()
 const correctCaptureLocationByClientUuidAction = vi.fn()
 const revertCaptureLocationByClientUuidAction = vi.fn()
 vi.mock('@/app/(field)/m/site/[siteId]/capture-actions', () => ({
   appendCaptionByClientUuidAction: (...args: unknown[]) => appendCaptionByClientUuidAction(...args),
+  setCaptionByClientUuidAction: (...args: unknown[]) => setCaptionByClientUuidAction(...args),
   correctCaptureLocationByClientUuidAction: (...args: unknown[]) => correctCaptureLocationByClientUuidAction(...args),
   revertCaptureLocationByClientUuidAction: (...args: unknown[]) => revertCaptureLocationByClientUuidAction(...args),
 }))
@@ -56,7 +58,13 @@ beforeEach(() => {
   lastAutoStop = null
   dictationMock.stop.mockResolvedValue(null)
   appendCaptionByClientUuidAction.mockResolvedValue({ ok: true, captureId: 'cap-1', body: 'texte' })
+  setCaptionByClientUuidAction.mockResolvedValue({ ok: true })
 })
+
+// Plancher UX réel (~1 s, cf. PostShutterDictation.MIN_PREPARING_MS) entre le
+// tap et « Je vous écoute » — pas de fake timers ici (garder le test simple),
+// on donne juste à `waitFor` la marge nécessaire pour le traverser sans flake.
+const LISTENING_TIMEOUT = { timeout: 2000 }
 
 describe('PostShutterDictation', () => {
   it('« Continuer » sans dicter : ferme immédiatement, aucune attache déclenchée (test #1)', () => {
@@ -75,10 +83,10 @@ describe('PostShutterDictation', () => {
 
     fireEvent.click(screen.getByText('Décrire'))
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.getByText('Écoute…')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
 
     await act(async () => {
-      fireEvent.click(screen.getByText('Écoute…'))
+      fireEvent.click(screen.getByText('Je vous écoute…'))
     })
 
     await waitFor(() => expect(appendCaptionByClientUuidAction).toHaveBeenCalledWith({
@@ -92,8 +100,8 @@ describe('PostShutterDictation', () => {
     render(<PostShutterDictation siteId="site-1" clientUuid="uuid-1" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
     fireEvent.click(screen.getByText('Décrire'))
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalled())
-    await waitFor(() => expect(screen.getByText('Écoute…')).toBeTruthy())
-    await act(async () => { fireEvent.click(screen.getByText('Écoute…')) })
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
     expect(appendCaptionByClientUuidAction).not.toHaveBeenCalled()
   })
 
@@ -104,8 +112,8 @@ describe('PostShutterDictation', () => {
     render(<PostShutterDictation siteId="site-1" clientUuid="uuid-1" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={onDone} />)
     fireEvent.click(screen.getByText('Décrire'))
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalled())
-    await waitFor(() => expect(screen.getByText('Écoute…')).toBeTruthy())
-    await act(async () => { fireEvent.click(screen.getByText('Écoute…')) })
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
     // L'agent n'est jamais coincé : Continuer reste disponible pendant que
     // l'attachement retente encore en fond (backoff réel jusqu'à ~4,5 s).
     fireEvent.click(screen.getByText('Continuer'))
@@ -118,8 +126,8 @@ describe('PostShutterDictation', () => {
     const { unmount } = render(<PostShutterDictation siteId="site-1" clientUuid="uuid-photo-1" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
     fireEvent.click(screen.getByText('Décrire'))
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalled())
-    await waitFor(() => expect(screen.getByText('Écoute…')).toBeTruthy())
-    await act(async () => { fireEvent.click(screen.getByText('Écoute…')) })
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
     await waitFor(() => expect(appendCaptionByClientUuidAction).toHaveBeenLastCalledWith({ client_uuid: 'uuid-photo-1', text: 'Photo un' }))
     unmount()
 
@@ -127,8 +135,8 @@ describe('PostShutterDictation', () => {
     render(<PostShutterDictation siteId="site-1" clientUuid="uuid-photo-2" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
     fireEvent.click(screen.getByText('Décrire'))
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(screen.getByText('Écoute…')).toBeTruthy())
-    await act(async () => { fireEvent.click(screen.getByText('Écoute…')) })
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
     await waitFor(() => expect(appendCaptionByClientUuidAction).toHaveBeenLastCalledWith({ client_uuid: 'uuid-photo-2', text: 'Photo deux' }))
     expect(appendCaptionByClientUuidAction).toHaveBeenCalledTimes(2)
   })
@@ -146,8 +154,8 @@ describe('PostShutterDictation', () => {
     const [describeA] = screen.getAllByText('Décrire')
     fireEvent.click(describeA)
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(screen.getAllByText('Écoute…').length).toBe(1))
-    fireEvent.click(screen.getAllByText('Écoute…')[0])
+    await waitFor(() => expect(screen.getAllByText('Je vous écoute…').length).toBe(1), LISTENING_TIMEOUT)
+    fireEvent.click(screen.getAllByText('Je vous écoute…')[0])
     // capture A est maintenant en 'transcribing', en attente de resolveStop1
 
     dictationMock.stop.mockResolvedValueOnce('Texte B')
@@ -155,8 +163,8 @@ describe('PostShutterDictation', () => {
     const describeButtons = screen.getAllByText('Décrire')
     fireEvent.click(describeButtons[describeButtons.length - 1])
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(screen.getAllByText('Écoute…').length).toBe(1))
-    await act(async () => { fireEvent.click(screen.getAllByText('Écoute…')[0]) })
+    await waitFor(() => expect(screen.getAllByText('Je vous écoute…').length).toBe(1), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getAllByText('Je vous écoute…')[0]) })
     await waitFor(() => expect(appendCaptionByClientUuidAction).toHaveBeenCalledWith({ client_uuid: 'uuid-B', text: 'Texte B' }))
 
     await act(async () => { resolveStop1?.(null) })
@@ -171,8 +179,8 @@ describe('PostShutterDictation', () => {
     render(<PostShutterDictation siteId="site-1" clientUuid="uuid-1" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
     fireEvent.click(screen.getByText('Décrire'))
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalled())
-    await waitFor(() => expect(screen.getByText('Écoute…')).toBeTruthy())
-    await act(async () => { fireEvent.click(screen.getByText('Écoute…')) })
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
     await waitFor(() => expect(appendCaptionByClientUuidAction).toHaveBeenCalledTimes(1))
     // Aucune autre action (upload/création de capture) n'est disponible dans ce module.
   })
@@ -198,7 +206,7 @@ describe('PostShutterDictation', () => {
     render(<PostShutterDictation siteId="site-1" clientUuid="uuid-retake" previewUrl="blob:preview" gpsInfo={undefined} onRetake={onRetake} onDone={vi.fn()} />)
     fireEvent.click(screen.getByText('Décrire'))
     await waitFor(() => expect(dictationMock.start).toHaveBeenCalled())
-    await waitFor(() => expect(screen.getByText('Écoute…')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
 
     fireEvent.click(screen.getByText('Reprendre'))
 
@@ -217,5 +225,111 @@ describe('PostShutterDictation', () => {
     render(<PostShutterDictation siteId="site-1" clientUuid="uuid-nogps" previewUrl={null} gpsInfo={{ status: 'unavailable', lat: null, lng: null, accuracyM: null, altitudeM: null }} onRetake={vi.fn()} onDone={vi.fn()} />)
     const chip = screen.getByText('📍 Localisation indisponible')
     expect(chip).toBeDisabled()
+  })
+
+  it('« Je vous écoute » ne s’affiche jamais avant que le moteur ait réellement démarré (exigence #1)', async () => {
+    let resolveStart: ((ok: boolean) => void) | null = null
+    dictationMock.start.mockImplementationOnce((onAutoStop?: (text: string | null) => void) => {
+      lastAutoStop = onAutoStop ?? null
+      return new Promise<boolean>((resolve) => { resolveStart = resolve })
+    })
+    render(<PostShutterDictation siteId="site-1" clientUuid="uuid-1" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
+    fireEvent.click(screen.getByText('Décrire'))
+
+    await waitFor(() => expect(screen.getByText('Préparation du micro…')).toBeTruthy())
+    expect(screen.queryByText('Je vous écoute…')).toBeNull()
+
+    await act(async () => { resolveStart?.(true) })
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+  })
+
+  it('texte transcrit : affiché dans une zone éditable, modifiable par l’agent (exigences #2/#3)', async () => {
+    dictationMock.stop.mockResolvedValue('Fissure au plafond')
+    appendCaptionByClientUuidAction.mockResolvedValue({ ok: true, captureId: 'cap-1', body: 'Fissure au plafond' })
+    render(<PostShutterDictation siteId="site-1" clientUuid="uuid-1" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
+    fireEvent.click(screen.getByText('Décrire'))
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
+
+    const textarea = (await screen.findByLabelText('Légende de la photo')) as HTMLTextAreaElement
+    await waitFor(() => expect(textarea.value).toBe('Fissure au plafond'))
+
+    fireEvent.change(textarea, { target: { value: 'Fissure au plafond, corrigée' } })
+    expect(textarea.value).toBe('Fissure au plafond, corrigée')
+  })
+
+  it('le micro redevient disponible juste après la dictée (exigence #4)', async () => {
+    dictationMock.stop.mockResolvedValue('Texte')
+    render(<PostShutterDictation siteId="site-1" clientUuid="uuid-1" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
+    fireEvent.click(screen.getByText('Décrire'))
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
+
+    const micButton = (await screen.findByText('Décrire')).closest('button')
+    expect(micButton).not.toBeDisabled()
+    fireEvent.click(micButton as HTMLButtonElement)
+    await waitFor(() => expect(dictationMock.start).toHaveBeenCalledTimes(2))
+  })
+
+  it('le champ reste éditable après correction IA — jamais readonly/disabled (exigence #5)', async () => {
+    dictationMock.stop.mockResolvedValue('brut')
+    appendCaptionByClientUuidAction.mockResolvedValue({ ok: true, captureId: 'cap-1', body: 'Texte corrigé par l’IA' })
+    render(<PostShutterDictation siteId="site-1" clientUuid="uuid-1" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
+    fireEvent.click(screen.getByText('Décrire'))
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
+
+    const textarea = (await screen.findByLabelText('Légende de la photo')) as HTMLTextAreaElement
+    await waitFor(() => expect(textarea.value).toBe('Texte corrigé par l’IA'))
+    expect(textarea).not.toBeDisabled()
+    expect(textarea).not.toHaveAttribute('readonly')
+  })
+
+  it('une édition manuelle est persistée et n’est jamais écrasée automatiquement ensuite (exigence #6)', async () => {
+    dictationMock.stop.mockResolvedValue('Texte dicté')
+    appendCaptionByClientUuidAction.mockResolvedValue({ ok: true, captureId: 'cap-1', body: 'Texte dicté' })
+    render(<PostShutterDictation siteId="site-1" clientUuid="uuid-edit" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={vi.fn()} />)
+    fireEvent.click(screen.getByText('Décrire'))
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
+
+    const textarea = (await screen.findByLabelText('Légende de la photo')) as HTMLTextAreaElement
+    await waitFor(() => expect(textarea.value).toBe('Texte dicté'))
+
+    fireEvent.change(textarea, { target: { value: 'Texte corrigé à la main' } })
+    fireEvent.blur(textarea)
+
+    await waitFor(() => expect(setCaptionByClientUuidAction).toHaveBeenCalledWith({
+      client_uuid: 'uuid-edit',
+      text: 'Texte corrigé à la main',
+    }))
+    expect(textarea.value).toBe('Texte corrigé à la main')
+    expect(appendCaptionByClientUuidAction).toHaveBeenCalledTimes(1)
+  })
+
+  it('« Continuer » conserve exactement le texte édité (exigence #7)', async () => {
+    dictationMock.stop.mockResolvedValue('Texte dicté')
+    appendCaptionByClientUuidAction.mockResolvedValue({ ok: true, captureId: 'cap-1', body: 'Texte dicté' })
+    const onDone = vi.fn()
+    render(<PostShutterDictation siteId="site-1" clientUuid="uuid-final" previewUrl={null} gpsInfo={undefined} onRetake={vi.fn()} onDone={onDone} />)
+    fireEvent.click(screen.getByText('Décrire'))
+    await waitFor(() => expect(screen.getByText('Je vous écoute…')).toBeTruthy(), LISTENING_TIMEOUT)
+    await act(async () => { fireEvent.click(screen.getByText('Je vous écoute…')) })
+
+    const textarea = (await screen.findByLabelText('Légende de la photo')) as HTMLTextAreaElement
+    await waitFor(() => expect(textarea.value).toBe('Texte dicté'))
+
+    fireEvent.change(textarea, { target: { value: 'Texte final voulu par l’agent' } })
+    // jsdom/fireEvent ne déclenche jamais le blur automatiquement au clic d'un
+    // autre élément (contrairement au navigateur réel) — on le simule ici.
+    fireEvent.blur(textarea)
+    await waitFor(() => expect(setCaptionByClientUuidAction).toHaveBeenCalledWith({
+      client_uuid: 'uuid-final',
+      text: 'Texte final voulu par l’agent',
+    }))
+
+    fireEvent.click(screen.getByText('Continuer'))
+    expect(onDone).toHaveBeenCalledTimes(1)
+    expect(textarea.value).toBe('Texte final voulu par l’agent')
   })
 })

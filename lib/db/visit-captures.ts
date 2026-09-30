@@ -721,6 +721,23 @@ export async function appendCaptureCaption(captureId: string, text: string): Pro
 }
 
 /**
+ * Remplace intégralement la légende par une saisie humaine explicite — jamais
+ * de fusion : le texte tapé par l'agent EST la légende voulue, contrairement à
+ * `appendCaptureCaption` (dictée) qui complète. Utilisé pour persister une
+ * correction manuelle du texte de dictée avant toute redictée ultérieure, afin
+ * que son merge côté serveur ne parte jamais d'un `body` périmé (Vincent, fix
+ * timing micro 2026-09-30).
+ */
+export async function setCaptureCaption(captureId: string, text: string): Promise<void> {
+  const supabase = createAdminClient()
+  const { error } = await supabase
+    .from('visit_capture')
+    .update({ body: text, updated_at: new Date().toISOString() })
+    .eq('id', captureId)
+  if (error) throw error
+}
+
+/**
  * Décision du débrief express (mig 168) : garder/ignorer (status) + suite
  * éventuelle (intent). Réversible : on peut re-trier autant qu'on veut. La
  * matérialisation des suites se fait au bureau, pas ici.

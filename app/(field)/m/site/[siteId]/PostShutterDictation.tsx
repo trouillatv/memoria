@@ -5,7 +5,12 @@
 // encore frais (🎙 Décrire), soit reprendre le cadrage (↶ Reprendre). Écran
 // UNIQUE, jamais un pas modal forcé (Vincent, rework post-shutter 2026-08-26) :
 // la photo reste affichée en permanence, le contrôle micro change simplement
-// d'état sur place (idle → Écoute… → Je prépare la légende… → légende visible).
+// d'état sur place (idle → Préparation du micro… → Je vous écoute… → Je
+// prépare la légende… → légende éditable). « Je vous écoute » ne s'affiche
+// qu'une fois le moteur réellement prêt (onstart du hook, jamais un
+// setTimeout de substitution — Vincent, fix timing micro 2026-09-30) ; la
+// légende reste éditable en tout temps après une dictée, une édition
+// manuelle est persistée sur blur et ne peut jamais être écrasée en silence.
 //
 // La dictée n'est PAS un vocal autonome : elle alimente body de LA capture qui
 // vient d'être prise (par client_uuid), exactement le même champ que la légende
@@ -14,13 +19,13 @@
 // continuer la visite — la transcription + l'attachement se terminent en fond,
 // avec quelques tentatives, sans jamais perdre la photo ni bloquer l'agent.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Mic, Square, Loader2, Check, X, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useCaptionDictation } from '@/lib/field/use-caption-dictation'
 import type { GeoStatus } from '@/lib/field/geoloc-status'
 import { formatPostShutterGpsChip } from '@/lib/visits/geo'
-import { appendCaptionByClientUuidAction, correctCaptureLocationByClientUuidAction, revertCaptureLocationByClientUuidAction } from './capture-actions'
+import { appendCaptionByClientUuidAction, setCaptionByClientUuidAction, correctCaptureLocationByClientUuidAction, revertCaptureLocationByClientUuidAction } from './capture-actions'
 import { LocationCorrectionMap } from '@/components/LocationCorrectionMap'
 
 // Position résolue en fond par VisitBasket (cf. formatPostShutterGpsChip,
@@ -38,12 +43,34 @@ export interface PostShutterGpsInfo {
 }
 
 const MAX_ATTACH_ATTEMPTS = 3
+// Plancher UX minimal entre le tap et « Je vous écoute » (Vincent, fix timing
+// micro 2026-09-30) : appliqué APRÈS le signal réel `onstart` du hook, jamais
+// en remplacement — évite un flash « Préparation… » si le moteur démarre
+// exceptionnellement vite.
+const MIN_PREPARING_MS = 1000
 
 async function attachWithRetry(clientUuid: string, text: string): Promise<{ ok: true; body: string } | { ok: false; error: string }> {
   let lastError = 'Échec de l’enregistrement de la légende'
   for (let attempt = 1; attempt <= MAX_ATTACH_ATTEMPTS; attempt++) {
     try {
       const res = await appendCaptionByClientUuidAction({ client_uuid: clientUuid, text })
+      if (res.ok) return res
+      lastError = res.error
+    } catch {
+      // réseau coupé — on retente après un court délai
+    }
+    if (attempt < MAX_ATTACH_ATTEMPTS) await new Promise((r) => setTimeout(r, 1500 * attempt))
+  }
+  return { ok: false, error: lastError }
+}
+
+// Édition manuelle de la légende : contrairement à la dictée (fusion), le
+// texte tapé par l'agent EST la légende voulue — remplacement intégral.
+async function persistEditWithRetry(clientUuid: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  let lastError = 'Échec de l’enregistrement de la légende'
+  for (let attempt = 1; attempt <= MAX_ATTACH_ATTEMPTS; attempt++) {
+    try {
+      const res = await setCaptionByClientUuidAction({ client_uuid: clientUuid, text })
       if (res.ok) return res
       lastError = res.error
     } catch {
@@ -77,10 +104,15 @@ export function PostShutterDictation({
   const dictation = useCaptionDictation(siteId)
   // État local, pas `dictation.state` : le contrôle micro de cet écran doit
   // rester prévisible même si l'arrêt vient du silence détecté (callback async
-  // du hook) plutôt que d'un tap — un seul point de vérité pour les 3 phases
-  // visibles (Décrire / Écoute… / Je prépare la légende…).
-  const [phase, setPhase] = useState<'idle' | 'recording' | 'transcribing'>('idle')
-  const [caption, setCaption] = useState<string | null>(null)
+  // du hook) plutôt que d'un tap — un seul point de vérité pour les 4 phases
+  // visibles (Décrire / Préparation du micro… / Je vous écoute… / Je prépare
+  // la légende…).
+  const [phase, setPhase] = useState<'idle' | 'preparing' | 'recording' | 'transcribing'>('idle')
+  // Légende éditable — la dernière valeur confirmée côté serveur (dictée ou
+  // édition manuelle) sert de référence pour ne pas ré-écrire inutilement sur
+  // blur si rien n'a changé.
+  const [captionText, setCaptionText] = useState('')
+  const lastPersistedCaptionRef = useRef('')
   const [showLocationMap, setShowLocationMap] = useState(false)
   // Reflète une correction validée pendant cette session d'écran — la capture
   // vient d'être prise, elle n'a jamais de correction préexistante au montage.
@@ -93,8 +125,12 @@ export function PostShutterDictation({
   function handleAttachResult(text: string | null) {
     if (!text) return
     void attachWithRetry(clientUuid, text).then((res) => {
-      if (res.ok) setCaption(res.body)
-      else toast.error(`Légende non enregistrée — ${res.error}`)
+      if (res.ok) {
+        setCaptionText(res.body)
+        lastPersistedCaptionRef.current = res.body
+      } else {
+        toast.error(`Légende non enregistrée — ${res.error}`)
+      }
     })
   }
 
@@ -114,23 +150,45 @@ export function PostShutterDictation({
       handleAttachResult(text)
       return
     }
-    if (phase === 'transcribing') return
-    setPhase('recording')
+    if (phase === 'preparing' || phase === 'transcribing') return
+    setPhase('preparing')
+    const tapStartedAt = Date.now()
     const started = await dictation.start(handleAutoStop)
-    if (!started) setPhase('idle')
+    if (!started) { setPhase('idle'); return }
+    // Le moteur est réellement prêt (onstart reçu, cf. le hook) — on ne garde
+    // qu'un plancher UX minimal, jamais une attente de substitution.
+    const remaining = MIN_PREPARING_MS - (Date.now() - tapStartedAt)
+    if (remaining > 0) await new Promise((r) => setTimeout(r, remaining))
+    setPhase('recording')
+  }
+
+  // Sauvegarde une édition manuelle de la légende — jamais de fusion, le texte
+  // tapé remplace intégralement (contrairement à une dictée). Ignoré si rien
+  // n'a changé depuis la dernière valeur confirmée côté serveur.
+  function handleCaptionBlur() {
+    const text = captionText
+    if (text === lastPersistedCaptionRef.current) return
+    lastPersistedCaptionRef.current = text
+    void persistEditWithRetry(clientUuid, text).then((res) => {
+      if (!res.ok) toast.error(`Légende non enregistrée — ${res.error}`)
+    })
   }
 
   function leave() {
-    if (phase === 'recording') dictation.stop().then(handleAttachResult)
+    if (phase === 'recording' || phase === 'preparing') dictation.stop().then(handleAttachResult)
     onDone()
   }
 
   function handleRetake() {
-    if (phase === 'recording') dictation.cancel()
+    if (phase === 'recording' || phase === 'preparing') dictation.cancel()
     onRetake(clientUuid, previewUrl)
   }
 
-  const micLabel = phase === 'recording' ? 'Écoute…' : phase === 'transcribing' ? 'Je prépare la légende…' : 'Décrire'
+  const micLabel =
+    phase === 'preparing' ? 'Préparation du micro…' :
+    phase === 'recording' ? 'Je vous écoute…' :
+    phase === 'transcribing' ? 'Je prépare la légende…' :
+    'Décrire'
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background/98">
@@ -157,8 +215,17 @@ export function PostShutterDictation({
           <img src={previewUrl} alt="" className="h-56 w-56 rounded-2xl border border-emerald-500/30 object-cover shadow-sm" />
         )}
 
-        {caption && phase === 'idle' && (
-          <p className="max-w-xs text-xs text-muted-foreground">{caption}</p>
+        {captionText.length > 0 && (
+          <textarea
+            value={captionText}
+            onChange={(e) => setCaptionText(e.target.value)}
+            onBlur={handleCaptionBlur}
+            rows={3}
+            maxLength={500}
+            placeholder="Légende de la photo"
+            aria-label="Légende de la photo"
+            className="w-full max-w-xs resize-none rounded-lg border border-border/60 bg-transparent px-3 py-2 text-xs text-foreground focus:border-emerald-600 focus:outline-none"
+          />
         )}
         {dictation.error && phase === 'idle' && (
           <p className="max-w-xs text-xs text-destructive">{dictation.error}</p>
@@ -179,12 +246,12 @@ export function PostShutterDictation({
           </button>
           <button
             type="button" onClick={handleMicTap}
-            disabled={phase === 'transcribing'}
+            disabled={phase === 'preparing' || phase === 'transcribing'}
             className="flex flex-col items-center gap-1 rounded-xl border border-emerald-600 bg-emerald-50 py-3 text-[11px] font-semibold text-emerald-800 active:scale-[0.98] disabled:opacity-70 dark:bg-emerald-950/30 dark:text-emerald-200"
           >
             {phase === 'recording' ? (
               <Square className="h-4 w-4" />
-            ) : phase === 'transcribing' ? (
+            ) : phase === 'preparing' || phase === 'transcribing' ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Mic className="h-4 w-4" />

@@ -27,6 +27,7 @@ import {
   setCaptureViewpoint,
   setCaptureLocationCorrection,
   appendCaptureCaption,
+  setCaptureCaption,
   type VisitCaptureRow,
 } from '@/lib/db/visit-captures'
 import { uploadReportAttachmentAction } from './report-actions'
@@ -282,6 +283,27 @@ export async function appendCaptionByClientUuidAction(
     if (!captureId) return { ok: false, error: 'Photo pas encore confirmée — réessaie dans un instant' }
     const body = await appendCaptureCaption(captureId, parsed.data.text)
     return { ok: true, captureId, body }
+  } catch {
+    return { ok: false, error: 'Échec de l’enregistrement de la légende' }
+  }
+}
+
+// Post-shutter : persiste verbatim une correction humaine du texte de dictée
+// (jamais de fusion, contrairement à appendCaptionByClientUuidAction) — pour
+// qu'une redictée ultérieure ne parte jamais d'un body périmé côté serveur.
+export async function setCaptionByClientUuidAction(
+  input: z.input<typeof appendByClientUuidSchema>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await requireFieldAgent()
+  if ('error' in auth) return { ok: false, error: 'Non autorisé' }
+  const parsed = appendByClientUuidSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: 'Requête invalide' }
+
+  try {
+    const captureId = await findVisitCaptureIdByClientUuid(parsed.data.client_uuid)
+    if (!captureId) return { ok: false, error: 'Photo pas encore confirmée — réessaie dans un instant' }
+    await setCaptureCaption(captureId, parsed.data.text)
+    return { ok: true }
   } catch {
     return { ok: false, error: 'Échec de l’enregistrement de la légende' }
   }

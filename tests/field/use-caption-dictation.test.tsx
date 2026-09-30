@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { useEffect } from 'react'
-import { render, screen, act, cleanup } from '@testing-library/react'
+import { render, screen, act, cleanup, waitFor } from '@testing-library/react'
 
 const transcribeDictationAction = vi.fn()
 vi.mock('@/app/(field)/m/site/[siteId]/capture-actions', () => ({
@@ -13,16 +13,26 @@ vi.mock('@/app/(field)/m/site/[siteId]/capture-actions', () => ({
 
 import { useCaptionDictation, type DictationState } from '@/lib/field/use-caption-dictation'
 
+// `deferOnstart` : par défaut, l'événement `onstart` (signal réel d'un
+// MediaRecorder démarré) est simulé automatiquement en microtâche — les tests
+// existants n'ont pas besoin de le piloter. Le mettre à `true` pour un test
+// dédié qui vérifie que le hook reste en 'preparing' tant que ce signal n'a
+// pas été reçu (Vincent, fix timing micro 2026-09-30).
 class FakeMediaRecorder {
   static instances: FakeMediaRecorder[] = []
+  static deferOnstart = false
   state: 'inactive' | 'recording' = 'recording'
   mimeType = 'audio/webm'
   ondataavailable: ((ev: { data: Blob }) => void) | null = null
   onstop: (() => void) | null = null
+  onstart: (() => void) | null = null
   constructor(public stream: MediaStream) {
     FakeMediaRecorder.instances.push(this)
   }
-  start() { this.state = 'recording' }
+  start() {
+    this.state = 'recording'
+    if (!FakeMediaRecorder.deferOnstart) queueMicrotask(() => this.onstart?.())
+  }
   stop() {
     this.state = 'inactive'
     this.ondataavailable?.({ data: nextChunk })
@@ -49,6 +59,7 @@ beforeEach(() => {
   cleanup()
   vi.clearAllMocks()
   FakeMediaRecorder.instances = []
+  FakeMediaRecorder.deferOnstart = false
   nextChunk = new Blob(['audio-data'], { type: 'audio/webm' })
   Object.defineProperty(global, 'MediaRecorder', { value: FakeMediaRecorder, configurable: true, writable: true })
   getUserMediaMock = vi.fn(async () => ({ getTracks: () => [{ stop: vi.fn() }] }) as unknown as MediaStream)
@@ -115,5 +126,22 @@ describe('useCaptionDictation', () => {
     act(() => { holderRef.current!.cancel() })
     expect(currentState()).toBe('idle')
     expect(transcribeDictationAction).not.toHaveBeenCalled()
+  })
+
+  it('reste en \'preparing\' tant que l’événement onstart réel du MediaRecorder n’est pas reçu', async () => {
+    FakeMediaRecorder.deferOnstart = true
+    render(<Harness siteId="site-1" />)
+    let startResult: Promise<boolean> = Promise.resolve(false)
+    act(() => {
+      startResult = holderRef.current!.start()
+    })
+    await waitFor(() => expect(currentState()).toBe('preparing'))
+    expect(currentState()).not.toBe('recording')
+
+    await act(async () => {
+      FakeMediaRecorder.instances[0].onstart?.()
+      await startResult
+    })
+    expect(currentState()).toBe('recording')
   })
 })
