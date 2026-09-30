@@ -17,13 +17,18 @@ const cycleA: CycleSlot[] = [
   { weekIndex: 0, weekday: 2, teamId: 'team-b', state: 'rest', startTime: null, endTime: null },
 ]
 
-function baseCycle(overrides: Partial<{ slots: CycleSlot[] }> = {}) {
+function baseCycle(overrides: Partial<Parameters<typeof buildCanonicalCycleState>[0]> = {}) {
   return {
+    id: 'cycle-1',
+    missionId: 'mission-1',
+    status: 'published',
+    supersedesCycleId: null,
     cycleLengthWeeks: 2,
     anchorDate: '2026-10-05',
     startsOn: '2026-10-05',
     endsOn: null,
-    slots: overrides.slots ?? cycleA,
+    slots: cycleA,
+    ...overrides,
   }
 }
 
@@ -80,6 +85,10 @@ describe('computeCycleStateFingerprint', () => {
       endTime: '12:00',
     }
     const a = computeCycleStateFingerprint({
+      id: 'cycle-1',
+      missionId: 'mission-1',
+      status: 'published',
+      supersedesCycleId: null,
       cycleLengthWeeks: 1,
       anchorDate: '2026-10-05',
       startsOn: '2026-10-05',
@@ -87,6 +96,10 @@ describe('computeCycleStateFingerprint', () => {
       slots: [slot],
     })
     const b = computeCycleStateFingerprint({
+      id: 'cycle-1',
+      missionId: 'mission-1',
+      status: 'published',
+      supersedesCycleId: null,
       cycleLengthWeeks: 1,
       anchorDate: '2026-10-05',
       startsOn: '2026-10-05',
@@ -95,10 +108,32 @@ describe('computeCycleStateFingerprint', () => {
     })
     expect(b).toBe(a)
   })
+
+  it("change si le cycle passe de published à stopped (même grille) — mandat FIX 2", () => {
+    const a = computeCycleStateFingerprint(buildCanonicalCycleState(baseCycle()))
+    const b = computeCycleStateFingerprint(buildCanonicalCycleState(baseCycle({ status: 'stopped' })))
+    expect(b).not.toBe(a)
+  })
+
+  it('change si missionId change (même grille) — mandat FIX 2', () => {
+    const a = computeCycleStateFingerprint(buildCanonicalCycleState(baseCycle()))
+    const b = computeCycleStateFingerprint(buildCanonicalCycleState(baseCycle({ missionId: 'mission-2' })))
+    expect(b).not.toBe(a)
+  })
+
+  it('change si supersedesCycleId change — mandat FIX 2', () => {
+    const a = computeCycleStateFingerprint(buildCanonicalCycleState(baseCycle()))
+    const b = computeCycleStateFingerprint(buildCanonicalCycleState(baseCycle({ supersedesCycleId: 'cycle-0' })))
+    expect(b).not.toBe(a)
+  })
 })
 
 function baseSimpleTemplate(overrides: Partial<Parameters<typeof buildCanonicalSimpleTemplateState>[0]> = {}) {
   return {
+    id: 'template-1',
+    missionId: 'mission-1',
+    active: true,
+    deletedAt: null,
     frequency: 'weekly',
     slots: ['morning', 'afternoon'],
     dayOfWeek: 1,
@@ -138,6 +173,20 @@ describe('computeSimpleTemplateStateFingerprint', () => {
     const a = computeSimpleTemplateStateFingerprint(buildCanonicalSimpleTemplateState(baseSimpleTemplate()))
     const b = computeSimpleTemplateStateFingerprint(
       buildCanonicalSimpleTemplateState(baseSimpleTemplate({ plannedStartHHMM: '09:00' })),
+    )
+    expect(b).not.toBe(a)
+  })
+
+  it('change si active passe de true à false — mandat FIX 2', () => {
+    const a = computeSimpleTemplateStateFingerprint(buildCanonicalSimpleTemplateState(baseSimpleTemplate()))
+    const b = computeSimpleTemplateStateFingerprint(buildCanonicalSimpleTemplateState(baseSimpleTemplate({ active: false })))
+    expect(b).not.toBe(a)
+  })
+
+  it('change si missionId change — mandat FIX 2', () => {
+    const a = computeSimpleTemplateStateFingerprint(buildCanonicalSimpleTemplateState(baseSimpleTemplate()))
+    const b = computeSimpleTemplateStateFingerprint(
+      buildCanonicalSimpleTemplateState(baseSimpleTemplate({ missionId: 'mission-2' })),
     )
     expect(b).not.toBe(a)
   })

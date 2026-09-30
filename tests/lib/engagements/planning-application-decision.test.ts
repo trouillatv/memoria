@@ -16,7 +16,6 @@ const baseDraft: NewDecisionPayload = {
   targetSourceKind: null,
   targetTemplateId: null,
   targetCycleId: null,
-  proposalPayload: { operation: 'new', temporality: 'permanent', effectiveFrom: '2026-10-01', effectiveTo: null, scopeKey: 'whole_engagement', cadence: { count: 1, period: 'week' } },
   draftSimpleTemplate: {
     missionId: 'mission-1',
     frequency: 'weekly',

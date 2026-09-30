@@ -21,6 +21,10 @@ export type CanonicalCycleSlot = {
 }
 
 export type CanonicalCycleState = {
+  id: string
+  missionId: string
+  status: string
+  supersedesCycleId: string | null
   cycleLengthWeeks: number
   anchorDate: string
   startsOn: string
@@ -39,6 +43,10 @@ function sortSlots(slots: readonly CanonicalCycleSlot[]): CanonicalCycleSlot[] {
 /** Construit l'état canonique depuis des CycleSlot (lib/db/planning-cycles.ts)
  *  — même forme que ce que retourne listCyclesBySite, sans jointure supplémentaire. */
 export function buildCanonicalCycleState(cycle: {
+  id: string
+  missionId: string
+  status: string
+  supersedesCycleId: string | null
   cycleLengthWeeks: number
   anchorDate: string
   startsOn: string
@@ -46,6 +54,10 @@ export function buildCanonicalCycleState(cycle: {
   slots: readonly CycleSlot[]
 }): CanonicalCycleState {
   return {
+    id: cycle.id,
+    missionId: cycle.missionId,
+    status: cycle.status,
+    supersedesCycleId: cycle.supersedesCycleId,
     cycleLengthWeeks: cycle.cycleLengthWeeks,
     anchorDate: cycle.anchorDate,
     startsOn: cycle.startsOn,
@@ -69,6 +81,10 @@ export function computeCycleStateFingerprint(state: CanonicalCycleState): string
 }
 
 export type CanonicalSimpleTemplateState = {
+  id: string
+  missionId: string
+  active: boolean
+  deletedAt: string | null
   frequency: string
   slots: string[]
   dayOfWeek: number | null
@@ -80,6 +96,10 @@ export type CanonicalSimpleTemplateState = {
 }
 
 export function buildCanonicalSimpleTemplateState(template: {
+  id: string
+  missionId: string
+  active: boolean
+  deletedAt: string | null
   frequency: string
   slots: readonly string[]
   dayOfWeek: number | null
@@ -90,6 +110,10 @@ export function buildCanonicalSimpleTemplateState(template: {
   endsOn: string | null
 }): CanonicalSimpleTemplateState {
   return {
+    id: template.id,
+    missionId: template.missionId,
+    active: template.active,
+    deletedAt: template.deletedAt,
     frequency: template.frequency,
     slots: [...template.slots].sort(),
     dayOfWeek: template.dayOfWeek,

@@ -66,6 +66,9 @@ let cycleSuspendId: string
 let missionStateDriftId: string
 let cycleForStateDriftId: string
 let missionCrossOrgId: string
+let missionModifyOutsideWindowId: string
+let missionModifySimpleOutsideWindowId: string
+let templateOutsideWindowId: string
 
 let newEngagementId: string
 let newPlaceholderEngagementId: string
@@ -169,7 +172,6 @@ function newPayload(
     targetSourceKind: null,
     targetTemplateId: null,
     targetCycleId: null,
-    proposalPayload,
     draftSimpleTemplate: {
       missionId,
       frequency: 'weekly',
@@ -195,7 +197,6 @@ function modifyCyclePayload(
     targetSourceKind: 'cycle',
     targetTemplateId: null,
     targetCycleId: cycleId,
-    proposalPayload,
     draftCycleAfter: {
       missionId,
       cycleLengthWeeks: 1,
@@ -218,7 +219,6 @@ function modifySimplePayload(
     targetSourceKind: 'simple',
     targetTemplateId: templateId,
     targetCycleId: null,
-    proposalPayload,
   }
 }
 
@@ -235,7 +235,6 @@ function suspendPayload(
     targetSourceKind: sourceKind,
     targetTemplateId: templateId,
     targetCycleId: cycleId,
-    proposalPayload,
   }
 }
 
@@ -278,6 +277,8 @@ beforeAll(async () => {
   missionSuspendCycleId = await insertMission(`${TAG} mission suspend cycle`, memberOrgId, siteId)
   missionStateDriftId = await insertMission(`${TAG} mission state drift`, memberOrgId, siteId)
   missionCrossOrgId = await insertMission(`${TAG} mission cross org`, outsiderOrgId, outsiderSiteId)
+  missionModifyOutsideWindowId = await insertMission(`${TAG} mission modify outside window`, memberOrgId, siteId)
+  missionModifySimpleOutsideWindowId = await insertMission(`${TAG} mission modify simple outside window`, memberOrgId, siteId)
 
   cycleModifyId = await createCycle({
     siteId,
@@ -321,6 +322,25 @@ beforeAll(async () => {
     status: 'published',
   })
 
+  // Source hors fenêtre effectiveFrom (mandat FIX 1) — cycle publié dont
+  // starts_on ('2026-07-01') est APRÈS l'effectiveFrom du MODIFY testé
+  // ('2026-06-01') : la Mission reste candidate (liée à l'Engagement) mais
+  // sans source valide (blocked_no_target), jamais confondue avec une Mission
+  // absente faute de rattachement.
+  await createCycle({
+    siteId,
+    missionId: missionModifyOutsideWindowId,
+    organizationId: memberOrgId,
+    name: `${TAG} cycle modify outside window`,
+    cycleLengthWeeks: 1,
+    anchorDate: '2026-07-01',
+    startsOn: '2026-07-01',
+    endsOn: null,
+    slots: [{ weekIndex: 0, weekday: 1, teamId, state: 'work', startTime: '08:00', endTime: '12:00' }],
+    userId: null,
+    status: 'published',
+  })
+
   const templateModify = await createTemplate({
     mission_id: missionModifySimpleId,
     title: `${TAG} simple modify`,
@@ -338,6 +358,16 @@ beforeAll(async () => {
     starts_on: '2026-01-01',
   })
   templateSuspendSimpleId = templateSuspend.id
+
+  // Source SIMPLE hors fenêtre effectiveFrom (mandat FIX 1), même principe.
+  const templateOutsideWindow = await createTemplate({
+    mission_id: missionModifySimpleOutsideWindowId,
+    title: `${TAG} simple outside window`,
+    frequency: 'weekly',
+    day_of_week: 1,
+    starts_on: '2026-07-01',
+  })
+  templateOutsideWindowId = templateOutsideWindow.id
 
   newPlaceholderEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} new` })
   modifyOkEngagementId = await insertEngagement({ site_id: siteId, organization_id: memberOrgId, short_label: `${TAG} modify ok` })
@@ -435,6 +465,23 @@ beforeAll(async () => {
   await materializeEffectWithPayload(suspendProposal, {})
   suspendEngagementId = suspendFounderEngagementId
 
+  // Rattachement Mission↔Engagement (mandat FIX 1) — requis pour que
+  // resolvePlanningTargetCandidatesForProposal considère ces Missions comme
+  // candidates sur un MODIFY/SUSPEND (engagement_ids doit contenir
+  // proposal.engagementId) ; missionNewId reste délibérément non rattachée.
+  await db.from('missions').update({ engagement_ids: [modifyOkEngagementId] }).in('id', [missionModifyCycleId, missionModifyOutsideWindowId])
+  // missionModifySimpleId est rattachée aux DEUX Engagements : modifyOkEngagementId
+  // (candidat blocked_requires_simple_supersession aux côtés du cycle prêt,
+  // cf. describe resolvePlanningTargetCandidatesForProposal) et
+  // modifySimpleEngagementId (cible directe des tests createDraftDecision/
+  // markDecisionReady sur rythme SIMPLE, decisionPayload ci-dessous).
+  await db
+    .from('missions')
+    .update({ engagement_ids: [modifyOkEngagementId, modifySimpleEngagementId] })
+    .in('id', [missionModifySimpleId])
+  await db.from('missions').update({ engagement_ids: [modifySimpleEngagementId] }).in('id', [missionModifySimpleOutsideWindowId])
+  await db.from('missions').update({ engagement_ids: [suspendEngagementId] }).in('id', [missionSuspendSimpleId, missionSuspendCycleId])
+
   const stateDriftProposal = await makeQualifiedProposal({
     effect: 'modify',
     temporality: 'permanent',
@@ -484,7 +531,7 @@ afterAll(async () => {
   // verdict des tests précédents.
   await db.from('planning_impact_application_decisions').delete().in('engagement_id', allEngagementIds)
   await db.from('planning_cycles').delete().eq('site_id', siteId)
-  await db.from('intervention_templates').delete().in('id', [templateModifySimpleId, templateSuspendSimpleId])
+  await db.from('intervention_templates').delete().in('id', [templateModifySimpleId, templateSuspendSimpleId, templateOutsideWindowId])
   await db.from('engagements').delete().in('id', allEngagementIds)
   await db.from('missions').delete().in('site_id', [siteId, outsiderSiteId])
   await db.from('documents').delete().eq('id', docId)
@@ -517,7 +564,31 @@ describe('resolvePlanningTargetCandidatesForProposal', () => {
       readiness: 'blocked_requires_simple_supersession',
       sourceKind: 'simple',
     })
-    expect(result.candidates.find((c) => c.missionId === missionNewId)).toMatchObject({ readiness: 'blocked_no_target' })
+    // missionNewId n'est liée à AUCUN Engagement (engagement_ids) : absente des
+    // candidats MODIFY, jamais un faux "blocked_no_target" (mandat FIX 1).
+    expect(result.candidates.find((c) => c.missionId === missionNewId)).toBeUndefined()
+  })
+
+  it('proposition MODIFY — cycle publié dont starts_on est postérieur à effectiveFrom : Mission candidate mais sans source valide (mandat FIX 1)', async () => {
+    const proposal = await generateSingleProposal(modifyOkEngagementId)
+    const result = await resolvePlanningTargetCandidatesForProposal(proposal.id, currentUser())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.candidates.find((c) => c.missionId === missionModifyOutsideWindowId)).toMatchObject({
+      readiness: 'blocked_no_target',
+      sourceKind: null,
+    })
+  })
+
+  it('proposition MODIFY — rythme SIMPLE actif dont starts_on est postérieur à effectiveFrom : Mission candidate mais sans source valide (mandat FIX 1)', async () => {
+    const proposal = await generateSingleProposal(modifySimpleEngagementId)
+    const result = await resolvePlanningTargetCandidatesForProposal(proposal.id, currentUser())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.candidates.find((c) => c.missionId === missionModifySimpleOutsideWindowId)).toMatchObject({
+      readiness: 'blocked_no_target',
+      sourceKind: null,
+    })
   })
 
   it('proposition SUSPEND — rythme SIMPLE et cycle publié tous les deux prêts', async () => {
@@ -761,7 +832,7 @@ describe('createDraftDecision', () => {
     expect(listed.decisions.find((d) => d.id === second.decision.id)?.status).toBe('draft')
   })
 
-  it('duplicate_fingerprint — recréer un draft identique à une décision déjà annulée est refusé par la contrainte UNIQUE', async () => {
+  it('FIX 5 — recréer un draft identique à une décision déjà annulée est désormais autorisé (index partiel, plus de blocage historique)', async () => {
     const proposal = await generateSingleProposal(newEngagementId)
     const payload = newPayload(missionNewId, proposal.proposalPayload, 4)
     const first = await createDraftDecision({ proposalId: proposal.id, decisionPayload: payload }, currentUser())
@@ -770,8 +841,79 @@ describe('createDraftDecision', () => {
     const cancelled = await cancelDecision(first.decision.id, currentUser())
     expect(cancelled.ok).toBe(true)
 
-    const duplicate = await createDraftDecision({ proposalId: proposal.id, decisionPayload: payload }, currentUser())
-    expect(duplicate).toEqual({ ok: false, error: 'duplicate_fingerprint' })
+    const recreated = await createDraftDecision({ proposalId: proposal.id, decisionPayload: payload }, currentUser())
+    expect(recreated.ok).toBe(true)
+    if (!recreated.ok) return
+    expect(recreated.decision.id).not.toBe(first.decision.id)
+    expect(recreated.decision.applicationFingerprint).toBe(first.decision.applicationFingerprint)
+    expect(recreated.decision.status).toBe('draft')
+    // La décision cancelled n'est pas reliée par supersession — supersedes_decision_id
+    // ne vise que la dernière décision active (draft/ready), jamais une terminale.
+    expect(recreated.decision.supersedesDecisionId).toBeNull()
+  })
+
+  it('FIX 4 — idempotence : appeler createDraftDecision deux fois avec un contenu actif identique renvoie la même décision, sans nouvelle ligne', async () => {
+    // newEngagementId est un fixture PARTAGÉ par les autres tests de ce describe
+    // (generateSingleProposal renvoie la même proposition 448 à chaque appel) —
+    // le nombre de décisions déjà présentes sur cette proposition avant ce test
+    // n'est donc pas 0 ; seul le DELTA entre les deux appels prouve l'idempotence.
+    const proposal = await generateSingleProposal(newEngagementId)
+    const payload = newPayload(missionNewId, proposal.proposalPayload, 5)
+    const first = await createDraftDecision({ proposalId: proposal.id, decisionPayload: payload }, currentUser())
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+
+    const beforeSecond = await listDecisionsForProposal(proposal.id, currentUser())
+    expect(beforeSecond.ok).toBe(true)
+    if (!beforeSecond.ok) return
+    const countBefore = beforeSecond.decisions.length
+
+    const second = await createDraftDecision({ proposalId: proposal.id, decisionPayload: payload }, currentUser())
+    expect(second.ok).toBe(true)
+    if (!second.ok) return
+    expect(second.decision).toEqual(first.decision)
+
+    const afterSecond = await listDecisionsForProposal(proposal.id, currentUser())
+    expect(afterSecond.ok).toBe(true)
+    if (!afterSecond.ok) return
+    expect(afterSecond.decisions).toHaveLength(countBefore)
+  })
+
+  it("FIX 4 — un échec d'insertion (violation target_shape_check) laisse la décision active précédente intacte (draft), jamais superseded sans remplacement", async () => {
+    const proposal = await generateSingleProposal(newEngagementId)
+    const payload = newPayload(missionNewId, proposal.proposalPayload, 6)
+    const existing = await createDraftDecision({ proposalId: proposal.id, decisionPayload: payload }, currentUser())
+    expect(existing.ok).toBe(true)
+    if (!existing.ok) return
+
+    const admin = createAdminClient()
+    const { error: rpcError } = await admin.rpc('fn_planning_application_decision_create_draft', {
+      p_organization_id: proposal.organizationId,
+      p_site_id: proposal.siteId,
+      p_engagement_id: proposal.engagementId,
+      p_contract_effect_id: proposal.contractEffectId,
+      p_planning_impact_proposal_id: proposal.id,
+      p_proposal_version_at_decision: proposal.proposalVersion,
+      // Forme invalide délibérée : mutation_kind='new' exige target_source_kind
+      // NULL et target_template_id NULL (target_shape_check, migration 449) —
+      // ici target_template_id est renseigné à tort, ce qui viole la contrainte
+      // au moment de l'INSERT final, à l'intérieur de la transaction RPC.
+      p_mutation_kind: 'new',
+      p_target_mission_id: missionNewId,
+      p_target_source_kind: null,
+      p_target_template_id: templateSuspendSimpleId,
+      p_target_cycle_id: null,
+      p_decision_payload: { ...payload, mutationKind: 'new' },
+      p_application_fingerprint: randomUUID(),
+      p_planning_state_fingerprint: null,
+      p_created_by: null,
+    })
+    expect(rpcError).toBeTruthy()
+
+    const listed = await listDecisionsForProposal(proposal.id, currentUser())
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) return
+    expect(listed.decisions.find((d) => d.id === existing.decision.id)?.status).toBe('draft')
   })
 
   it('mutation_kind_mismatch — payload suspend sur une proposition new', async () => {
@@ -812,11 +954,30 @@ describe('createDraftDecision', () => {
     expect(result).toEqual({ ok: false, error: 'access_denied' })
   })
 
-  // target_mission_mismatch : lu intégralement dans le corps de createDraftDecision
-  // (mandat §15) — cette vérification n'existe QUE dans previewApplication (branche
-  // 'new'), jamais dans createDraftDecision. Branche structurellement inatteignable
-  // ici, jamais fabriquée artificiellement.
-  it.skip('target_mission_mismatch — structurellement inatteignable dans createDraftDecision (vérifié par lecture du code, mandat §15)', () => {})
+  it('target_mission_mismatch — draftSimpleTemplate.missionId différent de targetMissionId (mandat FIX 3)', async () => {
+    const proposal = await generateSingleProposal(newEngagementId)
+    const payload = newPayload(missionNewId, proposal.proposalPayload)
+    const mismatched = { ...payload, draftSimpleTemplate: { ...payload.draftSimpleTemplate, missionId: missionModifyCycleId } }
+    const result = await createDraftDecision({ proposalId: proposal.id, decisionPayload: mismatched }, currentUser())
+    expect(result).toEqual({ ok: false, error: 'target_mission_mismatch' })
+  })
+
+  it('target_mission_mismatch — draftCycleAfter.missionId différent de targetMissionId (mandat FIX 3)', async () => {
+    const proposal = await generateSingleProposal(modifyOkEngagementId)
+    const payload = modifyCyclePayload(missionModifyCycleId, cycleModifyId, proposal.proposalPayload)
+    const mismatched = { ...payload, draftCycleAfter: { ...payload.draftCycleAfter, missionId: missionNewId } }
+    const result = await createDraftDecision({ proposalId: proposal.id, decisionPayload: mismatched }, currentUser())
+    expect(result).toEqual({ ok: false, error: 'target_mission_mismatch' })
+  })
+
+  it('MODIFY+simple — targetTemplateId appartenant à une autre Mission : target_not_found (jamais court-circuité par blocked_requires_simple_supersession) — mandat FIX 3 (cross-cutting)', async () => {
+    const proposal = await generateSingleProposal(modifySimpleEngagementId)
+    const result = await createDraftDecision(
+      { proposalId: proposal.id, decisionPayload: modifySimplePayload(missionModifyCycleId, templateModifySimpleId, proposal.proposalPayload) },
+      currentUser(),
+    )
+    expect(result).toEqual({ ok: false, error: 'target_not_found' })
+  })
 
   // write_failed : seule issue non-23505 d'un insert dont toutes les FK/contraintes
   // ont déjà été validées par les étapes précédentes de la fonction (mission, cycle

@@ -13,7 +13,7 @@
 
 import { createHash } from 'node:crypto'
 import { canonicalStringify } from '@/lib/knowledge/tracked-point-fingerprint'
-import type { PlanningImpactKind, PlanningImpactProposalPayload } from './planning-impact-proposal'
+import type { PlanningImpactKind } from './planning-impact-proposal'
 import type { DraftSimpleTemplate } from '@/lib/planning/impact-preview'
 import type { DraftCycle } from '@/lib/planning/cycle-preview'
 
@@ -29,13 +29,19 @@ export type PlanningTargetSourceKind = 'simple' | 'cycle'
  *  c1_never_applied_check en complément de cette discipline applicative). */
 export type DecisionLifecycleStatus = 'draft' | 'ready' | 'applied' | 'cancelled' | 'superseded'
 
+/** Version du schéma de calcul de l'empreinte d'application (mandat FIX 5) —
+ *  incrémenter à chaque changement de la forme de `ApplicationFingerprintInput`
+ *  ou de la logique de `computeApplicationFingerprint`, pour qu'une décision
+ *  calculée sous un ancien schéma ne soit jamais confondue avec une décision
+ *  identique calculée sous le schéma courant. */
+export const APPLICATION_DECISION_SCHEMA_VERSION = 1
+
 export type NewDecisionPayload = {
   mutationKind: 'new'
   targetMissionId: string
   targetSourceKind: null
   targetTemplateId: null
   targetCycleId: null
-  proposalPayload: PlanningImpactProposalPayload
   /** Contenu humain du rythme SIMPLE virtuel à prévisualiser (mandat §9) —
    *  JAMAIS dérivé automatiquement de `proposalPayload.cadence` : la cadence
    *  contractuelle ({count, period}) ne détermine ni le jour, ni l'heure, ni
@@ -51,7 +57,6 @@ export type ModifyCycleDecisionPayload = {
   targetSourceKind: 'cycle'
   targetTemplateId: null
   targetCycleId: string
-  proposalPayload: PlanningImpactProposalPayload
   /** Grille APRÈS proposée par l'humain (mandat §8) — la grille AVANT n'est
    *  jamais stockée ici : elle se relit en direct depuis `target_cycle_id`
    *  (lib/db/planning-cycles.ts, getCycle) à chaque prévisualisation, ce qui
@@ -73,7 +78,6 @@ export type ModifySimpleBlockedDecisionPayload = {
   targetSourceKind: 'simple'
   targetTemplateId: string
   targetCycleId: null
-  proposalPayload: PlanningImpactProposalPayload
 }
 
 export type SuspendDecisionPayload = {
@@ -82,7 +86,6 @@ export type SuspendDecisionPayload = {
   targetSourceKind: PlanningTargetSourceKind
   targetTemplateId: string | null
   targetCycleId: string | null
-  proposalPayload: PlanningImpactProposalPayload
 }
 
 export type PlanningApplicationDecisionPayload =
@@ -108,7 +111,8 @@ export type ApplicationFingerprintInput = {
  *  Réutilise canonicalStringify, seul mécanisme de hachage déterministe du
  *  dépôt (même discipline que computePlanningImpactProposalFingerprint). */
 export function computeApplicationFingerprint(input: ApplicationFingerprintInput): string {
-  return createHash('sha256').update(canonicalStringify(input)).digest('hex')
+  const versioned = { schemaVersion: APPLICATION_DECISION_SCHEMA_VERSION, ...input }
+  return createHash('sha256').update(canonicalStringify(versioned)).digest('hex')
 }
 
 /** current = la décision porte sur la version la plus récente et non

@@ -139,43 +139,72 @@ export async function resolvePlanningTargetCandidatesForProposal(
   const supabase = createAdminClient()
   const { data: missionRows, error: missionError } = await supabase
     .from('missions')
-    .select('id, name, active, organization_id')
+    .select('id, name, active, organization_id, engagement_ids')
     .eq('site_id', proposal.siteId)
     .is('deleted_at', null)
   if (missionError) return { ok: false, error: 'access_denied' }
-  const missions = (missionRows ?? []) as Array<{ id: string; name: string; active: boolean; organization_id: string }>
-  if (missions.some((m) => m.organization_id !== proposal.organizationId)) {
+  const allMissions = (missionRows ?? []) as Array<{
+    id: string
+    name: string
+    active: boolean
+    organization_id: string
+    engagement_ids: string[] | null
+  }>
+  if (allMissions.some((m) => m.organization_id !== proposal.organizationId)) {
     console.error(`[planning-impact-application-decisions] proposition ${proposalId} mission(s) avec organization_id incohérent`)
     return { ok: false, error: 'access_denied' }
   }
+
+  // NEW : toute Mission du chantier est candidate, même pas encore liée à cet
+  // Engagement — le rattachement se fait en créant le rythme (mandat FIX 1).
+  // MODIFY/SUSPEND : la cible doit être un rythme EXISTANT de CET Engagement —
+  // une Mission qui ne le porte pas encore (engagement_ids) est
+  // structurellement hors du périmètre contractuel de cette proposition.
+  const missions =
+    proposal.impactKind === 'new'
+      ? allMissions
+      : allMissions.filter((m) => (m.engagement_ids ?? []).includes(proposal.engagementId))
   if (missions.length === 0) return { ok: true, candidates: [] }
   const missionIds = missions.map((m) => m.id)
+
+  const effectiveFrom = proposal.proposalPayload.effectiveFrom
 
   const [templatesRes, cyclesRes] = await Promise.all([
     supabase
       .from('intervention_templates')
-      .select('id, mission_id')
+      .select('id, mission_id, starts_on, ends_on')
       .in('mission_id', missionIds)
       .is('cycle_id', null)
       .eq('active', true)
       .is('deleted_at', null),
     supabase
       .from('planning_cycles')
-      .select('id, mission_id')
+      .select('id, mission_id, starts_on, ends_on')
       .in('mission_id', missionIds)
       .eq('status', 'published')
       .is('deleted_at', null),
   ])
   if (templatesRes.error || cyclesRes.error) return { ok: false, error: 'access_denied' }
 
+  // Une source ne compte comme candidate que si elle couvre effectiveFrom —
+  // sans quoi elle ne peut ni être la cible réelle d'un MODIFY/SUSPEND à cette
+  // date contractuelle, ni entrer en conflit avec un NEW qui démarrerait à
+  // cette même date (mandat FIX 1). effectiveFrom absent (null, cas
+  // exceptionnel hors SUSPEND) : aucune vérification de couverture n'est
+  // possible, la source reste candidate (comportement antérieur conservé).
+  const coversEffectiveFrom = (startsOn: string, endsOn: string | null): boolean =>
+    effectiveFrom === null || (startsOn <= effectiveFrom && (endsOn === null || endsOn >= effectiveFrom))
+
   const templatesByMission = new Map<string, string[]>()
-  for (const t of (templatesRes.data ?? []) as Array<{ id: string; mission_id: string }>) {
+  for (const t of (templatesRes.data ?? []) as Array<{ id: string; mission_id: string; starts_on: string; ends_on: string | null }>) {
+    if (!coversEffectiveFrom(t.starts_on, t.ends_on)) continue
     const list = templatesByMission.get(t.mission_id) ?? []
     list.push(t.id)
     templatesByMission.set(t.mission_id, list)
   }
   const cyclesByMission = new Map<string, string[]>()
-  for (const c of (cyclesRes.data ?? []) as Array<{ id: string; mission_id: string }>) {
+  for (const c of (cyclesRes.data ?? []) as Array<{ id: string; mission_id: string; starts_on: string; ends_on: string | null }>) {
+    if (!coversEffectiveFrom(c.starts_on, c.ends_on)) continue
     const list = cyclesByMission.get(c.mission_id) ?? []
     list.push(c.id)
     cyclesByMission.set(c.mission_id, list)
@@ -324,6 +353,12 @@ async function resolveLivePlanningStateFingerprint(
 ): Promise<LiveFingerprintResult> {
   if (decisionPayload.mutationKind === 'new') return { ok: true, fingerprint: null }
   if (decisionPayload.mutationKind === 'modify' && decisionPayload.targetSourceKind === 'simple') {
+    // Bloqué en C1 (simple_modify_blocked_check) — jamais 'ready'/'applied' —
+    // mais la cible doit exister et appartenir à cette Mission dès le draft :
+    // ne jamais laisser `blocked_requires_simple_supersession` court-circuiter
+    // cette vérification (mandat FIX 3, cross-cutting).
+    const template = await getTemplate(decisionPayload.targetTemplateId)
+    if (!template || template.mission_id !== decisionPayload.targetMissionId) return { ok: false }
     return { ok: true, fingerprint: null }
   }
   if (decisionPayload.targetSourceKind === 'cycle' && decisionPayload.targetCycleId) {
@@ -338,6 +373,10 @@ async function resolveLivePlanningStateFingerprint(
       ok: true,
       fingerprint: computeSimpleTemplateStateFingerprint(
         buildCanonicalSimpleTemplateState({
+          id: template.id,
+          missionId: template.mission_id,
+          active: template.active,
+          deletedAt: template.deleted_at,
           frequency: template.frequency,
           slots: template.slots ?? [],
           dayOfWeek: template.day_of_week,
@@ -492,7 +531,42 @@ export async function createDraftDecision(
     return { ok: false, error: 'target_organization_mismatch' }
   }
 
-  const liveFingerprint = await resolveLivePlanningStateFingerprint(decisionPayload, proposal.siteId)
+  // Invariants serveur (mandat FIX 3) — le contrat (proposal) fournit
+  // nature/cadence/bornes/date d'effet ; l'humain ne fournit que les décisions
+  // organisationnelles manquantes (équipe, horaire, jour). Un `decisionPayload`
+  // qui prétend démarrer ailleurs qu'à `proposal.effectiveFrom`, ou dont le
+  // draft porte une autre Mission que `targetMissionId`, n'est jamais persisté
+  // tel quel.
+  let sanitizedPayload: PlanningApplicationDecisionPayload = decisionPayload
+  if (decisionPayload.mutationKind === 'new') {
+    if (decisionPayload.draftSimpleTemplate.missionId !== decisionPayload.targetMissionId) {
+      return { ok: false, error: 'target_mission_mismatch' }
+    }
+    const { effectiveFrom, effectiveTo } = proposal.proposalPayload
+    sanitizedPayload = {
+      ...decisionPayload,
+      draftSimpleTemplate: {
+        ...decisionPayload.draftSimpleTemplate,
+        startsOn: effectiveFrom ?? decisionPayload.draftSimpleTemplate.startsOn,
+        endsOn: effectiveTo,
+      },
+    }
+  } else if (decisionPayload.mutationKind === 'modify' && decisionPayload.targetSourceKind === 'cycle') {
+    if (decisionPayload.draftCycleAfter.missionId !== decisionPayload.targetMissionId) {
+      return { ok: false, error: 'target_mission_mismatch' }
+    }
+    const { effectiveFrom, effectiveTo } = proposal.proposalPayload
+    sanitizedPayload = {
+      ...decisionPayload,
+      draftCycleAfter: {
+        ...decisionPayload.draftCycleAfter,
+        startsOn: effectiveFrom ?? decisionPayload.draftCycleAfter.startsOn,
+        endsOn: effectiveTo,
+      },
+    }
+  }
+
+  const liveFingerprint = await resolveLivePlanningStateFingerprint(sanitizedPayload, proposal.siteId)
   if (!liveFingerprint.ok) return { ok: false, error: 'target_not_found' }
   const planningStateFingerprint = liveFingerprint.fingerprint
 
@@ -500,63 +574,44 @@ export async function createDraftDecision(
     contractEffectId: proposal.contractEffectId,
     planningImpactProposalId: proposal.id,
     proposalVersionAtDecision: proposal.proposalVersion,
-    mutationKind: decisionPayload.mutationKind,
-    targetMissionId: decisionPayload.targetMissionId,
-    targetSourceKind: decisionPayload.targetSourceKind,
-    targetTemplateId: decisionPayload.targetTemplateId,
-    targetCycleId: decisionPayload.targetCycleId,
-    decisionPayload,
+    mutationKind: sanitizedPayload.mutationKind,
+    targetMissionId: sanitizedPayload.targetMissionId,
+    targetSourceKind: sanitizedPayload.targetSourceKind,
+    targetTemplateId: sanitizedPayload.targetTemplateId,
+    targetCycleId: sanitizedPayload.targetCycleId,
+    decisionPayload: sanitizedPayload,
   })
 
-  const { data: existingActive, error: existingError } = await supabase
-    .from('planning_impact_application_decisions')
-    .select('id')
-    .eq('planning_impact_proposal_id', proposal.id)
-    .in('status', ['draft', 'ready'])
-    .order('created_at', { ascending: false })
-  if (existingError) return { ok: false, error: 'write_failed' }
-  const toSupersede = (existingActive ?? []) as Array<{ id: string }>
-  const supersedesDecisionId = toSupersede.length > 0 ? toSupersede[0].id : null
-
-  if (toSupersede.length > 0) {
-    const { error: supersedeError } = await supabase
-      .from('planning_impact_application_decisions')
-      .update({ status: 'superseded', updated_at: new Date().toISOString() })
-      .in(
-        'id',
-        toSupersede.map((d) => d.id),
-      )
-    if (supersedeError) return { ok: false, error: 'write_failed' }
-  }
-
-  const { data: insertedRow, error: insertError } = await supabase
-    .from('planning_impact_application_decisions')
-    .insert({
-      organization_id: proposal.organizationId,
-      site_id: proposal.siteId,
-      engagement_id: proposal.engagementId,
-      contract_effect_id: proposal.contractEffectId,
-      planning_impact_proposal_id: proposal.id,
-      proposal_version_at_decision: proposal.proposalVersion,
-      mutation_kind: decisionPayload.mutationKind,
-      target_mission_id: decisionPayload.targetMissionId,
-      target_source_kind: decisionPayload.targetSourceKind,
-      target_template_id: decisionPayload.targetTemplateId,
-      target_cycle_id: decisionPayload.targetCycleId,
-      decision_payload: decisionPayload,
-      application_fingerprint: applicationFingerprint,
-      planning_state_fingerprint: planningStateFingerprint,
-      status: 'draft',
-      supersedes_decision_id: supersedesDecisionId,
-      created_by: userId,
-    })
-    .select(DECISION_SELECT)
-    .single()
-  if (insertError || !insertedRow) {
-    if (insertError && (insertError as { code?: string }).code === '23505') return { ok: false, error: 'duplicate_fingerprint' }
+  // Atomique (mandat FIX 4, migration 450) — une seule transaction Postgres :
+  // verrou + détection idempotence + supersession + insertion, jamais un
+  // deux-temps SELECT/UPDATE/INSERT séparé côté client (cf. commentaire de la
+  // migration pour le défaut d'atomicité corrigé).
+  const { data: rpcData, error: rpcError } = await supabase.rpc('fn_planning_application_decision_create_draft', {
+    p_organization_id: proposal.organizationId,
+    p_site_id: proposal.siteId,
+    p_engagement_id: proposal.engagementId,
+    p_contract_effect_id: proposal.contractEffectId,
+    p_planning_impact_proposal_id: proposal.id,
+    p_proposal_version_at_decision: proposal.proposalVersion,
+    p_mutation_kind: sanitizedPayload.mutationKind,
+    p_target_mission_id: sanitizedPayload.targetMissionId,
+    p_target_source_kind: sanitizedPayload.targetSourceKind,
+    p_target_template_id: sanitizedPayload.targetTemplateId,
+    p_target_cycle_id: sanitizedPayload.targetCycleId,
+    p_decision_payload: sanitizedPayload,
+    p_application_fingerprint: applicationFingerprint,
+    p_planning_state_fingerprint: planningStateFingerprint,
+    p_created_by: userId,
+  })
+  if (rpcError) {
+    if (rpcError.message?.includes('PLANNING_APPLICATION_DECISION_DUPLICATE_FINGERPRINT')) {
+      return { ok: false, error: 'duplicate_fingerprint' }
+    }
     return { ok: false, error: 'write_failed' }
   }
-  return { ok: true, decision: mapDecisionRow(insertedRow as DecisionDbRow) }
+  const result = rpcData as { idempotent: boolean; decision: DecisionDbRow } | null
+  if (!result?.decision) return { ok: false, error: 'write_failed' }
+  return { ok: true, decision: mapDecisionRow(result.decision) }
 }
 
 // ── Chargement d'une décision avec vérification d'accès ─────────────────────
