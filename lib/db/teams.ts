@@ -192,6 +192,8 @@ export interface TeamDependencies {
   futureInterventions: number
   /** Jours de roulement tenus par cette équipe. Bloquant : voir ci-dessous. */
   rotationSlots: number
+  /** Roulements (planning_cycles) distincts où cette équipe tient un jour. */
+  rotationCycleCount: number
   /** Chantiers dont le roulement s'appuie sur elle (pour pouvoir le DIRE). */
   rotationSiteNames: string[]
 }
@@ -220,18 +222,21 @@ export async function getTeamDependencies(id: string): Promise<TeamDependencies>
 
   type SlotRow = {
     cycle: {
+      id: string
       deleted_at: string | null
       site: { name: string } | { name: string }[] | null
     } | null
   }
 
   const siteNames = new Set<string>()
+  const cycleIds = new Set<string>()
   let rotationSlots = 0
   for (const row of ((slotsRes.data ?? []) as unknown as SlotRow[])) {
     const cycle = row.cycle
     // Un roulement archivé ne tient plus rien.
     if (!cycle || cycle.deleted_at !== null) continue
     rotationSlots += 1
+    cycleIds.add(cycle.id)
     const site = Array.isArray(cycle.site) ? cycle.site[0] : cycle.site
     if (site?.name) siteNames.add(site.name)
   }
@@ -240,6 +245,7 @@ export async function getTeamDependencies(id: string): Promise<TeamDependencies>
     missions: missionsRes.count ?? 0,
     futureInterventions: interventionsRes.count ?? 0,
     rotationSlots,
+    rotationCycleCount: cycleIds.size,
     rotationSiteNames: [...siteNames].sort((a, b) => a.localeCompare(b, 'fr')),
   }
 }

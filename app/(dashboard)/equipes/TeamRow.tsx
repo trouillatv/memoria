@@ -61,7 +61,7 @@ export async function TeamRow({ team, availableUsers }: Props) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href={`/equipes/${team.id}`}
+            href={`/equipes?team=${team.id}`}
             className="hover:opacity-80 transition-opacity"
             title="Ouvrir la fiche équipe"
           >
@@ -132,7 +132,7 @@ export async function TeamRow({ team, availableUsers }: Props) {
 
       <div className="flex shrink-0 items-center gap-1">
         <Link
-          href={`/equipes/${team.id}`}
+          href={`/equipes?team=${team.id}`}
           data-testid={`open-team-profile-${team.id}`}
           title="Ouvrir la fiche équipe"
           className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"

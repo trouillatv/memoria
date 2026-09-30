@@ -21,7 +21,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { createIntervenantAction } from './actions'
+import { createInternalUserIntervenantAction } from './actions'
 import type { OrgOption } from '@/components/ui/org-selector-client'
 
 type Role = 'admin' | 'manager' | 'chef_equipe'
@@ -75,7 +75,7 @@ export function CreateIntervenantDialog({ orgs }: { orgs?: OrgOption[] }) {
   function submit() {
     if (!canSubmit) return
     startTransition(async () => {
-      const r = await createIntervenantAction({
+      const r = await createInternalUserIntervenantAction({
         email: email.trim(),
         full_name: fullName.trim(),
         role,

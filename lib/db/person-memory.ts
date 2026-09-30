@@ -1,0 +1,339 @@
+// ============================================================================
+// lib/db/person-memory.ts — /EQUIPES V2, WOW PERSONNE (Doctrine V4)
+// ============================================================================
+//
+// Mémoire d'une personne bâtie STRICTEMENT sur des preuves confirmées :
+//   - users        → intervention_participants (participations confirmées)
+//   - company_contacts → faits réellement liés (site_actions.assigned_contact_id,
+//     team_field_members)
+//
+// Invariant unique (GO Vincent) : on ne transforme jamais une absence de
+// preuve en présence supposée.
+//   - `interventions.assigned_team_id`      → équipe PRÉVUE, jamais une preuve
+//     de présence physique.
+//   - appartenance ACTUELLE à une équipe    → jamais une preuve de présence
+//     passée.
+// Ces deux éléments ne doivent JAMAIS être utilisés ici pour fabriquer une
+// participation qui n'a pas de ligne confirmée dans intervention_participants.
+//
+// Pas de fusion automatique users ↔ company_contacts par nom/email : deux
+// identités distinctes tant qu'aucune décision humaine explicite ne les relie.
+// `PersonRef` modélise cette dualité sans introduire de table Person unifiée.
+
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export type PersonRef =
+  | { kind: 'user'; id: string }
+  | { kind: 'contact'; id: string }
+
+// ----------------------------------------------------------------------------
+// Types — mémoire "user" (participations confirmées)
+// ----------------------------------------------------------------------------
+
+export interface ConfirmedInterventionMemoryItem {
+  interventionId: string
+  role: 'participant' | 'referent'
+  effectiveDate: string | null
+  status: string
+  siteId: string
+  siteName: string
+  contractName: string | null
+  clientName: string | null
+  teamId: string | null
+  teamName: string | null
+}
+
+export interface UserMemoryOverview {
+  confirmedInterventionsCount: number
+  referentCount: number
+  distinctSiteCount: number
+  distinctTeamCount: number
+  firstConfirmedAt: string | null
+  lastConfirmedAt: string | null
+}
+
+interface RawParticipantRow {
+  role: 'participant' | 'referent'
+  intervention: {
+    id: string
+    scheduled_for: string | null
+    planned_start: string | null
+    status: string
+    assigned_team_id: string | null
+    team: { id: string; name: string } | { id: string; name: string }[] | null
+    mission: {
+      site: {
+        id: string
+        name: string
+        organization_id: string
+        contract: { name: string } | { name: string }[] | null
+        client: { name: string } | { name: string }[] | null
+      } | Array<{
+        id: string
+        name: string
+        organization_id: string
+        contract: { name: string } | { name: string }[] | null
+        client: { name: string } | { name: string }[] | null
+      }> | null
+    } | Array<{
+      site: unknown
+    }> | null
+  } | Array<{
+    id: string
+    scheduled_for: string | null
+    planned_start: string | null
+    status: string
+    assigned_team_id: string | null
+    team: unknown
+    mission: unknown
+  }> | null
+}
+
+function pickOne<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null
+  return Array.isArray(v) ? (v[0] ?? null) : v
+}
+
+function effectiveDate(i: { scheduled_for: string | null; planned_start: string | null }): string | null {
+  return i.scheduled_for ?? i.planned_start
+}
+
+/**
+ * Participations CONFIRMÉES d'un user, triées par date décroissante. Borne
+ * temporelle optionnelle (`sinceIso`) et pagination — jamais un dump complet.
+ * Scope organisationnel obligatoire (`orgIds`) : un manager multi-org ne voit
+ * que les sites de ses organisations.
+ */
+export async function listConfirmedInterventionsForUser(
+  userId: string,
+  orgIds: string[],
+  opts: { sinceIso?: string; limit?: number; offset?: number } = {},
+): Promise<ConfirmedInterventionMemoryItem[]> {
+  if (!orgIds.length) return []
+  const supabase = createAdminClient()
+  const limit = opts.limit ?? 20
+  const offset = opts.offset ?? 0
+
+  const { data, error } = await supabase
+    .from('intervention_participants')
+    .select(
+      `role,
+       intervention:interventions!inner(
+         id, scheduled_for, planned_start, status, assigned_team_id,
+         team:teams(id, name),
+         mission:missions!inner(
+           site:sites!inner(id, name, organization_id, contract:contracts(name), client:clients(name))
+         )
+       )`,
+    )
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  const out: ConfirmedInterventionMemoryItem[] = []
+  for (const r of (data ?? []) as unknown as RawParticipantRow[]) {
+    const intervention = pickOne(r.intervention) as {
+      id: string
+      scheduled_for: string | null
+      planned_start: string | null
+      status: string
+      assigned_team_id: string | null
+      team: unknown
+      mission: unknown
+    } | null
+    if (!intervention) continue
+    const mission = pickOne(intervention.mission as never) as { site?: unknown } | null
+    const site = pickOne(mission?.site as never) as {
+      id?: string
+      name?: string
+      organization_id?: string
+      contract?: unknown
+      client?: unknown
+    } | null
+    if (!site?.id || !site.name || !site.organization_id) continue
+    if (!orgIds.includes(site.organization_id)) continue
+
+    const date = effectiveDate(intervention)
+    if (opts.sinceIso && (!date || date < opts.sinceIso)) continue
+
+    const team = pickOne(intervention.team as never) as { id?: string; name?: string } | null
+    const contract = pickOne(site.contract as never) as { name?: string } | null
+    const client = pickOne(site.client as never) as { name?: string } | null
+
+    out.push({
+      interventionId: intervention.id,
+      role: r.role,
+      effectiveDate: date,
+      status: intervention.status,
+      siteId: site.id,
+      siteName: site.name,
+      contractName: contract?.name ?? null,
+      clientName: client?.name ?? null,
+      teamId: team?.id ?? intervention.assigned_team_id ?? null,
+      teamName: team?.name ?? null,
+    })
+  }
+
+  return out.slice(offset, offset + limit)
+}
+
+/**
+ * Vue d'ensemble agrégée — comptages simples sur des lignes confirmées
+ * uniquement. Ce n'est PAS une fonction de performance/productivité : aucune
+ * comparaison inter-personnes, aucun classement.
+ */
+export async function getUserMemoryOverview(
+  userId: string,
+  orgIds: string[],
+  opts: { sinceIso?: string } = {},
+): Promise<UserMemoryOverview> {
+  const items = await listConfirmedInterventionsForUser(userId, orgIds, {
+    sinceIso: opts.sinceIso,
+    limit: 100000,
+  })
+
+  const sites = new Set(items.map((i) => i.siteId))
+  const teams = new Set(items.filter((i) => i.teamId).map((i) => i.teamId as string))
+  const dates = items.map((i) => i.effectiveDate).filter((d): d is string => !!d).sort()
+
+  return {
+    confirmedInterventionsCount: items.length,
+    referentCount: items.filter((i) => i.role === 'referent').length,
+    distinctSiteCount: sites.size,
+    distinctTeamCount: teams.size,
+    firstConfirmedAt: dates[0] ?? null,
+    lastConfirmedAt: dates.at(-1) ?? null,
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Types — mémoire "contact" (faits réellement liés uniquement)
+// ----------------------------------------------------------------------------
+//
+// company_contacts n'a pas de compte MemorIA et n'apparaît jamais dans
+// intervention_participants (FK vers `users` uniquement). Sa mémoire se limite
+// donc à ce qui est structurellement rattaché : actions assignées et
+// appartenance à une équipe terrain. Étendre le modèle de participation aux
+// contacts nécessiterait une migration dédiée — non fait ici, aucun besoin
+// métier ne l'a justifié pour ce lot (cf. rapport HARD STOP).
+
+export interface ContactAssignedAction {
+  id: string
+  title: string
+  status: string
+  dueDate: string | null
+  siteId: string
+  siteName: string
+}
+
+export interface ContactTeamMembership {
+  teamId: string
+  teamName: string
+  joinedAt: string
+}
+
+export interface ContactMemoryOverview {
+  openActionCount: number
+  doneActionCount: number
+  teamCount: number
+}
+
+const DONE_ACTION_STATUSES = new Set(['done', 'cancelled'])
+
+export async function listAssignedActionsForContact(
+  contactId: string,
+  orgIds: string[],
+): Promise<ContactAssignedAction[]> {
+  if (!orgIds.length) return []
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('site_actions')
+    .select('id, title, status, due_date, site:sites!inner(id, name, organization_id)')
+    .eq('assigned_contact_id', contactId)
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .limit(200)
+  if (error) throw error
+
+  const out: ContactAssignedAction[] = []
+  for (const r of (data ?? []) as unknown as Array<{
+    id: string
+    title: string
+    status: string
+    due_date: string | null
+    site: { id: string; name: string; organization_id: string } | Array<{ id: string; name: string; organization_id: string }> | null
+  }>) {
+    const site = pickOne(r.site)
+    if (!site || !orgIds.includes(site.organization_id)) continue
+    out.push({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      dueDate: r.due_date,
+      siteId: site.id,
+      siteName: site.name,
+    })
+  }
+  return out
+}
+
+export async function listTeamMembershipsForContact(contactId: string): Promise<ContactTeamMembership[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('team_field_members')
+    .select('joined_at, team:teams!inner(id, name, deleted_at)')
+    .eq('contact_id', contactId)
+    .is('left_at', null)
+  if (error) throw error
+
+  const out: ContactTeamMembership[] = []
+  for (const r of (data ?? []) as unknown as Array<{
+    joined_at: string
+    team: { id: string; name: string; deleted_at: string | null } | Array<{ id: string; name: string; deleted_at: string | null }> | null
+  }>) {
+    const team = pickOne(r.team)
+    if (!team || team.deleted_at) continue
+    out.push({ teamId: team.id, teamName: team.name, joinedAt: r.joined_at })
+  }
+  return out
+}
+
+export async function getContactMemoryOverview(
+  contactId: string,
+  orgIds: string[],
+): Promise<ContactMemoryOverview> {
+  const [actions, teams] = await Promise.all([
+    listAssignedActionsForContact(contactId, orgIds),
+    listTeamMembershipsForContact(contactId),
+  ])
+  return {
+    openActionCount: actions.filter((a) => !DONE_ACTION_STATUSES.has(a.status)).length,
+    doneActionCount: actions.filter((a) => DONE_ACTION_STATUSES.has(a.status)).length,
+    teamCount: teams.length,
+  }
+}
+
+// ----------------------------------------------------------------------------
+// Dispatcher PersonRef
+// ----------------------------------------------------------------------------
+
+export interface PersonMemorySummary {
+  ref: PersonRef
+  kind: 'user' | 'contact'
+  userOverview: UserMemoryOverview | null
+  contactOverview: ContactMemoryOverview | null
+}
+
+/** Point d'entrée unique pour les drawers WOW PERSONNE — jamais de fusion, un seul côté rempli selon `kind`. */
+export async function getPersonMemorySummary(
+  ref: PersonRef,
+  orgIds: string[],
+  opts: { sinceIso?: string } = {},
+): Promise<PersonMemorySummary> {
+  if (ref.kind === 'user') {
+    const userOverview = await getUserMemoryOverview(ref.id, orgIds, opts)
+    return { ref, kind: 'user', userOverview, contactOverview: null }
+  }
+  const contactOverview = await getContactMemoryOverview(ref.id, orgIds)
+  return { ref, kind: 'contact', userOverview: null, contactOverview }
+}

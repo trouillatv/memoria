@@ -61,7 +61,14 @@ async function requireManagerOrAdmin(): Promise<{ ok: true; userId: string } | {
   return { ok: true, userId: user.id }
 }
 
-export async function createIntervenantAction(
+/**
+ * Crée un intervenant AVEC compte Auth (users) — chemin "agent interne
+ * applicatif" (admin/manager/chef_equipe, mot de passe temporaire).
+ * Homonyme distinct de `createExternalContactIntervenantAction`
+ * (create-actions.ts), qui crée une personne SANS compte (company_contacts).
+ * Renommé /EQUIPES V2 pour lever l'ambiguïté silencieuse des deux parcours.
+ */
+export async function createInternalUserIntervenantAction(
   input: CreateIntervenantInput,
 ): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const auth = await requireManagerOrAdmin()

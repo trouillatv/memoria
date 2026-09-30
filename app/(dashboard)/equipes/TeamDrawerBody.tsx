@@ -1,0 +1,538 @@
+// /EQUIPES V2 (Batch D) — corps de la fiche équipe, désormais affiché dans le
+// drawer intégré à /equipes (plus de route /equipes/[id] comme expérience
+// principale). Contenu repris tel quel de l'ancienne page [id]/page.tsx,
+// réorganisé en onglets Aperçu / Activité / Membres — aucune donnée nouvelle,
+// aucune métrique ajoutée.
+//
+// Doctrine V2 conservée — la fiche est descriptive, jamais évaluative :
+//   - Compteurs cumulés (sites, contrats, interventions, photos, anomalies)
+//   - Sites favoris = fréquence cumulée, jamais "% complétion"
+//   - Rythme 14j + heatmap 90j = densité visuelle, jamais "trop / pas assez"
+//   - Compagnons = équipes voisines par lien factuel (membre/site partagé),
+//     pas de scoring de proximité
+//   - Spécialités = déclarations manager, jamais inférées
+//
+// Pas de wording évaluatif. Pas de comparaison inter-équipes.
+
+import Link from 'next/link'
+import {
+  Users,
+  Calendar,
+  ImageIcon,
+  AlertTriangle,
+  Building2,
+  Briefcase,
+  Sparkles,
+  ChevronRight,
+} from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { AttentionBadge } from '../intervenants/fiche-ui'
+import { AddFieldPersonDialog } from './[id]/AddFieldPersonDialog'
+import { RemoveFieldMemberButton } from './RemoveFieldMemberButton'
+import { TeamBadge } from '@/components/ui/team-badge'
+import { SpecialtyBadge } from '@/components/ui/team-specialties'
+import { TeamRhythm } from './[id]/TeamRhythm'
+import { TeamHeatmap } from './[id]/TeamHeatmap'
+import { TeamSpecialtiesSection } from './[id]/TeamSpecialtiesSection'
+import { CreateTeamTakesSiteButton } from '@/app/(dashboard)/handovers/CreateTeamTakesSiteButton'
+import type {
+  TeamOverview,
+  TeamFavoriteSite,
+  TeamContractCovered,
+  TeamRhythmDay,
+  TeamHeatmapCell,
+  TeamCompanion,
+  TeamRecentIntervention,
+  TeamRecentPhoto,
+} from '@/lib/db/team-profile'
+import type { TeamMemberWithUser } from '@/lib/db/teams'
+import type { FieldMember } from '@/lib/db/team-field-members'
+import type { TeamActorInsight } from '@/lib/db/team-actor-insight'
+
+function displayName(fullName: string | null, email: string): string {
+  const t = (fullName ?? '').trim()
+  if (t.length > 0) return t
+  return email.split('@')[0] ?? email
+}
+
+function fmtDateShort(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+function fmtPlannedRange(start: string | null, end: string | null): string {
+  if (!start) return ''
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  if (!end) return fmt(start)
+  return `${fmt(start)} – ${fmt(end)}`
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  planned: 'Planifiée',
+  in_progress: 'En cours',
+  completed: 'Terminée',
+  validated: 'Validée',
+  skipped: 'Sautée',
+}
+
+const STATUS_BADGE: Record<string, string> = {
+  planned: 'bg-sky-50 text-sky-800 border-sky-200',
+  in_progress: 'bg-amber-50 text-amber-800 border-amber-200',
+  completed: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  validated: 'bg-emerald-100 text-emerald-900 border-emerald-300 font-medium',
+  skipped: 'bg-muted text-muted-foreground border-border',
+}
+
+export interface TeamDrawerData {
+  overview: TeamOverview
+  ageLabel: string
+  favoriteSites: TeamFavoriteSite[]
+  contractsCovered: TeamContractCovered[]
+  rhythm: TeamRhythmDay[]
+  heatmap: TeamHeatmapCell[]
+  companions: TeamCompanion[]
+  recentInterventions: TeamRecentIntervention[]
+  recentPhotos: TeamRecentPhoto[]
+  members: TeamMemberWithUser[]
+  fieldMembers: FieldMember[]
+  availableSites: Array<{ id: string; name: string; client_name: string | null }>
+  specialtyOptions: Array<{ key: string; label: string }>
+  actorInsight: TeamActorInsight | null
+}
+
+export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
+  const {
+    overview,
+    ageLabel,
+    favoriteSites,
+    contractsCovered,
+    rhythm,
+    heatmap,
+    companions,
+    recentInterventions,
+    recentPhotos,
+    members,
+    fieldMembers,
+    availableSites,
+    specialtyOptions,
+    actorInsight,
+  } = data
+
+  return (
+    <div className="space-y-4">
+      {/* ── Header ────────────────────────────────────────────────────── */}
+      <header className="space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <TeamBadge name={overview.name} color={overview.color} icon={overview.icon} size="md" />
+          <span className="text-xs text-muted-foreground">
+            · {overview.memberCount} personne{overview.memberCount > 1 ? 's' : ''}
+            {overview.referent && (
+              <>
+                {' · Référent : '}
+                <span className="text-foreground">
+                  {displayName(overview.referent.full_name, overview.referent.email)}
+                </span>
+              </>
+            )}
+            {' · Créée il y a '}{ageLabel}
+          </span>
+          {actorInsight && <AttentionBadge level={actorInsight.attention.level} />}
+        </div>
+
+        {actorInsight && actorInsight.attention.reasons.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {actorInsight.attention.reasons.map((r) => (
+              <span key={r.code} className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs text-foreground/80">{r.label}</span>
+            ))}
+          </div>
+        )}
+
+        {/* Pont Planning (/EQUIPES V2, Batch B) — jamais un second moteur de
+            roulement : lien de lecture vers /planning uniquement. */}
+        {overview.rotationUsage.cycleCount > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <Calendar className="h-3.5 w-3.5 text-brand-600" aria-hidden />
+            <span>
+              Utilisée dans {overview.rotationUsage.cycleCount} roulement
+              {overview.rotationUsage.cycleCount > 1 ? 's' : ''}
+              {overview.rotationUsage.siteNames.length > 0
+                ? ` (${overview.rotationUsage.siteNames.join(', ')})`
+                : ''}
+            </span>
+            <Link href="/planning" className="inline-flex items-center gap-0.5 text-brand-700 hover:underline">
+              Voir le Planning
+              <ChevronRight className="h-3 w-3" aria-hidden />
+            </Link>
+          </div>
+        )}
+
+        {overview.specialties.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Sparkles className="h-3.5 w-3.5 text-brand-600" aria-hidden />
+            <span className="text-xs text-muted-foreground mr-1">Spécialités :</span>
+            {overview.specialties.map((s) => (
+              <SpecialtyBadge key={s} k={s} />
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t">
+          <Counter icon={Building2} label="Chantiers couverts" value={overview.counters.sitesCovered} />
+          <Counter icon={Briefcase} label="Contrats touchés" value={overview.counters.contractsCovered} />
+          <Counter icon={Calendar} label="Interventions" value={overview.counters.interventionsDocumented} />
+          <Counter icon={ImageIcon} label="Photos déposées" value={overview.counters.photosDeposited} />
+          <Counter icon={AlertTriangle} label="Anomalies traitées" value={overview.counters.anomaliesHandled} />
+        </div>
+      </header>
+
+      <Tabs defaultValue="apercu">
+        <TabsList className="w-full">
+          <TabsTrigger value="apercu">Aperçu</TabsTrigger>
+          <TabsTrigger value="activite">Activité</TabsTrigger>
+          <TabsTrigger value="membres">Membres</TabsTrigger>
+        </TabsList>
+
+        {/* ── Aperçu ──────────────────────────────────────────────────── */}
+        <TabsContent value="apercu" className="space-y-4 pt-3">
+          <div className="flex flex-wrap gap-2">
+            <CreateTeamTakesSiteButton
+              teamId={overview.id}
+              teamName={overview.name}
+              availableSites={availableSites}
+            />
+          </div>
+
+          {/* Sujets portés par les membres — l'équipe n'est JAMAIS responsable
+              d'une action : on montre les actions portées par ses MEMBRES. */}
+          {actorInsight && (actorInsight.memberActions.length > 0 || actorInsight.orphanActions.length > 0) && (
+            <section className="rounded-lg border bg-card p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold">Sujets portés par les membres</h3>
+                <p className="text-xs text-muted-foreground">
+                  Actions portées par les membres de cette équipe sur les chantiers où elle est mobilisée.
+                </p>
+              </div>
+              {actorInsight.memberActions.length === 0 ? (
+                <p className="text-xs italic text-muted-foreground">Aucune action ouverte sur les chantiers actuels de l’équipe.</p>
+              ) : (
+                <ul className="divide-y divide-border/50">
+                  {actorInsight.memberActions.map((a) => (
+                    <li key={a.id}>
+                      <Link href={a.href} className="group flex items-center gap-2.5 py-2 transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50 group-hover:text-foreground" aria-hidden />
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm">{a.title}</div>
+                          <div className="truncate text-xs text-muted-foreground">{a.contactName} · {a.siteName}</div>
+                        </div>
+                        {a.overdue && <span className="shrink-0 text-xs font-medium text-red-700 dark:text-red-400">En retard</span>}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {actorInsight.orphanActions.length > 0 && (
+                <div className="pt-1">
+                  <p className="mb-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                    Portées sur un chantier dont l’équipe est sortie
+                  </p>
+                  <ul className="divide-y divide-border/50">
+                    {actorInsight.orphanActions.map((a) => (
+                      <li key={a.id}>
+                        <Link href={a.href} className="group flex items-center gap-2.5 py-2 transition-colors hover:bg-muted/40 -mx-2 px-2 rounded">
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50 group-hover:text-foreground" aria-hidden />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm">{a.title}</div>
+                            <div className="truncate text-xs text-muted-foreground">{a.contactName} · {a.siteName}</div>
+                          </div>
+                          {a.overdue && <span className="shrink-0 text-xs font-medium text-red-700 dark:text-red-400">En retard</span>}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          )}
+
+          <TeamSpecialtiesSection teamId={overview.id} initial={overview.specialties} options={specialtyOptions} />
+
+          <section className="rounded-lg border bg-card p-4 space-y-3">
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <Users className="h-4 w-4 text-brand-600" />
+              Équipes voisines
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
+              Équipes qui partagent au moins un membre ou un site avec celle-ci.
+              Utile pour les passages de témoin et le back-up.
+            </p>
+            {companions.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Pas d&apos;équipe voisine pour l&apos;instant.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {companions.slice(0, 6).map((c) => (
+                  <li key={c.team_id}>
+                    <Link
+                      href={`/equipes?team=${c.team_id}`}
+                      className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors"
+                    >
+                      <TeamBadge name={c.team_name} color={c.team_color} icon={c.team_icon} size="sm" />
+                      <span className="text-[11px] text-muted-foreground tabular-nums">
+                        {c.sharedActiveMembers > 0 && <>{c.sharedActiveMembers} membre{c.sharedActiveMembers > 1 ? 's' : ''}</>}
+                        {c.sharedActiveMembers > 0 && c.sharedSites > 0 && ' · '}
+                        {c.sharedSites > 0 && <>{c.sharedSites} site{c.sharedSites > 1 ? 's' : ''}</>}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </TabsContent>
+
+        {/* ── Activité ────────────────────────────────────────────────── */}
+        <TabsContent value="activite" className="space-y-4 pt-3">
+          <div className="grid grid-cols-1 gap-4">
+            <section className="rounded-lg border bg-card p-4 space-y-2">
+              <h3 className="text-sm font-medium">Rythme — 14 derniers jours</h3>
+              <p className="text-[11px] text-muted-foreground">
+                Densité quotidienne d&apos;interventions de l&apos;équipe. Lecture descriptive.
+              </p>
+              <TeamRhythm days={rhythm} />
+            </section>
+            <section className="rounded-lg border bg-card p-4 space-y-2">
+              <h3 className="text-sm font-medium">Densité — 90 derniers jours</h3>
+              <p className="text-[11px] text-muted-foreground">
+                Une case = un jour. Plus la teinte est dense, plus il y a eu d&apos;interventions ce jour-là.
+              </p>
+              <TeamHeatmap cells={heatmap} />
+            </section>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            <section className="rounded-lg border bg-card p-4 space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-brand-600" />
+                Sites favoris
+              </h3>
+              {favoriteSites.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">Aucun chantier couvert pour l&apos;instant.</p>
+              ) : (
+                <ul className="divide-y -my-2">
+                  {favoriteSites.map((s) => (
+                    <li key={s.site_id} className="py-2">
+                      <Link href={`/sites/${s.site_id}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{s.site_name}</p>
+                          {s.contract_name && <p className="text-[11px] text-muted-foreground truncate">{s.contract_name}</p>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs tabular-nums">{s.interventionCount} intervention{s.interventionCount > 1 ? 's' : ''}</p>
+                          <p className="text-[11px] text-muted-foreground">Dern. {fmtDateShort(s.lastInterventionDate)}</p>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section className="rounded-lg border bg-card p-4 space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Briefcase className="h-4 w-4 text-brand-600" />
+                Contrats touchés
+              </h3>
+              {contractsCovered.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">Aucun contrat encore.</p>
+              ) : (
+                <ul className="divide-y -my-2">
+                  {contractsCovered.slice(0, 8).map((c) => (
+                    <li key={c.contract_id} className="py-2">
+                      <Link href={`/contracts/${c.contract_id}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">{c.contract_name}</p>
+                          {c.client_name && <p className="text-[11px] text-muted-foreground truncate">{c.client_name}</p>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs tabular-nums">{c.interventionCount}</p>
+                          <p className="text-[11px] text-muted-foreground">Dern. {fmtDateShort(c.lastInterventionDate)}</p>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+
+          {recentPhotos.length > 0 && (
+            <section className="rounded-lg border bg-card p-4 space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-brand-600" />
+                Photos récentes
+              </h3>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {recentPhotos.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={p.siteId ? `/sites/${p.siteId}` : '#'}
+                    className="aspect-square rounded-md overflow-hidden border bg-muted relative group"
+                    title={p.caption ?? p.siteName ?? ''}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.signedUrl}
+                      alt={p.caption ?? p.siteName ?? 'Photo intervention'}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                    {/* Auteur RÉEL uniquement — jamais déduit (référent, membre
+                        présumé…). "Auteur non renseigné" si taken_by est vide. */}
+                    <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
+                      {p.authorName ?? 'Auteur non renseigné'}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-lg border bg-card p-4 space-y-3">
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-brand-600" />
+              Activité récente
+            </h3>
+            {recentInterventions.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Aucune intervention récente.</p>
+            ) : (
+              <ul className="divide-y -my-2">
+                {recentInterventions.map((i) => {
+                  const planned = fmtPlannedRange(i.planned_start, i.planned_end)
+                  return (
+                    <li key={i.intervention_id} className="py-2">
+                      <Link href={`/sites/${i.site_id}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm">
+                            <span className="font-medium">{i.mission_name}</span>
+                            <span className="text-muted-foreground"> · {i.site_name}</span>
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {fmtDateShort(i.scheduled_for)}
+                            {planned && ` · ${planned}`}
+                          </p>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md border ${STATUS_BADGE[i.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
+                          {STATUS_LABEL[i.status] ?? i.status}
+                        </span>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+        </TabsContent>
+
+        {/* ── Membres ─────────────────────────────────────────────────── */}
+        <TabsContent value="membres" className="space-y-3 pt-3">
+          <section className="rounded-lg border bg-card p-4 space-y-3">
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <Users className="h-4 w-4 text-brand-600" />
+              Composition actuelle
+            </h3>
+            <p className="text-[11px] text-muted-foreground">
+              Membres présents aujourd&apos;hui dans l&apos;équipe. Pour ajouter/retirer un membre
+              avec compte ou changer le référent, utilisez « Éditer » depuis la liste des équipes.
+            </p>
+            {members.length === 0 && fieldMembers.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Aucun membre pour l&apos;instant.</p>
+            ) : (
+              <>
+                {members.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Avec accès à l&apos;application</p>
+                    <ul className="space-y-1 text-sm">
+                      {members.map((m) => {
+                        const name = displayName(m.user.full_name, m.user.email)
+                        const isRef = overview.referent?.id === m.user.id
+                        return (
+                          <li key={m.user.id} className="flex items-center gap-2">
+                            <Link
+                              href={`/equipes?person=${m.user.id}&personKind=user`}
+                              className="hover:text-brand-700 hover:underline transition-colors"
+                            >
+                              {name}
+                            </Link>
+                            {isRef && (
+                              <span className="text-[9px] uppercase tracking-wider font-medium px-1 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-600/10">
+                                Réf.
+                              </span>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                )}
+                {fieldMembers.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Membres terrain (sans compte)</p>
+                    <ul className="space-y-1 text-sm">
+                      {fieldMembers.map((p) => (
+                        <li key={p.membershipId} className="flex items-center gap-2">
+                          <span>
+                            {p.fullName}
+                            {p.job && <span className="text-muted-foreground"> — {p.job}</span>}
+                            {p.companyName && <span className="text-muted-foreground"> ({p.companyName})</span>}
+                          </span>
+                          <span className="text-[9px] uppercase tracking-wider font-medium px-1 py-0.5 rounded bg-amber-50 text-amber-700 dark:bg-amber-600/10 dark:text-amber-300">
+                            Terrain
+                          </span>
+                          <RemoveFieldMemberButton
+                            teamId={overview.id}
+                            membershipId={p.membershipId}
+                            name={p.fullName}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </>
+            )}
+            <div className="pt-1">
+              <AddFieldPersonDialog teamId={overview.id} teamName={overview.name} />
+            </div>
+          </section>
+        </TabsContent>
+      </Tabs>
+
+      <p className="text-[11px] text-muted-foreground italic text-center py-2">
+        Toutes les données affichées ici sont descriptives. Aucune comparaison
+        inter-équipes, aucun classement, aucun score. L&apos;équipe est un conteneur
+        logistique, jamais une unité d&apos;évaluation.
+      </p>
+    </div>
+  )
+}
+
+function Counter({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  value: number
+}) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
+        <Icon className="h-3 w-3" />
+        {label}
+      </p>
+      <p className="text-lg font-semibold tabular-nums">{value}</p>
+    </div>
+  )
+}

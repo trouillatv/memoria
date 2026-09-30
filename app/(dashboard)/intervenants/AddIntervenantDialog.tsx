@@ -21,7 +21,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import type { FieldPersonSearchResult } from '@/lib/db/team-field-members'
 import { searchOrgFieldPersonsAction } from '../equipes/actions'
-import { createIntervenantAction } from './create-actions'
+import { createExternalContactIntervenantAction } from './create-actions'
 
 // Rôle / fonction DURABLE de la personne (company_contacts.function), réutilisé
 // partout ensuite (casting, mémoire, CR, préparation de visite). Suggestions
@@ -78,7 +78,7 @@ export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; nam
   function create() {
     if (fullName.trim().length < 1) { toast.error('Le nom est requis'); return }
     startTransition(async () => {
-      const r = await createIntervenantAction({
+      const r = await createExternalContactIntervenantAction({
         fullName: fullName.trim(),
         job: job.trim() || undefined,
         companyName: companyName.trim() || undefined,

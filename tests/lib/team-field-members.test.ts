@@ -18,6 +18,8 @@ let contactLookup: { id: string; organization_id: string; deleted_at: string | n
   { id: 'c-existing', organization_id: 'org-demo', deleted_at: null }
 let searchRows: Array<Record<string, unknown>> = []
 let edgeInsertError: { message: string } | null = null
+let updateMembershipRow: { id: string } | null = { id: 'fm-1' }
+let updateError: { message: string } | null = null
 
 vi.mock('@/lib/auth/memberships', () => ({
   requireOrganizationMembership: async () => membership,
@@ -30,6 +32,19 @@ vi.mock('@/lib/db/companies', () => ({
 
 const inserts: Array<{ table: string; payload: Record<string, unknown> }> = []
 const deletes: Array<{ table: string; id: string }> = []
+const updates: Array<{ table: string; payload: Record<string, unknown> }> = []
+let contactInsertCounter = 0
+
+function makeUpdate(table: string, payload: Record<string, unknown>) {
+  updates.push({ table, payload })
+  const b: Record<string, unknown> = {}
+  const self = () => b
+  for (const m of ['eq', 'in', 'is', 'neq']) b[m] = self
+  b.select = self
+  b.maybeSingle = async () => ({ data: updateError ? null : updateMembershipRow, error: updateError })
+  b.single = async () => ({ data: updateError ? null : updateMembershipRow, error: updateError })
+  return b
+}
 
 // Query-builder chainable minimal : chaque filtre renvoie le builder ; il est
 // « thenable » (pour les SELECT de liste) ET porte maybeSingle/single.
@@ -57,18 +72,26 @@ vi.mock('@/lib/supabase/admin', () => ({
       insert: (payload: Record<string, unknown>) => {
         inserts.push({ table, payload })
         if (table === 'company_contacts') {
-          return { select: () => ({ single: async () => ({ data: { id: 'contact-1' }, error: null }) }) }
+          contactInsertCounter += 1
+          const id = contactInsertCounter === 1 ? 'contact-1' : `contact-${contactInsertCounter}`
+          return { select: () => ({ single: async () => ({ data: { id }, error: null }) }) }
         }
         return Promise.resolve({ error: edgeInsertError })
       },
       delete: () => ({
         eq: async (_col: string, id: string) => { deletes.push({ table, id }); return { error: null } },
       }),
+      update: (payload: Record<string, unknown>) => makeUpdate(table, payload),
     }),
   }),
 }))
 
-import { createFieldPersonInTeam, attachContactToTeam, createOrgFieldPerson } from '@/lib/db/team-field-members'
+import {
+  createFieldPersonInTeam,
+  attachContactToTeam,
+  createOrgFieldPerson,
+  removeFieldMemberFromTeam,
+} from '@/lib/db/team-field-members'
 
 beforeEach(() => {
   teamRow = { organization_id: 'org-demo' }
@@ -76,8 +99,12 @@ beforeEach(() => {
   contactLookup = { id: 'c-existing', organization_id: 'org-demo', deleted_at: null }
   searchRows = []
   edgeInsertError = null
+  updateMembershipRow = { id: 'fm-1' }
+  updateError = null
   inserts.length = 0
   deletes.length = 0
+  updates.length = 0
+  contactInsertCounter = 0
   findOrCreateCompanyByName.mockClear()
 })
 
@@ -147,6 +174,21 @@ describe('createFieldPersonInTeam', () => {
     expect(res.ok).toBe(false)
     expect(inserts).toHaveLength(0)
   })
+
+  // /EQUIPES V2 — invariant Vincent « no-auto-merge-same-name ». Doctrine
+  // (en-tête du fichier source) : pas d'unicité sur le nom, deux « Électricien »
+  // peuvent être deux inconnus différents ; la fusion est un geste HUMAIN
+  // explicite (Lot Intervenants), jamais une déduction automatique par nom.
+  it('deux créations avec le MÊME nom produisent deux contacts DISTINCTS — jamais une fusion automatique', async () => {
+    const res1 = await createFieldPersonInTeam({ teamId: 't-1', fullName: 'Jean Dupont', job: 'Électricien', createdBy: 'u-1' })
+    const res2 = await createFieldPersonInTeam({ teamId: 't-1', fullName: 'Jean Dupont', job: 'Électricien', createdBy: 'u-1' })
+    expect(res1.ok).toBe(true)
+    expect(res2.ok).toBe(true)
+    if (res1.ok && res2.ok) expect(res1.contactId).not.toBe(res2.contactId)
+    // Deux INSERT company_contacts — aucune recherche/déduplication par nom
+    // n'a lieu avant l'écriture (pas de select/ilike sur full_name).
+    expect(inserts.filter((i) => i.table === 'company_contacts')).toHaveLength(2)
+  })
 })
 
 describe('createOrgFieldPerson — création transversale (équipe facultative)', () => {
@@ -208,6 +250,40 @@ describe('attachContactToTeam — rattacher un existant', () => {
   it('refuse une personne archivée', async () => {
     contactLookup = { id: 'c-existing', organization_id: 'org-demo', deleted_at: '2026-07-01T00:00:00Z' }
     const res = await attachContactToTeam({ teamId: 't-1', contactId: 'c-existing', createdBy: 'u-1' })
+    expect(res.ok).toBe(false)
+  })
+})
+
+// /EQUIPES V2 (Batch A) — retrait d'une personne terrain : left_at, jamais une
+// suppression. C'était un gap réel (schéma prêt depuis mig 219, aucun chemin
+// d'écriture avant ce lot) — cf. tests requis Vincent « no-deleted-history-on-remove ».
+describe('removeFieldMemberFromTeam — quitter sans réécrire l’historique', () => {
+  it('fail-closed si l’équipe est introuvable/sans org', async () => {
+    teamRow = null
+    const res = await removeFieldMemberFromTeam({ teamId: 't-1', membershipId: 'fm-1' })
+    expect(res.ok).toBe(false)
+    expect(updates).toHaveLength(0)
+  })
+
+  it('refuse si l’appelant n’est pas membre de l’organisation de l’équipe', async () => {
+    membership = { ok: false, error: 'Accès organisation refusé' }
+    const res = await removeFieldMemberFromTeam({ teamId: 't-1', membershipId: 'fm-1' })
+    expect(res.ok).toBe(false)
+    expect(updates).toHaveLength(0)
+  })
+
+  it('fait quitter via left_at — AUCUNE suppression, la ligne reste', async () => {
+    const res = await removeFieldMemberFromTeam({ teamId: 't-1', membershipId: 'fm-1' })
+    expect(res).toEqual({ ok: true })
+    const upd = updates.find((u) => u.table === 'team_field_members')!
+    expect(upd).toBeTruthy()
+    expect(typeof upd.payload.left_at).toBe('string')
+    expect(deletes.find((d) => d.table === 'team_field_members')).toBeUndefined()
+  })
+
+  it('refuse de retirer une personne déjà partie — idempotence, pas de double left_at', async () => {
+    updateMembershipRow = null // .is('left_at', null) ne trouve plus la ligne
+    const res = await removeFieldMemberFromTeam({ teamId: 't-1', membershipId: 'fm-1' })
     expect(res.ok).toBe(false)
   })
 })

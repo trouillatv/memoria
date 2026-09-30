@@ -1,4 +1,4 @@
-// Doctrine V3 — Test enforcement (Slice 10.1)
+// Doctrine V3 — Test enforcement (Slice 10.1) → Doctrine V4 (/EQUIPES V2)
 //
 // Phrase guide :
 //   « Connaître les humains dans un événement est autorisé. Calculer les humains
@@ -10,6 +10,16 @@
 // que ton build vient de planter : le symbole interdit que tu as ajouté
 // ressemble à une dérive RH/surveillance. Soit tu renommes (le mot est
 // secondaire), soit tu reconsidères la feature (le concept est primaire).
+//
+// Doctrine V4 (GO Vincent, /EQUIPES V2 — WOW PERSONNE) : les patterns
+// "reverse lookup" (*ByUser/*ByAgent) sont désormais AUTORISÉS, mais
+// uniquement dans les fichiers listés dans ALLOWED_REVERSE_LOOKUP_FILES
+// ci-dessous, et uniquement pour construire une mémoire Personne à partir de
+// participations CONFIRMÉES (jamais une déduction depuis une appartenance
+// actuelle ou une affectation prévue). Tous les autres patterns (rank*,
+// *Stats, PerformanceBy*, ProductivityBy*, *Availability, hoursWorked, etc.)
+// restent interdits PARTOUT, y compris dans ces fichiers — la levée ne
+// concerne que le lookup, jamais le calcul humain.
 //
 // Référence : docs/superpowers/doctrines/planning-doctrine.md § V3
 
@@ -23,14 +33,16 @@ const REPO_ROOT = join(__dirname, '..', '..')
 // On match en regex pour attraper les variations (`getInterventionsByUser`,
 // `listInterventionsByUserId`, `interventionsByAgent`, etc.). Volontairement
 // large : il vaut mieux un faux positif renommé que la dérive autorisée.
-const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+const FORBIDDEN_PATTERNS: Array<{ pattern: RegExp; reason: string; reverseLookupOnly?: boolean }> = [
   {
     pattern: /\b(get|list|fetch|count|select)\w*ByUser(Id)?\b/,
     reason: 'Reverse lookup user → events interdit (asymétrie V3). Ré-écrire en partant de l\'événement.',
+    reverseLookupOnly: true,
   },
   {
     pattern: /\b(get|list|fetch|count|select)\w*ByAgent(Id)?\b/,
     reason: 'Reverse lookup agent → events interdit (asymétrie V3).',
+    reverseLookupOnly: true,
   },
   {
     pattern: /\bgetActivity(By)?(User|Agent)\b/,
@@ -125,6 +137,15 @@ const EXCLUDE_FILES = new Set([
   'tests/doctrine/forbidden-symbols.test.ts',
 ])
 
+// Doctrine V4 — fichiers où le reverse lookup *ByUser/*ByAgent est autorisé
+// (mémoire Personne bâtie sur des participations confirmées uniquement).
+// Ne s'applique qu'aux patterns marqués `reverseLookupOnly` — tout le reste
+// (rank*, *Stats, Performance/ProductivityBy*, Availability, hoursWorked…)
+// reste interdit même dans ces fichiers.
+const ALLOWED_REVERSE_LOOKUP_FILES = new Set([
+  'lib/db/person-memory.ts',
+])
+
 interface Violation {
   file: string
   line: number
@@ -182,7 +203,8 @@ function scanFiles(): Violation[] {
       if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) {
         continue
       }
-      for (const { pattern, reason } of FORBIDDEN_PATTERNS) {
+      for (const { pattern, reason, reverseLookupOnly } of FORBIDDEN_PATTERNS) {
+        if (reverseLookupOnly && ALLOWED_REVERSE_LOOKUP_FILES.has(rel)) continue
         const m = pattern.exec(line)
         if (m) {
           violations.push({

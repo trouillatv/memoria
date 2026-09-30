@@ -31,6 +31,7 @@ import {
 import {
   createFieldPersonInTeam,
   attachContactToTeam,
+  removeFieldMemberFromTeam,
   searchOrgFieldPersons,
   type FieldPersonSearchResult,
 } from '@/lib/db/team-field-members'
@@ -173,6 +174,11 @@ const attachFieldPersonSchema = z.object({
 
 const searchFieldPersonSchema = z.object({
   query: z.string().trim().min(2, 'Au moins 2 caractères').max(80),
+})
+
+const removeFieldMemberSchema = z.object({
+  teamId: z.string().uuid(),
+  membershipId: z.string().uuid(),
 })
 
 // ----------------------------------------------------------------------------
@@ -442,6 +448,44 @@ export async function attachFieldPersonToTeamAction(input: {
   revalidatePath('/equipes')
   revalidatePath('/semaine')
   return { ok: true, contactId: res.contactId }
+}
+
+/**
+ * Fait quitter une personne TERRAIN de l'équipe (left_at, jamais une
+ * suppression du contact) — symétrique de addFieldPersonToTeamAction. Même
+ * garde d'accès : admin/manager sur toute l'org, chef_equipe sur SES équipes.
+ */
+export async function removeFieldPersonFromTeamAction(input: {
+  teamId: string
+  membershipId: string
+}): Promise<{ ok: boolean; error?: string }> {
+  const parsed = removeFieldMemberSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Champs invalides' }
+  }
+  const auth = await requireTeamFieldAccess(parsed.data.teamId)
+  if ('error' in auth) return { ok: false, error: auth.error }
+
+  const res = await removeFieldMemberFromTeam({
+    teamId: parsed.data.teamId,
+    membershipId: parsed.data.membershipId,
+  })
+  if (!res.ok) return { ok: false, error: res.error }
+
+  await logAuditEvent({
+    userId: auth.userId,
+    entityType: 'site',
+    entityId: parsed.data.teamId,
+    action: 'updated',
+    metadata: {
+      kind: 'team_field_person_removed',
+      team_id: parsed.data.teamId,
+      membership_id: parsed.data.membershipId,
+    },
+  })
+  revalidatePath('/equipes')
+  revalidatePath('/semaine')
+  return { ok: true }
 }
 
 /**

@@ -25,6 +25,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
+import { getTeamDependencies } from '@/lib/db/teams'
 import type { DbTeam } from '@/types/db'
 
 // ----------------------------------------------------------------------------
@@ -47,6 +48,15 @@ export interface TeamOverview {
   referent: { id: string; full_name: string | null; email: string } | null
   /** Effectif courant (left_at IS NULL). Descriptif. */
   memberCount: number
+  /**
+   * /EQUIPES V2 (Batch B) — pont vers le Planning, jamais un second moteur de
+   * roulement. Lit `planning_cycle_slots.team_id` via `getTeamDependencies`
+   * (lib/db/teams.ts), sans dupliquer la requête.
+   */
+  rotationUsage: {
+    cycleCount: number
+    siteNames: string[]
+  }
   /** Compteurs descriptifs uniquement. */
   counters: {
     sitesCovered: number
@@ -120,6 +130,10 @@ export interface TeamRecentPhoto {
   interventionId: string
   siteId: string | null
   siteName: string | null
+  /** Auteur RÉEL (intervention_photos.taken_by) — `null` si non renseigné en
+   * base. Ne jamais déduire un auteur (ex. référent d'équipe, membre présumé) :
+   * afficher "Auteur non renseigné" plutôt qu'une attribution inventée. */
+  authorName: string | null
 }
 
 // ----------------------------------------------------------------------------
@@ -242,6 +256,10 @@ export async function getTeamOverview(teamId: string): Promise<TeamOverview | nu
     .eq('team_id', teamId)
     .is('left_at', null)
 
+  // Utilisation Planning — pont de lecture seule, jamais une mutation depuis
+  // /equipes (cf. lib/db/teams.ts::getTeamDependencies, requête déjà là).
+  const deps = await getTeamDependencies(teamId)
+
   // Référent
   let referent: TeamOverview['referent'] = null
   if (team.referent_user_id) {
@@ -307,6 +325,10 @@ export async function getTeamOverview(teamId: string): Promise<TeamOverview | nu
     ageDays,
     referent,
     memberCount: memberCount ?? 0,
+    rotationUsage: {
+      cycleCount: deps.rotationCycleCount,
+      siteNames: deps.rotationSiteNames,
+    },
     counters: {
       sitesCovered: sites.size,
       contractsCovered: contracts.size,
@@ -600,7 +622,7 @@ export async function listTeamRecentPhotos(
 
   const { data: photos, error } = await admin
     .from('intervention_photos')
-    .select('id, caption, taken_at, intervention_id, storage_path')
+    .select('id, caption, taken_at, intervention_id, storage_path, taken_by')
     .in('intervention_id', interventionIds)
     .order('taken_at', { ascending: false })
     .limit(limit)
@@ -618,11 +640,26 @@ export async function listTeamRecentPhotos(
     taken_at: string
     intervention_id: string
     storage_path: string
+    taken_by: string | null
   }
 
   const photoRows = (photos ?? []) as PhotoRow[]
   // Batch des URLs signées (thumbnails 400x400) — un seul aller-retour
   const urlByPath = await getSignedPhotoUrlsThumb(photoRows.map((p) => p.storage_path))
+
+  // Auteur RÉEL uniquement (taken_by) — un seul aller-retour, jamais déduit.
+  const authorIds = [...new Set(photoRows.map((p) => p.taken_by).filter((v): v is string => !!v))]
+  const authorNameById = new Map<string, string>()
+  if (authorIds.length > 0) {
+    const { data: authors } = await admin
+      .from('users')
+      .select('id, full_name, email')
+      .in('id', authorIds)
+    for (const a of (authors ?? []) as Array<{ id: string; full_name: string | null; email: string }>) {
+      const name = (a.full_name ?? '').trim() || a.email.split('@')[0] || a.email
+      authorNameById.set(a.id, name)
+    }
+  }
 
   const out: TeamRecentPhoto[] = []
   for (const p of photoRows) {
@@ -637,6 +674,7 @@ export async function listTeamRecentPhotos(
       interventionId: p.intervention_id,
       siteId: site?.id ?? null,
       siteName: site?.name ?? null,
+      authorName: p.taken_by ? (authorNameById.get(p.taken_by) ?? null) : null,
     })
   }
   return out

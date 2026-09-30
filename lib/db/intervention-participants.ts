@@ -1,24 +1,39 @@
 // ============================================================================
-// lib/db/intervention-participants.ts — Phase 10, Slice 10.2
+// lib/db/intervention-participants.ts — Phase 10, Slice 10.2 → Doctrine V4
 // ============================================================================
 //
-// Helpers DB pour `intervention_participants`. Interface STRICTEMENT BORNÉE.
+// Helpers DB pour `intervention_participants`.
 //
-// Doctrine V3 — cf. docs/superpowers/doctrines/planning-doctrine.md
+// Doctrine V4 — GO Vincent (/EQUIPES V2, WOW PERSONNE) : la doctrine V3
+// ci-dessous interdisait TOUT lookup par user_id ("reverse lookup"), y compris
+// l'absence volontaire d'index sur user_id (cf. migration 024, commentaire
+// « marqueur doctrinal »). Cette interdiction est LEVÉE explicitement, mais
+// UNIQUEMENT pour construire la mémoire d'une personne à partir de ses
+// participations CONFIRMÉES (cf. lib/db/person-memory.ts, migration 451 qui
+// ajoute l'index). Elle ne rouvre PAS la porte au classement, à la performance
+// ou à la disponibilité — ces usages restent bannis (cf.
+// tests/doctrine/forbidden-symbols.test.ts : rank*/*Stats/PerformanceBy*/
+// ProductivityBy*/*Availability/hoursWorked restent interdits partout, y
+// compris dans lib/db/person-memory.ts).
 //
-//   ✅ Lecture par intervention (contexte d'événement connu)
-//   ❌ Lecture par user (reverse lookup — refusé)
-//   ❌ Comptage/aggrégation user-level (refusé)
-//   ❌ Toute fonction *ByUser, *ByAgent, rank*, *Stats (refusé)
+// Nouvel invariant, qui remplace la doctrine V3 pour ce périmètre : on ne
+// transforme jamais une absence de preuve en présence supposée. Une ligne
+// confirmée ici EST la preuve ; l'appartenance actuelle à une équipe
+// (team_members/team_field_members) ou `interventions.assigned_team_id` NE
+// SONT PAS des preuves de présence passée et ne doivent jamais s'y substituer.
 //
-// La fonction `listInterventionsVisibleToUser` dans lib/db/interventions.ts est
-// la SEULE query autorisée qui part d'un user_id, et elle est :
-//   - bornée temporellement (J-1 → J+7)
-//   - utilisée uniquement par la vue mobile opérationnelle /m
-//   - PAS exploitable pour des stats ou de l'historique
+// Doctrine V3 originelle (historique, partiellement levée ci-dessus) — cf.
+// docs/superpowers/doctrines/planning-doctrine.md § V3 :
 //
-// Si tu envisages d'ajouter ici une fonction qui ressemble à un reverse lookup,
-// lis docs/superpowers/doctrines/refusals-log.md et la doctrine V3 d'abord.
+//   ✅ Lecture par intervention (contexte d'événement connu) — inchangé
+//   ⚠️ Lecture par user — AUTORISÉE depuis Doctrine V4, réservée à la mémoire
+//      Personne confirmée (lib/db/person-memory.ts uniquement)
+//   ❌ Classement, performance, disponibilité, time-tracking — TOUJOURS interdits
+//
+// La fonction `listInterventionsVisibleToUser` dans lib/db/interventions.ts
+// reste la query "à venir" (J-1 → J+7) côté /m. Les fonctions de mémoire
+// Personne (lib/db/person-memory.ts) sont, elles, rétrospectives et bornées
+// aux participations confirmées — deux usages distincts, jamais fusionnés.
 
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -50,8 +65,9 @@ export interface ParticipantWithUser extends InterventionParticipant {
 
 /**
  * Liste les participants d'une intervention donnée, avec le profil utilisateur
- * (full_name, email) joint pour affichage. C'est la SEULE query de lecture
- * autorisée par la doctrine V3 — lookup par user_id interdit.
+ * (full_name, email) joint pour affichage. Lecture par intervention (contexte
+ * d'événement connu) — pour la lecture par user (mémoire Personne), voir
+ * lib/db/person-memory.ts (Doctrine V4).
  */
 export async function listParticipantsForIntervention(
   interventionId: string,

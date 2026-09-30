@@ -232,6 +232,43 @@ export async function attachContactToTeam(input: {
   return { ok: true, contactId: input.contactId }
 }
 
+export type RemoveFieldMemberResult =
+  | { ok: true }
+  | { ok: false; error: string }
+
+/**
+ * Fait quitter une personne terrain de l'équipe (left_at, jamais une
+ * suppression) — symétrique de createFieldPersonInTeam/attachContactToTeam.
+ * La ligne reste : l'historique d'appartenance ne se réécrit pas.
+ */
+export async function removeFieldMemberFromTeam(input: {
+  teamId: string
+  membershipId: string
+}): Promise<RemoveFieldMemberResult> {
+  const db = createAdminClient()
+  const { data: teamRow } = await db
+    .from('teams')
+    .select('organization_id')
+    .eq('id', input.teamId)
+    .maybeSingle()
+  if (!teamRow?.organization_id) return { ok: false, error: 'Équipe introuvable ou sans organisation' }
+  const orgId = teamRow.organization_id
+  const membership = await requireOrganizationMembership(orgId)
+  if (!membership.ok) return { ok: false, error: membership.error }
+
+  const { data, error } = await db
+    .from('team_field_members')
+    .update({ left_at: new Date().toISOString() })
+    .eq('id', input.membershipId)
+    .eq('team_id', input.teamId)
+    .is('left_at', null)
+    .select('id')
+    .maybeSingle()
+  if (error) return { ok: false, error: 'Retrait impossible' }
+  if (!data) return { ok: false, error: 'Cette personne n’est déjà plus dans l’équipe' }
+  return { ok: true }
+}
+
 export interface SiteTeamFieldAgent {
   contactId: string
   fullName: string

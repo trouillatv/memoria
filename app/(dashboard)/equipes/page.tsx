@@ -1,12 +1,14 @@
 // Phase 9 — Vue Semaine & Équipes (Slice 9.2)
-//
-// Page Équipes : composition isolée.
+// /EQUIPES V2 (Batch D) — page unique : composition + drawer intégré
+// (WOW ÉQUIPE, `?team=<id>`). Plus de route /equipes/[id] comme expérience
+// principale — voir EquipesDetailSheet.tsx et loadTeamDrawerData.ts.
 //
 // SEUL endroit en supervision où on voit des noms d'agents. Doctrine V2 :
 //   - Wording « Équipe Alpha », jamais « L'équipe de Mehdi »
 //   - Zéro métrique individuelle (pas d'historique, pas de stats)
 //   - Zéro métrique d'équipe (pas de charge, pas de couverture)
-//   - Seules infos affichées : nom, composition, couleur sobre
+//   - Le drawer WOW ÉQUIPE ajoute des compteurs CUMULÉS descriptifs
+//     (cf. doctrine dans TeamDrawerBody.tsx) — jamais un classement.
 
 import { redirect } from 'next/navigation'
 import { Users, AlertCircle } from 'lucide-react'
@@ -19,6 +21,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { CreateTeamButton } from './CreateTeamButton'
 import { TeamRow } from './TeamRow'
+import { OrphansBulkAssign } from './OrphansBulkAssign'
+import { EquipesDetailSheet } from './EquipesDetailSheet'
+import { loadTeamDrawerData } from './loadTeamDrawerData'
+import { loadPersonDrawerData, parsePersonPeriod } from './loadPersonDrawerData'
 import type { MemberLite } from './EditTeamMembersDialog'
 
 export const dynamic = 'force-dynamic'
@@ -84,18 +90,37 @@ async function listAssignableMembers(): Promise<MemberLite[]> {
   }))
 }
 
-export default async function EquipesPage() {
+export default async function EquipesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    team?: string
+    person?: string
+    personKind?: string
+    personPeriod?: string
+  }>
+}) {
   const user = await getCurrentUserWithProfile()
   if (!user) redirect('/login')
   // Belt + suspenders : le layout (dashboard) redirige déjà chef_equipe vers /m.
   if (user.role !== 'admin' && user.role !== 'manager') redirect('/m')
 
-  const [teams, orphans, availableUsers, orgs] = await Promise.all([
+  const sp = await searchParams
+  const personKind = sp.personKind === 'contact' ? 'contact' : 'user'
+  const personPeriod = parsePersonPeriod(sp.personPeriod)
+
+  const [teams, orphans, availableUsers, orgs, orgIds, teamDrawerData] = await Promise.all([
     listTeamsWithMemberCount(),
     listOrphanUsers(),
     listAssignableMembers(),
     getOrgsForSelector(),
+    getOrgIdsOfUser(),
+    sp.team ? loadTeamDrawerData(sp.team, user.organization_id) : Promise.resolve(null),
   ])
+
+  const personDrawerData = sp.person
+    ? await loadPersonDrawerData(sp.person, personKind, orgIds, personPeriod)
+    : null
 
   return (
     <div className="space-y-6">
@@ -145,7 +170,7 @@ export default async function EquipesPage() {
             </div>
             <p className="text-xs text-amber-800/80">
               Ces personnes ne sont rattachées à aucune équipe active.
-              Ajoutez-les via « Éditer » sur une équipe existante.
+              Rattachez-les ci-dessous, ou via « Éditer » sur une équipe existante.
             </p>
             <div className="text-sm text-amber-900" data-testid="orphans-list">
               {orphans.map((u, i) => (
@@ -155,9 +180,15 @@ export default async function EquipesPage() {
                 </span>
               ))}
             </div>
+            <OrphansBulkAssign
+              orphans={orphans.map((u) => ({ id: u.id, name: displayName(u.full_name, u.email) }))}
+              teams={teams.map((t) => ({ id: t.id, name: t.name }))}
+            />
           </CardContent>
         </Card>
       )}
+
+      <EquipesDetailSheet team={teamDrawerData} person={personDrawerData} />
     </div>
   )
 }

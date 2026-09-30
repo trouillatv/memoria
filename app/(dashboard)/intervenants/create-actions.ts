@@ -33,7 +33,14 @@ export interface CreateIntervenantResult {
   teamsFailed?: number
 }
 
-export async function createIntervenantAction(input: {
+/**
+ * Crée un intervenant SANS compte Auth — chemin "personne métier / contact
+ * externe" (company_contacts, éventuellement rattachée à des équipes).
+ * Homonyme distinct de `createInternalUserIntervenantAction` (actions.ts),
+ * qui crée un compte Auth applicatif. Renommé /EQUIPES V2 pour lever
+ * l'ambiguïté silencieuse des deux parcours.
+ */
+export async function createExternalContactIntervenantAction(input: {
   fullName: string
   job?: string
   companyName?: string
