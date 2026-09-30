@@ -469,7 +469,12 @@ beforeAll(async () => {
   // resolvePlanningTargetCandidatesForProposal considère ces Missions comme
   // candidates sur un MODIFY/SUSPEND (engagement_ids doit contenir
   // proposal.engagementId) ; missionNewId reste délibérément non rattachée.
-  await db.from('missions').update({ engagement_ids: [modifyOkEngagementId] }).in('id', [missionModifyCycleId, missionModifyOutsideWindowId])
+  await db
+    .from('missions')
+    .update({ engagement_ids: [modifyOkEngagementId, modifyDismissEngagementId, modifyStaleEngagementId] })
+    .in('id', [missionModifyCycleId])
+  await db.from('missions').update({ engagement_ids: [modifyOkEngagementId] }).in('id', [missionModifyOutsideWindowId])
+  await db.from('missions').update({ engagement_ids: [stateDriftEngagementId] }).in('id', [missionStateDriftId])
   // missionModifySimpleId est rattachée aux DEUX Engagements : modifyOkEngagementId
   // (candidat blocked_requires_simple_supersession aux côtés du cycle prêt,
   // cf. describe resolvePlanningTargetCandidatesForProposal) et
@@ -979,6 +984,82 @@ describe('createDraftDecision', () => {
     expect(result).toEqual({ ok: false, error: 'target_not_found' })
   })
 
+  it('canonicalisation NEW (mandat ROUND2 FIX1) — startsOn/endsOn persistés viennent du contrat, jamais du payload humain brut', async () => {
+    const proposal = await generateSingleProposal(newEngagementId)
+    const raw = newPayload(missionNewId, proposal.proposalPayload, 11)
+    const tampered = { ...raw, draftSimpleTemplate: { ...raw.draftSimpleTemplate, startsOn: '2099-01-01', endsOn: '2099-06-01' } }
+    const result = await createDraftDecision({ proposalId: proposal.id, decisionPayload: tampered }, currentUser())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const persisted = result.decision.decisionPayload as NewDecisionPayload
+    expect(persisted.draftSimpleTemplate.startsOn).toBe(proposal.proposalPayload.effectiveFrom)
+    expect(persisted.draftSimpleTemplate.endsOn).toBe(proposal.proposalPayload.effectiveTo)
+  })
+
+  it('canonicalisation MODIFY+cycle (mandat ROUND2 FIX1) — startsOn/endsOn de draftCycleAfter persistés viennent du contrat', async () => {
+    const proposal = await generateSingleProposal(modifyOkEngagementId)
+    const raw = modifyCyclePayload(missionModifyCycleId, cycleModifyId, proposal.proposalPayload)
+    const tampered = {
+      ...raw,
+      draftCycleAfter: {
+        ...raw.draftCycleAfter,
+        startsOn: '2099-01-01',
+        endsOn: '2099-06-01',
+        slots: [{ weekIndex: 0, weekday: 6, teamId, state: 'work' as const, startTime: '09:00', endTime: '13:00' }],
+      },
+    }
+    const result = await createDraftDecision({ proposalId: proposal.id, decisionPayload: tampered }, currentUser())
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const persisted = result.decision.decisionPayload as ModifyCycleDecisionPayload
+    expect(persisted.draftCycleAfter.startsOn).toBe(proposal.proposalPayload.effectiveFrom)
+    expect(persisted.draftCycleAfter.endsOn).toBe(proposal.proposalPayload.effectiveTo)
+  })
+
+  it('target_not_eligible — NEW en chevauchement avec un cycle déjà publié sur la même Mission (mandat ROUND2 FIX2, overlapsPeriod)', async () => {
+    const db = createAdminClient()
+    const overlapMissionId = (
+      await db.from('missions').insert({ site_id: siteId, organization_id: memberOrgId, name: `${TAG} mission new overlap` }).select('id').single()
+    ).data!.id as string
+    await createCycle({
+      siteId,
+      missionId: overlapMissionId,
+      organizationId: memberOrgId,
+      name: `${TAG} cycle new overlap`,
+      cycleLengthWeeks: 1,
+      anchorDate: '2026-11-01',
+      startsOn: '2026-11-01',
+      endsOn: '2027-01-01',
+      slots: [{ weekIndex: 0, weekday: 1, teamId, state: 'work', startTime: '08:00', endTime: '12:00' }],
+      userId: null,
+      status: 'published',
+    })
+
+    const overlapProposal = await makeQualifiedProposal({
+      effect: 'new',
+      temporality: 'permanent',
+      scope: 'whole_engagement',
+      scopeKey: 'whole_engagement',
+      startsOn: '2026-11-15',
+    })
+    const overlapResult = await materializeEffectWithPayload(
+      overlapProposal,
+      { cadence: { count: 1, period: 'week' } },
+      { category: 'other', kind: 'obligation', measurable: false },
+    )
+    // Même TEST_DEFECT que newEngagementId/suspendEngagementId (mandat FIX 1,
+    // commentaire ci-dessus dans beforeAll) : la RPC 'new' fabrique toujours son
+    // propre Engagement, jamais celui pré-créé.
+    const proposal = await generateSingleProposal(overlapResult.engagement_id)
+    expect(proposal.proposalPayload.effectiveFrom).toBe('2026-11-15')
+
+    const result = await createDraftDecision(
+      { proposalId: proposal.id, decisionPayload: newPayload(overlapMissionId, proposal.proposalPayload, 12) },
+      currentUser(),
+    )
+    expect(result).toEqual({ ok: false, error: 'target_not_eligible' })
+  })
+
   // write_failed : seule issue non-23505 d'un insert dont toutes les FK/contraintes
   // ont déjà été validées par les étapes précédentes de la fonction (mission, cycle
   // ou template déjà résolus avec succès) — non reproductible sans mocker Supabase,
@@ -1018,6 +1099,24 @@ describe('markDecisionReady', () => {
     expect(result).toEqual({ ok: false, error: 'invalid_status_transition' })
   })
 
+  it('invalid_status_transition — une décision supersédée ne peut jamais devenir ready (mandat ROUND2 FIX4A, compare-and-set)', async () => {
+    const proposal = await generateSingleProposal(newEngagementId)
+    const first = await createDraftDecision({ proposalId: proposal.id, decisionPayload: newPayload(missionNewId, proposal.proposalPayload, 13) }, currentUser())
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+    const second = await createDraftDecision({ proposalId: proposal.id, decisionPayload: newPayload(missionNewId, proposal.proposalPayload, 14) }, currentUser())
+    expect(second.ok).toBe(true)
+    if (!second.ok) return
+
+    const result = await markDecisionReady(first.decision.id, currentUser())
+    expect(result).toEqual({ ok: false, error: 'invalid_status_transition' })
+
+    const listed = await listDecisionsForProposal(proposal.id, currentUser())
+    expect(listed.ok).toBe(true)
+    if (!listed.ok) return
+    expect(listed.decisions.find((d) => d.id === first.decision.id)?.status).toBe('superseded')
+  })
+
   it('blocked_requires_simple_supersession — cible MODIFY sur un rythme SIMPLE', async () => {
     const proposal = await generateSingleProposal(modifySimpleEngagementId)
     const draft = await createDraftDecision(
@@ -1030,6 +1129,16 @@ describe('markDecisionReady', () => {
     const result = await markDecisionReady(draft.decision.id, currentUser())
     expect(result).toEqual({ ok: false, error: 'blocked_requires_simple_supersession' })
   })
+
+  // FIX 3 Test F — un rythme SIMPLE désactivé entre la création du draft et la
+  // mise en prêt ne peut pas être observé ici : pour toute décision MODIFY+simple,
+  // markDecisionReady retourne inconditionnellement blocked_requires_simple_supersession
+  // (ci-dessus) AVANT même d'atteindre checkTargetEligibility — cf. l'ordre des
+  // retours dans lib/db/planning-impact-application-decisions.ts. Les tests
+  // createDraftDecision (canonicalisation/target_not_found ci-dessus) prouvent déjà
+  // que l'éligibilité SIMPLE est vérifiée au seul point réellement atteignable pour
+  // cette forme de payload : la création du draft.
+  it.skip('target_not_eligible — SIMPLE désactivé entre draft et ready : structurellement inatteignable via markDecisionReady (mandat ROUND2 FIX3)', () => {})
 
   it('contract_dismissed — la proposition a été écartée depuis la création du draft', async () => {
     const proposal = await generateSingleProposal(modifyDismissEngagementId)
@@ -1048,6 +1157,9 @@ describe('markDecisionReady', () => {
   })
 
   it('contract_stale — la proposition a changé de version depuis la création du draft', async () => {
+    // Timeout étendu (comme beforeAll) : ce témoin enchaîne 5 aller-retours
+    // séquentiels contre la vraie base (draft + effet antécédent + régénération
+    // + markDecisionReady), au-delà des 5000ms par défaut de Vitest.
     const proposal = await generateSingleProposal(modifyStaleEngagementId)
     const draft = await createDraftDecision(
       { proposalId: proposal.id, decisionPayload: modifyCyclePayload(missionModifyCycleId, cycleModifyId, proposal.proposalPayload) },
@@ -1075,7 +1187,7 @@ describe('markDecisionReady', () => {
 
     const result = await markDecisionReady(draft.decision.id, currentUser())
     expect(result).toEqual({ ok: false, error: 'contract_stale' })
-  })
+  }, 15000)
 
   it("planning_state_stale — le cycle cible a été republié entre la création du draft et la mise en prêt", async () => {
     const proposal = await generateSingleProposal(stateDriftEngagementId)
@@ -1137,6 +1249,50 @@ describe('markDecisionReady', () => {
     expect(result).toEqual({ ok: false, error: 'target_not_found' })
   })
 
+  it('target_not_eligible — le cycle cible a été arrêté (status ≠ published) entre la création du draft et la mise en prêt (mandat ROUND2 FIX3, revalidation live)', async () => {
+    // Timeout étendu (comme beforeAll) : Mission + cycle frais + proposition +
+    // draft + update + markDecisionReady, plusieurs aller-retours séquentiels
+    // contre la vraie base, au-delà des 5000ms par défaut de Vitest.
+    const db = createAdminClient()
+    const freshMissionId = (
+      await db
+        .from('missions')
+        .insert({ site_id: siteId, organization_id: memberOrgId, name: `${TAG} mission cycle stopped live`, engagement_ids: [modifyOkEngagementId] })
+        .select('id')
+        .single()
+    ).data!.id as string
+    const freshCycleId = await createCycle({
+      siteId,
+      missionId: freshMissionId,
+      organizationId: memberOrgId,
+      name: `${TAG} cycle stopped live`,
+      cycleLengthWeeks: 1,
+      anchorDate: '2026-01-05',
+      startsOn: '2026-01-05',
+      endsOn: null,
+      slots: [{ weekIndex: 0, weekday: 4, teamId, state: 'work', startTime: '08:00', endTime: '12:00' }],
+      userId: null,
+      status: 'published',
+    })
+
+    const proposal = await generateSingleProposal(modifyOkEngagementId)
+    const draft = await createDraftDecision(
+      { proposalId: proposal.id, decisionPayload: modifyCyclePayload(freshMissionId, freshCycleId, proposal.proposalPayload) },
+      currentUser(),
+    )
+    expect(draft.ok).toBe(true)
+    if (!draft.ok) return
+
+    // Statut seul, PAS deleted_at : softDeleteCycle (lib/db/planning-cycles.ts)
+    // couple toujours les deux, ce qui ferait échouer getCycle en amont
+    // (target_not_found) et ne testerait jamais la revalidation d'éligibilité
+    // elle-même (target_not_eligible), seule cible réelle de ce témoin.
+    await db.from('planning_cycles').update({ status: 'stopped' }).eq('id', freshCycleId)
+
+    const result = await markDecisionReady(draft.decision.id, currentUser())
+    expect(result).toEqual({ ok: false, error: 'target_not_eligible' })
+  }, 15000)
+
   it('décision inexistante : refusé', async () => {
     const result = await markDecisionReady(randomUUID(), currentUser())
     expect(result).toEqual({ ok: false, error: 'access_denied' })
@@ -1181,6 +1337,19 @@ describe('cancelDecision', () => {
   it('décision inexistante : refusé', async () => {
     const result = await cancelDecision(randomUUID(), currentUser())
     expect(result).toEqual({ ok: false, error: 'access_denied' })
+  })
+
+  it('invalid_status_transition — annuler une décision supersédée est refusé (mandat ROUND2 FIX4B, superseded reste terminal)', async () => {
+    const proposal = await generateSingleProposal(newEngagementId)
+    const first = await createDraftDecision({ proposalId: proposal.id, decisionPayload: newPayload(missionNewId, proposal.proposalPayload, 15) }, currentUser())
+    expect(first.ok).toBe(true)
+    if (!first.ok) return
+    const second = await createDraftDecision({ proposalId: proposal.id, decisionPayload: newPayload(missionNewId, proposal.proposalPayload, 16) }, currentUser())
+    expect(second.ok).toBe(true)
+    if (!second.ok) return
+
+    const result = await cancelDecision(first.decision.id, currentUser())
+    expect(result).toEqual({ ok: false, error: 'invalid_status_transition' })
   })
 
   // already_applied : lu intégralement dans le corps de cancelDecision (mandat

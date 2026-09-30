@@ -28,10 +28,17 @@ import {
 import {
   computeApplicationFingerprint,
   computeContractFreshness,
+  normalizeDecisionAgainstProposal,
+  computeSuspensionWindow,
+  coversDate,
+  overlapsPeriod,
+  validateTargetEligibility,
   type MutationKind,
   type PlanningTargetSourceKind,
   type DecisionLifecycleStatus,
   type PlanningApplicationDecisionPayload,
+  type NewDecisionPayload,
+  type ModifyCycleDecisionPayload,
 } from '@/lib/engagements/planning-application-decision'
 import {
   previewNewSimple,
@@ -41,7 +48,11 @@ import {
   type SuspendWindowPreview,
 } from '@/lib/planning/impact-preview'
 import { occurrenceKey, type ProjectableTemplate, type ProjectedOccurrence } from '@/lib/planning/projection'
-import type { PlanningImpactKind, PlanningImpactProposalPayload } from '@/lib/engagements/planning-impact-proposal'
+import type {
+  PlanningImpactKind,
+  PlanningImpactProposalPayload,
+  SuspendPlanningImpactPayload,
+} from '@/lib/engagements/planning-impact-proposal'
 import type { DbUser, DbInterventionTemplate } from '@/types/db'
 
 // ── Chargement de la proposition (448) avec vérification d'accès ───────────
@@ -168,6 +179,7 @@ export async function resolvePlanningTargetCandidatesForProposal(
   const missionIds = missions.map((m) => m.id)
 
   const effectiveFrom = proposal.proposalPayload.effectiveFrom
+  const effectiveTo = proposal.proposalPayload.effectiveTo
 
   const [templatesRes, cyclesRes] = await Promise.all([
     supabase
@@ -186,25 +198,29 @@ export async function resolvePlanningTargetCandidatesForProposal(
   ])
   if (templatesRes.error || cyclesRes.error) return { ok: false, error: 'access_denied' }
 
-  // Une source ne compte comme candidate que si elle couvre effectiveFrom —
-  // sans quoi elle ne peut ni être la cible réelle d'un MODIFY/SUSPEND à cette
-  // date contractuelle, ni entrer en conflit avec un NEW qui démarrerait à
-  // cette même date (mandat FIX 1). effectiveFrom absent (null, cas
-  // exceptionnel hors SUSPEND) : aucune vérification de couverture n'est
-  // possible, la source reste candidate (comportement antérieur conservé).
-  const coversEffectiveFrom = (startsOn: string, endsOn: string | null): boolean =>
-    effectiveFrom === null || (startsOn <= effectiveFrom && (endsOn === null || endsOn >= effectiveFrom))
-
+  // MODIFY/SUSPEND : une source ne compte comme candidate que si elle COUVRE
+  // ponctuellement effectiveFrom (coversDate) — c'est la cible réelle à cette
+  // date contractuelle. NEW : coversDate est INSUFFISANT — un nouveau rythme
+  // couvrant 01/12→31/01 doit entrer en conflit avec un cycle publié
+  // 01/01→null même s'il ne "couvre" pas le 01/12 ; c'est un chevauchement
+  // d'intervalle (overlapsPeriod) qu'il faut tester, jamais une couverture
+  // ponctuelle (mandat ROUND 2 FIX 2). effectiveFrom absent (null, cas
+  // exceptionnel hors SUSPEND) : aucune vérification n'est possible, la
+  // source reste candidate (comportement antérieur conservé).
   const templatesByMission = new Map<string, string[]>()
   for (const t of (templatesRes.data ?? []) as Array<{ id: string; mission_id: string; starts_on: string; ends_on: string | null }>) {
-    if (!coversEffectiveFrom(t.starts_on, t.ends_on)) continue
+    if (!coversDate(t.starts_on, t.ends_on, effectiveFrom)) continue
     const list = templatesByMission.get(t.mission_id) ?? []
     list.push(t.id)
     templatesByMission.set(t.mission_id, list)
   }
   const cyclesByMission = new Map<string, string[]>()
   for (const c of (cyclesRes.data ?? []) as Array<{ id: string; mission_id: string; starts_on: string; ends_on: string | null }>) {
-    if (!coversEffectiveFrom(c.starts_on, c.ends_on)) continue
+    const cycleQualifies =
+      proposal.impactKind === 'new'
+        ? overlapsPeriod(c.starts_on, c.ends_on, effectiveFrom, effectiveTo)
+        : coversDate(c.starts_on, c.ends_on, effectiveFrom)
+    if (!cycleQualifies) continue
     const list = cyclesByMission.get(c.mission_id) ?? []
     list.push(c.id)
     cyclesByMission.set(c.mission_id, list)
@@ -238,6 +254,7 @@ export type PreviewApplicationError =
   | 'target_mission_mismatch'
   | 'target_not_found'
   | 'target_organization_mismatch'
+  | 'target_not_eligible'
 
 export type PreviewApplicationResult =
   | { ok: true; preview: ApplicationPreview }
@@ -256,31 +273,75 @@ export async function previewApplication(
   const supabase = createAdminClient()
   const { data: missionRow, error: missionError } = await supabase
     .from('missions')
-    .select('id, organization_id, site_id')
+    .select('id, organization_id, site_id, active, engagement_ids')
     .eq('id', decisionPayload.targetMissionId)
     .is('deleted_at', null)
     .maybeSingle()
   if (missionError || !missionRow) return { ok: false, error: 'target_not_found' }
-  const mission = missionRow as { id: string; organization_id: string; site_id: string }
+  const mission = missionRow as {
+    id: string
+    organization_id: string
+    site_id: string
+    active: boolean
+    engagement_ids: string[] | null
+  }
   if (mission.organization_id !== proposal.organizationId || mission.site_id !== proposal.siteId) {
     console.error(
       `[planning-impact-application-decisions] proposition ${proposalId} cible mission ${mission.id} organisation/chantier incohérent`,
     )
     return { ok: false, error: 'target_organization_mismatch' }
   }
+  const missionEligibility = { active: mission.active, engagementIds: mission.engagement_ids }
+  const { effectiveFrom, effectiveTo } = proposal.proposalPayload
 
   if (decisionPayload.mutationKind === 'new') {
-    if (decisionPayload.draftSimpleTemplate.missionId !== decisionPayload.targetMissionId) {
-      return { ok: false, error: 'target_mission_mismatch' }
-    }
+    const normalized = normalizeDecisionAgainstProposal(decisionPayload, proposal.proposalPayload)
+    if (!normalized.ok) return { ok: false, error: normalized.error }
+    const normalizedPayload = normalized.payload as NewDecisionPayload
+
+    const { data: cycleRows, error: cycleError } = await supabase
+      .from('planning_cycles')
+      .select('starts_on, ends_on')
+      .eq('mission_id', decisionPayload.targetMissionId)
+      .eq('status', 'published')
+      .is('deleted_at', null)
+    if (cycleError) return { ok: false, error: 'target_not_found' }
+    const eligible = validateTargetEligibility({
+      mutationKind: 'new',
+      targetSourceKind: null,
+      engagementId: proposal.engagementId,
+      effectiveFrom,
+      effectiveTo,
+      mission: missionEligibility,
+      newMissionCycles: ((cycleRows ?? []) as Array<{ starts_on: string; ends_on: string | null }>).map((c) => ({
+        startsOn: c.starts_on,
+        endsOn: c.ends_on,
+      })),
+    })
+    if (!eligible) return { ok: false, error: 'target_not_eligible' }
+
     return {
       ok: true,
-      preview: { kind: 'new', occurrences: previewNewSimple({ draft: decisionPayload.draftSimpleTemplate, from, to }) },
+      preview: { kind: 'new', occurrences: previewNewSimple({ draft: normalizedPayload.draftSimpleTemplate, from, to }) },
     }
   }
 
   if (decisionPayload.mutationKind === 'modify') {
-    if (decisionPayload.targetSourceKind === 'simple') return { ok: true, preview: { kind: 'modify_blocked_simple' } }
+    if (decisionPayload.targetSourceKind === 'simple') {
+      const template = await getTemplate(decisionPayload.targetTemplateId)
+      if (!template || template.mission_id !== decisionPayload.targetMissionId) return { ok: false, error: 'target_not_found' }
+      const eligible = validateTargetEligibility({
+        mutationKind: 'modify',
+        targetSourceKind: 'simple',
+        engagementId: proposal.engagementId,
+        effectiveFrom,
+        effectiveTo,
+        mission: missionEligibility,
+        simpleTemplate: { active: template.active, startsOn: template.starts_on, endsOn: template.ends_on },
+      })
+      if (!eligible) return { ok: false, error: 'target_not_eligible' }
+      return { ok: true, preview: { kind: 'modify_blocked_simple' } }
+    }
     const cycle = await getCycle(decisionPayload.targetCycleId)
     if (!cycle) return { ok: false, error: 'target_not_found' }
     if (cycle.missionId !== decisionPayload.targetMissionId || cycle.siteId !== proposal.siteId) {
@@ -289,20 +350,50 @@ export async function previewApplication(
       )
       return { ok: false, error: 'target_organization_mismatch' }
     }
+    const eligible = validateTargetEligibility({
+      mutationKind: 'modify',
+      targetSourceKind: 'cycle',
+      engagementId: proposal.engagementId,
+      effectiveFrom,
+      effectiveTo,
+      mission: missionEligibility,
+      publishedCycle: { status: cycle.status, startsOn: cycle.startsOn, endsOn: cycle.endsOn },
+    })
+    if (!eligible) return { ok: false, error: 'target_not_eligible' }
+
+    const normalized = normalizeDecisionAgainstProposal(decisionPayload, proposal.proposalPayload)
+    if (!normalized.ok) return { ok: false, error: normalized.error }
+    const normalizedPayload = normalized.payload as ModifyCycleDecisionPayload
+
     const closuresBySite = await listActiveClosuresForSites([proposal.siteId as string], from, to)
     const closures = closuresBySite[proposal.siteId as string] ?? []
-    const grid = previewModifyCycleGrid({ before: cycle, after: decisionPayload.draftCycleAfter, closures, from, to })
+    const grid = previewModifyCycleGrid({ before: cycle, after: normalizedPayload.draftCycleAfter, closures, from, to })
     const liveStateFingerprint = computeCycleStateFingerprint(buildCanonicalCycleState(cycle))
     return { ok: true, preview: { kind: 'modify_cycle', ...grid, liveStateFingerprint } }
   }
 
-  // suspend
+  // suspend — la fenêtre suspendue vient EXCLUSIVEMENT du contrat
+  // (proposalPayload.effectiveFrom/effectiveTo/resumeOn) ; from/to reste une
+  // fenêtre d'AFFICHAGE, jamais la définition de la suspension (mandat ROUND
+  // 2 FIX 1). L'intersection contractuelle/affichage est calculée APRÈS la
+  // validation d'éligibilité de la cible, jamais avant (target_not_found doit
+  // rester prioritaire sur une fenêtre vide).
   let templates: ProjectableTemplate[] = []
+  let eligible = false
   if (decisionPayload.targetSourceKind === 'simple') {
     if (!decisionPayload.targetTemplateId) return { ok: false, error: 'target_not_found' }
     const template = await getTemplate(decisionPayload.targetTemplateId)
     if (!template || template.mission_id !== decisionPayload.targetMissionId) return { ok: false, error: 'target_not_found' }
     templates = [template]
+    eligible = validateTargetEligibility({
+      mutationKind: 'suspend',
+      targetSourceKind: 'simple',
+      engagementId: proposal.engagementId,
+      effectiveFrom,
+      effectiveTo,
+      mission: missionEligibility,
+      simpleTemplate: { active: template.active, startsOn: template.starts_on, endsOn: template.ends_on },
+    })
   } else if (decisionPayload.targetSourceKind === 'cycle') {
     if (!decisionPayload.targetCycleId) return { ok: false, error: 'target_not_found' }
     const cycle = await getCycle(decisionPayload.targetCycleId)
@@ -316,9 +407,28 @@ export async function previewApplication(
       .is('deleted_at', null)
     if (cycleTemplateError) return { ok: false, error: 'target_not_found' }
     templates = (cycleTemplateRows ?? []) as DbInterventionTemplate[]
+    eligible = validateTargetEligibility({
+      mutationKind: 'suspend',
+      targetSourceKind: 'cycle',
+      engagementId: proposal.engagementId,
+      effectiveFrom,
+      effectiveTo,
+      mission: missionEligibility,
+      publishedCycle: { status: cycle.status, startsOn: cycle.startsOn, endsOn: cycle.endsOn },
+    })
   } else {
     return { ok: false, error: 'target_not_found' }
   }
+  if (!eligible) return { ok: false, error: 'target_not_eligible' }
+
+  const suspensionWindow = computeSuspensionWindow(proposal.proposalPayload as SuspendPlanningImpactPayload, from, to)
+  if (!suspensionWindow) {
+    return {
+      ok: true,
+      preview: { kind: 'suspend', occurrences: [], summary: { totalOccurrences: 0, materializedCount: 0, projectedOnlyCount: 0 } },
+    }
+  }
+  const { from: windowFrom, to: windowTo } = suspensionWindow
 
   const templateIds = templates.map((t) => t.id)
   const materializedOccurrenceKeys = new Set<string>()
@@ -327,8 +437,8 @@ export async function previewApplication(
       .from('interventions')
       .select('template_id, scheduled_for, slot')
       .in('template_id', templateIds)
-      .gte('scheduled_for', from)
-      .lte('scheduled_for', to)
+      .gte('scheduled_for', windowFrom)
+      .lte('scheduled_for', windowTo)
     if (interventionError) return { ok: false, error: 'target_not_found' }
     for (const row of (interventionRows ?? []) as Array<{
       template_id: string | null
@@ -340,7 +450,13 @@ export async function previewApplication(
       )
     }
   }
-  return { ok: true, preview: { kind: 'suspend', ...previewSuspendWindow({ templates, materializedOccurrenceKeys, from, to }) } }
+  return {
+    ok: true,
+    preview: {
+      kind: 'suspend',
+      ...previewSuspendWindow({ templates, materializedOccurrenceKeys, from: windowFrom, to: windowTo }),
+    },
+  }
 }
 
 // ── Empreinte d'état Planning vivante (mandat §6/§12) — partagée création/maturation ──
@@ -390,6 +506,104 @@ async function resolveLivePlanningStateFingerprint(
     }
   }
   return { ok: false }
+}
+
+// ── Éligibilité serveur de la cible, DB-aware (mandat ROUND 2 FIX 3) ────────
+//
+// Helper partagé createDraftDecision/markDecisionReady : ces deux fonctions
+// confondent DÉJÀ "cible introuvable" et "cible mission/chantier incohérente"
+// sous target_not_found (comportement antérieur, testé, volontairement
+// conservé ici) — contrairement à previewApplication qui distingue
+// target_not_found de target_organization_mismatch et appelle donc la
+// fonction pure validateTargetEligibility directement sur ses propres
+// entités déjà résolues plutôt que via ce helper.
+
+type CheckTargetEligibilityInput = {
+  mutationKind: MutationKind
+  targetSourceKind: PlanningTargetSourceKind | null
+  targetMissionId: string
+  targetTemplateId: string | null
+  targetCycleId: string | null
+  engagementId: string
+  siteId: string | null
+  effectiveFrom: string | null
+  effectiveTo: string | null
+}
+
+type CheckTargetEligibilityResult = { ok: true } | { ok: false; error: 'target_not_found' | 'target_not_eligible' }
+
+async function checkTargetEligibility(
+  supabase: ReturnType<typeof createAdminClient>,
+  input: CheckTargetEligibilityInput,
+): Promise<CheckTargetEligibilityResult> {
+  const { data: missionRow, error: missionError } = await supabase
+    .from('missions')
+    .select('id, active, engagement_ids')
+    .eq('id', input.targetMissionId)
+    .is('deleted_at', null)
+    .maybeSingle()
+  if (missionError || !missionRow) return { ok: false, error: 'target_not_found' }
+  const mission = missionRow as { id: string; active: boolean; engagement_ids: string[] | null }
+  const missionEligibility = { active: mission.active, engagementIds: mission.engagement_ids }
+
+  if (input.mutationKind === 'new') {
+    const { data: cycleRows, error: cycleError } = await supabase
+      .from('planning_cycles')
+      .select('starts_on, ends_on')
+      .eq('mission_id', input.targetMissionId)
+      .eq('status', 'published')
+      .is('deleted_at', null)
+    if (cycleError) return { ok: false, error: 'target_not_found' }
+    const eligible = validateTargetEligibility({
+      mutationKind: 'new',
+      targetSourceKind: null,
+      engagementId: input.engagementId,
+      effectiveFrom: input.effectiveFrom,
+      effectiveTo: input.effectiveTo,
+      mission: missionEligibility,
+      newMissionCycles: ((cycleRows ?? []) as Array<{ starts_on: string; ends_on: string | null }>).map((c) => ({
+        startsOn: c.starts_on,
+        endsOn: c.ends_on,
+      })),
+    })
+    return eligible ? { ok: true } : { ok: false, error: 'target_not_eligible' }
+  }
+
+  if (input.targetSourceKind === 'simple') {
+    if (!input.targetTemplateId) return { ok: false, error: 'target_not_found' }
+    const template = await getTemplate(input.targetTemplateId)
+    if (!template || template.mission_id !== input.targetMissionId) return { ok: false, error: 'target_not_found' }
+    const eligible = validateTargetEligibility({
+      mutationKind: input.mutationKind,
+      targetSourceKind: 'simple',
+      engagementId: input.engagementId,
+      effectiveFrom: input.effectiveFrom,
+      effectiveTo: input.effectiveTo,
+      mission: missionEligibility,
+      simpleTemplate: { active: template.active, startsOn: template.starts_on, endsOn: template.ends_on },
+    })
+    return eligible ? { ok: true } : { ok: false, error: 'target_not_eligible' }
+  }
+
+  if (input.targetSourceKind === 'cycle') {
+    if (!input.targetCycleId) return { ok: false, error: 'target_not_found' }
+    const cycle = await getCycle(input.targetCycleId)
+    if (!cycle || cycle.missionId !== input.targetMissionId || cycle.siteId !== input.siteId) {
+      return { ok: false, error: 'target_not_found' }
+    }
+    const eligible = validateTargetEligibility({
+      mutationKind: input.mutationKind,
+      targetSourceKind: 'cycle',
+      engagementId: input.engagementId,
+      effectiveFrom: input.effectiveFrom,
+      effectiveTo: input.effectiveTo,
+      mission: missionEligibility,
+      publishedCycle: { status: cycle.status, startsOn: cycle.startsOn, endsOn: cycle.endsOn },
+    })
+    return eligible ? { ok: true } : { ok: false, error: 'target_not_eligible' }
+  }
+
+  return { ok: false, error: 'target_not_found' }
 }
 
 // ── Ligne DB / mapper (colonnes = migration 449 exactement) ─────────────────
@@ -497,6 +711,7 @@ export type CreateDraftDecisionError =
   | 'target_mission_mismatch'
   | 'target_not_found'
   | 'target_organization_mismatch'
+  | 'target_not_eligible'
   | 'duplicate_fingerprint'
   | 'write_failed'
 
@@ -531,40 +746,30 @@ export async function createDraftDecision(
     return { ok: false, error: 'target_organization_mismatch' }
   }
 
-  // Invariants serveur (mandat FIX 3) — le contrat (proposal) fournit
-  // nature/cadence/bornes/date d'effet ; l'humain ne fournit que les décisions
-  // organisationnelles manquantes (équipe, horaire, jour). Un `decisionPayload`
-  // qui prétend démarrer ailleurs qu'à `proposal.effectiveFrom`, ou dont le
-  // draft porte une autre Mission que `targetMissionId`, n'est jamais persisté
-  // tel quel.
-  let sanitizedPayload: PlanningApplicationDecisionPayload = decisionPayload
-  if (decisionPayload.mutationKind === 'new') {
-    if (decisionPayload.draftSimpleTemplate.missionId !== decisionPayload.targetMissionId) {
-      return { ok: false, error: 'target_mission_mismatch' }
-    }
-    const { effectiveFrom, effectiveTo } = proposal.proposalPayload
-    sanitizedPayload = {
-      ...decisionPayload,
-      draftSimpleTemplate: {
-        ...decisionPayload.draftSimpleTemplate,
-        startsOn: effectiveFrom ?? decisionPayload.draftSimpleTemplate.startsOn,
-        endsOn: effectiveTo,
-      },
-    }
-  } else if (decisionPayload.mutationKind === 'modify' && decisionPayload.targetSourceKind === 'cycle') {
-    if (decisionPayload.draftCycleAfter.missionId !== decisionPayload.targetMissionId) {
-      return { ok: false, error: 'target_mission_mismatch' }
-    }
-    const { effectiveFrom, effectiveTo } = proposal.proposalPayload
-    sanitizedPayload = {
-      ...decisionPayload,
-      draftCycleAfter: {
-        ...decisionPayload.draftCycleAfter,
-        startsOn: effectiveFrom ?? decisionPayload.draftCycleAfter.startsOn,
-        endsOn: effectiveTo,
-      },
-    }
-  }
+  // Canonicalisation unique preview/persistance (mandat ROUND 2 FIX 1) — la
+  // MÊME fonction pure que previewApplication, jamais une logique dupliquée :
+  // le contrat (proposal) fournit nature/cadence/bornes/date d'effet,
+  // l'humain ne fournit que les décisions organisationnelles manquantes
+  // (équipe, horaire, jour).
+  const normalized = normalizeDecisionAgainstProposal(decisionPayload, proposal.proposalPayload)
+  if (!normalized.ok) return { ok: false, error: normalized.error }
+  const sanitizedPayload = normalized.payload
+
+  // Éligibilité serveur de la cible (mandat ROUND 2 FIX 3) — invariant vérifié
+  // dès le draft, pas seulement affiché en aperçu.
+  const { effectiveFrom, effectiveTo } = proposal.proposalPayload
+  const eligibility = await checkTargetEligibility(supabase, {
+    mutationKind: sanitizedPayload.mutationKind,
+    targetSourceKind: sanitizedPayload.targetSourceKind,
+    targetMissionId: sanitizedPayload.targetMissionId,
+    targetTemplateId: sanitizedPayload.targetTemplateId,
+    targetCycleId: sanitizedPayload.targetCycleId,
+    engagementId: proposal.engagementId,
+    siteId: proposal.siteId,
+    effectiveFrom,
+    effectiveTo,
+  })
+  if (!eligibility.ok) return { ok: false, error: eligibility.error }
 
   const liveFingerprint = await resolveLivePlanningStateFingerprint(sanitizedPayload, proposal.siteId)
   if (!liveFingerprint.ok) return { ok: false, error: 'target_not_found' }
@@ -652,6 +857,7 @@ export type MarkDecisionReadyError =
   | 'contract_dismissed'
   | 'planning_state_stale'
   | 'target_not_found'
+  | 'target_not_eligible'
   | 'write_failed'
 
 export type MarkDecisionReadyResult =
@@ -675,12 +881,12 @@ export async function markDecisionReady(
   const supabase = createAdminClient()
   const { data: proposalRows, error: proposalError } = await supabase
     .from('engagement_planning_impact_proposals')
-    .select('proposal_version, status')
+    .select('proposal_version, status, proposal_payload')
     .eq('contract_effect_id', decision.contractEffectId)
     .order('proposal_version', { ascending: false })
     .limit(1)
   if (proposalError || !proposalRows || proposalRows.length === 0) return { ok: false, error: 'target_not_found' }
-  const proposal = proposalRows[0] as { proposal_version: number; status: string }
+  const proposal = proposalRows[0] as { proposal_version: number; status: string; proposal_payload: Record<string, unknown> }
 
   const freshness = computeContractFreshness({
     proposalVersionAtDecision: decision.proposalVersionAtDecision,
@@ -690,24 +896,49 @@ export async function markDecisionReady(
   if (freshness === 'dismissed') return { ok: false, error: 'contract_dismissed' }
   if (freshness === 'stale') return { ok: false, error: 'contract_stale' }
 
+  // Éligibilité serveur de la cible (mandat ROUND 2 FIX 3) — revalidée EN
+  // DIRECT ici, jamais déduite du seul planning_state_fingerprint : une
+  // Mission retirée d'engagement_ids, un cycle arrêté ou un rythme simple
+  // désactivé entre le draft et la maturation doit refuser le passage à
+  // 'ready'.
+  const proposalPayload = proposal.proposal_payload as unknown as PlanningImpactProposalPayload
+  const eligibility = await checkTargetEligibility(supabase, {
+    mutationKind: decision.mutationKind,
+    targetSourceKind: decision.targetSourceKind,
+    targetMissionId: decision.targetMissionId,
+    targetTemplateId: decision.targetTemplateId,
+    targetCycleId: decision.targetCycleId,
+    engagementId: decision.engagementId,
+    siteId: decision.siteId,
+    effectiveFrom: proposalPayload.effectiveFrom,
+    effectiveTo: proposalPayload.effectiveTo,
+  })
+  if (!eligibility.ok) return { ok: false, error: eligibility.error }
+
   const liveFingerprint = await resolveLivePlanningStateFingerprint(decision.decisionPayload, decision.siteId)
   if (!liveFingerprint.ok) return { ok: false, error: 'target_not_found' }
   if (liveFingerprint.fingerprint !== decision.planningStateFingerprint) return { ok: false, error: 'planning_state_stale' }
 
+  // Compare-and-set (mandat ROUND 2 FIX 4A) — la transition draft→ready ne
+  // doit jamais résusciter une décision supersédée entre la lecture
+  // ci-dessus et cette écriture : l'UPDATE exige explicitement
+  // status='draft', jamais un simple .eq('id', ...).single() qui écrirait
+  // aveuglément sur n'importe quel statut courant.
   const nowIso = new Date().toISOString()
-  const { data: updatedRow, error: updateError } = await supabase
+  const { data: updatedRows, error: updateError } = await supabase
     .from('planning_impact_application_decisions')
     .update({ status: 'ready', ready_at: nowIso, ready_by: userId, updated_at: nowIso })
     .eq('id', decisionId)
+    .eq('status', 'draft')
     .select(DECISION_SELECT)
-    .single()
-  if (updateError || !updatedRow) return { ok: false, error: 'write_failed' }
-  return { ok: true, decision: mapDecisionRow(updatedRow as DecisionDbRow) }
+  if (updateError) return { ok: false, error: 'write_failed' }
+  if (!updatedRows || updatedRows.length === 0) return { ok: false, error: 'invalid_status_transition' }
+  return { ok: true, decision: mapDecisionRow(updatedRows[0] as DecisionDbRow) }
 }
 
 // ── Annulation (idempotente, discipline "sans oracle") ───────────────────────
 
-export type CancelDecisionError = 'access_denied' | 'already_applied' | 'write_failed'
+export type CancelDecisionError = 'access_denied' | 'already_applied' | 'invalid_status_transition' | 'write_failed'
 
 export type CancelDecisionResult =
   | { ok: true; decision: PlanningImpactApplicationDecisionRow }
@@ -723,6 +954,10 @@ export async function cancelDecision(
   const { decision, userId } = loaded
   if (decision.status === 'cancelled') return { ok: true, decision }
   if (decision.status === 'applied') return { ok: false, error: 'already_applied' }
+  // superseded est terminal au même titre qu'applied/cancelled (mandat ROUND 2
+  // FIX 4B) — jamais transformé en cancelled : une décision remplacée par une
+  // plus récente doit rester superseded pour toujours.
+  if (decision.status === 'superseded') return { ok: false, error: 'invalid_status_transition' }
 
   const supabase = createAdminClient()
   const nowIso = new Date().toISOString()

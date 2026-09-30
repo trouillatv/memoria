@@ -13,7 +13,7 @@
 
 import { createHash } from 'node:crypto'
 import { canonicalStringify } from '@/lib/knowledge/tracked-point-fingerprint'
-import type { PlanningImpactKind } from './planning-impact-proposal'
+import type { PlanningImpactKind, PlanningImpactProposalPayload, SuspendPlanningImpactPayload } from './planning-impact-proposal'
 import type { DraftSimpleTemplate } from '@/lib/planning/impact-preview'
 import type { DraftCycle } from '@/lib/planning/cycle-preview'
 
@@ -133,4 +133,138 @@ export function computeContractFreshness(input: ContractFreshnessInput): Contrac
   if (input.currentProposalStatus === 'dismissed') return 'dismissed'
   if (input.currentProposalVersion !== input.proposalVersionAtDecision) return 'stale'
   return 'current'
+}
+
+// ── Canonicalisation preview/persistance (mandat ROUND 2 FIX 1) ─────────────
+// previewApplication et createDraftDecision doivent construire EXACTEMENT la
+// même décision canonique à partir d'un decisionPayload brut client — jamais
+// deux chemins divergents (preview sur payload brut, persistance canonisée).
+// Les dates canoniques viennent TOUJOURS de proposalPayload (contrat), jamais
+// du payload humain, qui ne fixe que le contenu (jour/heure/équipe/grille).
+export type NormalizeDecisionResult =
+  | { ok: true; payload: PlanningApplicationDecisionPayload }
+  | { ok: false; error: 'target_mission_mismatch' }
+
+export function normalizeDecisionAgainstProposal(
+  decisionPayload: PlanningApplicationDecisionPayload,
+  proposalPayload: PlanningImpactProposalPayload,
+): NormalizeDecisionResult {
+  if (decisionPayload.mutationKind === 'new') {
+    if (decisionPayload.draftSimpleTemplate.missionId !== decisionPayload.targetMissionId) {
+      return { ok: false, error: 'target_mission_mismatch' }
+    }
+    const { effectiveFrom, effectiveTo } = proposalPayload
+    return {
+      ok: true,
+      payload: {
+        ...decisionPayload,
+        draftSimpleTemplate: {
+          ...decisionPayload.draftSimpleTemplate,
+          startsOn: effectiveFrom ?? decisionPayload.draftSimpleTemplate.startsOn,
+          endsOn: effectiveTo,
+        },
+      },
+    }
+  }
+  if (decisionPayload.mutationKind === 'modify' && decisionPayload.targetSourceKind === 'cycle') {
+    if (decisionPayload.draftCycleAfter.missionId !== decisionPayload.targetMissionId) {
+      return { ok: false, error: 'target_mission_mismatch' }
+    }
+    const { effectiveFrom, effectiveTo } = proposalPayload
+    return {
+      ok: true,
+      payload: {
+        ...decisionPayload,
+        draftCycleAfter: {
+          ...decisionPayload.draftCycleAfter,
+          startsOn: effectiveFrom ?? decisionPayload.draftCycleAfter.startsOn,
+          endsOn: effectiveTo,
+        },
+      },
+    }
+  }
+  return { ok: true, payload: decisionPayload }
+}
+
+// ── Fenêtre de suspension contractuelle (mandat ROUND 2 FIX 1) ──────────────
+// La fenêtre suspendue vient EXCLUSIVEMENT du contrat (proposalPayload) —
+// from/to reçus par previewApplication restent une fenêtre d'AFFICHAGE,
+// jamais la définition de la suspension elle-même. Résultat = intersection
+// entre la fenêtre contractuelle et la fenêtre d'affichage ; `null` si vide.
+export function computeSuspensionWindow(
+  proposalPayload: SuspendPlanningImpactPayload,
+  displayFrom: string,
+  displayTo: string,
+): { from: string; to: string } | null {
+  const contractualFrom = proposalPayload.effectiveFrom
+  const contractualTo = proposalPayload.effectiveTo ?? proposalPayload.resumeOn ?? null
+  const from = contractualFrom !== null && contractualFrom > displayFrom ? contractualFrom : displayFrom
+  const to = contractualTo === null ? displayTo : contractualTo < displayTo ? contractualTo : displayTo
+  if (from > to) return null
+  return { from, to }
+}
+
+// ── Couverture/chevauchement temporel (mandat ROUND 2 FIX 2/3) ──────────────
+// coversDate = couverture ponctuelle (correct pour MODIFY/SUSPEND : la cible
+// doit couvrir la date d'effet). overlapsPeriod = chevauchement d'intervalle
+// (nécessaire pour NEW : un nouveau rythme peut entrer en conflit avec un
+// cycle existant sans que celui-ci "couvre" la date de départ du nouveau).
+// Toutes les bornes sont des chaînes ISO 'YYYY-MM-DD', comparables lexicalement.
+export function coversDate(startsOn: string, endsOn: string | null, date: string | null): boolean {
+  return date === null || (startsOn <= date && (endsOn === null || endsOn >= date))
+}
+
+export function overlapsPeriod(
+  startsOn: string,
+  endsOn: string | null,
+  periodFrom: string | null,
+  periodTo: string | null,
+): boolean {
+  if (periodFrom === null) return true
+  const startsBeforePeriodEnds = periodTo === null || startsOn <= periodTo
+  const endsAfterPeriodStarts = endsOn === null || endsOn >= periodFrom
+  return startsBeforePeriodEnds && endsAfterPeriodStarts
+}
+
+// ── Éligibilité serveur de la cible (mandat ROUND 2 FIX 3) ──────────────────
+// Invariant serveur, jamais délégué au seul fingerprint : reçoit les
+// entités DÉJÀ résolues et confirmées existantes par l'appelant (getCycle/
+// getTemplate/mission déjà fetchés) — ne fait AUCUN accès DB elle-même, ne
+// distingue jamais "n'existe pas" (reste target_not_found côté appelant) de
+// "existe mais inéligible" (seul cas couvert ici, target_not_eligible).
+export type TargetEligibilityInput = {
+  mutationKind: MutationKind
+  targetSourceKind: PlanningTargetSourceKind | null
+  engagementId: string
+  effectiveFrom: string | null
+  effectiveTo: string | null
+  mission: { active: boolean; engagementIds: string[] | null }
+  simpleTemplate?: { active: boolean; startsOn: string; endsOn: string | null } | null
+  publishedCycle?: { status: string; startsOn: string; endsOn: string | null } | null
+  newMissionCycles?: Array<{ startsOn: string; endsOn: string | null }>
+}
+
+export function validateTargetEligibility(input: TargetEligibilityInput): boolean {
+  if (!input.mission.active) return false
+
+  if (input.mutationKind === 'new') {
+    const hasConflict = (input.newMissionCycles ?? []).some((cycle) =>
+      overlapsPeriod(cycle.startsOn, cycle.endsOn, input.effectiveFrom, input.effectiveTo),
+    )
+    return !hasConflict
+  }
+
+  if (!(input.mission.engagementIds ?? []).includes(input.engagementId)) return false
+
+  if (input.targetSourceKind === 'simple') {
+    if (!input.simpleTemplate || !input.simpleTemplate.active) return false
+    return coversDate(input.simpleTemplate.startsOn, input.simpleTemplate.endsOn, input.effectiveFrom)
+  }
+
+  if (input.targetSourceKind === 'cycle') {
+    if (!input.publishedCycle || input.publishedCycle.status !== 'published') return false
+    return coversDate(input.publishedCycle.startsOn, input.publishedCycle.endsOn, input.effectiveFrom)
+  }
+
+  return false
 }
