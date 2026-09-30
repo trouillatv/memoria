@@ -35,13 +35,18 @@ function ageLabelFromDays(days: number): string {
 
 export async function loadTeamDrawerData(
   teamId: string,
-  organizationId: string | null,
+  orgIds: string[],
 ): Promise<TeamDrawerData | null> {
   const overview = await getTeamOverview(teamId)
   if (!overview) return null
   // P1 isolation : une équipe d'un autre tenant est invisible, même par id
-  // direct — FAIL-CLOSED (viewer sans org ou org différente → drawer fermé).
-  if (!organizationId || overview.organizationId !== organizationId) return null
+  // direct — FAIL-CLOSED. FIX MULTI-ORG (revue ChatGPT/Vincent, cc83c29b) —
+  // comparer à TOUTES les organisations accessibles au viewer, jamais à
+  // `users.organization_id` (une seule org, legacy dès qu'un compte a
+  // plusieurs appartenances) : un manager multi-org doit pouvoir ouvrir le
+  // drawer d'une équipe qui n'est pas dans son organisation par défaut.
+  if (!overview.organizationId || !orgIds.includes(overview.organizationId)) return null
+  const organizationId = overview.organizationId
 
   const [
     favoriteSites,

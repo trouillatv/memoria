@@ -37,40 +37,58 @@ function displayName(fullName: string | null, email: string): string {
   return email.split('@')[0] ?? email
 }
 
-async function listAssignableMembers(): Promise<MemberLite[]> {
+// Exporté uniquement pour couverture de test (FIX MULTI-ORG, cc83c29b) — la
+// fuite de nom d'équipe cross-org corrigée ici n'a pas d'autre point d'entrée
+// unitaire ; page.tsx reste la seule route qui l'appelle en production.
+export async function listAssignableMembers(orgIds: string[]): Promise<MemberLite[]> {
   const supabase = createAdminClient()
-  // Scope org OBLIGATOIRE : createAdminClient() bypasse la RLS, donc sans ce
-  // filtre le sélecteur remonte les personnes de TOUTES les organisations
-  // (cf. le reste de lib/db/teams.ts qui scope déjà via getOrgId()).
-  const orgIds = await getOrgIdsOfUser()
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → sélecteur vide, jamais
+  // les personnes d'un autre tenant.
+  if (orgIds.length === 0) return []
+
+  // FIX MULTI-ORG (revue ChatGPT/Vincent, cc83c29b) — la population doit venir
+  // des appartenances ACTIVES (organization_memberships), jamais de
+  // `users.organization_id` : cette colonne n'est qu'une organisation par
+  // défaut/legacy dès qu'un compte a plusieurs appartenances (cf.
+  // lib/auth/memberships.ts). Un manager multi-org doit voir toute personne
+  // active dans SES organisations, quel que soit leur `organization_id` par
+  // défaut.
+  const { data: activeMemberships, error: amErr } = await supabase
+    .from('organization_memberships')
+    .select('user_id')
+    .eq('status', 'active')
+    .in('organization_id', orgIds)
+  if (amErr) throw amErr
+  const candidateUserIds = Array.from(new Set((activeMemberships ?? []).map((m) => m.user_id)))
+  if (candidateUserIds.length === 0) return []
+
   const [{ data: users, error: uErr }, { data: memberships, error: mErr }] =
     await Promise.all([
-      (() => {
-        // Appartenance indépendante du rôle : toute personne pouvant intervenir
-        // sur un chantier (tout le monde sauf le compte système admin) peut être
-        // membre d'une équipe — le planning affecte des équipes, pas des rôles.
-        // P1 isolation : FAIL-CLOSED — pas d'organisation → sélecteur vide,
-        // jamais les personnes d'un autre tenant.
-        if (orgIds.length === 0) return Promise.resolve({ data: [], error: null })
-        return supabase
-          .from('users')
-          .select('id, full_name, email, role')
-          .neq('role', 'admin')
-          .is('deleted_at', null)
-          .in('organization_id', orgIds)
-          .order('full_name', { ascending: true })
-      })(),
+      // Appartenance indépendante du rôle : toute personne pouvant intervenir
+      // sur un chantier (tout le monde sauf le compte système admin) peut être
+      // membre d'une équipe — le planning affecte des équipes, pas des rôles.
+      supabase
+        .from('users')
+        .select('id, full_name, email, role')
+        .neq('role', 'admin')
+        .is('deleted_at', null)
+        .in('id', candidateUserIds)
+        .order('full_name', { ascending: true }),
       // Memberships actives + nom de l'équipe associée — pour signaler dans
       // le sélecteur "déjà dans Équipe X" et éviter les doublons cross-équipes.
+      // Scope organisation OBLIGATOIRE sur l'équipe elle-même : une personne
+      // visible dans org-A peut aussi être membre d'une équipe org-B, dont le
+      // nom ne doit jamais fuiter vers un viewer qui n'a pas accès à org-B.
       supabase
         .from('team_members')
-        .select('user_id, team:teams!team_id(id, name, deleted_at)')
-        .is('left_at', null),
+        .select('user_id, team:teams!team_id(id, name, deleted_at, organization_id)')
+        .is('left_at', null)
+        .in('user_id', candidateUserIds),
     ])
   if (uErr) throw uErr
   if (mErr) throw mErr
 
-  type TeamLite = { id: string; name: string; deleted_at: string | null }
+  type TeamLite = { id: string; name: string; deleted_at: string | null; organization_id: string | null }
   const teamsByUser = new Map<string, string[]>()
   for (const m of (memberships ?? []) as Array<{
     user_id: string
@@ -78,6 +96,7 @@ async function listAssignableMembers(): Promise<MemberLite[]> {
   }>) {
     const t = Array.isArray(m.team) ? m.team[0] ?? null : m.team
     if (!t || t.deleted_at) continue
+    if (!t.organization_id || !orgIds.includes(t.organization_id)) continue
     const arr = teamsByUser.get(m.user_id) ?? []
     arr.push(t.name)
     teamsByUser.set(m.user_id, arr)
@@ -111,13 +130,17 @@ export default async function EquipesPage({
   const personKind = sp.personKind === 'contact' ? 'contact' : 'user'
   const personPeriod = parsePersonPeriod(sp.personPeriod)
 
-  const [teams, orphans, availableUsers, orgs, orgIds, teamDrawerData, pulse] = await Promise.all([
+  // FIX MULTI-ORG (revue ChatGPT/Vincent, cc83c29b) — orgIds doit être résolu
+  // AVANT les appels qui en dépendent (listAssignableMembers, loadTeamDrawerData),
+  // jamais utilisé en parallèle d'eux dans le même Promise.all.
+  const orgIds = await getOrgIdsOfUser()
+
+  const [teams, orphans, availableUsers, orgs, teamDrawerData, pulse] = await Promise.all([
     listTeamsWithMemberCount(),
     listOrphanUsers(),
-    listAssignableMembers(),
+    listAssignableMembers(orgIds),
     getOrgsForSelector(),
-    getOrgIdsOfUser(),
-    sp.team ? loadTeamDrawerData(sp.team, user.organization_id) : Promise.resolve(null),
+    sp.team ? loadTeamDrawerData(sp.team, orgIds) : Promise.resolve(null),
     getTeamsGlobalPulse(),
   ])
 

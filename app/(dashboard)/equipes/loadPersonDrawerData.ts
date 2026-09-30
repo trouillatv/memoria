@@ -77,11 +77,25 @@ export async function loadPersonDrawerData(
   if (ref.kind === 'user') {
     const { data: userRow } = await admin
       .from('users')
-      .select('id, full_name, email, role, organization_id, deleted_at')
+      .select('id, full_name, email, role, deleted_at')
       .eq('id', personId)
       .maybeSingle()
     if (!userRow || userRow.deleted_at) return null
-    if (!userRow.organization_id || !orgIds.includes(userRow.organization_id)) return null
+
+    // FIX MULTI-ORG (revue ChatGPT/Vincent, cc83c29b) — `users.organization_id`
+    // n'est qu'une organisation par défaut/legacy dès qu'un compte a plusieurs
+    // appartenances (cf. lib/auth/memberships.ts). L'autorisation d'accès au
+    // drawer doit venir d'une appartenance ACTIVE dans une des organisations du
+    // viewer, jamais de cette colonne scalaire.
+    const { data: membershipRow } = await admin
+      .from('organization_memberships')
+      .select('id')
+      .eq('user_id', personId)
+      .eq('status', 'active')
+      .in('organization_id', orgIds)
+      .limit(1)
+      .maybeSingle()
+    if (!membershipRow) return null
 
     const sinceIso = sinceIsoFor(period)
     const [summary, interventions, photos, memberships] = await Promise.all([

@@ -578,6 +578,15 @@ export interface OrphanUser {
  * ce correctif, la seule condition était `left_at IS NULL`, sans jamais
  * vérifier l'état de l'équipe elle-même.
  *
+ * FIX MULTI-ORG (revue ChatGPT/Vincent, cc83c29b) — la population candidate
+ * et le calcul « en équipe » utilisaient `users.organization_id`, une colonne
+ * qui n'est plus qu'une organisation par défaut/legacy dès qu'un compte a
+ * plusieurs appartenances (cf. lib/auth/memberships.ts). Source canonique
+ * désormais : `organization_memberships` ACTIVE pour la population, et
+ * `teams.organization_id` pour décider si un membership « compte » dans le
+ * périmètre du viewer — une équipe active d'une organisation hors `orgIds`
+ * ne doit ni faire disparaître, ni faire apparaître personne ici.
+ *
  * Comme `listMembersOfTeam`, cette fonction expose des noms d'agents et n'est
  * destinée QU'à la page Équipes.
  */
@@ -588,29 +597,42 @@ export async function listOrphanUsers(): Promise<OrphanUser[]> {
   // gens d'un autre tenant).
   if (orgIds.length === 0) return []
 
-  // 1) Toutes les personnes non archivées de l'org, hors compte système admin.
-  const uQ = supabase.from('users').select('id, full_name, email, role')
-    .neq('role', SYSTEM_ROLE_EXCLUDED_FROM_TEAMS).is('deleted_at', null)
+  // 1) Population candidate : appartenances ACTIVES dans les organisations du
+  //    viewer, jamais `users.organization_id`.
+  const { data: activeMemberships, error: amErr } = await supabase
+    .from('organization_memberships')
+    .select('user_id')
+    .eq('status', 'active')
     .in('organization_id', orgIds)
-  const { data: users, error: uErr } = await uQ
+  if (amErr) throw amErr
+  const candidateUserIds = Array.from(new Set((activeMemberships ?? []).map((m) => m.user_id)))
+  if (candidateUserIds.length === 0) return []
+
+  // 2) Profils non archivés, hors compte système admin.
+  const { data: users, error: uErr } = await supabase
+    .from('users')
+    .select('id, full_name, email, role')
+    .neq('role', SYSTEM_ROLE_EXCLUDED_FROM_TEAMS)
+    .is('deleted_at', null)
+    .in('id', candidateUserIds)
   if (uErr) throw uErr
   if (!users || users.length === 0) return []
 
-  // 2) Tous les userIds qui ont au moins un membership actif dans une équipe
-  //    elle-même active et non supprimée.
+  // 3) Tous les userIds qui ont au moins un membership actif dans une équipe
+  //    elle-même active, non supprimée, ET dans une organisation du viewer.
   const { data: memberships, error: mErr } = await supabase
     .from('team_members')
-    .select('user_id, team:teams!inner(active, deleted_at)')
+    .select('user_id, team:teams!inner(active, deleted_at, organization_id)')
     .is('left_at', null)
     .in('user_id', users.map((u) => u.id))
   if (mErr) throw mErr
 
-  type TeamLite = { active: boolean; deleted_at: string | null }
+  type TeamLite = { active: boolean; deleted_at: string | null; organization_id: string | null }
   const memberSet = new Set(
     ((memberships ?? []) as Array<{ user_id: string; team: TeamLite | TeamLite[] | null }>)
       .filter((m) => {
         const t = Array.isArray(m.team) ? m.team[0] ?? null : m.team
-        return !!t && t.active && !t.deleted_at
+        return !!t && t.active && !t.deleted_at && !!t.organization_id && orgIds.includes(t.organization_id)
       })
       .map((m) => m.user_id),
   )
