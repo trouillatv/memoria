@@ -392,19 +392,49 @@ describe('lib/db/teams.ts — Slice 9.1', () => {
     ).rejects.toThrow()
   })
 
-  it('removeMemberFromTeam : retirer le référent efface referent_user_id (jamais orphelin)', async () => {
+  // FIX B (revue ChatGPT/Vincent, 08e355e2) — remplace l'ancien effacement
+  // automatique (silencieux, non atomique) par un refus explicite.
+  it('removeMemberFromTeam : retirer le référent est refusé, jamais orphelin', async () => {
     const supabase = createAdminClient()
     const t = await createTeam({ name: '__test_phase9_helpers_Lambda' })
     await addMemberToTeam(t.id, testUserId)
     await setTeamReferent({ teamId: t.id, userId: testUserId })
 
-    await removeMemberFromTeam(t.id, testUserId)
+    await expect(removeMemberFromTeam(t.id, testUserId)).rejects.toThrow(
+      "Retirez ou changez d'abord le référent de l'équipe.",
+    )
 
-    const { data: after } = await supabase
+    const { data: teamAfter } = await supabase
       .from('teams')
       .select('referent_user_id')
       .eq('id', t.id)
       .maybeSingle()
-    expect(after!.referent_user_id).toBeNull()
+    expect(teamAfter!.referent_user_id).toBe(testUserId)
+
+    const { data: memberAfter } = await supabase
+      .from('team_members')
+      .select('left_at')
+      .eq('team_id', t.id)
+      .eq('user_id', testUserId)
+      .maybeSingle()
+    expect(memberAfter!.left_at).toBeNull()
+  })
+
+  it('removeMemberFromTeam : après setTeamReferent(null), le retrait est accepté', async () => {
+    const supabase = createAdminClient()
+    const t = await createTeam({ name: '__test_phase9_helpers_Mu' })
+    await addMemberToTeam(t.id, testUserId)
+    await setTeamReferent({ teamId: t.id, userId: testUserId })
+    await setTeamReferent({ teamId: t.id, userId: null })
+
+    await removeMemberFromTeam(t.id, testUserId)
+
+    const { data: memberAfter } = await supabase
+      .from('team_members')
+      .select('left_at')
+      .eq('team_id', t.id)
+      .eq('user_id', testUserId)
+      .maybeSingle()
+    expect(memberAfter!.left_at).not.toBeNull()
   })
 })

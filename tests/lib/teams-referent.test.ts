@@ -138,14 +138,17 @@ describe('FIX 5 — setTeamReferent : référent = membre actif obligatoire', ()
   })
 })
 
-describe('FIX 5 — removeMemberFromTeam : jamais de referent_user_id orphelin', () => {
-  it('retirer le référent efface referent_user_id (jamais orphelin)', async () => {
+describe('FIX B (revue ChatGPT/Vincent, 08e355e2) — removeMemberFromTeam : jamais de referent_user_id orphelin', () => {
+  it('retirer le référent est refusé, le membership reste actif', async () => {
     membersState['t-1:u-1'] = true
     teamsState['t-1'] = { referent_user_id: 'u-1' }
 
-    await removeMemberFromTeam('t-1', 'u-1')
+    await expect(removeMemberFromTeam('t-1', 'u-1')).rejects.toThrow(
+      "Retirez ou changez d'abord le référent de l'équipe.",
+    )
 
-    expect(teamsState['t-1'].referent_user_id).toBeNull()
+    expect(membersState['t-1:u-1']).toBe(true)
+    expect(teamsState['t-1'].referent_user_id).toBe('u-1')
   })
 
   it('retirer un membre qui n\'est PAS le référent laisse referent_user_id intact', async () => {
@@ -154,6 +157,19 @@ describe('FIX 5 — removeMemberFromTeam : jamais de referent_user_id orphelin',
 
     await removeMemberFromTeam('t-1', 'u-1')
 
+    expect(membersState['t-1:u-1']).toBe(false)
     expect(teamsState['t-1'].referent_user_id).toBe('u-2')
+  })
+
+  it('après setTeamReferent(null), le retrait de l\'ancien référent est accepté', async () => {
+    membersState['t-1:u-1'] = true
+    teamsState['t-1'] = { referent_user_id: 'u-1' }
+
+    await setTeamReferent({ teamId: 't-1', userId: null })
+    expect(teamsState['t-1'].referent_user_id).toBeNull()
+
+    await removeMemberFromTeam('t-1', 'u-1')
+
+    expect(membersState['t-1:u-1']).toBe(false)
   })
 })

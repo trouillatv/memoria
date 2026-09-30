@@ -90,15 +90,21 @@ export async function loadPersonDrawerData(
       listPhotosForUser(personId, orgIds, { sinceIso, limit: 24 }),
       admin
         .from('team_members')
-        .select('team:teams!inner(id, name, deleted_at)')
+        .select('team:teams!inner(id, name, deleted_at, organization_id)')
         .eq('user_id', personId)
         .is('left_at', null),
     ])
 
-    type TeamLite = { id: string; name: string; deleted_at: string | null }
+    // FIX A (revue ChatGPT/Vincent, 08e355e2) — un user peut appartenir à
+    // PLUSIEURS organisations : `users.organization_id` (déjà vérifié plus
+    // haut) ne garantit donc pas que ses équipes actuelles le sont aussi.
+    // Fail-closed jusque dans `currentTeams` : une équipe hors `orgIds` ne
+    // doit jamais apparaître dans le drawer, même si son propriétaire est
+    // par ailleurs visible.
+    type TeamLite = { id: string; name: string; deleted_at: string | null; organization_id: string | null }
     const currentTeams: CurrentTeamRef[] = ((memberships.data ?? []) as Array<{ team: TeamLite | TeamLite[] | null }>)
       .map((m) => (Array.isArray(m.team) ? m.team[0] ?? null : m.team))
-      .filter((t): t is TeamLite => !!t && !t.deleted_at)
+      .filter((t): t is TeamLite => !!t && !t.deleted_at && !!t.organization_id && orgIds.includes(t.organization_id))
       .map((t) => ({ teamId: t.id, teamName: t.name }))
 
     return {
@@ -128,7 +134,7 @@ export async function loadPersonDrawerData(
   const [summary, actions, teams] = await Promise.all([
     getPersonMemorySummary(ref, orgIds, {}),
     listAssignedActionsForContact(personId, orgIds),
-    listTeamMembershipsForContact(personId),
+    listTeamMembershipsForContact(personId, orgIds),
   ])
 
   const subtitleParts = [contactRow.function, company?.name].filter((v): v is string => !!v)

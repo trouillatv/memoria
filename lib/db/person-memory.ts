@@ -417,11 +417,21 @@ export async function listAssignedActionsForContact(
   return out
 }
 
-export async function listTeamMembershipsForContact(contactId: string): Promise<ContactTeamMembership[]> {
+/**
+ * FIX A (revue ChatGPT/Vincent, 08e355e2) — `orgIds` obligatoire et
+ * fail-closed : `team_field_members` n'a pas de garde applicative avant ce
+ * correctif, sa sûreté reposait sur les seuls invariants DB. Une équipe hors
+ * organisations accessibles ne doit jamais apparaître ici.
+ */
+export async function listTeamMembershipsForContact(
+  contactId: string,
+  orgIds: string[],
+): Promise<ContactTeamMembership[]> {
+  if (!orgIds.length) return []
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('team_field_members')
-    .select('joined_at, team:teams!inner(id, name, deleted_at)')
+    .select('joined_at, team:teams!inner(id, name, deleted_at, organization_id)')
     .eq('contact_id', contactId)
     .is('left_at', null)
   if (error) throw error
@@ -429,10 +439,11 @@ export async function listTeamMembershipsForContact(contactId: string): Promise<
   const out: ContactTeamMembership[] = []
   for (const r of (data ?? []) as unknown as Array<{
     joined_at: string
-    team: { id: string; name: string; deleted_at: string | null } | Array<{ id: string; name: string; deleted_at: string | null }> | null
+    team: { id: string; name: string; deleted_at: string | null; organization_id: string | null } | Array<{ id: string; name: string; deleted_at: string | null; organization_id: string | null }> | null
   }>) {
     const team = pickOne(r.team)
     if (!team || team.deleted_at) continue
+    if (!team.organization_id || !orgIds.includes(team.organization_id)) continue
     out.push({ teamId: team.id, teamName: team.name, joinedAt: r.joined_at })
   }
   return out
@@ -444,7 +455,7 @@ export async function getContactMemoryOverview(
 ): Promise<ContactMemoryOverview> {
   const [actions, teams] = await Promise.all([
     listAssignedActionsForContact(contactId, orgIds),
-    listTeamMembershipsForContact(contactId),
+    listTeamMembershipsForContact(contactId, orgIds),
   ])
   return {
     openActionCount: actions.filter((a) => !DONE_ACTION_STATUSES.has(a.status)).length,

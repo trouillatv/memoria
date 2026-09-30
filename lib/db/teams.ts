@@ -507,14 +507,27 @@ export async function addMemberToTeam(teamId: string, userId: string): Promise<D
  * Retire un user d'une équipe : on positionne `left_at` (historique conservé).
  * Idempotent : si aucun membership actif, ne fait rien.
  *
- * FIX 5 (revue ChatGPT/Vincent, cd30aa2d) — si ce user est le référent
- * courant de l'équipe, le retrait ne doit jamais laisser
- * `teams.referent_user_id` pointer vers quelqu'un qui n'est plus membre :
- * on bascule explicitement sur « Aucun référent » (null), jamais un
- * pointeur orphelin silencieux.
+ * FIX B (revue ChatGPT/Vincent, 08e355e2) — remplace l'ancien effacement
+ * automatique du référent (FIX 5, cd30aa2d) : cet effacement silencieux était
+ * une UX cachée (Vincent exige qu'aucun retrait de référent ne soit implicite)
+ * et les deux écritures n'étaient pas atomiques (un échec de la seconde
+ * laissait exactement l'état orphelin qu'on voulait interdire). On refuse
+ * désormais le retrait tant que ce user est le référent courant : l'appelant
+ * doit d'abord changer le référent (ou choisir explicitement « Aucun
+ * référent ») via `setTeamReferent`, puis retirer le membre.
  */
 export async function removeMemberFromTeam(teamId: string, userId: string): Promise<void> {
   const supabase = createAdminClient()
+  const { data: team, error: teamError } = await supabase
+    .from('teams')
+    .select('referent_user_id')
+    .eq('id', teamId)
+    .maybeSingle()
+  if (teamError) throw teamError
+  if (team?.referent_user_id === userId) {
+    throw new Error("Retirez ou changez d'abord le référent de l'équipe.")
+  }
+
   const nowIso = new Date().toISOString()
   const { error } = await supabase
     .from('team_members')
@@ -523,20 +536,6 @@ export async function removeMemberFromTeam(teamId: string, userId: string): Prom
     .eq('user_id', userId)
     .is('left_at', null)
   if (error) throw error
-
-  const { data: team, error: teamError } = await supabase
-    .from('teams')
-    .select('referent_user_id')
-    .eq('id', teamId)
-    .maybeSingle()
-  if (teamError) throw teamError
-  if (team?.referent_user_id === userId) {
-    const { error: clearError } = await supabase
-      .from('teams')
-      .update({ referent_user_id: null })
-      .eq('id', teamId)
-    if (clearError) throw clearError
-  }
 }
 
 /**
@@ -570,8 +569,14 @@ export interface OrphanUser {
 
 /**
  * Liste les personnes pouvant appartenir à une équipe (tout le monde sauf le
- * compte système admin) qui ne sont membres actifs d'aucune équipe. Sert à
- * afficher le bandeau « ⚠ X personnes pas dans une équipe » sur la page Équipes.
+ * compte système admin) qui ne sont membres actifs d'aucune équipe ACTIVE.
+ * Sert à afficher le bandeau « ⚠ X personnes pas dans une équipe » sur la
+ * page Équipes.
+ *
+ * FIX C (revue ChatGPT/Vincent, 08e355e2) — un membership actif dans une
+ * équipe désactivée ou supprimée ne compte plus comme « en équipe » : avant
+ * ce correctif, la seule condition était `left_at IS NULL`, sans jamais
+ * vérifier l'état de l'équipe elle-même.
  *
  * Comme `listMembersOfTeam`, cette fonction expose des noms d'agents et n'est
  * destinée QU'à la page Équipes.
@@ -591,15 +596,24 @@ export async function listOrphanUsers(): Promise<OrphanUser[]> {
   if (uErr) throw uErr
   if (!users || users.length === 0) return []
 
-  // 2) Tous les userIds qui ont au moins un membership actif
+  // 2) Tous les userIds qui ont au moins un membership actif dans une équipe
+  //    elle-même active et non supprimée.
   const { data: memberships, error: mErr } = await supabase
     .from('team_members')
-    .select('user_id')
+    .select('user_id, team:teams!inner(active, deleted_at)')
     .is('left_at', null)
     .in('user_id', users.map((u) => u.id))
   if (mErr) throw mErr
 
-  const memberSet = new Set((memberships ?? []).map((m) => m.user_id))
+  type TeamLite = { active: boolean; deleted_at: string | null }
+  const memberSet = new Set(
+    ((memberships ?? []) as Array<{ user_id: string; team: TeamLite | TeamLite[] | null }>)
+      .filter((m) => {
+        const t = Array.isArray(m.team) ? m.team[0] ?? null : m.team
+        return !!t && t.active && !t.deleted_at
+      })
+      .map((m) => m.user_id),
+  )
   return users
     .filter((u) => !memberSet.has(u.id))
     .map((u) => ({

@@ -253,17 +253,33 @@ describe('FIX 1 (revue ChatGPT/Vincent) — listPhotosForUser, taken_by uniqueme
 describe('listTeamMembershipsForContact — appartenance ACTUELLE uniquement', () => {
   it('exclut les appartenances quittées (left_at) — la requête filtre déjà, jamais une réécriture côté lecture', async () => {
     fieldMemberRows = [
-      { joined_at: '2026-08-01T00:00:00Z', team: { id: 't-1', name: 'Équipe Alpha', deleted_at: null } },
+      { joined_at: '2026-08-01T00:00:00Z', team: { id: 't-1', name: 'Équipe Alpha', deleted_at: null, organization_id: 'org-demo' } },
     ]
-    const out = await listTeamMembershipsForContact('c-1')
+    const out = await listTeamMembershipsForContact('c-1', ['org-demo'])
     expect(out).toEqual([{ teamId: 't-1', teamName: 'Équipe Alpha', joinedAt: '2026-08-01T00:00:00Z' }])
   })
 
   it('exclut une équipe archivée même si la ligne d’appartenance est encore active', async () => {
     fieldMemberRows = [
-      { joined_at: '2026-08-01T00:00:00Z', team: { id: 't-1', name: 'Équipe Alpha', deleted_at: '2026-09-01T00:00:00Z' } },
+      { joined_at: '2026-08-01T00:00:00Z', team: { id: 't-1', name: 'Équipe Alpha', deleted_at: '2026-09-01T00:00:00Z', organization_id: 'org-demo' } },
     ]
-    const out = await listTeamMembershipsForContact('c-1')
+    const out = await listTeamMembershipsForContact('c-1', ['org-demo'])
+    expect(out).toEqual([])
+  })
+
+  it('FIX A (revue ChatGPT/Vincent, 08e355e2) — exclut une équipe hors des organisations accessibles', async () => {
+    fieldMemberRows = [
+      { joined_at: '2026-08-01T00:00:00Z', team: { id: 't-1', name: 'Équipe Autre Org', deleted_at: null, organization_id: 'org-autre' } },
+    ]
+    const out = await listTeamMembershipsForContact('c-1', ['org-demo'])
+    expect(out).toEqual([])
+  })
+
+  it('FIX A — orgIds vide → fail-closed, aucune équipe', async () => {
+    fieldMemberRows = [
+      { joined_at: '2026-08-01T00:00:00Z', team: { id: 't-1', name: 'Équipe Alpha', deleted_at: null, organization_id: 'org-demo' } },
+    ]
+    const out = await listTeamMembershipsForContact('c-1', [])
     expect(out).toEqual([])
   })
 })

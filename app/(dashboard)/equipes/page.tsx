@@ -171,11 +171,15 @@ export default async function EquipesPage({
           <CardContent className="space-y-2 py-4">
             <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
               <AlertCircle className="h-4 w-4" />
-              {orphans.length} {orphans.length > 1 ? 'personnes' : 'personne'} pas dans une équipe
+              {orphans.length} {orphans.length > 1 ? 'comptes' : 'compte'} pas dans une équipe active
             </div>
             <p className="text-xs text-amber-800/80">
-              Ces personnes ne sont rattachées à aucune équipe active.
-              Rattachez-les ci-dessous, ou via « Éditer » sur une équipe existante.
+              Ces comptes ne sont rattachés à aucune équipe active
+              {/* FIX C (revue ChatGPT/Vincent, 08e355e2) — « comptes », pas « personnes » : le
+                  pulse ci-dessus additionne aussi les contacts terrain (team_field_members),
+                  une population distincte que ce bandeau ne liste pas (rattachement en masse
+                  réservé aux comptes, cf. OrphansBulkAssign). */}
+              . Rattachez-les ci-dessous, ou via « Éditer » sur une équipe existante.
             </p>
             <div className="text-sm text-amber-900" data-testid="orphans-list">
               {orphans.map((u, i) => (

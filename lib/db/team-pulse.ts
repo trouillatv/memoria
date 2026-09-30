@@ -24,7 +24,12 @@ export interface TeamsGlobalPulse {
   activeTeamsCount: number
   /** team_members actifs (distinct) + team_field_members actifs (distinct) — jamais dédoublonnés entre les deux populations. */
   activePersonsInTeamsCount: number
-  /** Réutilise listOrphanUsers() — personnes de l'org sans membership actif. */
+  /**
+   * FIX C (revue ChatGPT/Vincent, 08e355e2) — deux populations disjointes
+   * additionnées (jamais fusionnées) : users sans membership actif dans une
+   * équipe ACTIVE (`listOrphanUsers()`) + contacts terrain dans le même cas
+   * (`countOrphanContacts`).
+   */
   personsWithoutTeamCount: number
   /** Interventions RÉELLES des équipes de l'org sur la période. */
   realInterventionsCount: number
@@ -47,6 +52,39 @@ function emptyPulse(periodDays: number): TeamsGlobalPulse {
 }
 
 /**
+ * Contacts terrain (company_contacts) de l'org qui n'ont aucun membership
+ * actif dans une équipe elle-même ACTIVE et non supprimée.
+ *
+ * FIX C (revue ChatGPT/Vincent, 08e355e2) — « sans équipe » doit couvrir les
+ * DEUX populations (users ET contacts terrain), jamais fusionnées par nom ou
+ * email : ce sont deux tables distinctes, deux identités distinctes.
+ */
+async function countOrphanContacts(
+  admin: ReturnType<typeof createAdminClient>,
+  orgIds: string[],
+  activeTeamIds: string[],
+): Promise<number> {
+  const { data: contacts, error: cErr } = await admin
+    .from('company_contacts')
+    .select('id')
+    .is('deleted_at', null)
+    .in('organization_id', orgIds)
+  if (cErr) throw cErr
+  if (!contacts || contacts.length === 0) return 0
+  if (activeTeamIds.length === 0) return contacts.length
+
+  const { data: fieldRows, error: fErr } = await admin
+    .from('team_field_members')
+    .select('contact_id')
+    .in('team_id', activeTeamIds)
+    .is('left_at', null)
+  if (fErr) throw fErr
+
+  const memberSet = new Set(((fieldRows ?? []) as Array<{ contact_id: string }>).map((r) => r.contact_id))
+  return (contacts as Array<{ id: string }>).filter((c) => !memberSet.has(c.id)).length
+}
+
+/**
  * Pulse global de la page /equipes — une seule bande compacte, tout batché.
  * Fail-closed : sans organisation, tous les compteurs sont à zéro.
  */
@@ -66,14 +104,21 @@ export async function getTeamsGlobalPulse(periodDays = 30): Promise<TeamsGlobalP
   const teams = (teamRows ?? []) as Array<{ id: string; active: boolean }>
   const teamIds = teams.map((t) => t.id)
   const activeTeamsCount = teams.filter((t) => t.active).length
+  // FIX C (revue ChatGPT/Vincent, 08e355e2) — une équipe désactivée ne doit
+  // plus faire compter ses membres comme « en équipe » : toutes les
+  // populations ci-dessous se restreignent aux équipes ACTIVES, jamais à
+  // `teamIds` (qui inclut aussi les équipes inactives, seulement pas
+  // supprimées).
+  const activeTeamIds = teams.filter((t) => t.active).map((t) => t.id)
 
-  const [personsWithoutTeamCount, activePersonsInTeamsCount] = await Promise.all([
+  const [orphanUsersCount, orphanContactsCount, activePersonsInTeamsCount] = await Promise.all([
     listOrphanUsers().then((rows) => rows.length),
+    countOrphanContacts(admin, orgIds, activeTeamIds),
     (async () => {
-      if (teamIds.length === 0) return 0
+      if (activeTeamIds.length === 0) return 0
       const [{ data: memberRows, error: mErr }, { data: fieldRows, error: fErr }] = await Promise.all([
-        admin.from('team_members').select('user_id').in('team_id', teamIds).is('left_at', null),
-        admin.from('team_field_members').select('contact_id').in('organization_id', orgIds).is('left_at', null),
+        admin.from('team_members').select('user_id').in('team_id', activeTeamIds).is('left_at', null),
+        admin.from('team_field_members').select('contact_id').in('team_id', activeTeamIds).is('left_at', null),
       ])
       if (mErr) throw mErr
       if (fErr) throw fErr
@@ -82,6 +127,9 @@ export async function getTeamsGlobalPulse(periodDays = 30): Promise<TeamsGlobalP
       return distinctUsers.size + distinctContacts.size
     })(),
   ])
+  // Deux populations disjointes (users, contacts terrain) additionnées, jamais
+  // dédupliquées entre elles — même doctrine que `activePersonsInTeamsCount`.
+  const personsWithoutTeamCount = orphanUsersCount + orphanContactsCount
 
   if (teamIds.length === 0) {
     return {
