@@ -371,14 +371,33 @@ export async function listTeamsWithMemberCount(): Promise<TeamWithMemberCount[]>
  * Doctrine V3 :
  *   - Référent = point de contact stable, pas une hiérarchie.
  *   - `null` accepté (retrait sans remplacement immédiat).
- *   - Pas de contrainte DB "le référent doit être membre" : tolérance
- *     opérationnelle (transitions, départ sans relai immédiat).
+ *
+ * FIX 5 (revue ChatGPT/Vincent, cd30aa2d) — un référent non-null DOIT être
+ * membre ACTIF de l'équipe (team_members, left_at IS NULL). L'ancienne
+ * tolérance « n'importe qui dans l'organisation » permettait un référent
+ * jamais rattaché à l'équipe qu'il est censé représenter — refusé désormais
+ * avec une erreur métier explicite plutôt qu'une écriture silencieuse.
  */
 export async function setTeamReferent(input: {
   teamId: string
   userId: string | null
 }): Promise<void> {
   const supabase = createAdminClient()
+
+  if (input.userId !== null) {
+    const { data: membership, error: mErr } = await supabase
+      .from('team_members')
+      .select('id')
+      .eq('team_id', input.teamId)
+      .eq('user_id', input.userId)
+      .is('left_at', null)
+      .maybeSingle()
+    if (mErr) throw mErr
+    if (!membership) {
+      throw new Error("Le référent doit être membre actif de l'équipe")
+    }
+  }
+
   const { error } = await supabase
     .from('teams')
     .update({ referent_user_id: input.userId })
@@ -487,6 +506,12 @@ export async function addMemberToTeam(teamId: string, userId: string): Promise<D
 /**
  * Retire un user d'une équipe : on positionne `left_at` (historique conservé).
  * Idempotent : si aucun membership actif, ne fait rien.
+ *
+ * FIX 5 (revue ChatGPT/Vincent, cd30aa2d) — si ce user est le référent
+ * courant de l'équipe, le retrait ne doit jamais laisser
+ * `teams.referent_user_id` pointer vers quelqu'un qui n'est plus membre :
+ * on bascule explicitement sur « Aucun référent » (null), jamais un
+ * pointeur orphelin silencieux.
  */
 export async function removeMemberFromTeam(teamId: string, userId: string): Promise<void> {
   const supabase = createAdminClient()
@@ -498,6 +523,20 @@ export async function removeMemberFromTeam(teamId: string, userId: string): Prom
     .eq('user_id', userId)
     .is('left_at', null)
   if (error) throw error
+
+  const { data: team, error: teamError } = await supabase
+    .from('teams')
+    .select('referent_user_id')
+    .eq('id', teamId)
+    .maybeSingle()
+  if (teamError) throw teamError
+  if (team?.referent_user_id === userId) {
+    const { error: clearError } = await supabase
+      .from('teams')
+      .update({ referent_user_id: null })
+      .eq('id', teamId)
+    if (clearError) throw clearError
+  }
 }
 
 /**

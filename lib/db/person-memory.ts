@@ -21,6 +21,7 @@
 // `PersonRef` modélise cette dualité sans introduire de table Person unifiée.
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getSignedPhotoUrlsThumb } from '@/lib/storage/intervention-photos'
 
 export type PersonRef =
   | { kind: 'user'; id: string }
@@ -30,11 +31,20 @@ export type PersonRef =
 // Types — mémoire "user" (participations confirmées)
 // ----------------------------------------------------------------------------
 
+// FIX 2 (revue ChatGPT/Vincent sur cd30aa2d) — intervention_participants peut
+// être écrit (RLS ip_insert, migration 024) dès que l'intervention est encore
+// `planned` ou `in_progress` : la présence d'une ligne ne prouve donc PAS à
+// elle seule une intervention réalisée. Seuls `completed`/`validated` sont une
+// preuve attestée ; `in_progress` est réel mais non clos ; `planned` (et tout
+// statut non abouti comme `skipped`) ne compte JAMAIS ici.
+export type ConfirmationBasis = 'attested' | 'in_progress'
+
 export interface ConfirmedInterventionMemoryItem {
   interventionId: string
   role: 'participant' | 'referent'
   effectiveDate: string | null
   status: string
+  confirmationBasis: ConfirmationBasis
   siteId: string
   siteName: string
   contractName: string | null
@@ -44,7 +54,8 @@ export interface ConfirmedInterventionMemoryItem {
 }
 
 export interface UserMemoryOverview {
-  confirmedInterventionsCount: number
+  attestedInterventionsCount: number
+  inProgressInterventionsCount: number
   referentCount: number
   distinctSiteCount: number
   distinctTeamCount: number
@@ -98,11 +109,15 @@ function effectiveDate(i: { scheduled_for: string | null; planned_start: string 
   return i.scheduled_for ?? i.planned_start
 }
 
+const ATTESTED_STATUSES = new Set(['completed', 'validated'])
+const IN_PROGRESS_STATUS = 'in_progress'
+
 /**
- * Participations CONFIRMÉES d'un user, triées par date décroissante. Borne
- * temporelle optionnelle (`sinceIso`) et pagination — jamais un dump complet.
- * Scope organisationnel obligatoire (`orgIds`) : un manager multi-org ne voit
- * que les sites de ses organisations.
+ * Participations RÉELLES d'un user (statut `completed`/`validated`/`in_progress`
+ * uniquement — jamais `planned` ni `skipped`, cf. `confirmationBasis`), triées
+ * par date décroissante. Borne temporelle optionnelle (`sinceIso`) et
+ * pagination — jamais un dump complet. Scope organisationnel obligatoire
+ * (`orgIds`) : un manager multi-org ne voit que les sites de ses organisations.
  */
 export async function listConfirmedInterventionsForUser(
   userId: string,
@@ -143,6 +158,19 @@ export async function listConfirmedInterventionsForUser(
       mission: unknown
     } | null
     if (!intervention) continue
+
+    // `planned` (RLS permet déjà l'écriture avant réalisation) et tout statut
+    // non abouti (`skipped`) ne sont jamais une participation — cf. doctrine
+    // en tête de fichier et migration 024 (trg_ip_freeze/ip_insert).
+    let confirmationBasis: ConfirmationBasis
+    if (ATTESTED_STATUSES.has(intervention.status)) {
+      confirmationBasis = 'attested'
+    } else if (intervention.status === IN_PROGRESS_STATUS) {
+      confirmationBasis = 'in_progress'
+    } else {
+      continue
+    }
+
     const mission = pickOne(intervention.mission as never) as { site?: unknown } | null
     const site = pickOne(mission?.site as never) as {
       id?: string
@@ -166,6 +194,7 @@ export async function listConfirmedInterventionsForUser(
       role: r.role,
       effectiveDate: date,
       status: intervention.status,
+      confirmationBasis,
       siteId: site.id,
       siteName: site.name,
       contractName: contract?.name ?? null,
@@ -193,18 +222,129 @@ export async function getUserMemoryOverview(
     limit: 100000,
   })
 
+  // firstConfirmedAt/lastConfirmedAt restent des dates ATTESTÉES : une
+  // intervention encore `in_progress` n'est pas close, elle ne doit jamais
+  // avancer la date de "dernière participation confirmée".
+  const attested = items.filter((i) => i.confirmationBasis === 'attested')
   const sites = new Set(items.map((i) => i.siteId))
   const teams = new Set(items.filter((i) => i.teamId).map((i) => i.teamId as string))
-  const dates = items.map((i) => i.effectiveDate).filter((d): d is string => !!d).sort()
+  const dates = attested.map((i) => i.effectiveDate).filter((d): d is string => !!d).sort()
 
   return {
-    confirmedInterventionsCount: items.length,
+    attestedInterventionsCount: attested.length,
+    inProgressInterventionsCount: items.length - attested.length,
     referentCount: items.filter((i) => i.role === 'referent').length,
     distinctSiteCount: sites.size,
     distinctTeamCount: teams.size,
     firstConfirmedAt: dates[0] ?? null,
     lastConfirmedAt: dates.at(-1) ?? null,
   }
+}
+
+// ----------------------------------------------------------------------------
+// FIX 1 (revue ChatGPT/Vincent sur cd30aa2d) — mémoire photo terrain d'un user
+// ----------------------------------------------------------------------------
+//
+// Source de vérité UNIQUE : intervention_photos.taken_by = userId (même
+// invariant que lib/db/team-profile.ts::listTeamRecentPhotos). Aucune photo
+// n'est jamais rattachée via une appartenance équipe ou un assigned_team_id :
+// une photo sans taken_by n'apparaît nulle part ici.
+
+export interface PersonFieldPhoto {
+  id: string
+  signedUrl: string
+  caption: string | null
+  takenAt: string
+  interventionId: string
+  siteId: string
+  siteName: string
+}
+
+interface RawUserPhotoRow {
+  id: string
+  caption: string | null
+  taken_at: string
+  intervention_id: string
+  storage_path: string
+  intervention: {
+    id: string
+    mission: {
+      site: { id: string; name: string; organization_id: string } | Array<{ id: string; name: string; organization_id: string }> | null
+    } | Array<{ site: unknown }> | null
+  } | Array<{ id: string; mission: unknown }> | null
+}
+
+/**
+ * Photos terrain RÉELLEMENT prises par ce user (`taken_by`), triées par date
+ * décroissante. Borne temporelle optionnelle (`sinceIso`, même sémantique que
+ * `listConfirmedInterventionsForUser`). Scope organisationnel obligatoire.
+ */
+export async function listPhotosForUser(
+  userId: string,
+  orgIds: string[],
+  opts: { sinceIso?: string; limit?: number } = {},
+): Promise<PersonFieldPhoto[]> {
+  if (!orgIds.length) return []
+  const supabase = createAdminClient()
+  const limit = opts.limit ?? 24
+
+  const { data, error } = await supabase
+    .from('intervention_photos')
+    .select(
+      `id, caption, taken_at, intervention_id, storage_path,
+       intervention:interventions!inner(
+         id,
+         mission:missions!inner(
+           site:sites!inner(id, name, organization_id)
+         )
+       )`,
+    )
+    .eq('taken_by', userId)
+    .order('taken_at', { ascending: false })
+
+  if (error) throw error
+
+  const matched: Array<{ caption: string | null; takenAt: string; interventionId: string; storagePath: string; id: string; siteId: string; siteName: string }> = []
+  for (const r of (data ?? []) as unknown as RawUserPhotoRow[]) {
+    const intervention = pickOne(r.intervention as never) as { mission?: unknown } | null
+    if (!intervention) continue
+    const mission = pickOne(intervention.mission as never) as { site?: unknown } | null
+    const site = pickOne(mission?.site as never) as { id?: string; name?: string; organization_id?: string } | null
+    if (!site?.id || !site.name || !site.organization_id) continue
+    if (!orgIds.includes(site.organization_id)) continue
+
+    const date = r.taken_at
+    if (opts.sinceIso && (!date || date < opts.sinceIso)) continue
+
+    matched.push({
+      id: r.id,
+      caption: r.caption,
+      takenAt: r.taken_at,
+      interventionId: r.intervention_id,
+      storagePath: r.storage_path,
+      siteId: site.id,
+      siteName: site.name,
+    })
+  }
+
+  const page = matched.slice(0, limit)
+  const urlByPath = await getSignedPhotoUrlsThumb(page.map((p) => p.storagePath))
+
+  const out: PersonFieldPhoto[] = []
+  for (const p of page) {
+    const signed = urlByPath.get(p.storagePath)
+    if (!signed) continue
+    out.push({
+      id: p.id,
+      signedUrl: signed,
+      caption: p.caption,
+      takenAt: p.takenAt,
+      interventionId: p.interventionId,
+      siteId: p.siteId,
+      siteName: p.siteName,
+    })
+  }
+  return out
 }
 
 // ----------------------------------------------------------------------------

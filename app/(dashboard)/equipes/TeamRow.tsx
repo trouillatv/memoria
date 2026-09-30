@@ -69,6 +69,11 @@ export async function TeamRow({ team, availableUsers }: Props) {
           </Link>
           <span className="text-sm text-muted-foreground">
             · {team.memberCount + fieldMembers.length} personne{team.memberCount + fieldMembers.length > 1 ? 's' : ''}
+            {fieldMembers.length > 0 && (
+              <span className="text-muted-foreground/80">
+                {' '}({team.memberCount} avec accès · {fieldMembers.length} terrain)
+              </span>
+            )}
           </span>
         </div>
         <div className="mt-2 text-sm text-foreground/90">
@@ -125,7 +130,6 @@ export async function TeamRow({ team, availableUsers }: Props) {
             teamName={team.name}
             current={referent}
             members={members}
-            availableUsers={availableUsers}
           />
         </div>
       </div>

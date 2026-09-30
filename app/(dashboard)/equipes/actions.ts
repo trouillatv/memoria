@@ -683,8 +683,9 @@ const setReferentSchema = z.object({
  * Désigne un référent d'équipe (point de contact stable). `null` = retire le
  * référent sans remplaçant (transition tolérée, doctrine V3).
  *
- * Pas de vérif "le user doit être membre de l'équipe" — toléré pour ne pas
- * bloquer les transitions (départ, congé). L'UI signalera mais ne bloquera pas.
+ * FIX 5 (revue ChatGPT/Vincent, cd30aa2d) — un référent non-null doit être
+ * membre actif de l'équipe ; setTeamReferent refuse sinon avec une erreur
+ * métier, remontée telle quelle à l'appelant.
  */
 export async function setTeamReferentAction(input: {
   teamId: string

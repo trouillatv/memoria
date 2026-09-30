@@ -12,11 +12,13 @@ import {
   listConfirmedInterventionsForUser,
   listAssignedActionsForContact,
   listTeamMembershipsForContact,
+  listPhotosForUser,
   type PersonRef,
   type ConfirmedInterventionMemoryItem,
   type ContactAssignedAction,
   type UserMemoryOverview,
   type ContactMemoryOverview,
+  type PersonFieldPhoto,
 } from '@/lib/db/person-memory'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -58,6 +60,7 @@ export interface PersonDrawerData {
   contactOverview: ContactMemoryOverview | null
   interventions: ConfirmedInterventionMemoryItem[] | null
   contactActions: ContactAssignedAction[] | null
+  photos: PersonFieldPhoto[] | null
   currentTeams: CurrentTeamRef[]
 }
 
@@ -81,9 +84,10 @@ export async function loadPersonDrawerData(
     if (!userRow.organization_id || !orgIds.includes(userRow.organization_id)) return null
 
     const sinceIso = sinceIsoFor(period)
-    const [summary, interventions, memberships] = await Promise.all([
+    const [summary, interventions, photos, memberships] = await Promise.all([
       getPersonMemorySummary(ref, orgIds, { sinceIso }),
       listConfirmedInterventionsForUser(personId, orgIds, { sinceIso, limit: 50 }),
+      listPhotosForUser(personId, orgIds, { sinceIso, limit: 24 }),
       admin
         .from('team_members')
         .select('team:teams!inner(id, name, deleted_at)')
@@ -106,6 +110,7 @@ export async function loadPersonDrawerData(
       contactOverview: null,
       interventions,
       contactActions: null,
+      photos,
       currentTeams,
     }
   }
@@ -137,6 +142,7 @@ export async function loadPersonDrawerData(
     contactOverview: summary.contactOverview,
     interventions: null,
     contactActions: actions,
+    photos: null,
     currentTeams: teams.map((t) => ({ teamId: t.teamId, teamName: t.teamName })),
   }
 }

@@ -15,7 +15,7 @@
 // personnes.
 
 import Link from 'next/link'
-import { Calendar, Building2, Users, ChevronRight, ClipboardList, Star } from 'lucide-react'
+import { Calendar, Building2, Users, ChevronRight, ClipboardList, Star, Image as ImageIcon } from 'lucide-react'
 import type { PersonPeriod } from './loadPersonDrawerData'
 import type { PersonDrawerData } from './loadPersonDrawerData'
 
@@ -46,7 +46,7 @@ function periodHref(pathname: string, personId: string, personKind: 'user' | 'co
 }
 
 export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; pathname: string }) {
-  const { ref, displayName, subtitle, period, userOverview, contactOverview, interventions, contactActions, currentTeams } = data
+  const { ref, displayName, subtitle, period, userOverview, contactOverview, interventions, contactActions, photos, currentTeams } = data
 
   return (
     <div className="space-y-4">
@@ -99,11 +99,20 @@ export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; p
         )}
 
         {userOverview && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t">
-            <Counter icon={Calendar} label="Participations confirmées" value={userOverview.confirmedInterventionsCount} />
-            <Counter icon={Star} label="Comme référent" value={userOverview.referentCount} />
-            <Counter icon={Building2} label="Chantiers distincts" value={userOverview.distinctSiteCount} />
-            <Counter icon={Users} label="Équipes distinctes" value={userOverview.distinctTeamCount} />
+          <div className="space-y-1 pt-2 border-t">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Counter icon={Calendar} label="Participations attestées" value={userOverview.attestedInterventionsCount} />
+              <Counter icon={Star} label="Comme référent" value={userOverview.referentCount} />
+              <Counter icon={Building2} label="Chantiers distincts" value={userOverview.distinctSiteCount} />
+              <Counter icon={Users} label="Équipes distinctes" value={userOverview.distinctTeamCount} />
+            </div>
+            {userOverview.inProgressInterventionsCount > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                + {userOverview.inProgressInterventionsCount} intervention
+                {userOverview.inProgressInterventionsCount > 1 ? 's' : ''} en cours (non attestée
+                {userOverview.inProgressInterventionsCount > 1 ? 's' : ''})
+              </p>
+            )}
           </div>
         )}
         {contactOverview && (
@@ -120,16 +129,17 @@ export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; p
         <section className="rounded-lg border bg-card p-4 space-y-3">
           <h3 className="text-sm font-medium flex items-center gap-2">
             <Calendar className="h-4 w-4 text-brand-600" />
-            Participations confirmées — {PERIOD_LABEL[period]}
+            Participations attestées — {PERIOD_LABEL[period]}
           </h3>
           <p className="text-[11px] text-muted-foreground">
             Uniquement des interventions où la présence de cette personne a été
-            réellement enregistrée. L&apos;appartenance actuelle à une équipe ou
-            une intervention planifiée n&apos;apparaissent jamais ici sans preuve.
+            réellement enregistrée, et déjà terminées (attestées) ou en cours.
+            L&apos;appartenance actuelle à une équipe ou une intervention
+            planifiée n&apos;apparaissent jamais ici sans preuve.
           </p>
           {!interventions || interventions.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-              Aucune participation confirmée sur cette période.
+              Aucune participation attestée sur cette période.
             </p>
           ) : (
             <ul className="divide-y -my-2">
@@ -145,6 +155,7 @@ export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; p
                         {fmtDateShort(it.effectiveDate)}
                         {it.teamName && ` · ${it.teamName}`}
                         {it.role === 'referent' && ' · Référent'}
+                        {it.confirmationBasis === 'in_progress' && ' · En cours'}
                       </p>
                     </div>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -153,6 +164,41 @@ export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; p
               ))}
             </ul>
           )}
+        </section>
+      )}
+
+      {/* ── Photos terrain — taken_by=userId uniquement (FIX 1) ─────────── */}
+      {ref.kind === 'user' && photos && photos.length > 0 && (
+        <section className="rounded-lg border bg-card p-4 space-y-3">
+          <h3 className="text-sm font-medium flex items-center gap-2">
+            <ImageIcon className="h-4 w-4 text-brand-600" />
+            Photos terrain — {PERIOD_LABEL[period]}
+          </h3>
+          <p className="text-[11px] text-muted-foreground">
+            Uniquement les photos réellement prises par cette personne
+            (auteur enregistré). Aucune photo n&apos;est jamais attribuée via
+            une appartenance équipe.
+          </p>
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+            {photos.map((p) => (
+              <Link
+                key={p.id}
+                href={`/sites/${p.siteId}`}
+                className="aspect-square rounded-md overflow-hidden border bg-muted relative group"
+                title={p.caption ?? p.siteName}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.signedUrl}
+                  alt={p.caption ?? p.siteName}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                />
+                <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
+                  {p.siteName}
+                </span>
+              </Link>
+            ))}
+          </div>
         </section>
       )}
 

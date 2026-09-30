@@ -16,6 +16,7 @@ const calledTables: string[] = []
 let participantRows: Array<Record<string, unknown>> = []
 let siteActionRows: Array<Record<string, unknown>> = []
 let fieldMemberRows: Array<Record<string, unknown>> = []
+let photoRows: Array<Record<string, unknown>> = []
 
 function makeBuilder(resolveValue: () => { data: unknown; error: unknown }) {
   const b: Record<string, unknown> = {}
@@ -26,6 +27,24 @@ function makeBuilder(resolveValue: () => { data: unknown; error: unknown }) {
   return b
 }
 
+function makePhotoBuilder() {
+  const b: Record<string, unknown> = {}
+  const self = () => b
+  let takenByFilter: string | undefined
+  for (const m of ['select', 'order', 'limit', 'is', 'in']) b[m] = self
+  // `.eq('taken_by', userId)` filtre réellement — seul moyen de prouver
+  // via un mock qu'une photo d'un AUTRE user n'est jamais retournée.
+  b.eq = (col: string, val: unknown) => {
+    if (col === 'taken_by') takenByFilter = val as string
+    return self()
+  }
+  b.then = (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) => {
+    const filtered = takenByFilter ? photoRows.filter((r) => r.taken_by === takenByFilter) : photoRows
+    return Promise.resolve({ data: filtered, error: null }).then(resolve, reject)
+  }
+  return b
+}
+
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: (table: string) => {
@@ -33,9 +52,14 @@ vi.mock('@/lib/supabase/admin', () => ({
       if (table === 'intervention_participants') return makeBuilder(() => ({ data: participantRows, error: null }))
       if (table === 'site_actions') return makeBuilder(() => ({ data: siteActionRows, error: null }))
       if (table === 'team_field_members') return makeBuilder(() => ({ data: fieldMemberRows, error: null }))
+      if (table === 'intervention_photos') return makePhotoBuilder()
       return makeBuilder(() => ({ data: [], error: null }))
     },
   }),
+}))
+
+vi.mock('@/lib/storage/intervention-photos', () => ({
+  getSignedPhotoUrlsThumb: async (paths: string[]) => new Map(paths.map((p) => [p, `signed://${p}`])),
 }))
 
 import {
@@ -43,6 +67,8 @@ import {
   listAssignedActionsForContact,
   listTeamMembershipsForContact,
   getPersonMemorySummary,
+  getUserMemoryOverview,
+  listPhotosForUser,
 } from '@/lib/db/person-memory'
 
 function participantRow(opts: {
@@ -52,6 +78,7 @@ function participantRow(opts: {
   assignedTeamId?: string | null
   team?: { id: string; name: string } | null
   orgId?: string
+  status?: string
 }) {
   return {
     role: opts.role ?? 'participant',
@@ -60,7 +87,7 @@ function participantRow(opts: {
       id: 'i-1',
       scheduled_for: opts.scheduledFor ?? '2026-09-01T00:00:00Z',
       planned_start: null,
-      status: 'completed',
+      status: opts.status ?? 'completed',
       assigned_team_id: opts.assignedTeamId ?? null,
       team: opts.team ?? null,
       mission: {
@@ -76,11 +103,29 @@ function participantRow(opts: {
   }
 }
 
+function photoRow(opts: { takenBy?: string | null; orgId?: string; takenAt?: string }) {
+  return {
+    id: 'p-1',
+    caption: 'Avant/après',
+    taken_at: opts.takenAt ?? '2026-09-10T00:00:00Z',
+    intervention_id: 'i-1',
+    storage_path: 'a.jpg',
+    taken_by: opts.takenBy ?? null,
+    intervention: {
+      id: 'i-1',
+      mission: {
+        site: { id: 's-1', name: 'Site Test', organization_id: opts.orgId ?? 'org-demo' },
+      },
+    },
+  }
+}
+
 beforeEach(() => {
   calledTables.length = 0
   participantRows = []
   siteActionRows = []
   fieldMemberRows = []
+  photoRows = []
 })
 
 describe('listConfirmedInterventionsForUser — preuve confirmée uniquement', () => {
@@ -126,6 +171,82 @@ describe('listConfirmedInterventionsForUser — preuve confirmée uniquement', (
     const out = await listConfirmedInterventionsForUser('u-1', ['org-demo'])
     expect(out).toHaveLength(1)
     expect(out[0].teamId).toBe('team-planifiee')
+  })
+})
+
+describe('FIX 2 (revue ChatGPT/Vincent) — statut réel requis, jamais `planned`', () => {
+  it('une ligne intervention_participants sur une intervention `planned` n’est JAMAIS une participation confirmée', async () => {
+    // migration 024 (RLS ip_insert) permet d'écrire dès `planned`/`in_progress` :
+    // la présence de la ligne seule ne prouve rien tant que le statut ne l'atteste pas.
+    participantRows = [participantRow({ status: 'planned' })]
+    const out = await listConfirmedInterventionsForUser('u-1', ['org-demo'])
+    expect(out).toEqual([])
+  })
+
+  it('un statut `skipped` n’est jamais une participation réalisée', async () => {
+    participantRows = [participantRow({ status: 'skipped' })]
+    const out = await listConfirmedInterventionsForUser('u-1', ['org-demo'])
+    expect(out).toEqual([])
+  })
+
+  it('`completed` et `validated` sont attestés (confirmationBasis=attested)', async () => {
+    participantRows = [
+      participantRow({ status: 'completed' }),
+      participantRow({ status: 'validated' }),
+    ]
+    const out = await listConfirmedInterventionsForUser('u-1', ['org-demo'])
+    expect(out).toHaveLength(2)
+    expect(out.every((i) => i.confirmationBasis === 'attested')).toBe(true)
+  })
+
+  it('`in_progress` apparaît séparément, jamais comme attesté', async () => {
+    participantRows = [participantRow({ status: 'in_progress' })]
+    const out = await listConfirmedInterventionsForUser('u-1', ['org-demo'])
+    expect(out).toHaveLength(1)
+    expect(out[0].confirmationBasis).toBe('in_progress')
+  })
+})
+
+describe('FIX 2 — getUserMemoryOverview compte séparément attesté / en cours', () => {
+  it('compteurs et lastConfirmedAt ignorent `planned`, distinguent `in_progress` de l’attesté', async () => {
+    participantRows = [
+      participantRow({ status: 'completed', scheduledFor: '2026-09-01T00:00:00Z' }),
+      participantRow({ status: 'in_progress', scheduledFor: '2026-09-25T00:00:00Z' }),
+      participantRow({ status: 'planned', scheduledFor: '2026-09-30T00:00:00Z' }),
+    ]
+    const overview = await getUserMemoryOverview('u-1', ['org-demo'])
+    expect(overview.attestedInterventionsCount).toBe(1)
+    expect(overview.inProgressInterventionsCount).toBe(1)
+    // La ligne `in_progress` (25 sept) n'est pas close : lastConfirmedAt reste
+    // la dernière date ATTESTÉE (1er sept), jamais une date `planned`/en cours.
+    expect(overview.lastConfirmedAt).toBe('2026-09-01T00:00:00Z')
+  })
+})
+
+describe('FIX 1 (revue ChatGPT/Vincent) — listPhotosForUser, taken_by uniquement', () => {
+  it('photo taken_by = userId → apparaît', async () => {
+    photoRows = [photoRow({ takenBy: 'u-guillaume' })]
+    const out = await listPhotosForUser('u-guillaume', ['org-demo'])
+    expect(out).toHaveLength(1)
+    expect(out[0].signedUrl).toBe('signed://a.jpg')
+  })
+
+  it('photo taken_by = un AUTRE user → absente', async () => {
+    photoRows = [photoRow({ takenBy: 'u-autre' })]
+    const out = await listPhotosForUser('u-guillaume', ['org-demo'])
+    expect(out).toEqual([])
+  })
+
+  it('taken_by null → jamais attribuée, absente de la mémoire personne', async () => {
+    photoRows = [photoRow({ takenBy: null })]
+    const out = await listPhotosForUser('u-guillaume', ['org-demo'])
+    expect(out).toEqual([])
+  })
+
+  it('autre organisation → absente (isolation org fail-closed)', async () => {
+    photoRows = [photoRow({ takenBy: 'u-guillaume', orgId: 'org-autre' })]
+    const out = await listPhotosForUser('u-guillaume', ['org-demo'])
+    expect(out).toEqual([])
   })
 })
 
@@ -180,7 +301,7 @@ describe('getPersonMemorySummary — deux identités distinctes, jamais fusionn�
     siteActionRows = [{ id: 'a-9', title: 'Autre action', status: 'open', due_date: null, site: { id: 's-1', name: 'Site', organization_id: 'org-demo' } }]
     const summaryB = await getPersonMemorySummary({ kind: 'contact', id: 'c-B' }, ['org-demo'])
 
-    expect(summaryA.userOverview?.confirmedInterventionsCount).toBe(1)
+    expect(summaryA.userOverview?.attestedInterventionsCount).toBe(1)
     expect(summaryB.contactOverview?.openActionCount).toBe(1)
     // Aucune fuite d'une mémoire dans l'autre.
     expect(summaryA.contactOverview).toBeNull()

@@ -13,7 +13,7 @@ import type { TeamRhythmDay } from '@/lib/db/team-profile'
 export function TeamRhythm({ days }: { days: TeamRhythmDay[] }) {
   if (days.length === 0) return null
 
-  const allEmpty = days.every((d) => d.count === 0)
+  const allEmpty = days.every((d) => d.count === 0 && d.plannedCount === 0)
   if (allEmpty) {
     return (
       <p className="text-sm text-muted-foreground italic">
@@ -28,13 +28,18 @@ export function TeamRhythm({ days }: { days: TeamRhythmDay[] }) {
         <div className="flex gap-1 min-w-0">
           {days.map((d) => {
             const hasTrace = d.count > 0
-            const dimmed = d.isWeekend && !hasTrace && !d.isToday
-            const hasTooltip = d.tooltipLines.length > 0
+            const hasPlannedOnly = d.count === 0 && d.plannedCount > 0
+            const dimmed = d.isWeekend && !hasTrace && !hasPlannedOnly && !d.isToday
+            const hasTooltip = d.tooltipLines.length > 0 || d.plannedCount > 0
 
             const dot = (
               <div
                 className={`mt-0.5 h-2.5 w-2.5 rounded-full ${
-                  hasTrace ? 'bg-foreground' : 'border border-border'
+                  hasTrace
+                    ? 'bg-foreground'
+                    : hasPlannedOnly
+                      ? 'border border-dashed border-foreground/50'
+                      : 'border border-border'
                 } ${hasTooltip ? 'cursor-default' : ''}`}
               />
             )
@@ -73,6 +78,11 @@ export function TeamRhythm({ days }: { days: TeamRhythmDay[] }) {
                         {d.count > d.tooltipLines.length && (
                           <p className="text-muted-foreground/80 italic">
                             + {d.count - d.tooltipLines.length} autres
+                          </p>
+                        )}
+                        {d.plannedCount > 0 && (
+                          <p className="text-muted-foreground/80 italic">
+                            + {d.plannedCount} planifiée{d.plannedCount > 1 ? 's' : ''} (non réalisée{d.plannedCount > 1 ? 's' : ''})
                           </p>
                         )}
                       </div>

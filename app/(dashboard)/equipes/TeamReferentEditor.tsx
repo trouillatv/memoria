@@ -4,8 +4,11 @@
 //
 // Doctrine V3 :
 //   - Référent d'équipe = point de contact stable, pas une hiérarchie.
-//   - Toujours désignable / retirable. Pas de blocage si non-membre.
 //   - Wording : « Référent », jamais « Chef », « Lead », « Responsable ».
+//
+// FIX 5 (revue ChatGPT/Vincent, cd30aa2d) — un référent doit être membre
+// ACTIF de l'équipe : le choix se limite désormais aux membres de l'équipe
+// (setTeamReferent refuse tout le reste côté serveur).
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
@@ -19,10 +22,8 @@ interface Props {
   teamName: string
   /** Référent actuel — null si aucun. */
   current: { id: string; name: string } | null
-  /** Membres actifs de l'équipe (suggestions prioritaires). */
+  /** Membres actifs de l'équipe — seul vivier possible pour le référent (FIX 5). */
   members: MemberLite[]
-  /** Tous les chefs d'équipe disponibles (fallback hors membres). */
-  availableUsers: MemberLite[]
 }
 
 export function TeamReferentEditor({
@@ -30,16 +31,10 @@ export function TeamReferentEditor({
   teamName,
   current,
   members,
-  availableUsers,
 }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
-
-  // Suggestions : membres en premier, puis autres chefs d'équipe disponibles
-  // non déjà membres (pour cas Pierre Grand-Nouméa devient référent ailleurs).
-  const memberIds = new Set(members.map((m) => m.id))
-  const extras = availableUsers.filter((u) => !memberIds.has(u.id))
 
   function submit(userId: string | null) {
     startTransition(async () => {
@@ -122,25 +117,7 @@ export function TeamReferentEditor({
           </>
         )}
 
-        {extras.length > 0 && (
-          <>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground px-2 pt-2">
-              Autres personnes
-            </div>
-            {extras.map((m) => (
-              <ReferentChoice
-                key={m.id}
-                name={m.name}
-                isCurrent={current?.id === m.id}
-                onPick={() => submit(m.id)}
-                disabled={pending}
-                hint="hors équipe"
-              />
-            ))}
-          </>
-        )}
-
-        {members.length === 0 && extras.length === 0 && (
+        {members.length === 0 && (
           <p className="text-xs italic text-muted-foreground px-2 py-1">
             Aucun utilisateur disponible.
           </p>

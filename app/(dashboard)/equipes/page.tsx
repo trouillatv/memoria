@@ -17,10 +17,12 @@ import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getOrgsForSelector } from '@/components/ui/org-selector'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listTeamsWithMemberCount, listOrphanUsers } from '@/lib/db/teams'
+import { getTeamsGlobalPulse } from '@/lib/db/team-pulse'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { CreateTeamButton } from './CreateTeamButton'
 import { TeamRow } from './TeamRow'
+import { TeamsGlobalPulseRow } from './TeamsGlobalPulseRow'
 import { OrphansBulkAssign } from './OrphansBulkAssign'
 import { EquipesDetailSheet } from './EquipesDetailSheet'
 import { loadTeamDrawerData } from './loadTeamDrawerData'
@@ -109,13 +111,14 @@ export default async function EquipesPage({
   const personKind = sp.personKind === 'contact' ? 'contact' : 'user'
   const personPeriod = parsePersonPeriod(sp.personPeriod)
 
-  const [teams, orphans, availableUsers, orgs, orgIds, teamDrawerData] = await Promise.all([
+  const [teams, orphans, availableUsers, orgs, orgIds, teamDrawerData, pulse] = await Promise.all([
     listTeamsWithMemberCount(),
     listOrphanUsers(),
     listAssignableMembers(),
     getOrgsForSelector(),
     getOrgIdsOfUser(),
     sp.team ? loadTeamDrawerData(sp.team, user.organization_id) : Promise.resolve(null),
+    getTeamsGlobalPulse(),
   ])
 
   const personDrawerData = sp.person
@@ -137,6 +140,8 @@ export default async function EquipesPage({
         </div>
         <CreateTeamButton orgs={orgs} />
       </header>
+
+      <TeamsGlobalPulseRow pulse={pulse} />
 
       <Card>
         <CardContent className="p-0">

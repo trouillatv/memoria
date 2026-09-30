@@ -46,8 +46,17 @@ export interface TeamOverview {
   ageDays: number
   /** Référent désigné (si présent). */
   referent: { id: string; full_name: string | null; email: string } | null
-  /** Effectif courant (left_at IS NULL). Descriptif. */
-  memberCount: number
+  /**
+   * FIX 4 (revue ChatGPT/Vincent, cd30aa2d) — l'effectif ne peut plus se
+   * limiter aux utilisateurs connectés (team_members) : les personnes
+   * terrain (team_field_members) sont des membres actifs à part entière.
+   * Les deux populations restent distinctes (jamais de dédoublonnage par
+   * nom/email), mais le total les compte toutes les deux.
+   */
+  appUserMemberCount: number
+  fieldMemberCount: number
+  /** appUserMemberCount + fieldMemberCount. Descriptif, jamais un KPI. */
+  memberCountTotal: number
   /**
    * /EQUIPES V2 (Batch B) — pont vers le Planning, jamais un second moteur de
    * roulement. Lit `planning_cycle_slots.team_id` via `getTeamDependencies`
@@ -72,16 +81,24 @@ export interface TeamFavoriteSite {
   site_name: string
   contract_id: string | null
   contract_name: string | null
+  /** Interventions RÉELLES (in_progress/completed/validated) — jamais fusionné avec le prévisionnel. */
   interventionCount: number
   lastInterventionDate: string | null
+  /** Interventions `planned` sur ce site — comptées séparément, jamais sommées avec interventionCount. */
+  plannedInterventionCount: number
+  plannedLastInterventionDate: string | null
 }
 
 export interface TeamContractCovered {
   contract_id: string
   contract_name: string
   client_name: string | null
+  /** Interventions RÉELLES (in_progress/completed/validated) — jamais fusionné avec le prévisionnel. */
   interventionCount: number
   lastInterventionDate: string | null
+  /** Interventions `planned` sur ce contrat — comptées séparément, jamais sommées avec interventionCount. */
+  plannedInterventionCount: number
+  plannedLastInterventionDate: string | null
 }
 
 export interface TeamRhythmDay {
@@ -90,14 +107,20 @@ export interface TeamRhythmDay {
   dayMonthLabel: string
   isToday: boolean
   isWeekend: boolean
+  /** Interventions RÉELLES (in_progress/completed/validated) ce jour-là. */
   count: number
+  /** Interventions `planned` ce jour-là — jamais fusionné avec `count`. */
+  plannedCount: number
   tooltipLines: string[]
 }
 
 export interface TeamHeatmapCell {
   /** yyyy-mm-dd */
   date: string
+  /** Interventions RÉELLES (in_progress/completed/validated) ce jour-là. */
   count: number
+  /** Interventions `planned` ce jour-là — jamais fusionné avec `count`. */
+  plannedCount: number
 }
 
 export interface TeamCompanion {
@@ -144,6 +167,14 @@ function pickOne<T>(v: T | T[] | null | undefined): T | null {
   if (v === null || v === undefined) return null
   return Array.isArray(v) ? (v[0] as T) ?? null : v
 }
+
+// FIX 3 (revue ChatGPT/Vincent, cd30aa2d) — WOW Équipe fusionnait `planned`
+// avec les statuts réellement constatés dans les mêmes compteurs (rythme,
+// heatmap, sites favoris, contrats couverts), ce qui présentait du prévu
+// comme du réalisé. `planned` ne doit plus jamais alimenter un total dit
+// "réel" : il est toujours compté et exposé à part.
+export const REAL_STATUSES = new Set(['in_progress', 'completed', 'validated'])
+const PLANNED_STATUS = 'planned'
 
 type InterventionRow = {
   id: string
@@ -249,9 +280,17 @@ export async function getTeamOverview(teamId: string): Promise<TeamOverview | nu
   if (!teamRow) return null
   const team = teamRow as DbTeam
 
-  // Effectif
-  const { count: memberCount } = await admin
+  // Effectif — deux populations distinctes (FIX 4), jamais fusionnées par
+  // nom/email : team_members (comptes) et team_field_members (terrain) sont
+  // des tables disjointes par construction (personne physique vs contact
+  // d'entreprise), un seul comptage batché par table suffit.
+  const { count: appUserMemberCount } = await admin
     .from('team_members')
+    .select('id', { count: 'exact', head: true })
+    .eq('team_id', teamId)
+    .is('left_at', null)
+  const { count: fieldMemberCount } = await admin
+    .from('team_field_members')
     .select('id', { count: 'exact', head: true })
     .eq('team_id', teamId)
     .is('left_at', null)
@@ -324,7 +363,9 @@ export async function getTeamOverview(teamId: string): Promise<TeamOverview | nu
     createdAt,
     ageDays,
     referent,
-    memberCount: memberCount ?? 0,
+    appUserMemberCount: appUserMemberCount ?? 0,
+    fieldMemberCount: fieldMemberCount ?? 0,
+    memberCountTotal: (appUserMemberCount ?? 0) + (fieldMemberCount ?? 0),
     rotationUsage: {
       cycleCount: deps.rotationCycleCount,
       siteNames: deps.rotationSiteNames,
@@ -348,29 +389,42 @@ export async function listTeamFavoriteSites(
   limit = 8,
 ): Promise<TeamFavoriteSite[]> {
   const interventions = await fetchTeamInterventions(teamId)
-  const documented = interventions.filter((i) =>
-    ['in_progress', 'completed', 'validated', 'planned'].includes(i.status),
-  )
 
   const bySite = new Map<string, TeamFavoriteSite>()
-  for (const i of documented) {
-    const cur = bySite.get(i.site_id)
+  for (const i of interventions) {
+    const isReal = REAL_STATUSES.has(i.status)
+    const isPlanned = i.status === PLANNED_STATUS
+    if (!isReal && !isPlanned) continue
+
+    let cur = bySite.get(i.site_id)
     if (!cur) {
-      bySite.set(i.site_id, {
+      cur = {
         site_id: i.site_id,
         site_name: i.site_name,
         contract_id: i.contract_id,
         contract_name: i.contract_name,
-        interventionCount: 1,
-        lastInterventionDate: i.scheduled_for,
-      })
-    } else {
+        interventionCount: 0,
+        lastInterventionDate: null,
+        plannedInterventionCount: 0,
+        plannedLastInterventionDate: null,
+      }
+      bySite.set(i.site_id, cur)
+    }
+    if (isReal) {
       cur.interventionCount += 1
       if (
         i.scheduled_for &&
         (!cur.lastInterventionDate || i.scheduled_for > cur.lastInterventionDate)
       ) {
         cur.lastInterventionDate = i.scheduled_for
+      }
+    } else {
+      cur.plannedInterventionCount += 1
+      if (
+        i.scheduled_for &&
+        (!cur.plannedLastInterventionDate || i.scheduled_for > cur.plannedLastInterventionDate)
+      ) {
+        cur.plannedLastInterventionDate = i.scheduled_for
       }
     }
   }
@@ -395,23 +449,38 @@ export async function listTeamContractsCovered(
   const byContract = new Map<string, TeamContractCovered>()
   for (const i of interventions) {
     if (!i.contract_id) continue
-    if (!['in_progress', 'completed', 'validated', 'planned'].includes(i.status)) continue
-    const cur = byContract.get(i.contract_id)
+    const isReal = REAL_STATUSES.has(i.status)
+    const isPlanned = i.status === PLANNED_STATUS
+    if (!isReal && !isPlanned) continue
+
+    let cur = byContract.get(i.contract_id)
     if (!cur) {
-      byContract.set(i.contract_id, {
+      cur = {
         contract_id: i.contract_id,
         contract_name: i.contract_name ?? '(Contrat sans nom)',
         client_name: i.client_name,
-        interventionCount: 1,
-        lastInterventionDate: i.scheduled_for,
-      })
-    } else {
+        interventionCount: 0,
+        lastInterventionDate: null,
+        plannedInterventionCount: 0,
+        plannedLastInterventionDate: null,
+      }
+      byContract.set(i.contract_id, cur)
+    }
+    if (isReal) {
       cur.interventionCount += 1
       if (
         i.scheduled_for &&
         (!cur.lastInterventionDate || i.scheduled_for > cur.lastInterventionDate)
       ) {
         cur.lastInterventionDate = i.scheduled_for
+      }
+    } else {
+      cur.plannedInterventionCount += 1
+      if (
+        i.scheduled_for &&
+        (!cur.plannedLastInterventionDate || i.scheduled_for > cur.plannedLastInterventionDate)
+      ) {
+        cur.plannedLastInterventionDate = i.scheduled_for
       }
     }
   }
@@ -436,15 +505,20 @@ export async function getTeamRhythm14d(teamId: string): Promise<TeamRhythmDay[]>
   const today = new Date()
   const todayKey = yyyymmddInTz(today)
 
-  // Map date → liste interventions (pour tooltip)
+  // Map date → liste interventions RÉELLES (pour tooltip) ; le prévisionnel
+  // est compté à part, jamais mélangé dans la même liste ou le même total.
   const byDate = new Map<string, ResolvedTeamIntervention[]>()
+  const plannedCountByDate = new Map<string, number>()
   for (const i of interventions) {
     if (!i.scheduled_for) continue
-    if (!['in_progress', 'completed', 'validated', 'planned'].includes(i.status)) continue
     const date = i.scheduled_for.slice(0, 10)
-    const arr = byDate.get(date) ?? []
-    arr.push(i)
-    byDate.set(date, arr)
+    if (REAL_STATUSES.has(i.status)) {
+      const arr = byDate.get(date) ?? []
+      arr.push(i)
+      byDate.set(date, arr)
+    } else if (i.status === PLANNED_STATUS) {
+      plannedCountByDate.set(date, (plannedCountByDate.get(date) ?? 0) + 1)
+    }
   }
 
   const out: TeamRhythmDay[] = []
@@ -464,6 +538,7 @@ export async function getTeamRhythm14d(teamId: string): Promise<TeamRhythmDay[]>
       isToday: dateKey === todayKey,
       isWeekend: wkIndex === 0 || wkIndex === 6,
       count: items.length,
+      plannedCount: plannedCountByDate.get(dateKey) ?? 0,
       tooltipLines,
     })
   }
@@ -477,11 +552,15 @@ export async function getTeamRhythm14d(teamId: string): Promise<TeamRhythmDay[]>
 export async function getTeamHeatmap90d(teamId: string): Promise<TeamHeatmapCell[]> {
   const interventions = await fetchTeamInterventions(teamId)
   const byDate = new Map<string, number>()
+  const plannedByDate = new Map<string, number>()
   for (const i of interventions) {
     if (!i.scheduled_for) continue
-    if (!['in_progress', 'completed', 'validated', 'planned'].includes(i.status)) continue
     const date = i.scheduled_for.slice(0, 10)
-    byDate.set(date, (byDate.get(date) ?? 0) + 1)
+    if (REAL_STATUSES.has(i.status)) {
+      byDate.set(date, (byDate.get(date) ?? 0) + 1)
+    } else if (i.status === PLANNED_STATUS) {
+      plannedByDate.set(date, (plannedByDate.get(date) ?? 0) + 1)
+    }
   }
 
   const out: TeamHeatmapCell[] = []
@@ -492,6 +571,7 @@ export async function getTeamHeatmap90d(teamId: string): Promise<TeamHeatmapCell
     out.push({
       date: dateKey,
       count: byDate.get(dateKey) ?? 0,
+      plannedCount: plannedByDate.get(dateKey) ?? 0,
     })
   }
   return out

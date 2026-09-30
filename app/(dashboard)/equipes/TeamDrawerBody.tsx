@@ -127,7 +127,12 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
         <div className="flex flex-wrap items-center gap-3">
           <TeamBadge name={overview.name} color={overview.color} icon={overview.icon} size="md" />
           <span className="text-xs text-muted-foreground">
-            · {overview.memberCount} personne{overview.memberCount > 1 ? 's' : ''}
+            · {overview.memberCountTotal} personne{overview.memberCountTotal > 1 ? 's' : ''}
+            {overview.fieldMemberCount > 0 && (
+              <span className="text-muted-foreground/80">
+                {' '}({overview.appUserMemberCount} avec accès · {overview.fieldMemberCount} terrain)
+              </span>
+            )}
             {overview.referent && (
               <>
                 {' · Référent : '}
@@ -328,7 +333,12 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
                           {s.contract_name && <p className="text-[11px] text-muted-foreground truncate">{s.contract_name}</p>}
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-xs tabular-nums">{s.interventionCount} intervention{s.interventionCount > 1 ? 's' : ''}</p>
+                          <p className="text-xs tabular-nums">
+                            {s.interventionCount} intervention{s.interventionCount > 1 ? 's' : ''}
+                            {s.plannedInterventionCount > 0 && (
+                              <span className="text-muted-foreground"> · +{s.plannedInterventionCount} prévue{s.plannedInterventionCount > 1 ? 's' : ''}</span>
+                            )}
+                          </p>
                           <p className="text-[11px] text-muted-foreground">Dern. {fmtDateShort(s.lastInterventionDate)}</p>
                         </div>
                       </Link>
@@ -355,7 +365,12 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
                           {c.client_name && <p className="text-[11px] text-muted-foreground truncate">{c.client_name}</p>}
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-xs tabular-nums">{c.interventionCount}</p>
+                          <p className="text-xs tabular-nums">
+                            {c.interventionCount}
+                            {c.plannedInterventionCount > 0 && (
+                              <span className="text-muted-foreground"> · +{c.plannedInterventionCount} prévue{c.plannedInterventionCount > 1 ? 's' : ''}</span>
+                            )}
+                          </p>
                           <p className="text-[11px] text-muted-foreground">Dern. {fmtDateShort(c.lastInterventionDate)}</p>
                         </div>
                       </Link>
@@ -482,7 +497,12 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
                       {fieldMembers.map((p) => (
                         <li key={p.membershipId} className="flex items-center gap-2">
                           <span>
-                            {p.fullName}
+                            <Link
+                              href={`/equipes?person=${p.contactId}&personKind=contact`}
+                              className="hover:text-brand-700 hover:underline transition-colors"
+                            >
+                              {p.fullName}
+                            </Link>
                             {p.job && <span className="text-muted-foreground"> — {p.job}</span>}
                             {p.companyName && <span className="text-muted-foreground"> ({p.companyName})</span>}
                           </span>

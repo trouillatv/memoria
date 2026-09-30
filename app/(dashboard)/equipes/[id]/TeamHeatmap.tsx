@@ -31,8 +31,8 @@ export function TeamHeatmap({ cells }: { cells: TeamHeatmapCell[] }) {
   // Construire la grille en colonnes de 7 jours (Lun→Dim)
   // chaque colonne = une semaine. On commence par décaler pour aligner
   // la première colonne sur le lundi.
-  const grid: Array<{ date: string; count: number } | null>[] = []
-  let column: Array<{ date: string; count: number } | null> = new Array(7).fill(null)
+  const grid: Array<{ date: string; count: number; plannedCount: number } | null>[] = []
+  let column: Array<{ date: string; count: number; plannedCount: number } | null> = new Array(7).fill(null)
   // Padding initial : combien de jours avant le 1er point ?
   const first = cells[0]
   const firstDate = new Date(first.date)
@@ -41,7 +41,7 @@ export function TeamHeatmap({ cells }: { cells: TeamHeatmapCell[] }) {
 
   let row = firstIso
   for (const c of cells) {
-    column[row] = { date: c.date, count: c.count }
+    column[row] = { date: c.date, count: c.count, plannedCount: c.plannedCount }
     if (row === 6) {
       grid.push(column)
       column = new Array(7).fill(null)
@@ -53,7 +53,8 @@ export function TeamHeatmap({ cells }: { cells: TeamHeatmapCell[] }) {
   if (column.some((c) => c !== null)) grid.push(column)
 
   const total = cells.reduce((acc, c) => acc + c.count, 0)
-  if (total === 0) {
+  const totalPlanned = cells.reduce((acc, c) => acc + c.plannedCount, 0)
+  if (total === 0 && totalPlanned === 0) {
     return (
       <p className="text-sm text-muted-foreground italic">
         Pas d&apos;intervention ces 90 derniers jours.
@@ -81,9 +82,11 @@ export function TeamHeatmap({ cells }: { cells: TeamHeatmapCell[] }) {
                   const d = new Date(cell.date)
                   const human = `${FR_WEEKDAY_FULL[d.getDay()]} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
                   const tooltipText =
-                    cell.count === 0
+                    cell.count === 0 && cell.plannedCount === 0
                       ? `${human} — aucune intervention`
-                      : `${human} — ${cell.count} intervention${cell.count > 1 ? 's' : ''}`
+                      : cell.plannedCount > 0
+                        ? `${human} — ${cell.count} intervention${cell.count > 1 ? 's' : ''} réalisée${cell.count > 1 ? 's' : ''}, ${cell.plannedCount} planifiée${cell.plannedCount > 1 ? 's' : ''}`
+                        : `${human} — ${cell.count} intervention${cell.count > 1 ? 's' : ''}`
                   return (
                     <Tooltip key={ri}>
                       <TooltipTrigger>
@@ -111,6 +114,9 @@ export function TeamHeatmap({ cells }: { cells: TeamHeatmapCell[] }) {
           <span>Plus</span>
           <span className="ml-auto tabular-nums">
             {total} intervention{total > 1 ? 's' : ''} sur 90 j
+            {totalPlanned > 0 && (
+              <span className="text-muted-foreground/70"> (+{totalPlanned} planifiée{totalPlanned > 1 ? 's' : ''})</span>
+            )}
           </span>
         </div>
       </div>

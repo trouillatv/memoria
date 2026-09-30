@@ -13,6 +13,7 @@ import {
   listOrphanUsers,
   listTeamsWithMemberCount,
   listMembersOfTeam,
+  setTeamReferent,
 } from '@/lib/db/teams'
 
 // Slice 9.1 — Tests helpers DB `lib/db/teams.ts`.
@@ -35,6 +36,8 @@ let siteId: string
 let missionId: string
 let testUserId: string
 let testUserEmail: string
+/** Utilisateur réel mais jamais ajouté à une équipe de test — sert de témoin "hors équipe" (FIX 5). */
+let outsiderUserId: string
 
 async function setupTestData() {
   const supabase = createAdminClient()
@@ -45,6 +48,7 @@ async function setupTestData() {
     .limit(1)
     .maybeSingle()
   if (!admin) throw new Error('No admin user')
+  outsiderUserId = admin.id
 
   const { data: existingTender } = await supabase
     .from('tenders')
@@ -350,5 +354,57 @@ describe('lib/db/teams.ts — Slice 9.1', () => {
     await removeMemberFromTeam(a.id, testUserId)
     const teamsAfter = await listTeamsWithMemberCount()
     expect(teamsAfter.find((t) => t.id === a.id)!.memberCount).toBe(0)
+  })
+
+  // ===========================================================
+  // 8. FIX 5 (revue ChatGPT/Vincent, cd30aa2d) — référent = membre actif
+  // ===========================================================
+  it('setTeamReferent : membre actif → OK, referent_user_id mis à jour', async () => {
+    const supabase = createAdminClient()
+    const t = await createTeam({ name: '__test_phase9_helpers_Theta' })
+    await addMemberToTeam(t.id, testUserId)
+
+    await setTeamReferent({ teamId: t.id, userId: testUserId })
+
+    const { data: after } = await supabase
+      .from('teams')
+      .select('referent_user_id')
+      .eq('id', t.id)
+      .maybeSingle()
+    expect(after!.referent_user_id).toBe(testUserId)
+  })
+
+  it('setTeamReferent : utilisateur de l\'organisation mais hors équipe → refusé', async () => {
+    const t = await createTeam({ name: '__test_phase9_helpers_Iota' })
+
+    await expect(
+      setTeamReferent({ teamId: t.id, userId: outsiderUserId })
+    ).rejects.toThrow()
+  })
+
+  it('setTeamReferent : ancien membre (left_at NOT NULL) → refusé', async () => {
+    const t = await createTeam({ name: '__test_phase9_helpers_Kappa' })
+    await addMemberToTeam(t.id, testUserId)
+    await removeMemberFromTeam(t.id, testUserId)
+
+    await expect(
+      setTeamReferent({ teamId: t.id, userId: testUserId })
+    ).rejects.toThrow()
+  })
+
+  it('removeMemberFromTeam : retirer le référent efface referent_user_id (jamais orphelin)', async () => {
+    const supabase = createAdminClient()
+    const t = await createTeam({ name: '__test_phase9_helpers_Lambda' })
+    await addMemberToTeam(t.id, testUserId)
+    await setTeamReferent({ teamId: t.id, userId: testUserId })
+
+    await removeMemberFromTeam(t.id, testUserId)
+
+    const { data: after } = await supabase
+      .from('teams')
+      .select('referent_user_id')
+      .eq('id', t.id)
+      .maybeSingle()
+    expect(after!.referent_user_id).toBeNull()
   })
 })
