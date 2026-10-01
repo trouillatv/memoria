@@ -29,6 +29,14 @@ vi.mock('@/lib/db/team-field-members', () => ({
   listFieldMembersOfTeam: async () => [],
 }))
 
+// /EQUIPES V2 (Batch D, Tache #85) — loadTeamDrawerData() appelle desormais
+// listTeamsActivitySummary() (requete batchee .in()/.gte() non supportee par
+// le mock generique @/lib/supabase/admin ci-dessous). Mock dedie, hors scope
+// de ce test qui ne verifie que la canonicalite multi-org.
+vi.mock('@/lib/db/team-activity-summary', () => ({
+  listTeamsActivitySummary: async () => new Map(),
+}))
+
 const getTeamActorInsightMock = vi.fn(async () => ({}))
 vi.mock('@/lib/db/team-actor-insight', () => ({
   getTeamActorInsight: (...args: unknown[]) =>
