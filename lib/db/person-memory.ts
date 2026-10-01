@@ -454,6 +454,9 @@ export interface ContactTeamMembershipHistoryEntry {
   teamName: string
   joinedAt: string
   leftAt: string | null
+  /** Équipe archivée depuis (`teams.deleted_at`) — reste dans l'historique,
+   *  ne doit jamais être présentée comme une appartenance actuelle. */
+  teamArchived: boolean
 }
 
 /**
@@ -461,6 +464,11 @@ export interface ContactTeamMembershipHistoryEntry {
  * équipes terrain, avec `left_at` réel (jamais fabriqué, cf.
  * `removeFieldMemberFromTeam`). Jamais une preuve de présence sur une
  * intervention — uniquement une composition déclarée dans le temps.
+ *
+ * Une équipe archivée (`teams.deleted_at`) fait partie du passé réel et reste
+ * donc dans l'historique (`teamArchived: true`) — la supprimer effacerait une
+ * tranche entière de la vie de la personne. Seul le classement actuelle/
+ * ancienne (fait par l'appelant) doit tenir compte de `teamArchived`.
  */
 export async function listTeamMembershipHistoryForContact(
   contactId: string,
@@ -482,9 +490,15 @@ export async function listTeamMembershipHistoryForContact(
     team: { id: string; name: string; deleted_at: string | null; organization_id: string | null } | Array<{ id: string; name: string; deleted_at: string | null; organization_id: string | null }> | null
   }>) {
     const team = pickOne(r.team)
-    if (!team || team.deleted_at) continue
+    if (!team) continue
     if (!team.organization_id || !orgIds.includes(team.organization_id)) continue
-    out.push({ teamId: team.id, teamName: team.name, joinedAt: r.joined_at, leftAt: r.left_at })
+    out.push({
+      teamId: team.id,
+      teamName: team.name,
+      joinedAt: r.joined_at,
+      leftAt: r.left_at,
+      teamArchived: !!team.deleted_at,
+    })
   }
   return out
 }

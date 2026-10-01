@@ -600,6 +600,9 @@ export interface UserTeamMembershipHistoryEntry {
   teamName: string
   joinedAt: string
   leftAt: string | null
+  /** Équipe archivée depuis (`teams.deleted_at`) — reste dans l'historique,
+   *  ne doit jamais être présentée comme une appartenance actuelle. */
+  teamArchived: boolean
 }
 
 /**
@@ -607,6 +610,11 @@ export interface UserTeamMembershipHistoryEntry {
  * avec `left_at` réel (jamais fabriqué, cf. `removeMemberFromTeam`). Jamais
  * une preuve de présence sur une intervention — uniquement une composition
  * déclarée dans le temps.
+ *
+ * Une équipe archivée (`teams.deleted_at`) fait partie du passé réel et reste
+ * donc dans l'historique (`teamArchived: true`) — la supprimer effacerait une
+ * tranche entière de la vie de la personne. Seul le classement actuelle/
+ * ancienne (fait par l'appelant) doit tenir compte de `teamArchived`.
  *
  * FAIL-CLOSED multi-org, même doctrine que `loadPersonDrawerData.ts` : une
  * équipe hors `orgIds` (organisations accessibles au viewer) n'apparaît
@@ -635,9 +643,15 @@ export async function listTeamMembershipHistoryForUser(
       leftAt: r.left_at,
     }))
     .filter((r): r is { team: TeamLite; joinedAt: string; leftAt: string | null } =>
-      !!r.team && !r.team.deleted_at && !!r.team.organization_id && orgIds.includes(r.team.organization_id),
+      !!r.team && !!r.team.organization_id && orgIds.includes(r.team.organization_id),
     )
-    .map((r) => ({ teamId: r.team.id, teamName: r.team.name, joinedAt: r.joinedAt, leftAt: r.leftAt }))
+    .map((r) => ({
+      teamId: r.team.id,
+      teamName: r.team.name,
+      joinedAt: r.joinedAt,
+      leftAt: r.leftAt,
+      teamArchived: !!r.team.deleted_at,
+    }))
 }
 
 // ----------------------------------------------------------------------------

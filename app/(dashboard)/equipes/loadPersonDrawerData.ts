@@ -52,11 +52,17 @@ function displayName(fullName: string | null, email: string): string {
 // uniquement une composition déclarée dans le temps (cf.
 // lib/db/teams.ts listTeamMembershipHistoryForUser /
 // lib/db/person-memory.ts listTeamMembershipHistoryForContact).
+//
+// Une équipe archivée (`teamArchived: true`) reste dans l'historique — seule
+// la classification actuelle/ancienne (faite par l'appelant, cf.
+// PersonDetailBody.tsx) en tient compte : jamais actuelle si teamArchived,
+// même avec leftAt=null (FIX_REQUIRED revue ChatGPT/Vincent, 4385708e).
 export interface PersonTeamHistoryEntry {
   teamId: string
   teamName: string
   joinedAt: string
   leftAt: string | null
+  teamArchived: boolean
 }
 
 export interface PersonDrawerData {

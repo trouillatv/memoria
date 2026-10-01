@@ -66,6 +66,7 @@ import {
   listConfirmedInterventionsForUser,
   listAssignedActionsForContact,
   listTeamMembershipsForContact,
+  listTeamMembershipHistoryForContact,
   getPersonMemorySummary,
   getUserMemoryOverview,
   listPhotosForUser,
@@ -280,6 +281,76 @@ describe('listTeamMembershipsForContact — appartenance ACTUELLE uniquement', (
       { joined_at: '2026-08-01T00:00:00Z', team: { id: 't-1', name: 'Équipe Alpha', deleted_at: null, organization_id: 'org-demo' } },
     ]
     const out = await listTeamMembershipsForContact('c-1', [])
+    expect(out).toEqual([])
+  })
+})
+
+// FIX_REQUIRED (revue ChatGPT/Vincent, 4385708e) — contrairement à
+// listTeamMembershipsForContact (actuel uniquement, ci-dessus), l'historique
+// COMPLET ne doit jamais éliminer une équipe archivée : elle reste une
+// tranche réelle du passé de la personne, simplement marquée teamArchived.
+describe('listTeamMembershipHistoryForContact — historique complet, équipe archivée conservée', () => {
+  it('membership terminé (left_at renseigné) + équipe archivée → historique conservé avec teamArchived: true', async () => {
+    fieldMemberRows = [
+      {
+        joined_at: '2025-01-01T00:00:00Z',
+        left_at: '2025-06-01T00:00:00Z',
+        team: { id: 't-1', name: 'Équipe Alpha', deleted_at: '2025-07-01T00:00:00Z', organization_id: 'org-demo' },
+      },
+    ]
+    const out = await listTeamMembershipHistoryForContact('c-1', ['org-demo'])
+    expect(out).toEqual([
+      {
+        teamId: 't-1',
+        teamName: 'Équipe Alpha',
+        joinedAt: '2025-01-01T00:00:00Z',
+        leftAt: '2025-06-01T00:00:00Z',
+        teamArchived: true,
+      },
+    ])
+  })
+
+  it('membership left_at=null + équipe archivée → conservé, teamArchived: true (jamais présenté comme actuel)', async () => {
+    fieldMemberRows = [
+      {
+        joined_at: '2025-01-01T00:00:00Z',
+        left_at: null,
+        team: { id: 't-1', name: 'Équipe Alpha', deleted_at: '2025-07-01T00:00:00Z', organization_id: 'org-demo' },
+      },
+    ]
+    const out = await listTeamMembershipHistoryForContact('c-1', ['org-demo'])
+    expect(out).toEqual([
+      {
+        teamId: 't-1',
+        teamName: 'Équipe Alpha',
+        joinedAt: '2025-01-01T00:00:00Z',
+        leftAt: null,
+        teamArchived: true,
+      },
+    ])
+  })
+
+  it('équipe hors des organisations accessibles → toujours invisible, même archivée', async () => {
+    fieldMemberRows = [
+      {
+        joined_at: '2025-01-01T00:00:00Z',
+        left_at: null,
+        team: { id: 't-1', name: 'Équipe Autre Org', deleted_at: null, organization_id: 'org-autre' },
+      },
+    ]
+    const out = await listTeamMembershipHistoryForContact('c-1', ['org-demo'])
+    expect(out).toEqual([])
+  })
+
+  it('orgIds vide → fail-closed, aucune équipe', async () => {
+    fieldMemberRows = [
+      {
+        joined_at: '2025-01-01T00:00:00Z',
+        left_at: null,
+        team: { id: 't-1', name: 'Équipe Alpha', deleted_at: null, organization_id: 'org-demo' },
+      },
+    ]
+    const out = await listTeamMembershipHistoryForContact('c-1', [])
     expect(out).toEqual([])
   })
 })

@@ -73,8 +73,11 @@ export function PersonDetailBody({
   teamId?: string
 }) {
   const { ref, displayName, subtitle, period, userOverview, contactOverview, interventions, contactActions, photos, teamHistory } = data
-  const currentTeamMemberships = teamHistory.filter((t) => !t.leftAt)
-  const pastTeamMemberships = teamHistory.filter((t) => t.leftAt)
+  // FIX_REQUIRED (revue ChatGPT/Vincent, 4385708e) — une équipe archivée ne
+  // peut jamais compter comme appartenance actuelle, même si un vieux
+  // membership a malencontreusement leftAt=null.
+  const currentTeamMemberships = teamHistory.filter((t) => !t.leftAt && !t.teamArchived)
+  const pastTeamMemberships = teamHistory.filter((t) => t.leftAt || t.teamArchived)
 
   return (
     <div className="space-y-4">
@@ -286,12 +289,6 @@ export function PersonDetailBody({
         {/* ── Équipes — historique réel d'appartenance, jamais une preuve de
             présence sur une intervention (cf. doctrine en-tête de fichier) ── */}
         <TabsContent value="equipes" className="space-y-4 pt-3">
-          <p className="text-[11px] text-muted-foreground">
-            Appartenir à une équipe, même aujourd&apos;hui, ne prouve rien sur une
-            intervention précise — voir l&apos;onglet Activité pour les
-            participations réellement attestées.
-          </p>
-
           <section className="space-y-2">
             <h3 className="text-sm font-medium">Équipes actuelles</h3>
             {currentTeamMemberships.length === 0 ? (
@@ -322,20 +319,43 @@ export function PersonDetailBody({
             <section className="space-y-2">
               <h3 className="text-sm font-medium text-muted-foreground">Anciennes équipes</h3>
               <ul className="divide-y -my-2">
-                {pastTeamMemberships.map((t, i) => (
-                  <li key={`${t.teamId}-${i}`} className="py-2">
-                    <Link href={`/equipes?team=${t.teamId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
-                      <span className="text-sm flex items-center gap-2 text-muted-foreground">
-                        <Users className="h-3.5 w-3.5" />
-                        {t.teamName}
-                      </span>
-                      <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        {fmtDateShort(t.joinedAt)} → {fmtDateShort(t.leftAt)}
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                      </span>
-                    </Link>
-                  </li>
-                ))}
+                {pastTeamMemberships.map((t, i) => {
+                  const nameBlock = (
+                    <span className="text-sm flex items-center gap-2 text-muted-foreground">
+                      <Users className="h-3.5 w-3.5" />
+                      {t.teamName}
+                      {t.teamArchived && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md border bg-muted text-muted-foreground border-border">
+                          Archivée
+                        </span>
+                      )}
+                    </span>
+                  )
+                  const dateBlock = (
+                    <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      {fmtDateShort(t.joinedAt)} → {t.leftAt ? fmtDateShort(t.leftAt) : 'archivage'}
+                      {!t.teamArchived && <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                    </span>
+                  )
+                  return (
+                    <li key={`${t.teamId}-${i}`} className="py-2">
+                      {/* Équipe archivée : pas de fiche équipe consultable
+                          (getTeamOverview exclut deleted_at) — nom non
+                          cliquable plutôt qu'un lien mort. */}
+                      {t.teamArchived ? (
+                        <div className="flex items-center justify-between gap-2">
+                          {nameBlock}
+                          {dateBlock}
+                        </div>
+                      ) : (
+                        <Link href={`/equipes?team=${t.teamId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                          {nameBlock}
+                          {dateBlock}
+                        </Link>
+                      )}
+                    </li>
+                  )
+                })}
               </ul>
             </section>
           )}
