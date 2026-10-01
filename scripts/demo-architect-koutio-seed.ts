@@ -208,6 +208,23 @@ const SUBJECT_LABELS: Record<keyof typeof SUBJECTS, string> = {
   fissure: 'Fissure allège A301',
 }
 
+// Sujets VIVANTS (public.subjects, mig 124) — couche DISTINCTE de canonical_subject
+// (mig 279/346, mémoire/identité). site_reports.target_subject_id (mig 162) et
+// site_actions.subject_id (mig 124) référencent CETTE table, jamais canonical_subject
+// (confirmé par lecture directe des migrations 124/162/279/346). Mêmes clés
+// fonctionnelles que SUBJECTS ci-dessus, mais famille d'UUID déterministe séparée
+// (duid('live-subject:...') ≠ duid('subject:...')) : aucune collision d'id possible
+// entre les deux couches.
+const LIVE_SUBJECTS: Record<keyof typeof SUBJECTS, string> = {
+  b302: duid('live-subject:b302-terrasse'),
+  a204: duid('live-subject:a204-tableau-electrique'),
+  pmr: duid('live-subject:commerce-rdc-seuil-pmr'),
+  facade: duid('live-subject:facade-a101'),
+  fissure: duid('live-subject:fissure-a301'),
+}
+
+export { SUBJECTS, LIVE_SUBJECTS }
+
 // ════════════════════════════════════════════════════════════════════════════════
 // ÉVÉNEMENTS (12 site_reports)
 // ════════════════════════════════════════════════════════════════════════════════
@@ -231,11 +248,22 @@ const ALLOWED_VISIT_MOTIVES = [
 ] as const
 type VisitMotive = (typeof ALLOWED_VISIT_MOTIVES)[number]
 
+// Source de vérité : migration 162_field_visits.sql — « La visite est une LENTILLE
+// (fenêtre temporelle) sur la mémoire du SITE... Marqueur : origin IS NOT NULL
+// distingue une visite terrain d'une réunion classique ». Confirmé par le pattern
+// production réel dans scripts/demo-capse-seed.ts::seedShowcaseMeetings() : les
+// réunions y sont insérées avec origin=NULL (colonne listée mais valeur NULL dans
+// le VALUES). Donc ici : les 9 visites terrain portent une origine non-nulle, les
+// 3 réunions (report:05/08/12) portent origin=null — jamais 'planned' pour une
+// réunion.
+type VisitOrigin = 'planned' | 'spontaneous' | 'qr' | 'gps' | null
+
 type EventDef = {
   key: string
   start: string
   end: string
   title: string
+  origin: VisitOrigin
   visitMotive: VisitMotive
   outcome: string
   resolution?: string
@@ -249,7 +277,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:01', start: '2026-04-08T08:00:00+11:00', end: '2026-04-08T10:00:00+11:00',
     title: 'Visite chantier #01 — Gros œuvre / réservations R+2',
-    visitMotive: 'controle', outcome: 'conforme_reserves',
+    origin: 'planned', visitMotive: 'controle', outcome: 'conforme_reserves',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Marc Delmas', 'Conducteur de travaux'), p('Julien Wamytan', 'Chef de chantier'), p('Claire Forest', 'Ingénieure fluides'), p('Thomas Legrand', 'Ingénieur structure')],
     summary: "Réservation plomberie B203 décalée de 12 cm par rapport au plan. Trémie technique de la cage B trop étroite. Attente électrique du balcon B201 absente. Seuil de la terrasse R+2 à contrôler.",
     decisions: ["Conserver l'implantation de la gaine technique B203 et adapter la cloison du cellier en conséquence."],
@@ -257,7 +285,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:02', start: '2026-04-29T08:00:00+11:00', end: '2026-04-29T10:00:00+11:00',
     title: 'Visite chantier #02 — Prototype façade A101',
-    visitMotive: 'controle', outcome: 'conforme_reserves',
+    origin: 'planned', visitMotive: 'controle', outcome: 'conforme_reserves',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Marc Delmas', 'Conducteur de travaux'), p('Anaïs Robert', 'Menuiseries extérieures')],
     summary: "Teinte du prototype de façade A101 conforme à la validation. Joints périphériques irréguliers sur plusieurs châssis. Pente d'appui de baie insuffisante côté nord.",
     decisions: ["Prototype de façade A101 accepté sous réserve de reprise des joints et de la pente d'appui avant généralisation aux autres niveaux."],
@@ -266,7 +294,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:03', start: '2026-05-21T08:00:00+11:00', end: '2026-05-21T09:30:00+11:00',
     title: 'Visite chantier #03 — Terrasse B302',
-    visitMotive: 'controle', outcome: 'non_conforme', resolution: 'a_suivre',
+    origin: 'planned', visitMotive: 'controle', outcome: 'non_conforme', resolution: 'a_suivre',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Marc Delmas', 'Conducteur de travaux'), p('Thierry Lopes', 'Étanchéité')],
     summary: "Stagnation d'eau constatée devant la baie de la terrasse B302 après essai d'arrosage.",
     decisions: [],
@@ -275,7 +303,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:04', start: '2026-06-18T08:00:00+11:00', end: '2026-06-18T10:00:00+11:00',
     title: 'Visite chantier #04 — Récidive terrasse B302',
-    visitMotive: 'controle', outcome: 'non_conforme', resolution: 'a_suivre',
+    origin: 'planned', visitMotive: 'controle', outcome: 'non_conforme', resolution: 'a_suivre',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Marc Delmas', 'Conducteur de travaux'), p('Thierry Lopes', 'Étanchéité')],
     summary: "Nouvelle stagnation d'eau dans la même zone de la terrasse B302 malgré une reprise déclarée terminée le 27/05.",
     decisions: ["Dépose locale de l'étanchéité, reprise de la chape de forme et nouvelle étanchéité, avec essai d'arrosage de contrôle."],
@@ -284,7 +312,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:05', start: '2026-07-02T17:00:00+11:00', end: '2026-07-02T18:30:00+11:00',
     title: 'Réunion chantier #12',
-    visitMotive: 'libre', outcome: 'info',
+    origin: null, visitMotive: 'libre', outcome: 'info',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Mélanie Durand', 'Représentante MOA'), p('Léa Ménézo', 'OPC'), p('Marc Delmas', 'Conducteur de travaux'), p('Anaïs Robert', 'Menuiseries extérieures')],
     summary: "Point planning menuiseries extérieures, choix des revêtements de sol, avancement ascenseur, retard de livraison des menuiseries extérieures.",
     decisions: ["Maintien de l'objectif hors d'eau / hors d'air au 31/07/2026."],
@@ -292,7 +320,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:06', start: '2026-07-16T08:00:00+11:00', end: '2026-07-16T09:30:00+11:00',
     title: 'Visite chantier #05 — Coordination électricité / cuisine A204',
-    visitMotive: 'controle', outcome: 'non_conforme',
+    origin: 'planned', visitMotive: 'controle', outcome: 'non_conforme',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Marc Delmas', 'Conducteur de travaux'), p('Éric Nakamura', 'BET électricité')],
     summary: "Le tableau électrique de l'appartement A204 empiète sur l'emplacement prévu pour la colonne de mobilier de cuisine.",
     decisions: ['Déplacement du tableau électrique A204 de 35 cm vers la circulation.'],
@@ -301,7 +329,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:07', start: '2026-07-30T08:00:00+11:00', end: '2026-07-30T09:30:00+11:00',
     title: 'Contrôle ciblé — A204 / B302',
-    visitMotive: 'levee_reserves', outcome: 'conforme_reserves',
+    origin: 'planned', visitMotive: 'levee_reserves', outcome: 'conforme_reserves',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Marc Delmas', 'Conducteur de travaux'), p('Éric Nakamura', 'BET électricité'), p('Thierry Lopes', 'Étanchéité')],
     summary: "A204 — déplacement du tableau électrique réalisé et accepté. B302 — contrôle après la deuxième reprise d'étanchéité, aucune stagnation constatée, maintien sous surveillance jusqu'aux OPR.",
     decisions: [],
@@ -309,7 +337,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:08', start: '2026-08-13T17:00:00+11:00', end: '2026-08-13T18:30:00+11:00',
     title: 'Réunion chantier #15',
-    visitMotive: 'libre', outcome: 'info',
+    origin: null, visitMotive: 'libre', outcome: 'info',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Mélanie Durand', 'Représentante MOA'), p('Léa Ménézo', 'OPC'), p('Marc Delmas', 'Conducteur de travaux')],
     summary: "Point sur les finitions, avancement façade, préparation des opérations préalables à la réception (OPR).",
     decisions: ["Organisation de pré-OPR par cage d'escalier à partir de septembre 2026."],
@@ -317,7 +345,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:09', start: '2026-08-27T08:00:00+11:00', end: '2026-08-27T11:00:00+11:00',
     title: 'Visite chantier #06 — Finitions',
-    visitMotive: 'inspection', outcome: 'non_conforme',
+    origin: 'planned', visitMotive: 'inspection', outcome: 'non_conforme',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Marc Delmas', 'Conducteur de travaux'), p('Alain Koteureu', 'Chef de chantier'), p('Jean-Paul Huvon', 'Peinture')],
     summary: "Réserves relevées : peinture cage A niveau 2 (défaut de planéité), trois portes palières rayées, plinthes B104 absentes, appareillage électrique A103 non aligné, silicone salle d'eau B201 à reprendre, seuil PMR du commerce RDC non conforme, grille de ventilation B202 non conforme, joint de dilatation du hall non terminé, poignée de la fenêtre A102 mal fixée.",
     decisions: [],
@@ -325,7 +353,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:10', start: '2026-09-10T08:00:00+11:00', end: '2026-09-10T10:00:00+11:00',
     title: 'Visite chantier #07 — Levée partielle',
-    visitMotive: 'levee_reserves', outcome: 'conforme_reserves',
+    origin: 'planned', visitMotive: 'levee_reserves', outcome: 'conforme_reserves',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Marc Delmas', 'Conducteur de travaux'), p('Alain Koteureu', 'Chef de chantier')],
     summary: "Réserves levées : portes palières remplacées, plinthes B104 posées, grille de ventilation B202 conforme. Peinture cage A niveau 2 partiellement reprise. Seuil PMR du commerce RDC toujours non conforme. Nouveau constat : microfissure sous l'allège de la fenêtre A301.",
     decisions: [],
@@ -334,7 +362,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:11', start: '2026-09-24T08:00:00+11:00', end: '2026-09-24T10:30:00+11:00',
     title: 'Visite chantier #08 — Pré-OPR',
-    visitMotive: 'prereception', outcome: 'conforme_reserves',
+    origin: 'planned', visitMotive: 'prereception', outcome: 'conforme_reserves',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Mélanie Durand', 'Représentante MOA'), p('Léa Ménézo', 'OPC'), p('Marc Delmas', 'Conducteur de travaux'), p('Alain Koteureu', 'Chef de chantier'), p('Paul Garcia', 'Contrôleur technique')],
     summary: "Réserves closes : tableau électrique A204, portes palières, plinthes, ventilation B202. Réserves ouvertes : seuil PMR commerce RDC, peinture cage A niveau 2, contrôle final étanchéité B302. Nouvelle action : avis du bureau d'études structure sur la fissure A301 avant réception.",
     decisions: [
@@ -348,7 +376,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:12', start: '2026-09-30T17:00:00+11:00', end: '2026-09-30T18:30:00+11:00',
     title: 'Réunion chantier #18 — Bilan pré-OPR',
-    visitMotive: 'libre', outcome: 'info',
+    origin: null, visitMotive: 'libre', outcome: 'info',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Mélanie Durand', 'Représentante MOA'), p('Léa Ménézo', 'OPC'), p('Marc Delmas', 'Conducteur de travaux'), p('Paul Garcia', 'Contrôleur technique')],
     summary: "Bilan de la visite pré-OPR du 24/09. Trois points critiques restent à lever avant réception : seuil PMR commerce RDC, peinture cage A, contrôle final étanchéité terrasse B302.",
     decisions: [
@@ -360,7 +388,7 @@ const EVENTS: EventDef[] = [
 const reportId = (key: string) => duid(key)
 
 export { EVENTS, ALLOWED_VISIT_MOTIVES }
-export type { VisitMotive }
+export type { VisitMotive, VisitOrigin }
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ACTIONS (30)
@@ -411,6 +439,8 @@ const ACTIONS: ActionDef[] = [
   { key: 'action:32', title: 'Programmer l’essai d’arrosage complémentaire de la terrasse B302 avant OPR', corpsEtat: 'Étanchéité', assignedTo: 'Hydro NC — Thierry Lopes', assignedCompanyKey: 'hydro-nc', reportKey: 'report:12', subject: 'b302', dueDate: '2026-10-08', status: 'open' },
   { key: 'action:33', title: 'Confirmer la date d’OPR de la cage B avec le bureau de contrôle', corpsEtat: 'Divers', assignedTo: 'Bureau Control NC — Paul Garcia', assignedCompanyKey: 'bureau-control-nc', reportKey: 'report:12', dueDate: '2026-10-06', status: 'open' },
 ]
+
+export { ACTIONS }
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ÉQUIPES — historique réel (team_members pour David, team_field_members sinon)
@@ -489,7 +519,10 @@ export function buildPlanSummary(): string[] {
   lines.push(`  team_members (comptes connectés)    : 1 (David)`)
   lines.push(`  team_field_members (contacts terrain): ${FIELD_MEMBERSHIPS.length}`)
   lines.push(`Sujets canoniques (fils rouges)       : ${Object.keys(SUBJECTS).length}`)
+  lines.push(`Sujets vivants (public.subjects)      : ${Object.keys(LIVE_SUBJECTS).length}`)
   lines.push(`Événements (site_reports)             : ${EVENTS.length}`)
+  const meetingCount = EVENTS.filter((e) => e.origin === null).length
+  lines.push(`  dont réunions (origin=NULL)=${meetingCount}, visites terrain (origin renseigné)=${EVENTS.length - meetingCount}`)
   lines.push(`Actions (site_actions)                : ${ACTIONS.length}`)
   const doneCount = ACTIONS.filter((a) => a.status === 'done').length
   const openCount = ACTIONS.filter((a) => a.status === 'open').length
@@ -619,6 +652,22 @@ async function seedCanonicalSubjects() {
   `)
 }
 
+// public.subjects (mig 124) — couche VIVANTE distincte de canonical_subject. C'est
+// CETTE table que site_reports.target_subject_id et site_actions.subject_id
+// référencent réellement (cf. lib/db/subjects.ts — listSubjectsBySite/getSubjectThread
+// lisent site_actions.subject_id, jamais canonical_subject_id).
+async function seedLiveSubjects() {
+  const rows = (Object.keys(LIVE_SUBJECTS) as Array<keyof typeof LIVE_SUBJECTS>)
+    .map((k) => `('${LIVE_SUBJECTS[k]}', '${ORG_ID}', '${SITE_ID}', ${esc(SUBJECT_LABELS[k])}, 'open', '${DAVID_ID}')`)
+    .join(',\n    ')
+  await runSql(`
+    INSERT INTO public.subjects (id, organization_id, site_id, name, status, created_by)
+    VALUES
+    ${rows}
+    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+  `)
+}
+
 function buildDebriefAnalysis(ev: EventDef) {
   return {
     summary: ev.summary,
@@ -654,10 +703,12 @@ function buildDebriefAnalysis(ev: EventDef) {
 async function seedEvents() {
   const rows = EVENTS.map((ev) => {
     const debrief = buildDebriefAnalysis(ev)
-    const targetSubjectId = ev.targetSubject ? SUBJECTS[ev.targetSubject] : null
+    // target_subject_id référence public.subjects (couche vivante), pas
+    // canonical_subject (mig 162 : site_reports.target_subject_id → public.subjects).
+    const targetSubjectId = ev.targetSubject ? LIVE_SUBJECTS[ev.targetSubject] : null
     return `(
       '${reportId(ev.key)}', '${SITE_ID}', '${ORG_ID}', '${ORG_ID}',
-      'curated', 'none', 'planned',
+      'curated', 'none', ${ev.origin ? esc(ev.origin) : 'NULL'},
       ${esc(pgTs(new Date(ev.start)))}, ${esc(pgTs(new Date(ev.end)))},
       ${esc(ev.title)}, ${esc(ev.visitMotive)}, ${esc(ev.title)}, ${esc(ev.outcome)},
       ${ev.resolution ? esc(ev.resolution) : 'NULL'},
@@ -687,14 +738,18 @@ async function seedEvents() {
 
 async function seedActions() {
   const rows = ACTIONS.map((a) => {
-    const subjectId = a.subject ? SUBJECTS[a.subject] : null
+    // Double rattachement volontaire : canonical_subject_id (mémoire/identité,
+    // mig 346) ET subject_id (fil vivant consulté par le produit réel, mig 124 —
+    // cf. lib/db/subjects.ts). Deux UUID distincts, deux couches distinctes.
+    const canonicalSubjectId = a.subject ? SUBJECTS[a.subject] : null
+    const liveSubjectId = a.subject ? LIVE_SUBJECTS[a.subject] : null
     const companyIdVal = a.assignedCompanyKey ? companyId(a.assignedCompanyKey) : null
     return `(
       '${duid(a.key)}', '${SITE_ID}', '${reportId(a.reportKey)}', ${esc(a.title)},
       ${a.corpsEtat ? esc(a.corpsEtat) : 'NULL'}, ${esc(a.assignedTo)}, '${a.status}',
       ${a.dueDate ? `'${a.dueDate}'` : 'NULL'}, ${a.dueDate ? esc('explicit') : 'NULL'},
       ${a.doneAt ? esc(pgTs(new Date(`${a.doneAt}T12:00:00+11:00`))) : 'NULL'},
-      '${DAVID_ID}', '${ORG_ID}', ${escUuid(companyIdVal)}, ${escUuid(subjectId)}
+      '${DAVID_ID}', '${ORG_ID}', ${escUuid(companyIdVal)}, ${escUuid(canonicalSubjectId)}, ${escUuid(liveSubjectId)}
     )`
   }).join(',\n    ')
 
@@ -702,7 +757,7 @@ async function seedActions() {
     INSERT INTO public.site_actions
       (id, site_id, report_id, title, corps_etat, assigned_to, status,
        due_date, due_date_status, done_at,
-       created_by, organization_id, assigned_company_id, canonical_subject_id)
+       created_by, organization_id, assigned_company_id, canonical_subject_id, subject_id)
     VALUES
     ${rows}
     ON CONFLICT (id) DO UPDATE SET
@@ -725,6 +780,7 @@ async function seed() {
   await seedSiteIntervenants()
   await seedTeams()
   await seedCanonicalSubjects()
+  await seedLiveSubjects()
   await seedEvents()
   await seedActions()
 
@@ -736,16 +792,18 @@ async function seed() {
 // ROLLBACK — dry-run (comptage) et réel (suppression fail-closed)
 //
 // Ordre des tables conforme aux FK : enfants avant parents (actions avant reports
-// avant canonical_subject ; team_field_members/team_members avant teams ;
-// site_intervenants avant company_contacts avant companies ; sites avant clients ;
-// organization_memberships avant organizations). Ne jamais réordonner sans revérifier
-// les contraintes de clé étrangère réelles en base.
+// avant canonical_subject/subjects — ordre entre ces deux derniers non contraignant,
+// les deux FK depuis actions/reports sont on delete set null ; team_field_members/
+// team_members avant teams ; site_intervenants avant company_contacts avant
+// companies ; sites avant clients ; organization_memberships avant organizations).
+// Ne jamais réordonner sans revérifier les contraintes de clé étrangère réelles en base.
 // ════════════════════════════════════════════════════════════════════════════════
 
 const ROLLBACK_TABLES: Array<{ table: string; where: string }> = [
   { table: 'public.site_actions', where: `organization_id = '${ORG_ID}'` },
   { table: 'public.site_reports', where: `organization_id = '${ORG_ID}'` },
   { table: 'public.canonical_subject', where: `site_id = '${SITE_ID}'` },
+  { table: 'public.subjects', where: `site_id = '${SITE_ID}'` },
   { table: 'public.team_field_members', where: `organization_id = '${ORG_ID}'` },
   { table: 'public.team_members', where: `organization_id = '${ORG_ID}'` },
   { table: 'public.teams', where: `organization_id = '${ORG_ID}'` },

@@ -12,6 +12,9 @@ import {
   buildPlanSummary,
   EVENTS,
   ALLOWED_VISIT_MOTIVES,
+  ACTIONS,
+  SUBJECTS,
+  LIVE_SUBJECTS,
 } from './demo-architect-koutio-seed'
 
 describe('demo-architect-koutio-seed — duid()', () => {
@@ -168,5 +171,72 @@ describe('demo-architect-koutio-seed — EVENTS.visitMotive natif uniquement', (
     for (const ev of EVENTS) {
       expect(ALLOWED_VISIT_MOTIVES).toContain(ev.visitMotive)
     }
+  })
+})
+
+describe('demo-architect-koutio-seed — FIX_REQUIRED : deux couches de sujets distinctes (public.subjects vs canonical_subject)', () => {
+  it('A. les 5 ids LIVE_SUBJECTS sont distincts des 5 ids SUBJECTS (canoniques) — aucune collision entre les deux couches', () => {
+    const keys = Object.keys(SUBJECTS) as Array<keyof typeof SUBJECTS>
+    expect(keys).toHaveLength(5)
+    expect(Object.keys(LIVE_SUBJECTS)).toHaveLength(5)
+    for (const k of keys) {
+      expect(LIVE_SUBJECTS[k]).not.toBe(SUBJECTS[k])
+    }
+    const allIds = [...keys.map((k) => SUBJECTS[k]), ...keys.map((k) => LIVE_SUBJECTS[k])]
+    expect(new Set(allIds).size).toBe(allIds.length)
+  })
+
+  it('B. chaque événement avec targetSubject résout vers LIVE_SUBJECTS (jamais SUBJECTS) pour site_reports.target_subject_id', () => {
+    const withTarget = EVENTS.filter((ev) => ev.targetSubject)
+    expect(withTarget.length).toBeGreaterThan(0)
+    for (const ev of withTarget) {
+      const key = ev.targetSubject as keyof typeof SUBJECTS
+      const resolved = LIVE_SUBJECTS[key]
+      expect(resolved).toBeDefined()
+      expect(resolved).not.toBe(SUBJECTS[key])
+    }
+  })
+
+  it('C. chaque action avec subject porte à la fois subject_id (vivant) et canonical_subject_id (mémoire), et les deux diffèrent', () => {
+    const withSubject = ACTIONS.filter((a) => a.subject)
+    expect(withSubject.length).toBeGreaterThan(0)
+    for (const a of withSubject) {
+      const key = a.subject as keyof typeof SUBJECTS
+      const liveId = LIVE_SUBJECTS[key]
+      const canonicalId = SUBJECTS[key]
+      expect(liveId).toBeDefined()
+      expect(canonicalId).toBeDefined()
+      expect(liveId).not.toBe(canonicalId)
+    }
+  })
+
+  it('D. les 3 réunions (report:05/08/12) ont origin=null — jamais traitées comme une visite terrain', () => {
+    const meetingKeys = ['report:05', 'report:08', 'report:12']
+    const meetings = EVENTS.filter((ev) => meetingKeys.includes(ev.key))
+    expect(meetings).toHaveLength(3)
+    for (const ev of meetings) {
+      expect(ev.origin).toBeNull()
+    }
+  })
+
+  it('E. les 9 autres événements (visites/contrôles) portent une origine de visite terrain non nulle', () => {
+    const meetingKeys = ['report:05', 'report:08', 'report:12']
+    const visits = EVENTS.filter((ev) => !meetingKeys.includes(ev.key))
+    expect(visits).toHaveLength(9)
+    for (const ev of visits) {
+      expect(ev.origin).not.toBeNull()
+      expect(['planned', 'spontaneous', 'qr', 'gps']).toContain(ev.origin)
+    }
+  })
+
+  it('F. ROLLBACK_TABLES couvre public.subjects, scopé par site_id (même pattern que canonical_subject, aucun LIKE/wildcard)', () => {
+    const subjectsTable = ROLLBACK_TABLES.find((t) => t.table === 'public.subjects')
+    expect(subjectsTable).toBeDefined()
+    expect(subjectsTable!.where).toBe(`site_id = '${SITE_ID}'`)
+    expect(subjectsTable!.where).not.toMatch(/LIKE|%/)
+  })
+
+  it('G. ACTIONS compte exactement 30 éléments', () => {
+    expect(ACTIONS).toHaveLength(30)
   })
 })
