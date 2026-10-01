@@ -10,16 +10,17 @@
 //     restent par équipe (déjà le cas dans TeamRow) : nécessaires aux
 //     garde-fous d'archivage (ArchiveTeamButton) et au sélecteur de référent
 //     (TeamReferentEditor), pas au périmètre de la Task #85.
-//   - Le détail nominatif complet (liste des membres) vit désormais dans la
-//     vue détail équipe pleine largeur (TeamDetailBody, onglet Membres) — la
-//     table reste un compteur pour permettre le scan, pas une liste de noms.
+//   - Colonne Membres (2026-10-01, FIX_REQUIRED Vincent) : noms cliquables
+//     vers la fiche Personne, "+ N autres" renvoie vers l'onglet Membres de
+//     la fiche équipe (`?team=<id>&tab=membres`) pour le détail complet.
 
 import Link from 'next/link'
 import { ClipboardList, MapPin, Camera, Repeat2 } from 'lucide-react'
 import { listMembersOfTeam, getTeamDependencies, type TeamWithMemberCount } from '@/lib/db/teams'
-import { listFieldMembersOfTeam } from '@/lib/db/team-field-members'
+import { listFieldMembersOfTeam, type FieldMember } from '@/lib/db/team-field-members'
 import type { TeamActivitySummary } from '@/lib/db/team-activity-summary'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { TeamReferentEditor } from './TeamReferentEditor'
 import { EditTeamMembersDialog, type MemberLite } from './EditTeamMembersDialog'
@@ -39,6 +40,59 @@ function displayName(fullName: string | null, email: string): string {
 
 function metricText(value: number): string {
   return value > 0 ? String(value) : '—'
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+}
+
+interface PersonLite {
+  id: string
+  kind: 'user' | 'contact'
+  name: string
+}
+
+const MAX_VISIBLE_MEMBERS = 2
+
+function PersonChip({ person, teamId }: { person: PersonLite; teamId: string }) {
+  const href = `/equipes?person=${person.id}&personKind=${person.kind}&team=${teamId}`
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1.5 hover:underline underline-offset-2"
+      title={`Ouvrir la fiche de ${person.name}`}
+    >
+      <Avatar size="sm">
+        <AvatarFallback>{initials(person.name)}</AvatarFallback>
+      </Avatar>
+      <span className="truncate text-sm text-foreground">{person.name}</span>
+    </Link>
+  )
+}
+
+function MembersCell({ people, teamId }: { people: PersonLite[]; teamId: string }) {
+  const visible = people.slice(0, MAX_VISIBLE_MEMBERS)
+  const overflow = people.length - visible.length
+  return (
+    <div className="space-y-1">
+      {visible.map((p) => (
+        <div key={`${p.kind}:${p.id}`}>
+          <PersonChip person={p} teamId={teamId} />
+        </div>
+      ))}
+      {overflow > 0 && (
+        <Link
+          href={`/equipes?team=${teamId}&tab=membres`}
+          className="block text-xs text-muted-foreground hover:text-foreground hover:underline underline-offset-2"
+        >
+          + {overflow} autre{overflow > 1 ? 's' : ''}
+        </Link>
+      )}
+    </div>
+  )
 }
 
 function AddMemberLink() {
@@ -84,7 +138,17 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
       const referent = team.referent
         ? { id: team.referent.id, name: displayName(team.referent.full_name, team.referent.email) }
         : null
-      return { team, members, fieldMembers, deps, referent }
+      // Deux populations disjointes (accès appli / terrain sans compte), jamais
+      // fusionnées en base — ici seulement assemblées pour l'affichage.
+      const people: PersonLite[] = [
+        ...members.map((m) => ({ id: m.id, kind: 'user' as const, name: m.name })),
+        ...(fieldMembers as FieldMember[]).map((f) => ({
+          id: f.contactId,
+          kind: 'contact' as const,
+          name: f.fullName,
+        })),
+      ]
+      return { team, members, fieldMembers, deps, referent, people }
     }),
   )
 
@@ -106,7 +170,7 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
             </TableRow>
           </TableHeader>
           <TableBody data-testid="teams-list">
-            {rows.map(({ team, members, fieldMembers, deps, referent }) => {
+            {rows.map(({ team, members, fieldMembers, deps, referent, people }) => {
               const summary = activitySummaries.get(team.id)
               const totalPersons = team.memberCount + fieldMembers.length
               return (
@@ -134,16 +198,13 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
                         />
                       </div>
                     ) : (
-                      <>
-                        <div className="text-sm text-foreground">
+                      <div className="space-y-1">
+                        <MembersCell people={people} teamId={team.id} />
+                        <div className="text-xs text-muted-foreground">
                           {totalPersons} personne{totalPersons > 1 ? 's' : ''}
+                          {fieldMembers.length > 0 && ` · ${team.memberCount} accès · ${fieldMembers.length} terrain`}
                         </div>
-                        {fieldMembers.length > 0 && (
-                          <div className="text-xs text-muted-foreground">
-                            {team.memberCount} accès · {fieldMembers.length} terrain
-                          </div>
-                        )}
-                      </>
+                      </div>
                     )}
                   </TableCell>
                   <TableCell>
@@ -182,7 +243,7 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
       {/* Mobile — cartes compactes, mêmes données que la table (jamais une
           table à défilement horizontal sur petit écran). */}
       <div className="divide-y md:hidden" data-testid="teams-list-mobile">
-        {rows.map(({ team, members, fieldMembers, deps, referent }) => {
+        {rows.map(({ team, members, fieldMembers, deps, referent, people }) => {
           const summary = activitySummaries.get(team.id)
           const totalPersons = team.memberCount + fieldMembers.length
           return (
@@ -210,7 +271,7 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground">
                 {totalPersons === 0 ? (
                   <span className="flex items-center gap-2">
                     Aucun membre
@@ -223,10 +284,13 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
                     />
                   </span>
                 ) : (
-                  <span>
-                    {totalPersons} personne{totalPersons > 1 ? 's' : ''}
-                    {fieldMembers.length > 0 && ` (${team.memberCount} accès · ${fieldMembers.length} terrain)`}
-                  </span>
+                  <div className="space-y-1">
+                    <MembersCell people={people} teamId={team.id} />
+                    <span>
+                      {totalPersons} personne{totalPersons > 1 ? 's' : ''}
+                      {fieldMembers.length > 0 && ` (${team.memberCount} accès · ${fieldMembers.length} terrain)`}
+                    </span>
+                  </div>
                 )}
               </div>
 

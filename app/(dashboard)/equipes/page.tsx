@@ -126,6 +126,7 @@ export default async function EquipesPage({
     period?: string
     q?: string
     teamFilter?: string
+    tab?: string
   }>
 }) {
   const user = await getCurrentUserWithProfile()
@@ -221,6 +222,8 @@ export default async function EquipesPage({
     active === 'person' && sp.team && teamDrawerData ? `/equipes?team=${sp.team}` : '/equipes'
   const backLabel =
     active === 'person' && sp.team && teamDrawerData ? teamDrawerData.overview.name : 'Toutes les équipes'
+  const teamInitialTab =
+    sp.tab === 'membres' || sp.tab === 'activite' || sp.tab === 'memoire' ? sp.tab : undefined
 
   if (active) {
     return (
@@ -232,6 +235,7 @@ export default async function EquipesPage({
         backHref={backHref}
         backLabel={backLabel}
         personTeamId={active === 'person' && sp.team && teamDrawerData ? sp.team : undefined}
+        teamInitialTab={active === 'team' ? teamInitialTab : undefined}
       />
     )
   }

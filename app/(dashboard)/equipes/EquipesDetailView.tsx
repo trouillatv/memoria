@@ -30,6 +30,7 @@ export function EquipesDetailView({
   backHref,
   backLabel,
   personTeamId,
+  teamInitialTab,
 }: {
   active: 'team' | 'person'
   team: TeamDrawerData | null
@@ -38,6 +39,7 @@ export function EquipesDetailView({
   backHref: string
   backLabel: string
   personTeamId?: string
+  teamInitialTab?: 'apercu' | 'activite' | 'memoire' | 'membres'
 }) {
   return (
     <div className="space-y-4">
@@ -48,7 +50,9 @@ export function EquipesDetailView({
         <ChevronLeft className="h-4 w-4" />
         {backLabel}
       </Link>
-      {active === 'team' && team && <TeamDetailBody data={team} availableUsers={availableUsers} />}
+      {active === 'team' && team && (
+        <TeamDetailBody data={team} availableUsers={availableUsers} initialTab={teamInitialTab} />
+      )}
       {active === 'person' && person && (
         <PersonDetailBody data={person} pathname="/equipes" teamId={personTeamId} />
       )}

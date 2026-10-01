@@ -303,12 +303,6 @@ export function PersonDetailBody({
           )}
         </TabsContent>
       </Tabs>
-
-      <p className="text-[11px] text-muted-foreground italic text-center py-2">
-        On ne transforme jamais une absence de preuve en présence supposée.
-        L&apos;équipe actuelle n&apos;est pas un historique ; l&apos;historique n&apos;est
-        que ce qui a été confirmé.
-      </p>
     </div>
   )
 }

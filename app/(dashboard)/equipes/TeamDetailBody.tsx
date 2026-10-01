@@ -111,9 +111,11 @@ export interface TeamDrawerData {
 export function TeamDetailBody({
   data,
   availableUsers,
+  initialTab,
 }: {
   data: TeamDrawerData
   availableUsers: MemberLite[]
+  initialTab?: 'apercu' | 'activite' | 'memoire' | 'membres'
 }) {
   const {
     overview,
@@ -210,7 +212,7 @@ export function TeamDetailBody({
         </div>
       </header>
 
-      <Tabs defaultValue="apercu">
+      <Tabs defaultValue={initialTab ?? 'apercu'}>
         <TabsList className="w-full">
           <TabsTrigger value="apercu">Aperçu</TabsTrigger>
           <TabsTrigger value="activite">Activité</TabsTrigger>
@@ -560,12 +562,6 @@ export function TeamDetailBody({
           </section>
         </TabsContent>
       </Tabs>
-
-      <p className="text-[11px] text-muted-foreground italic text-center py-2">
-        Toutes les données affichées ici sont descriptives. Aucune comparaison
-        inter-équipes, aucun classement, aucun score. L&apos;équipe est un conteneur
-        logistique, jamais une unité d&apos;évaluation.
-      </p>
     </div>
   )
 }
