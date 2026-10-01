@@ -264,7 +264,7 @@ type EventDef = {
   end: string
   title: string
   origin: VisitOrigin
-  visitMotive: VisitMotive
+  visitMotive: VisitMotive | null
   outcome: string
   resolution?: string
   participants: Participant[]
@@ -312,7 +312,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:05', start: '2026-07-02T17:00:00+11:00', end: '2026-07-02T18:30:00+11:00',
     title: 'Réunion chantier #12',
-    origin: null, visitMotive: 'libre', outcome: 'info',
+    origin: null, visitMotive: null, outcome: 'info',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Mélanie Durand', 'Représentante MOA'), p('Léa Ménézo', 'OPC'), p('Marc Delmas', 'Conducteur de travaux'), p('Anaïs Robert', 'Menuiseries extérieures')],
     summary: "Point planning menuiseries extérieures, choix des revêtements de sol, avancement ascenseur, retard de livraison des menuiseries extérieures.",
     decisions: ["Maintien de l'objectif hors d'eau / hors d'air au 31/07/2026."],
@@ -337,7 +337,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:08', start: '2026-08-13T17:00:00+11:00', end: '2026-08-13T18:30:00+11:00',
     title: 'Réunion chantier #15',
-    origin: null, visitMotive: 'libre', outcome: 'info',
+    origin: null, visitMotive: null, outcome: 'info',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Mélanie Durand', 'Représentante MOA'), p('Léa Ménézo', 'OPC'), p('Marc Delmas', 'Conducteur de travaux')],
     summary: "Point sur les finitions, avancement façade, préparation des opérations préalables à la réception (OPR).",
     decisions: ["Organisation de pré-OPR par cage d'escalier à partir de septembre 2026."],
@@ -376,7 +376,7 @@ const EVENTS: EventDef[] = [
   {
     key: 'report:12', start: '2026-09-30T17:00:00+11:00', end: '2026-09-30T18:30:00+11:00',
     title: 'Réunion chantier #18 — Bilan pré-OPR',
-    origin: null, visitMotive: 'libre', outcome: 'info',
+    origin: null, visitMotive: null, outcome: 'info',
     participants: [p('David Bouvier', 'Architecte mandataire'), p('Sophie Martin', 'Architecte projet'), p('Mélanie Durand', 'Représentante MOA'), p('Léa Ménézo', 'OPC'), p('Marc Delmas', 'Conducteur de travaux'), p('Paul Garcia', 'Contrôleur technique')],
     summary: "Bilan de la visite pré-OPR du 24/09. Trois points critiques restent à lever avant réception : seuil PMR commerce RDC, peinture cage A, contrôle final étanchéité terrasse B302.",
     decisions: [

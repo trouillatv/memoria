@@ -166,10 +166,12 @@ describe('demo-architect-koutio-seed — EVENTS.visitMotive natif uniquement', (
     ])
   })
 
-  it('les 12 événements du seed utilisent uniquement des visit_motive natifs (aucune valeur inventée)', () => {
+  it('les 12 événements du seed utilisent uniquement des visit_motive natifs ou null (aucune valeur inventée)', () => {
     expect(EVENTS).toHaveLength(12)
     for (const ev of EVENTS) {
-      expect(ALLOWED_VISIT_MOTIVES).toContain(ev.visitMotive)
+      if (ev.visitMotive !== null) {
+        expect(ALLOWED_VISIT_MOTIVES).toContain(ev.visitMotive)
+      }
     }
   })
 })
@@ -210,22 +212,24 @@ describe('demo-architect-koutio-seed — FIX_REQUIRED : deux couches de sujets d
     }
   })
 
-  it('D. les 3 réunions (report:05/08/12) ont origin=null — jamais traitées comme une visite terrain', () => {
+  it('D. les 3 réunions (report:05/08/12) ont origin=null ET visitMotive=null — pattern production réel (demo-capse-seed.ts::seedShowcaseMeetings), jamais traitées comme une visite terrain', () => {
     const meetingKeys = ['report:05', 'report:08', 'report:12']
     const meetings = EVENTS.filter((ev) => meetingKeys.includes(ev.key))
     expect(meetings).toHaveLength(3)
     for (const ev of meetings) {
       expect(ev.origin).toBeNull()
+      expect(ev.visitMotive).toBeNull()
     }
   })
 
-  it('E. les 9 autres événements (visites/contrôles) portent une origine de visite terrain non nulle', () => {
+  it('E. les 9 autres événements (visites/contrôles) portent une origine de visite terrain non nulle ET un visit_motive non nul', () => {
     const meetingKeys = ['report:05', 'report:08', 'report:12']
     const visits = EVENTS.filter((ev) => !meetingKeys.includes(ev.key))
     expect(visits).toHaveLength(9)
     for (const ev of visits) {
       expect(ev.origin).not.toBeNull()
       expect(['planned', 'spontaneous', 'qr', 'gps']).toContain(ev.origin)
+      expect(ev.visitMotive).not.toBeNull()
     }
   })
 
