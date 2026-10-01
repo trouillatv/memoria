@@ -457,6 +457,45 @@ export async function listMembersOfTeam(teamId: string): Promise<TeamMemberWithU
 }
 
 /**
+ * Liste TOUT l'historique d'appartenance d'une équipe (membres actifs +
+ * anciens), avec `joined_at`/`left_at` réels — jamais fabriqués ou
+ * rétrodatés (cf. `addMemberToTeam`/`removeMemberFromTeam` : ces colonnes ne
+ * sont écrites qu'au moment réel du geste UI). Sert exclusivement l'affichage
+ * d'un historique de composition — jamais une preuve de présence sur une
+ * intervention : appartenir à une équipe, même aujourd'hui, ne prouve rien
+ * sur une intervention précise.
+ *
+ * Même doctrine d'exposition nominative que `listMembersOfTeam` ci-dessus :
+ * page Équipes uniquement.
+ */
+export async function listTeamMembershipHistory(teamId: string): Promise<TeamMemberWithUser[]> {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('team_members')
+    .select('*, user:users(id, full_name, email)')
+    .eq('team_id', teamId)
+    .order('joined_at', { ascending: true })
+  if (error) throw error
+
+  type Row = DbTeamMember & {
+    user: { id: string; full_name: string | null; email: string } | null
+      | Array<{ id: string; full_name: string | null; email: string }>
+  }
+
+  return ((data ?? []) as Row[])
+    .map((r) => {
+      const u = Array.isArray(r.user) ? r.user[0] ?? null : r.user
+      if (!u) return null
+      const { user: _omit, ...membership } = r
+      return {
+        membership: membership as DbTeamMember,
+        user: u,
+      }
+    })
+    .filter((x): x is TeamMemberWithUser => x !== null)
+}
+
+/**
  * Ajoute un user à une équipe (insère un nouveau `team_members` actif).
  * L'unicité (team_id, user_id) WHERE left_at IS NULL est garantie par
  * l'index DB partial → erreur si déjà membre actif.
@@ -554,6 +593,51 @@ export async function listActiveTeamIdsForUser(userId: string): Promise<string[]
     .is('left_at', null)
   if (error) throw error
   return (data ?? []).map((r) => r.team_id)
+}
+
+export interface UserTeamMembershipHistoryEntry {
+  teamId: string
+  teamName: string
+  joinedAt: string
+  leftAt: string | null
+}
+
+/**
+ * Historique COMPLET (actuel + passé) d'appartenance de cet user aux équipes,
+ * avec `left_at` réel (jamais fabriqué, cf. `removeMemberFromTeam`). Jamais
+ * une preuve de présence sur une intervention — uniquement une composition
+ * déclarée dans le temps.
+ *
+ * FAIL-CLOSED multi-org, même doctrine que `loadPersonDrawerData.ts` : une
+ * équipe hors `orgIds` (organisations accessibles au viewer) n'apparaît
+ * jamais, même pour un user par ailleurs visible.
+ */
+export async function listTeamMembershipHistoryForUser(
+  userId: string,
+  orgIds: string[],
+): Promise<UserTeamMembershipHistoryEntry[]> {
+  if (!orgIds.length) return []
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('team_members')
+    // Hint `!team_id` obligatoire : deux FK team_members → teams existent
+    // (cf. listOrphanUsers plus bas).
+    .select('joined_at, left_at, team:teams!team_id!inner(id, name, deleted_at, organization_id)')
+    .eq('user_id', userId)
+    .order('joined_at', { ascending: true })
+  if (error) throw error
+
+  type TeamLite = { id: string; name: string; deleted_at: string | null; organization_id: string | null }
+  return ((data ?? []) as Array<{ joined_at: string; left_at: string | null; team: TeamLite | TeamLite[] | null }>)
+    .map((r) => ({
+      team: Array.isArray(r.team) ? r.team[0] ?? null : r.team,
+      joinedAt: r.joined_at,
+      leftAt: r.left_at,
+    }))
+    .filter((r): r is { team: TeamLite; joinedAt: string; leftAt: string | null } =>
+      !!r.team && !r.team.deleted_at && !!r.team.organization_id && orgIds.includes(r.team.organization_id),
+    )
+    .map((r) => ({ teamId: r.team.id, teamName: r.team.name, joinedAt: r.joinedAt, leftAt: r.leftAt }))
 }
 
 // ----------------------------------------------------------------------------

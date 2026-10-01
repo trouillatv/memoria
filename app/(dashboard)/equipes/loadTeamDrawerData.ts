@@ -15,8 +15,8 @@ import {
   listTeamRecentInterventions,
   listTeamRecentPhotos,
 } from '@/lib/db/team-profile'
-import { listMembersOfTeam } from '@/lib/db/teams'
-import { listFieldMembersOfTeam } from '@/lib/db/team-field-members'
+import { listMembersOfTeam, listTeamMembershipHistory } from '@/lib/db/teams'
+import { listFieldMembersOfTeam, listFieldMembershipHistory } from '@/lib/db/team-field-members'
 import { getTeamActorInsight } from '@/lib/db/team-actor-insight'
 import { listTeamsActivitySummary, type TeamActivitySummary } from '@/lib/db/team-activity-summary'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -59,6 +59,8 @@ export async function loadTeamDrawerData(
     recentPhotos,
     members,
     fieldMembers,
+    memberHistory,
+    fieldMemberHistory,
     availableSites,
     specialtyCatalog,
     actorInsight,
@@ -73,6 +75,8 @@ export async function loadTeamDrawerData(
     listTeamRecentPhotos(teamId, 8),
     listMembersOfTeam(teamId),
     listFieldMembersOfTeam(teamId).catch(() => []),
+    listTeamMembershipHistory(teamId),
+    listFieldMembershipHistory(teamId).catch(() => []),
     (async () => {
       const admin = createAdminClient()
       const { data } = await admin
@@ -119,6 +123,8 @@ export async function loadTeamDrawerData(
     recentPhotos,
     members,
     fieldMembers,
+    memberHistory,
+    fieldMemberHistory,
     availableSites,
     specialtyOptions: specialtyCatalog.map((c) => ({ key: c.key, label: c.label })),
     actorInsight,

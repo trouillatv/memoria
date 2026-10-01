@@ -449,6 +449,46 @@ export async function listTeamMembershipsForContact(
   return out
 }
 
+export interface ContactTeamMembershipHistoryEntry {
+  teamId: string
+  teamName: string
+  joinedAt: string
+  leftAt: string | null
+}
+
+/**
+ * Historique COMPLET (actuel + passé) d'appartenance de ce contact aux
+ * équipes terrain, avec `left_at` réel (jamais fabriqué, cf.
+ * `removeFieldMemberFromTeam`). Jamais une preuve de présence sur une
+ * intervention — uniquement une composition déclarée dans le temps.
+ */
+export async function listTeamMembershipHistoryForContact(
+  contactId: string,
+  orgIds: string[],
+): Promise<ContactTeamMembershipHistoryEntry[]> {
+  if (!orgIds.length) return []
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('team_field_members')
+    .select('joined_at, left_at, team:teams!inner(id, name, deleted_at, organization_id)')
+    .eq('contact_id', contactId)
+    .order('joined_at', { ascending: true })
+  if (error) throw error
+
+  const out: ContactTeamMembershipHistoryEntry[] = []
+  for (const r of (data ?? []) as unknown as Array<{
+    joined_at: string
+    left_at: string | null
+    team: { id: string; name: string; deleted_at: string | null; organization_id: string | null } | Array<{ id: string; name: string; deleted_at: string | null; organization_id: string | null }> | null
+  }>) {
+    const team = pickOne(r.team)
+    if (!team || team.deleted_at) continue
+    if (!team.organization_id || !orgIds.includes(team.organization_id)) continue
+    out.push({ teamId: team.id, teamName: team.name, joinedAt: r.joined_at, leftAt: r.left_at })
+  }
+  return out
+}
+
 export async function getContactMemoryOverview(
   contactId: string,
   orgIds: string[],

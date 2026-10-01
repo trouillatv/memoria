@@ -50,7 +50,7 @@ import type {
   TeamRecentPhoto,
 } from '@/lib/db/team-profile'
 import type { TeamMemberWithUser } from '@/lib/db/teams'
-import type { FieldMember } from '@/lib/db/team-field-members'
+import type { FieldMember, FieldMemberHistoryEntry } from '@/lib/db/team-field-members'
 import type { TeamActorInsight } from '@/lib/db/team-actor-insight'
 import type { TeamActivitySummary } from '@/lib/db/team-activity-summary'
 
@@ -103,6 +103,13 @@ export interface TeamDrawerData {
   recentPhotos: TeamRecentPhoto[]
   members: TeamMemberWithUser[]
   fieldMembers: FieldMember[]
+  // Historique COMPLET (actuels + anciens) — cf. doctrine
+  // lib/db/teams.ts listTeamMembershipHistory /
+  // lib/db/team-field-members.ts listFieldMembershipHistory : jamais une
+  // preuve de présence sur une intervention, uniquement une composition
+  // déclarée dans le temps.
+  memberHistory: TeamMemberWithUser[]
+  fieldMemberHistory: FieldMemberHistoryEntry[]
   availableSites: Array<{ id: string; name: string; client_name: string | null }>
   specialtyOptions: Array<{ key: string; label: string }>
   actorInsight: TeamActorInsight | null
@@ -130,6 +137,8 @@ export function TeamDetailBody({
     recentPhotos,
     members,
     fieldMembers,
+    memberHistory,
+    fieldMemberHistory,
     availableSites,
     specialtyOptions,
     actorInsight,
@@ -140,6 +149,14 @@ export function TeamDetailBody({
     name: displayName(m.user.full_name, m.user.email),
     email: m.user.email,
   }))
+
+  // Anciens membres = ce qui a un `left_at` — jamais déduit, cf. doctrine
+  // sur TeamDrawerData.memberHistory / fieldMemberHistory ci-dessus.
+  const pastMembers = memberHistory.filter((m) => m.membership.left_at)
+  const pastFieldMembers = fieldMemberHistory.filter((m) => m.leftAt)
+  const totalPeopleCount = members.length + fieldMembers.length
+  const nextPlanned = recentInterventions.find((i) => i.status === 'planned')
+  const lastReal = recentInterventions.find((i) => i.status === 'completed' || i.status === 'validated')
 
   return (
     <div className="space-y-4">
@@ -229,6 +246,55 @@ export function TeamDetailBody({
               availableSites={availableSites}
             />
           </div>
+
+          {/* Humains et terrain d'abord (feedback Vincent 2026-10-01) — la
+              composition, l'activité et les sites principaux priment sur
+              l'information structurelle (spécialités, équipes voisines)
+              plus bas dans cet onglet. */}
+          <section className="rounded-lg border bg-card p-4 space-y-3">
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <Users className="h-4 w-4 text-brand-600" />
+              Composition
+            </h3>
+            {totalPeopleCount === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Aucun membre pour l&apos;instant.</p>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {members.slice(0, 6).map((m) => (
+                  <Link
+                    key={m.user.id}
+                    href={`/equipes?person=${m.user.id}&personKind=user&team=${overview.id}`}
+                    className="text-xs rounded-md border border-border/60 bg-muted/20 px-2 py-1 hover:bg-muted/50 transition-colors"
+                  >
+                    {displayName(m.user.full_name, m.user.email)}
+                  </Link>
+                ))}
+                {fieldMembers.slice(0, 6).map((p) => (
+                  <Link
+                    key={p.membershipId}
+                    href={`/equipes?person=${p.contactId}&personKind=contact&team=${overview.id}`}
+                    className="text-xs rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-800 hover:bg-amber-100 transition-colors dark:border-amber-900/40 dark:bg-amber-600/10 dark:text-amber-300"
+                  >
+                    {p.fullName}
+                  </Link>
+                ))}
+                <span className="text-[11px] text-muted-foreground">
+                  {totalPeopleCount} personne{totalPeopleCount > 1 ? 's' : ''}
+                </span>
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              {lastReal
+                ? <>Dernière intervention réelle le {fmtDateShort(lastReal.scheduled_for)} · {lastReal.site_name}</>
+                : 'Aucune intervention réelle enregistrée pour l’instant.'}
+              {nextPlanned && <> · à venir : {fmtDateShort(nextPlanned.scheduled_for)} · {nextPlanned.site_name}</>}
+            </p>
+            {favoriteSites.length > 0 && (
+              <p className="text-[11px] text-muted-foreground">
+                Sites principaux : {favoriteSites.slice(0, 3).map((s) => s.site_name).join(', ')}
+              </p>
+            )}
+          </section>
 
           {/* Sujets portés par les membres — l'équipe n'est JAMAIS responsable
               d'une action : on montre les actions portées par ses MEMBRES. */}
@@ -483,7 +549,7 @@ export function TeamDetailBody({
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Users className="h-4 w-4 text-brand-600" />
-                Composition actuelle
+                Membres actuels
               </h3>
               <EditTeamMembersDialog
                 teamId={overview.id}
@@ -560,6 +626,60 @@ export function TeamDetailBody({
               <AddFieldPersonDialog teamId={overview.id} teamName={overview.name} />
             </div>
           </section>
+
+          {/* ── Anciens membres — historique réel (joined_at/left_at), jamais
+              une preuve de présence sur une intervention : voir l'onglet
+              Activité pour les participations réellement attestées (cf.
+              doctrine en-tête de TeamDrawerData.memberHistory /
+              fieldMemberHistory). ── */}
+          {(pastMembers.length > 0 || pastFieldMembers.length > 0) && (
+            <section className="rounded-lg border bg-card p-4 space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
+                <Users className="h-4 w-4" />
+                Anciens membres
+              </h3>
+              {pastMembers.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Avec accès à l&apos;application</p>
+                  <ul className="space-y-1 text-sm">
+                    {pastMembers.map((m) => (
+                      <li key={m.membership.id} className="flex items-center justify-between gap-2">
+                        <Link
+                          href={`/equipes?person=${m.user.id}&personKind=user&team=${overview.id}`}
+                          className="text-muted-foreground hover:text-brand-700 hover:underline transition-colors"
+                        >
+                          {displayName(m.user.full_name, m.user.email)}
+                        </Link>
+                        <span className="text-[11px] text-muted-foreground shrink-0">
+                          {fmtDateShort(m.membership.joined_at)} → {fmtDateShort(m.membership.left_at)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {pastFieldMembers.length > 0 && (
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider font-medium text-muted-foreground mb-1">Membres terrain (sans compte)</p>
+                  <ul className="space-y-1 text-sm">
+                    {pastFieldMembers.map((p) => (
+                      <li key={p.membershipId} className="flex items-center justify-between gap-2">
+                        <Link
+                          href={`/equipes?person=${p.contactId}&personKind=contact&team=${overview.id}`}
+                          className="text-muted-foreground hover:text-brand-700 hover:underline transition-colors"
+                        >
+                          {p.fullName}
+                        </Link>
+                        <span className="text-[11px] text-muted-foreground shrink-0">
+                          {fmtDateShort(p.joinedAt)} → {fmtDateShort(p.leftAt)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          )}
         </TabsContent>
       </Tabs>
     </div>

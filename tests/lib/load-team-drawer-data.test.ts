@@ -23,10 +23,12 @@ vi.mock('@/lib/db/team-profile', () => ({
 
 vi.mock('@/lib/db/teams', () => ({
   listMembersOfTeam: async () => [],
+  listTeamMembershipHistory: async () => [],
 }))
 
 vi.mock('@/lib/db/team-field-members', () => ({
   listFieldMembersOfTeam: async () => [],
+  listFieldMembershipHistory: async () => [],
 }))
 
 // /EQUIPES V2 (Batch D, Tache #85) — loadTeamDrawerData() appelle desormais

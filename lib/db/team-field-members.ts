@@ -422,3 +422,62 @@ export async function listFieldMembersOfTeam(teamId: string): Promise<FieldMembe
     joinedAt: r.joined_at,
   }))
 }
+
+export interface FieldMemberHistoryEntry {
+  membershipId: string
+  contactId: string
+  fullName: string
+  job: string | null
+  companyName: string | null
+  joinedAt: string
+  leftAt: string | null
+}
+
+/**
+ * Historique COMPLET (actifs + anciens) de l'appartenance terrain d'une
+ * équipe, avec `left_at` réel — jamais fabriqué ou rétrodaté (cf.
+ * `removeFieldMemberFromTeam` : cette colonne n'est écrite qu'au moment réel
+ * du retrait). Contrairement à `listFieldMembersOfTeam`, inclut les contacts
+ * archivés DEPUIS leur passage dans l'équipe : un ancien membre reste un fait
+ * historique même si sa fiche a été archivée depuis. Jamais une preuve de
+ * présence sur une intervention — uniquement une composition déclarée dans
+ * le temps.
+ */
+export async function listFieldMembershipHistory(teamId: string): Promise<FieldMemberHistoryEntry[]> {
+  const db = createAdminClient()
+  const { data, error } = await db
+    .from('team_field_members')
+    .select('id, contact_id, joined_at, left_at, company_contacts(full_name, function, company_id)')
+    .eq('team_id', teamId)
+    .order('joined_at', { ascending: true })
+  if (error) throw error
+
+  type Contact = { full_name: string; function: string | null; company_id: string | null }
+  type Row = {
+    id: string
+    contact_id: string
+    joined_at: string
+    left_at: string | null
+    company_contacts: Contact | Contact[] | null
+  }
+  const rows = ((data ?? []) as unknown as Row[])
+    .map((r) => ({ ...r, contact: Array.isArray(r.company_contacts) ? r.company_contacts[0] ?? null : r.company_contacts }))
+    .filter((r): r is typeof r & { contact: Contact } => !!r.contact)
+
+  const companyIds = [...new Set(rows.map((r) => r.contact.company_id).filter((id): id is string => !!id))]
+  const nameOf = new Map<string, string>()
+  if (companyIds.length > 0) {
+    const { data: cos } = await db.from('companies').select('id, name').in('id', companyIds)
+    for (const c of (cos ?? []) as Array<{ id: string; name: string }>) nameOf.set(c.id, c.name)
+  }
+
+  return rows.map((r) => ({
+    membershipId: r.id,
+    contactId: r.contact_id,
+    fullName: r.contact.full_name,
+    job: r.contact.function,
+    companyName: r.contact.company_id ? nameOf.get(r.contact.company_id) ?? null : null,
+    joinedAt: r.joined_at,
+    leftAt: r.left_at,
+  }))
+}

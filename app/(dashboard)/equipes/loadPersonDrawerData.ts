@@ -11,7 +11,7 @@ import {
   getPersonMemorySummary,
   listConfirmedInterventionsForUser,
   listAssignedActionsForContact,
-  listTeamMembershipsForContact,
+  listTeamMembershipHistoryForContact,
   listPhotosForUser,
   type PersonRef,
   type ConfirmedInterventionMemoryItem,
@@ -20,6 +20,7 @@ import {
   type ContactMemoryOverview,
   type PersonFieldPhoto,
 } from '@/lib/db/person-memory'
+import { listTeamMembershipHistoryForUser } from '@/lib/db/teams'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const PERSON_PERIOD_VALUES = ['7', '30', '90', 'all'] as const
@@ -46,9 +47,16 @@ function displayName(fullName: string | null, email: string): string {
   return email.split('@')[0] ?? email
 }
 
-export interface CurrentTeamRef {
+// Historique COMPLET (actuel + passé) d'appartenance aux équipes, `leftAt:
+// null` = actif. Jamais une preuve de présence sur une intervention —
+// uniquement une composition déclarée dans le temps (cf.
+// lib/db/teams.ts listTeamMembershipHistoryForUser /
+// lib/db/person-memory.ts listTeamMembershipHistoryForContact).
+export interface PersonTeamHistoryEntry {
   teamId: string
   teamName: string
+  joinedAt: string
+  leftAt: string | null
 }
 
 export interface PersonDrawerData {
@@ -61,7 +69,7 @@ export interface PersonDrawerData {
   interventions: ConfirmedInterventionMemoryItem[] | null
   contactActions: ContactAssignedAction[] | null
   photos: PersonFieldPhoto[] | null
-  currentTeams: CurrentTeamRef[]
+  teamHistory: PersonTeamHistoryEntry[]
 }
 
 export async function loadPersonDrawerData(
@@ -98,30 +106,17 @@ export async function loadPersonDrawerData(
     if (!membershipRow) return null
 
     const sinceIso = sinceIsoFor(period)
-    const [summary, interventions, photos, memberships] = await Promise.all([
+    // FIX A (revue ChatGPT/Vincent, 08e355e2) — un user peut appartenir à
+    // PLUSIEURS organisations : `users.organization_id` (déjà vérifié plus
+    // haut) ne garantit donc pas que ses équipes (actuelles ou passées) le
+    // sont aussi. `listTeamMembershipHistoryForUser` applique le même
+    // fail-closed sur `orgIds`.
+    const [summary, interventions, photos, teamHistory] = await Promise.all([
       getPersonMemorySummary(ref, orgIds, { sinceIso }),
       listConfirmedInterventionsForUser(personId, orgIds, { sinceIso, limit: 50 }),
       listPhotosForUser(personId, orgIds, { sinceIso, limit: 24 }),
-      admin
-        .from('team_members')
-        // INCIDENT /equipes (2026-09-30) — hint `!team_id` obligatoire : deux FK
-        // team_members → teams existent (cf. lib/db/teams.ts listOrphanUsers).
-        .select('team:teams!team_id!inner(id, name, deleted_at, organization_id)')
-        .eq('user_id', personId)
-        .is('left_at', null),
+      listTeamMembershipHistoryForUser(personId, orgIds),
     ])
-
-    // FIX A (revue ChatGPT/Vincent, 08e355e2) — un user peut appartenir à
-    // PLUSIEURS organisations : `users.organization_id` (déjà vérifié plus
-    // haut) ne garantit donc pas que ses équipes actuelles le sont aussi.
-    // Fail-closed jusque dans `currentTeams` : une équipe hors `orgIds` ne
-    // doit jamais apparaître dans le drawer, même si son propriétaire est
-    // par ailleurs visible.
-    type TeamLite = { id: string; name: string; deleted_at: string | null; organization_id: string | null }
-    const currentTeams: CurrentTeamRef[] = ((memberships.data ?? []) as Array<{ team: TeamLite | TeamLite[] | null }>)
-      .map((m) => (Array.isArray(m.team) ? m.team[0] ?? null : m.team))
-      .filter((t): t is TeamLite => !!t && !t.deleted_at && !!t.organization_id && orgIds.includes(t.organization_id))
-      .map((t) => ({ teamId: t.id, teamName: t.name }))
 
     return {
       ref,
@@ -133,7 +128,7 @@ export async function loadPersonDrawerData(
       interventions,
       contactActions: null,
       photos,
-      currentTeams,
+      teamHistory,
     }
   }
 
@@ -147,10 +142,10 @@ export async function loadPersonDrawerData(
 
   const company = Array.isArray(contactRow.company) ? contactRow.company[0] ?? null : contactRow.company
 
-  const [summary, actions, teams] = await Promise.all([
+  const [summary, actions, teamHistory] = await Promise.all([
     getPersonMemorySummary(ref, orgIds, {}),
     listAssignedActionsForContact(personId, orgIds),
-    listTeamMembershipsForContact(personId, orgIds),
+    listTeamMembershipHistoryForContact(personId, orgIds),
   ])
 
   const subtitleParts = [contactRow.function, company?.name].filter((v): v is string => !!v)
@@ -165,6 +160,6 @@ export async function loadPersonDrawerData(
     interventions: null,
     contactActions: actions,
     photos: null,
-    currentTeams: teams.map((t) => ({ teamId: t.teamId, teamName: t.teamName })),
+    teamHistory,
   }
 }

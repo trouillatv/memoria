@@ -1,9 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 
 // FIX A (revue ChatGPT/Vincent, 08e355e2) — loadPersonDrawerData doit rester
-// fail-closed jusque dans `currentTeams` : un user peut appartenir à
+// fail-closed jusque dans `teamHistory` : un user peut appartenir à
 // PLUSIEURS organisations, `users.organization_id` (déjà vérifié en amont)
-// ne suffit donc pas à garantir que SES équipes actuelles le sont aussi.
+// ne suffit donc pas à garantir que SES équipes (actuelles ou passées) le
+// sont aussi. Le filtrage org-scopé vit désormais dans
+// `listTeamMembershipHistoryForUser` (lib/db/teams.ts), testé ici au niveau
+// de l'appel (orgIds transmis tel quel) plutôt qu'au niveau SQL.
 //
 // FIX MULTI-ORG (revue ChatGPT/Vincent, cc83c29b) — l'autorisation d'accès au
 // drawer ne doit plus jamais venir de `users.organization_id` (legacy/défaut
@@ -12,7 +15,6 @@ import { describe, it, expect, vi } from 'vitest'
 
 let userRow: Record<string, unknown> | null = null
 let contactRow: Record<string, unknown> | null = null
-let teamMembershipRows: Array<Record<string, unknown>> = []
 let membershipRow: Record<string, unknown> | null = null
 
 function makeBuilder(resolveValue: () => { data: unknown; error: unknown }) {
@@ -30,59 +32,79 @@ vi.mock('@/lib/supabase/admin', () => ({
     from: (table: string) => {
       if (table === 'users') return makeBuilder(() => ({ data: userRow, error: null }))
       if (table === 'company_contacts') return makeBuilder(() => ({ data: contactRow, error: null }))
-      if (table === 'team_members') return makeBuilder(() => ({ data: teamMembershipRows, error: null }))
       if (table === 'organization_memberships') return makeBuilder(() => ({ data: membershipRow, error: null }))
       return makeBuilder(() => ({ data: [], error: null }))
     },
   }),
 }))
 
-const listTeamMembershipsForContactMock = vi.fn(async () => [] as Array<{ teamId: string; teamName: string; joinedAt: string }>)
+type TeamHistoryEntry = { teamId: string; teamName: string; joinedAt: string; leftAt: string | null }
+
+const listTeamMembershipHistoryForUserMock = vi.fn(async () => [] as TeamHistoryEntry[])
+const listTeamMembershipHistoryForContactMock = vi.fn(async () => [] as TeamHistoryEntry[])
 
 vi.mock('@/lib/db/person-memory', () => ({
   getPersonMemorySummary: async () => ({ userOverview: null, contactOverview: null }),
   listConfirmedInterventionsForUser: async () => [],
   listAssignedActionsForContact: async () => [],
   listPhotosForUser: async () => [],
-  listTeamMembershipsForContact: (...args: unknown[]) =>
-    (listTeamMembershipsForContactMock as unknown as (...a: unknown[]) => Promise<unknown>)(...args),
+  listTeamMembershipHistoryForContact: (...args: unknown[]) =>
+    (listTeamMembershipHistoryForContactMock as unknown as (...a: unknown[]) => Promise<unknown>)(...args),
+}))
+
+vi.mock('@/lib/db/teams', () => ({
+  listTeamMembershipHistoryForUser: (...args: unknown[]) =>
+    (listTeamMembershipHistoryForUserMock as unknown as (...a: unknown[]) => Promise<unknown>)(...args),
 }))
 
 import { loadPersonDrawerData } from '@/app/(dashboard)/equipes/loadPersonDrawerData'
 
-describe('loadPersonDrawerData — currentTeams org-scopé (FIX A)', () => {
-  it('user membre d’une équipe org A + une équipe org B, viewer org A seulement → ne retourne que l’équipe A', async () => {
+describe('loadPersonDrawerData — teamHistory org-scopé (FIX A)', () => {
+  it('user — orgIds du viewer transmis tel quel à listTeamMembershipHistoryForUser', async () => {
     userRow = { id: 'u-1', full_name: 'Jean Dupont', email: 'jean@test.com', role: 'chef_equipe', deleted_at: null }
     membershipRow = { id: 'm-1' }
-    teamMembershipRows = [
-      { team: { id: 't-a', name: 'Équipe A', deleted_at: null, organization_id: 'org-a' } },
-      { team: { id: 't-b', name: 'Équipe B', deleted_at: null, organization_id: 'org-b' } },
-    ]
+    listTeamMembershipHistoryForUserMock.mockResolvedValueOnce([
+      { teamId: 't-a', teamName: 'Équipe A', joinedAt: '2026-01-01T00:00:00.000Z', leftAt: null },
+    ])
 
     const out = await loadPersonDrawerData('u-1', 'user', ['org-a'], '30')
 
-    expect(out).not.toBeNull()
-    expect(out?.currentTeams).toEqual([{ teamId: 't-a', teamName: 'Équipe A' }])
+    expect(listTeamMembershipHistoryForUserMock).toHaveBeenCalledWith('u-1', ['org-a'])
+    expect(out?.teamHistory).toEqual([
+      { teamId: 't-a', teamName: 'Équipe A', joinedAt: '2026-01-01T00:00:00.000Z', leftAt: null },
+    ])
   })
 
-  it('user sans aucune équipe accessible au viewer → currentTeams vide (pas de fuite)', async () => {
+  it('user sans historique renvoyé par le helper org-scopé → teamHistory vide', async () => {
     userRow = { id: 'u-1', full_name: 'Jean Dupont', email: 'jean@test.com', role: 'chef_equipe', deleted_at: null }
     membershipRow = { id: 'm-1' }
-    teamMembershipRows = [
-      { team: { id: 't-b', name: 'Équipe B', deleted_at: null, organization_id: 'org-b' } },
-    ]
+    listTeamMembershipHistoryForUserMock.mockResolvedValueOnce([])
 
     const out = await loadPersonDrawerData('u-1', 'user', ['org-a'], '30')
 
-    expect(out?.currentTeams).toEqual([])
+    expect(out?.teamHistory).toEqual([])
   })
 
-  it('contact — orgIds du viewer transmis tel quel à listTeamMembershipsForContact', async () => {
+  it('contact — orgIds du viewer transmis tel quel à listTeamMembershipHistoryForContact', async () => {
     contactRow = { id: 'c-1', full_name: 'Marie Test', function: null, organization_id: 'org-a', deleted_at: null, company: null }
+    listTeamMembershipHistoryForContactMock.mockResolvedValueOnce([])
 
     await loadPersonDrawerData('c-1', 'contact', ['org-a'], '30')
 
-    expect(listTeamMembershipsForContactMock).toHaveBeenCalledWith('c-1', ['org-a'])
+    expect(listTeamMembershipHistoryForContactMock).toHaveBeenCalledWith('c-1', ['org-a'])
+  })
+
+  it('contact avec historique passé (leftAt renseigné) → propagé tel quel dans teamHistory', async () => {
+    contactRow = { id: 'c-1', full_name: 'Marie Test', function: null, organization_id: 'org-a', deleted_at: null, company: null }
+    listTeamMembershipHistoryForContactMock.mockResolvedValueOnce([
+      { teamId: 't-a', teamName: 'Équipe A', joinedAt: '2025-01-01T00:00:00.000Z', leftAt: '2025-06-01T00:00:00.000Z' },
+    ])
+
+    const out = await loadPersonDrawerData('c-1', 'contact', ['org-a'], '30')
+
+    expect(out?.teamHistory).toEqual([
+      { teamId: 't-a', teamName: 'Équipe A', joinedAt: '2025-01-01T00:00:00.000Z', leftAt: '2025-06-01T00:00:00.000Z' },
+    ])
   })
 })
 
@@ -92,7 +114,7 @@ describe('loadPersonDrawerData — MULTI-ORG canonicalité (revue ChatGPT/Vincen
     // seul le membership actif décide.
     userRow = { id: 'u-1', full_name: 'Jean Dupont', email: 'jean@test.com', role: 'chef_equipe', deleted_at: null }
     membershipRow = { id: 'm-1' }
-    teamMembershipRows = []
+    listTeamMembershipHistoryForUserMock.mockResolvedValueOnce([])
 
     const out = await loadPersonDrawerData('u-1', 'user', ['org-a'], '30')
 
@@ -103,7 +125,6 @@ describe('loadPersonDrawerData — MULTI-ORG canonicalité (revue ChatGPT/Vincen
   it('aucun membership actif dans les organisations du viewer → drawer refusé (fail-closed)', async () => {
     userRow = { id: 'u-1', full_name: 'Jean Dupont', email: 'jean@test.com', role: 'chef_equipe', deleted_at: null }
     membershipRow = null
-    teamMembershipRows = []
 
     const out = await loadPersonDrawerData('u-1', 'user', ['org-a'], '30')
 

@@ -5,8 +5,12 @@
 //   - users        → mémoire = participations CONFIRMÉES (intervention_participants)
 //   - company_contacts → mémoire = faits réellement liés (actions assignées,
 //     appartenance équipe terrain), jamais une participation inventée
-//   - Équipe(s) actuelle(s) affichée(s) séparément et jamais fusionnée avec
-//     l'historique : appartenir aujourd'hui ne prouve rien sur hier.
+//   - Équipes (Lot cockpit équipes 2026-10-01) : historique RÉEL
+//     (actuelles + anciennes, avec dates d'entrée/sortie réelles — jamais
+//     fabriquées), jamais une preuve de présence sur une intervention
+//     précise. Appartenir à une équipe, même aujourd'hui, ne dit rien sur
+//     une intervention : voir l'onglet Activité pour les participations
+//     réellement attestées.
 //   - Le sélecteur de période (7j/30j/3mois/Tout) ne filtre QUE la mémoire
 //     "user" — lib/db/person-memory.ts n'a pas de filtre temporel pour les
 //     contacts (limite assumée, affichée honnêtement, jamais masquée).
@@ -68,7 +72,9 @@ export function PersonDetailBody({
   pathname: string
   teamId?: string
 }) {
-  const { ref, displayName, subtitle, period, userOverview, contactOverview, interventions, contactActions, photos, currentTeams } = data
+  const { ref, displayName, subtitle, period, userOverview, contactOverview, interventions, contactActions, photos, teamHistory } = data
+  const currentTeamMemberships = teamHistory.filter((t) => !t.leftAt)
+  const pastTeamMemberships = teamHistory.filter((t) => t.leftAt)
 
   return (
     <div className="space-y-4">
@@ -277,29 +283,61 @@ export function PersonDetailBody({
           )}
         </TabsContent>
 
-        {/* ── Équipes — appartenance actuelle, jamais un historique ───────── */}
-        <TabsContent value="equipes" className="space-y-3 pt-3">
+        {/* ── Équipes — historique réel d'appartenance, jamais une preuve de
+            présence sur une intervention (cf. doctrine en-tête de fichier) ── */}
+        <TabsContent value="equipes" className="space-y-4 pt-3">
           <p className="text-[11px] text-muted-foreground">
-            Appartenance actuelle uniquement — n&apos;indique rien sur le passé.
+            Appartenir à une équipe, même aujourd&apos;hui, ne prouve rien sur une
+            intervention précise — voir l&apos;onglet Activité pour les
+            participations réellement attestées.
           </p>
-          {currentTeams.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">
-              Ne fait actuellement partie d&apos;aucune équipe.
-            </p>
-          ) : (
-            <ul className="divide-y -my-2">
-              {currentTeams.map((t) => (
-                <li key={t.teamId} className="py-2">
-                  <Link href={`/equipes?team=${t.teamId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
-                    <span className="text-sm font-medium flex items-center gap-2">
-                      <Users className="h-3.5 w-3.5 text-brand-600" />
-                      {t.teamName}
-                    </span>
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
+
+          <section className="space-y-2">
+            <h3 className="text-sm font-medium">Équipes actuelles</h3>
+            {currentTeamMemberships.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">
+                Ne fait actuellement partie d&apos;aucune équipe.
+              </p>
+            ) : (
+              <ul className="divide-y -my-2">
+                {currentTeamMemberships.map((t) => (
+                  <li key={t.teamId} className="py-2">
+                    <Link href={`/equipes?team=${t.teamId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                      <span className="text-sm font-medium flex items-center gap-2">
+                        <Users className="h-3.5 w-3.5 text-brand-600" />
+                        {t.teamName}
+                      </span>
+                      <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        Depuis le {fmtDateShort(t.joinedAt)}
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {pastTeamMemberships.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-medium text-muted-foreground">Anciennes équipes</h3>
+              <ul className="divide-y -my-2">
+                {pastTeamMemberships.map((t, i) => (
+                  <li key={`${t.teamId}-${i}`} className="py-2">
+                    <Link href={`/equipes?team=${t.teamId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                      <span className="text-sm flex items-center gap-2 text-muted-foreground">
+                        <Users className="h-3.5 w-3.5" />
+                        {t.teamName}
+                      </span>
+                      <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        {fmtDateShort(t.joinedAt)} → {fmtDateShort(t.leftAt)}
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
         </TabsContent>
       </Tabs>
