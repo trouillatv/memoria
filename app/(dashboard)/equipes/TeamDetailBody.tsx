@@ -1,8 +1,8 @@
-// /EQUIPES V2 (Batch D) — corps de la fiche équipe, désormais affiché dans le
-// drawer intégré à /equipes (plus de route /equipes/[id] comme expérience
-// principale). Contenu repris tel quel de l'ancienne page [id]/page.tsx,
-// réorganisé en onglets Aperçu / Activité / Membres — aucune donnée nouvelle,
-// aucune métrique ajoutée.
+// /EQUIPES V2 (Batch D) — corps de la fiche équipe, affiché en pleine largeur
+// dans /equipes (`?team=<id>`, plus de route /equipes/[id] comme expérience
+// principale, plus de drawer latéral). Contenu repris tel quel de l'ancienne
+// page [id]/page.tsx, réorganisé en onglets Aperçu / Activité / Membres —
+// aucune donnée nouvelle, aucune métrique ajoutée.
 //
 // Doctrine V2 conservée — la fiche est descriptive, jamais évaluative :
 //   - Compteurs cumulés (sites, contrats, interventions, photos, anomalies)
@@ -32,6 +32,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { AttentionBadge } from '../intervenants/fiche-ui'
 import { AddFieldPersonDialog } from './[id]/AddFieldPersonDialog'
 import { RemoveFieldMemberButton } from './RemoveFieldMemberButton'
+import { EditTeamMembersDialog, type MemberLite } from './EditTeamMembersDialog'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { SpecialtyBadge } from '@/components/ui/team-specialties'
 import { TeamRhythm } from './[id]/TeamRhythm'
@@ -107,7 +108,13 @@ export interface TeamDrawerData {
   actorInsight: TeamActorInsight | null
 }
 
-export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
+export function TeamDetailBody({
+  data,
+  availableUsers,
+}: {
+  data: TeamDrawerData
+  availableUsers: MemberLite[]
+}) {
   const {
     overview,
     ageLabel,
@@ -125,6 +132,12 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
     specialtyOptions,
     actorInsight,
   } = data
+
+  const memberLites: MemberLite[] = members.map((m) => ({
+    id: m.user.id,
+    name: displayName(m.user.full_name, m.user.email),
+    email: m.user.email,
+  }))
 
   return (
     <div className="space-y-4">
@@ -465,13 +478,20 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
         {/* ── Membres ─────────────────────────────────────────────────── */}
         <TabsContent value="membres" className="space-y-3 pt-3">
           <section className="rounded-lg border bg-card p-4 space-y-3">
-            <h3 className="text-sm font-medium flex items-center gap-2">
-              <Users className="h-4 w-4 text-brand-600" />
-              Composition actuelle
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Users className="h-4 w-4 text-brand-600" />
+                Composition actuelle
+              </h3>
+              <EditTeamMembersDialog
+                teamId={overview.id}
+                teamName={overview.name}
+                members={memberLites}
+                availableUsers={availableUsers}
+              />
+            </div>
             <p className="text-[11px] text-muted-foreground">
-              Membres présents aujourd&apos;hui dans l&apos;équipe. Pour ajouter/retirer un membre
-              avec compte ou changer le référent, utilisez « Éditer » depuis la liste des équipes.
+              Membres présents aujourd&apos;hui dans l&apos;équipe.
             </p>
             {members.length === 0 && fieldMembers.length === 0 ? (
               <p className="text-sm text-muted-foreground italic">Aucun membre pour l&apos;instant.</p>
@@ -487,7 +507,7 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
                         return (
                           <li key={m.user.id} className="flex items-center gap-2">
                             <Link
-                              href={`/equipes?person=${m.user.id}&personKind=user`}
+                              href={`/equipes?person=${m.user.id}&personKind=user&team=${overview.id}`}
                               className="hover:text-brand-700 hover:underline transition-colors"
                             >
                               {name}
@@ -511,7 +531,7 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
                         <li key={p.membershipId} className="flex items-center gap-2">
                           <span>
                             <Link
-                              href={`/equipes?person=${p.contactId}&personKind=contact`}
+                              href={`/equipes?person=${p.contactId}&personKind=contact&team=${overview.id}`}
                               className="hover:text-brand-700 hover:underline transition-colors"
                             >
                               {p.fullName}

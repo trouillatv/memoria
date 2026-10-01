@@ -1,5 +1,5 @@
-// /EQUIPES V2 (Batch D) — corps du drawer WOW PERSONNE, affiché dans le
-// drawer intégré à /equipes (`?person=<id>&personKind=user|contact`).
+// /EQUIPES V2 (Batch D) — corps de la fiche personne, affiché en pleine
+// largeur dans /equipes (`?person=<id>&personKind=user|contact`).
 //
 // Doctrine V4 (lib/db/person-memory.ts) — reprise ici sans l'affaiblir :
 //   - users        → mémoire = participations CONFIRMÉES (intervention_participants)
@@ -15,7 +15,7 @@
 // personnes.
 //
 // /EQUIPES V2 (Lot visuel 2026-10-01) — 4 onglets (Aperçu/Activité/Mémoire/
-// Équipes), même pattern que TeamDrawerBody.tsx : les sections ne changent
+// Équipes), même pattern que TeamDetailBody.tsx : les sections ne changent
 // pas de source de données, seulement de regroupement visuel. Les murs de
 // zéros (ex. "0 action, 0 équipe" répétés) sont remplacés par un état vide
 // explicite par section plutôt que par une grille de compteurs à 0.
@@ -52,7 +52,7 @@ function periodHref(pathname: string, personId: string, personKind: 'user' | 'co
   return `${pathname}?${params.toString()}`
 }
 
-export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; pathname: string }) {
+export function PersonDetailBody({ data, pathname }: { data: PersonDrawerData; pathname: string }) {
   const { ref, displayName, subtitle, period, userOverview, contactOverview, interventions, contactActions, photos, currentTeams } = data
 
   return (

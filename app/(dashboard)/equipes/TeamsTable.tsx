@@ -10,9 +10,9 @@
 //     restent par équipe (déjà le cas dans TeamRow) : nécessaires aux
 //     garde-fous d'archivage (ArchiveTeamButton) et au sélecteur de référent
 //     (TeamReferentEditor), pas au périmètre de la Task #85.
-//   - Le détail nominatif complet (liste des membres) vit désormais dans le
-//     drawer fiche équipe (TeamDrawerBody, onglet Membres) — la table reste
-//     un compteur pour permettre le scan, pas une liste de noms.
+//   - Le détail nominatif complet (liste des membres) vit désormais dans la
+//     vue détail équipe pleine largeur (TeamDetailBody, onglet Membres) — la
+//     table reste un compteur pour permettre le scan, pas une liste de noms.
 
 import Link from 'next/link'
 import { ClipboardList, MapPin, Camera, Repeat2 } from 'lucide-react'
@@ -36,6 +36,10 @@ function displayName(fullName: string | null, email: string): string {
   const t = (fullName ?? '').trim()
   if (t.length > 0) return t
   return email.split('@')[0] ?? email
+}
+
+function metricText(value: number): string {
+  return value > 0 ? String(value) : '—'
 }
 
 function MetricCell({ icon: Icon, value }: { icon: React.ElementType; value: number }) {
@@ -218,19 +222,19 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs tabular-nums text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <ClipboardList className="h-3.5 w-3.5" />
-                  {summary?.realInterventionsCount ?? 0}
+                  {metricText(summary?.realInterventionsCount ?? 0)}
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <MapPin className="h-3.5 w-3.5" />
-                  {summary?.sitesReallyCoveredCount ?? 0}
+                  {metricText(summary?.sitesReallyCoveredCount ?? 0)}
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <Camera className="h-3.5 w-3.5" />
-                  {summary?.terrainPhotosCount ?? 0}
+                  {metricText(summary?.terrainPhotosCount ?? 0)}
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <Repeat2 className="h-3.5 w-3.5" />
-                  {summary?.activeRotationCount ?? 0}
+                  {metricText(summary?.activeRotationCount ?? 0)}
                 </span>
               </div>
             </div>

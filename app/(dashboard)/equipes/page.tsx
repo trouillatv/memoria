@@ -1,14 +1,14 @@
 // Phase 9 — Vue Semaine & Équipes (Slice 9.2)
-// /EQUIPES V2 (Batch D) — page unique : composition + drawer intégré
-// (WOW ÉQUIPE, `?team=<id>`). Plus de route /equipes/[id] comme expérience
-// principale — voir EquipesDetailSheet.tsx et loadTeamDrawerData.ts.
+// /EQUIPES V2 (Batch D) — page unique : composition + vue détail intégrée
+// (`?team=<id>` / `?person=<id>`). Plus de route /equipes/[id] comme
+// expérience principale — voir EquipesDetailView.tsx et loadTeamDrawerData.ts.
 //
 // SEUL endroit en supervision où on voit des noms d'agents. Doctrine V2 :
 //   - Wording « Équipe Alpha », jamais « L'équipe de Mehdi »
 //   - Zéro métrique individuelle (pas d'historique, pas de stats)
 //   - Zéro métrique d'équipe (pas de charge, pas de couverture)
-//   - Le drawer WOW ÉQUIPE ajoute des compteurs CUMULÉS descriptifs
-//     (cf. doctrine dans TeamDrawerBody.tsx) — jamais un classement.
+//   - La vue détail ÉQUIPE ajoute des compteurs CUMULÉS descriptifs
+//     (cf. doctrine dans TeamDetailBody.tsx) — jamais un classement.
 
 import { redirect } from 'next/navigation'
 import { Users, AlertCircle } from 'lucide-react'
@@ -21,12 +21,14 @@ import { getTeamsGlobalPulse, parsePulsePeriod } from '@/lib/db/team-pulse'
 import { listTeamsActivitySummary } from '@/lib/db/team-activity-summary'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
+import { AddPersonButton } from './AddPersonButton'
 import { CreateTeamButton } from './CreateTeamButton'
 import { TeamsTable } from './TeamsTable'
+import { TeamsSearchHeader } from './TeamsSearchHeader'
 import { OrganisationKpiBlock } from './OrganisationKpiBlock'
 import { MemoireTerrainBlock } from './MemoireTerrainBlock'
 import { OrphansTable, type OrphanRow } from './OrphansTable'
-import { EquipesDetailSheet } from './EquipesDetailSheet'
+import { EquipesDetailView } from './EquipesDetailView'
 import { loadTeamDrawerData } from './loadTeamDrawerData'
 import { loadPersonDrawerData, parsePersonPeriod } from './loadPersonDrawerData'
 import type { MemberLite } from './EditTeamMembersDialog'
@@ -122,6 +124,8 @@ export default async function EquipesPage({
     personKind?: string
     personPeriod?: string
     period?: string
+    q?: string
+    teamFilter?: string
   }>
 }) {
   const user = await getCurrentUserWithProfile()
@@ -146,20 +150,33 @@ export default async function EquipesPage({
   // Jamais de faux compteurs à 0 : `null` déclenche un état dégradé explicite
   // dans OrganisationKpiBlock/MemoireTerrainBlock, la vraie requête reste
   // corrigée ci-dessous, pas contournée.
-  const [teams, orphans, orphanContacts, availableUsers, orgs, teamDrawerData, pulse] = await Promise.all([
+  const [teams, orphans, orphanContacts, availableUsers, orgs, pulse] = await Promise.all([
     listTeamsWithMemberCount(),
     listOrphanUsers(),
     listOrphanContacts(),
     listAssignableMembers(orgIds),
     getOrgsForSelector(),
-    sp.team ? loadTeamDrawerData(sp.team, orgIds) : Promise.resolve(null),
     getTeamsGlobalPulse(Number(pulsePeriod)).catch((error: unknown) => {
       console.error('[equipes] pulse indisponible', error)
       return null
     }),
   ])
 
+  const teamDrawerData = sp.team ? await loadTeamDrawerData(sp.team, orgIds) : null
+
   const teamsWithoutReferentCount = teams.filter((t) => !t.referent).length
+
+  // Recherche + filtre "Mes équipes" pilotés par l'URL (?q=, ?teamFilter=),
+  // jamais par du CSS/DOM côté client — TeamsTable reste un Server Component,
+  // page.tsx filtre `teams` avant de le lui passer. Les compteurs KPI
+  // (OrganisationKpiBlock) restent calculés sur la population complète.
+  const searchQuery = (sp.q ?? '').trim().toLowerCase()
+  const teamFilter: 'all' | 'without-referent' = sp.teamFilter === 'without-referent' ? 'without-referent' : 'all'
+  const filteredTeams = teams.filter((t) => {
+    if (searchQuery && !t.name.toLowerCase().includes(searchQuery)) return false
+    if (teamFilter === 'without-referent' && t.referent) return false
+    return true
+  })
 
   // Bandeau « sans équipe » : les deux populations disjointes (comptes
   // applicatifs + contacts terrain) sont affichées côte à côte, jamais
@@ -183,15 +200,40 @@ export default async function EquipesPage({
   ]
 
   // Table dense : colonnes Activité/Sites/Photos/Roulements batchées en un
-  // seul jeu de requêtes pour TOUTES les équipes (Task #85), jamais une par
-  // équipe. Fenêtre fixe 30j, indépendante du sélecteur de période du bloc
-  // Mémoire terrain ci-dessus (compteur de colonne descriptif, pas un filtre
+  // seul jeu de requêtes, limité aux équipes réellement affichées après
+  // filtre (Task #85 + correctif recherche, jamais une requête par équipe).
+  // Fenêtre fixe 30j, indépendante du sélecteur de période du bloc Mémoire
+  // terrain ci-dessus (compteur de colonne descriptif, pas un filtre
   // utilisateur).
-  const activitySummaries = await listTeamsActivitySummary(teams.map((t) => t.id))
+  const activitySummaries = await listTeamsActivitySummary(filteredTeams.map((t) => t.id))
 
   const personDrawerData = sp.person
     ? await loadPersonDrawerData(sp.person, personKind, orgIds, personPeriod)
     : null
+
+  // Priorité : une personne active prime sur une équipe active (cliquer une
+  // personne depuis l'onglet Membres d'une équipe doit bien afficher la
+  // personne). Le lien de retour reconstruit le contexte équipe d'origine
+  // si `?team=` est encore présent dans l'URL.
+  const active: 'team' | 'person' | null =
+    sp.person && personDrawerData ? 'person' : sp.team && teamDrawerData ? 'team' : null
+  const backHref =
+    active === 'person' && sp.team && teamDrawerData ? `/equipes?team=${sp.team}` : '/equipes'
+  const backLabel =
+    active === 'person' && sp.team && teamDrawerData ? teamDrawerData.overview.name : 'Toutes les équipes'
+
+  if (active) {
+    return (
+      <EquipesDetailView
+        active={active}
+        team={teamDrawerData}
+        person={personDrawerData}
+        availableUsers={availableUsers}
+        backHref={backHref}
+        backLabel={backLabel}
+      />
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -202,30 +244,44 @@ export default async function EquipesPage({
             Équipes
           </h1>
           <p className="text-sm text-muted-foreground">
-            Conteneurs logistiques pour la couverture opérationnelle.
-            On organise, on ne mesure pas.
+            Organisation des équipes et mémoire opérationnelle terrain.
           </p>
         </div>
-        <CreateTeamButton orgs={orgs} />
+        <div className="flex shrink-0 items-center gap-2">
+          <AddPersonButton teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
+          <CreateTeamButton orgs={orgs} />
+        </div>
       </header>
 
-      <OrganisationKpiBlock pulse={pulse} teamsWithoutReferentCount={teamsWithoutReferentCount} />
-      <MemoireTerrainBlock pulse={pulse} period={pulsePeriod} />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <OrganisationKpiBlock pulse={pulse} teamsWithoutReferentCount={teamsWithoutReferentCount} />
+        <MemoireTerrainBlock pulse={pulse} period={pulsePeriod} />
+      </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {teams.length === 0 ? (
-            <EmptyState
-              icon={Users}
-              title="Aucune équipe pour l’instant"
-              description="Créez une équipe pour organiser la couverture des missions. Une équipe regroupe des chefs d’équipe sans hiérarchie ni métrique."
-              variant="compact"
-            />
-          ) : (
-            <TeamsTable teams={teams} availableUsers={availableUsers} activitySummaries={activitySummaries} />
-          )}
-        </CardContent>
-      </Card>
+      <div className="space-y-2">
+        <TeamsSearchHeader count={filteredTeams.length} initialQuery={sp.q ?? ''} initialFilter={teamFilter} />
+        <Card>
+          <CardContent className="p-0">
+            {teams.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="Aucune équipe pour l’instant"
+                description="Créez une équipe pour organiser la couverture des missions. Une équipe regroupe des chefs d’équipe sans hiérarchie ni métrique."
+                variant="compact"
+              />
+            ) : filteredTeams.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="Aucune équipe ne correspond"
+                description="Essayez un autre terme de recherche ou retirez le filtre « Sans référent »."
+                variant="compact"
+              />
+            ) : (
+              <TeamsTable teams={filteredTeams} availableUsers={availableUsers} activitySummaries={activitySummaries} />
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {orphanRows.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/40">
@@ -235,16 +291,13 @@ export default async function EquipesPage({
               {orphanRows.length} {orphanRows.length > 1 ? 'personnes' : 'personne'} pas dans une équipe active
             </div>
             <p className="text-xs text-amber-800/80">
-              Deux populations distinctes (comptes applicatifs et contacts terrain), jamais
-              fusionnées en base — seule la colonne Type ci-dessous les distingue. Rattachez-les
-              en une fois, ou via « Éditer » sur une équipe existante.
+              Ces personnes ne sont rattachées à aucune équipe active. Rattachez-les en une fois,
+              ou via « Éditer » sur une équipe existante.
             </p>
             <OrphansTable orphans={orphanRows} teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
           </CardContent>
         </Card>
       )}
-
-      <EquipesDetailSheet team={teamDrawerData} person={personDrawerData} />
     </div>
   )
 }

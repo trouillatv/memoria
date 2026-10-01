@@ -21,7 +21,7 @@ import { getTeamActorInsight } from '@/lib/db/team-actor-insight'
 import { listTeamsActivitySummary, type TeamActivitySummary } from '@/lib/db/team-activity-summary'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listOrgCatalog } from '@/lib/db/org-catalog'
-import type { TeamDrawerData } from './TeamDrawerBody'
+import type { TeamDrawerData } from './TeamDetailBody'
 
 function ageLabelFromDays(days: number): string {
   if (days < 30) return `${days} jour${days > 1 ? 's' : ''}`

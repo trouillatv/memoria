@@ -52,7 +52,7 @@ function KpiCard({
 
 export function OrganisationKpiBlock({ pulse, teamsWithoutReferentCount }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3">
       <KpiCard
         icon={Users}
         value={pulse ? pulse.activeTeamsCount : null}
