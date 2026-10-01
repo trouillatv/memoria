@@ -29,6 +29,7 @@ export function EquipesDetailView({
   availableUsers,
   backHref,
   backLabel,
+  personTeamId,
 }: {
   active: 'team' | 'person'
   team: TeamDrawerData | null
@@ -36,6 +37,7 @@ export function EquipesDetailView({
   availableUsers: MemberLite[]
   backHref: string
   backLabel: string
+  personTeamId?: string
 }) {
   return (
     <div className="space-y-4">
@@ -47,7 +49,9 @@ export function EquipesDetailView({
         {backLabel}
       </Link>
       {active === 'team' && team && <TeamDetailBody data={team} availableUsers={availableUsers} />}
-      {active === 'person' && person && <PersonDetailBody data={person} pathname="/equipes" />}
+      {active === 'person' && person && (
+        <PersonDetailBody data={person} pathname="/equipes" teamId={personTeamId} />
+      )}
     </div>
   )
 }

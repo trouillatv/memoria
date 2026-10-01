@@ -46,13 +46,28 @@ const ACTION_STATUS_LABEL: Record<string, string> = {
   cancelled: 'Annulée',
 }
 
-function periodHref(pathname: string, personId: string, personKind: 'user' | 'contact', period: PersonPeriod): string {
+function periodHref(
+  pathname: string,
+  personId: string,
+  personKind: 'user' | 'contact',
+  period: PersonPeriod,
+  teamId?: string,
+): string {
   const params = new URLSearchParams({ person: personId, personKind })
   if (period !== '30') params.set('personPeriod', period)
+  if (teamId) params.set('team', teamId)
   return `${pathname}?${params.toString()}`
 }
 
-export function PersonDetailBody({ data, pathname }: { data: PersonDrawerData; pathname: string }) {
+export function PersonDetailBody({
+  data,
+  pathname,
+  teamId,
+}: {
+  data: PersonDrawerData
+  pathname: string
+  teamId?: string
+}) {
   const { ref, displayName, subtitle, period, userOverview, contactOverview, interventions, contactActions, photos, currentTeams } = data
 
   return (
@@ -69,7 +84,7 @@ export function PersonDetailBody({ data, pathname }: { data: PersonDrawerData; p
             {(Object.keys(PERIOD_LABEL) as PersonPeriod[]).map((p) => (
               <Link
                 key={p}
-                href={periodHref(pathname, ref.id, 'user', p)}
+                href={periodHref(pathname, ref.id, 'user', p, teamId)}
                 className={`text-[11px] px-2 py-1 rounded-md border transition-colors ${
                   p === period
                     ? 'bg-brand-50 border-brand-200 text-brand-800 font-medium'

@@ -16,6 +16,7 @@ export function AddPersonButton({ teams }: { teams: Array<{ id: string; name: st
     <AddIntervenantDialog
       teams={teams}
       triggerLabel="Ajouter une personne"
+      entityNoun="personne"
       onDone={() => router.refresh()}
     />
   )

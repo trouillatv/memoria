@@ -37,10 +37,12 @@ export function AddIntervenantDialog({
   teams,
   triggerLabel,
   onDone,
+  entityNoun = 'acteur',
 }: {
   teams: Array<{ id: string; name: string }>
   triggerLabel?: string
   onDone?: (contactId: string) => void
+  entityNoun?: 'acteur' | 'personne'
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -111,10 +113,10 @@ export function AddIntervenantDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset() }}>
-      <DialogTrigger render={<Button size="sm"><UserPlus /> {triggerLabel ?? 'Ajouter un acteur'}</Button>} />
+      <DialogTrigger render={<Button size="sm"><UserPlus /> {triggerLabel ?? (entityNoun === 'personne' ? 'Ajouter une personne' : 'Ajouter un acteur')}</Button>} />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Ajouter un acteur</DialogTitle>
+          <DialogTitle>{entityNoun === 'personne' ? 'Ajouter une personne' : 'Ajouter un acteur'}</DialogTitle>
           <DialogDescription>
             Une personne métier sans compte de connexion. Cherchez d’abord si elle existe,
             sinon créez-la puis rattachez-la éventuellement à une ou plusieurs équipes.
@@ -164,7 +166,9 @@ export function AddIntervenantDialog({
 
           {/* 2 — Créer */}
           <div className="space-y-2.5 border-t pt-4">
-            <Label className="text-xs text-muted-foreground">Ou créer un nouvel acteur</Label>
+            <Label className="text-xs text-muted-foreground">
+              {entityNoun === 'personne' ? 'Ou créer une nouvelle personne' : 'Ou créer un nouvel acteur'}
+            </Label>
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nom complet (obligatoire)" disabled={pending} />
 
             {/* Type — agent interne / contact externe. */}
@@ -214,7 +218,7 @@ export function AddIntervenantDialog({
               rendue responsable d’une action quand son équipe est mobilisée sur le chantier.
             </p>
             <Button type="button" onClick={create} disabled={pending || fullName.trim().length < 1} className="w-full">
-              <UserPlus /> Créer l’acteur
+              <UserPlus /> {entityNoun === 'personne' ? 'Créer la personne' : 'Créer l’acteur'}
             </Button>
           </div>
         </div>

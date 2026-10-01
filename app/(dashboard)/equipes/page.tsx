@@ -231,6 +231,7 @@ export default async function EquipesPage({
         availableUsers={availableUsers}
         backHref={backHref}
         backLabel={backLabel}
+        personTeamId={active === 'person' && sp.team && teamDrawerData ? sp.team : undefined}
       />
     )
   }
