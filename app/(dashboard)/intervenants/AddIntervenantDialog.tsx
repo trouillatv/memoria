@@ -33,7 +33,15 @@ const ROLE_SUGGESTIONS = [
   'Économiste', 'Électricien', 'Plombier', 'Maçon', 'Peintre', 'Menuisier',
 ]
 
-export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; name: string }> }) {
+export function AddIntervenantDialog({
+  teams,
+  triggerLabel,
+  onDone,
+}: {
+  teams: Array<{ id: string; name: string }>
+  triggerLabel?: string
+  onDone?: (contactId: string) => void
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -72,7 +80,8 @@ export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; nam
 
   function reuse(contactId: string) {
     setOpen(false); reset()
-    router.push(`/intervenants/personne/${contactId}`)
+    if (onDone) onDone(contactId)
+    else router.push(`/intervenants/personne/${contactId}`)
   }
 
   function create() {
@@ -95,13 +104,14 @@ export function AddIntervenantDialog({ teams }: { teams: Array<{ id: string; nam
       }
       const id = r.contactId
       setOpen(false); reset()
-      router.push(`/intervenants/personne/${id}`)
+      if (onDone) onDone(id)
+      else router.push(`/intervenants/personne/${id}`)
     })
   }
 
   return (
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset() }}>
-      <DialogTrigger render={<Button size="sm"><UserPlus /> Ajouter un acteur</Button>} />
+      <DialogTrigger render={<Button size="sm"><UserPlus /> {triggerLabel ?? 'Ajouter un acteur'}</Button>} />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Ajouter un acteur</DialogTitle>
