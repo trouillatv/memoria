@@ -12,7 +12,13 @@ import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 export function TeamsSearchHeader({
   count,
@@ -49,8 +55,8 @@ export function TeamsSearchHeader({
     debounceRef.current = setTimeout(() => pushParams(value, initialFilter), 300)
   }
 
-  function toggleFilter() {
-    pushParams(query, initialFilter === 'without-referent' ? 'all' : 'without-referent')
+  function onFilterChange(value: string | null) {
+    pushParams(query, value === 'without-referent' ? 'without-referent' : 'all')
   }
 
   return (
@@ -66,15 +72,15 @@ export function TeamsSearchHeader({
             className="h-8 w-48 pl-8 text-sm"
           />
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant={initialFilter === 'without-referent' ? 'default' : 'outline'}
-          className="h-8 text-xs"
-          onClick={toggleFilter}
-        >
-          Sans référent
-        </Button>
+        <Select value={initialFilter} onValueChange={onFilterChange}>
+          <SelectTrigger className="h-8 w-44 text-xs" data-testid="teams-filter-select">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes les équipes</SelectItem>
+            <SelectItem value="without-referent">Sans référent</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   )

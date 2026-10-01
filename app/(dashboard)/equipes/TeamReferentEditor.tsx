@@ -12,7 +12,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { UserCircle2, Edit3, X } from 'lucide-react'
+import { UserCircle2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { setTeamReferentAction } from './actions'
 import type { MemberLite } from './EditTeamMembersDialog'
@@ -59,13 +59,16 @@ export function TeamReferentEditor({
       >
         <UserCircle2 className="h-3.5 w-3.5" />
         {current ? (
-          <span>
-            Référent&nbsp;:&nbsp;<span className="text-foreground font-medium">{current.name}</span>
-          </span>
+          <>
+            <span className="text-foreground font-medium">{current.name}</span>
+            <span className="text-muted-foreground underline underline-offset-2">Modifier</span>
+          </>
         ) : (
-          <span className="italic">Aucun référent désigné</span>
+          <>
+            <span>Aucun référent</span>
+            <span className="font-medium text-brand-700 underline underline-offset-2 dark:text-brand-300">Définir</span>
+          </>
         )}
-        <Edit3 className="h-3 w-3 opacity-60" aria-hidden />
       </button>
     )
   }

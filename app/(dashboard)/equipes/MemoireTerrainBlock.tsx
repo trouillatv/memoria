@@ -10,7 +10,6 @@
 import { ClipboardList, MapPin, Camera } from 'lucide-react'
 import type { TeamsGlobalPulse } from '@/lib/db/team-pulse'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { EmptyState } from '@/components/ui/empty-state'
 import { PulsePeriodSelect } from './PulsePeriodSelect'
 import type { PulsePeriod } from '@/lib/db/team-pulse'
 
@@ -37,21 +36,19 @@ export function MemoireTerrainBlock({ pulse, period }: Props) {
     (pulse.realInterventionsCount > 0 || pulse.sitesReallyCoveredCount > 0 || pulse.terrainPhotosCount > 0)
 
   return (
-    <Card>
+    <Card size="sm">
       <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
         <CardTitle className="text-sm font-semibold">Mémoire terrain</CardTitle>
         <PulsePeriodSelect period={period} />
       </CardHeader>
       <CardContent>
         {!pulse ? (
-          <p className="py-2 text-xs text-muted-foreground">Indicateurs indisponibles pour l’instant.</p>
+          <p className="py-1 text-xs text-muted-foreground">Indicateurs indisponibles pour l’instant.</p>
         ) : !hasActivity ? (
-          <EmptyState
-            icon={ClipboardList}
-            title="Aucune activité réelle sur cette période"
-            description="Aucune intervention réalisée (hors prévisions) n'a été enregistrée sur la période sélectionnée. Essayez une période plus large."
-            variant="compact"
-          />
+          <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+            <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+            Pas encore d’activité réelle sur cette période.
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <MiniStat icon={ClipboardList} value={pulse.realInterventionsCount} label="interventions réalisées" />

@@ -34,11 +34,25 @@ interface Props {
     missions: number
     futureInterventions: number
   }
+  /** Mode contrôlé (ex. depuis TeamRowActionsMenu) — défaut = état interne inchangé. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Masque le trigger par défaut quand le dialog est ouvert depuis un menu externe. */
+  hideTrigger?: boolean
 }
 
-export function ArchiveTeamButton({ teamId, teamName, dependencies }: Props) {
+export function ArchiveTeamButton({
+  teamId,
+  teamName,
+  dependencies,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
+}: Props) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
   const [pending, startTransition] = useTransition()
 
   function handleArchive() {
@@ -56,19 +70,21 @@ export function ArchiveTeamButton({ teamId, teamName, dependencies }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            size="sm"
-            variant="ghost"
-            data-testid={`archive-team-trigger-${teamId}`}
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <Archive />
-            Archiver
-          </Button>
-        }
-      />
+      {!hideTrigger && (
+        <DialogTrigger
+          render={
+            <Button
+              size="sm"
+              variant="ghost"
+              data-testid={`archive-team-trigger-${teamId}`}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <Archive />
+              Archiver
+            </Button>
+          }
+        />
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Archiver l’équipe « {teamName} » ?</DialogTitle>

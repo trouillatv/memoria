@@ -15,7 +15,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { UsersRound, ChevronDown, ChevronUp } from 'lucide-react'
+import { AlertCircle, UsersRound, ChevronDown, ChevronUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -87,7 +87,64 @@ export function OrphansTable({ orphans, teams }: { orphans: OrphanRow[]; teams: 
   const hasMore = orphans.length > VISIBLE_ROWS
 
   return (
-    <div className="space-y-2">
+    <div
+      className="space-y-3 rounded-lg border border-amber-200 bg-amber-50/40 p-3"
+      data-testid="orphans-block"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-0.5">
+          <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
+            <AlertCircle className="h-4 w-4" />
+            {orphans.length} {orphans.length > 1 ? 'personnes' : 'personne'} pas dans une équipe active
+          </div>
+          <p className="text-xs text-amber-800/80">
+            Rattachez-les en une fois, ou via « Éditer » sur une équipe existante.
+          </p>
+        </div>
+        {hasMore && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-amber-900 hover:text-amber-950"
+          >
+            {expanded ? (
+              <>
+                Réduire <ChevronUp className="h-3.5 w-3.5" />
+              </>
+            ) : (
+              <>
+                Tout voir ({orphans.length}) <ChevronDown className="h-3.5 w-3.5" />
+              </>
+            )}
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-amber-900/80">
+          {selected.size > 0 ? `${selected.size} sélectionnée${selected.size > 1 ? 's' : ''}` : 'Aucune sélection'}
+        </span>
+        <Select value={teamId} onValueChange={(v) => setTeamId(v ?? '')}>
+          <SelectTrigger className="h-8 w-[220px] bg-white text-sm">
+            <SelectValue placeholder="Choisir une équipe…" />
+          </SelectTrigger>
+          <SelectContent>
+            {teams.map((t) => (
+              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          size="sm"
+          onClick={assign}
+          disabled={!teamId || selected.size === 0 || pending}
+          data-testid="orphans-bulk-assign-submit"
+        >
+          <UsersRound />
+          Affecter {selected.size > 0 ? `(${selected.size})` : ''}
+        </Button>
+      </div>
+
       {/* Desktop/tablette — table dense */}
       <div className="hidden overflow-hidden rounded-lg border border-amber-200/80 bg-white/60 md:block">
         <Table>
@@ -158,46 +215,6 @@ export function OrphansTable({ orphans, teams }: { orphans: OrphanRow[]; teams: 
             </div>
           </label>
         ))}
-      </div>
-
-      {hasMore && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="inline-flex items-center gap-1 text-xs font-medium text-amber-900 hover:text-amber-950"
-        >
-          {expanded ? (
-            <>
-              Réduire <ChevronUp className="h-3.5 w-3.5" />
-            </>
-          ) : (
-            <>
-              Tout voir ({orphans.length}) <ChevronDown className="h-3.5 w-3.5" />
-            </>
-          )}
-        </button>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2 pt-1">
-        <Select value={teamId} onValueChange={(v) => setTeamId(v ?? '')}>
-          <SelectTrigger className="h-8 w-[220px] bg-white text-sm">
-            <SelectValue placeholder="Choisir une équipe…" />
-          </SelectTrigger>
-          <SelectContent>
-            {teams.map((t) => (
-              <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          size="sm"
-          onClick={assign}
-          disabled={!teamId || selected.size === 0 || pending}
-          data-testid="orphans-bulk-assign-submit"
-        >
-          <UsersRound />
-          Affecter {selected.size > 0 ? `(${selected.size})` : ''}
-        </Button>
       </div>
     </div>
   )

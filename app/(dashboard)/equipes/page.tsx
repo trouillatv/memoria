@@ -11,7 +11,7 @@
 //     (cf. doctrine dans TeamDetailBody.tsx) — jamais un classement.
 
 import { redirect } from 'next/navigation'
-import { Users, AlertCircle } from 'lucide-react'
+import { Users } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getOrgsForSelector } from '@/components/ui/org-selector'
@@ -284,21 +284,7 @@ export default async function EquipesPage({
         </Card>
       </div>
 
-      {orphanRows.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50/40">
-          <CardContent className="space-y-3 py-4">
-            <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
-              <AlertCircle className="h-4 w-4" />
-              {orphanRows.length} {orphanRows.length > 1 ? 'personnes' : 'personne'} pas dans une équipe active
-            </div>
-            <p className="text-xs text-amber-800/80">
-              Ces personnes ne sont rattachées à aucune équipe active. Rattachez-les en une fois,
-              ou via « Éditer » sur une équipe existante.
-            </p>
-            <OrphansTable orphans={orphanRows} teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
-          </CardContent>
-        </Card>
-      )}
+      <OrphansTable orphans={orphanRows} teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
     </div>
   )
 }

@@ -61,11 +61,29 @@ interface Props {
   members: MemberLite[]
   /** Tous les chef_equipe actifs (membres ou orphelins) — on filtre côté client. */
   availableUsers: MemberLite[]
+  /** Mode contrôlé (ex. depuis TeamRowActionsMenu) — défaut = état interne inchangé. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Masque le trigger par défaut quand le dialog est ouvert depuis un menu externe. */
+  hideTrigger?: boolean
+  /** Trigger custom (ex. « + Ajouter » léger dans la cellule Membres). */
+  trigger?: React.ReactElement
 }
 
-export function EditTeamMembersDialog({ teamId, teamName, members, availableUsers }: Props) {
+export function EditTeamMembersDialog({
+  teamId,
+  teamName,
+  members,
+  availableUsers,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
+  trigger,
+}: Props) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
   const [selectedUserId, setSelectedUserId] = useState<string>('')
   const [pending, startTransition] = useTransition()
 
@@ -101,22 +119,26 @@ export function EditTeamMembersDialog({ teamId, teamName, members, availableUser
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          /* GESTE SECONDAIRE (arbitrage Vincent 2026-08-14) : ce dialog gère
-             les COMPTES UTILISATEURS de l'équipe — pas son existence. Ajouter
-             quelqu'un à l'équipe, c'est « Ajouter un membre » (personne
-             terrain, sans compte) sur la fiche équipe. */
-          <Button
-            size="sm"
-            variant="outline"
-            data-testid={`edit-members-trigger-${teamId}`}
-          >
-            <Users />
-            Donner un accès à l’application
-          </Button>
-        }
-      />
+      {!hideTrigger && (
+        <DialogTrigger
+          render={
+            trigger ?? (
+              /* GESTE SECONDAIRE (arbitrage Vincent 2026-08-14) : ce dialog gère
+                 les COMPTES UTILISATEURS de l'équipe — pas son existence. Ajouter
+                 quelqu'un à l'équipe, c'est « Ajouter un membre » (personne
+                 terrain, sans compte) sur la fiche équipe. */
+              <Button
+                size="sm"
+                variant="outline"
+                data-testid={`edit-members-trigger-${teamId}`}
+              >
+                <Users />
+                Donner un accès à l’application
+              </Button>
+            )
+          }
+        />
+      )}
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Accès à l’application — {teamName}</DialogTitle>

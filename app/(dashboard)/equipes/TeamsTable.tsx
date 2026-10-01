@@ -22,9 +22,8 @@ import type { TeamActivitySummary } from '@/lib/db/team-activity-summary'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { TeamBadge } from '@/components/ui/team-badge'
 import { TeamReferentEditor } from './TeamReferentEditor'
-import { EditTeamAppearanceButton } from './EditTeamAppearanceButton'
 import { EditTeamMembersDialog, type MemberLite } from './EditTeamMembersDialog'
-import { ArchiveTeamButton } from './ArchiveTeamButton'
+import { TeamRowActionsMenu } from './TeamRowActionsMenu'
 
 interface Props {
   teams: TeamWithMemberCount[]
@@ -40,6 +39,17 @@ function displayName(fullName: string | null, email: string): string {
 
 function metricText(value: number): string {
   return value > 0 ? String(value) : '—'
+}
+
+function AddMemberLink() {
+  return (
+    <button
+      type="button"
+      className="text-xs font-medium text-brand-700 underline underline-offset-2 hover:no-underline dark:text-brand-300"
+    >
+      + Ajouter
+    </button>
+  )
 }
 
 function MetricCell({ icon: Icon, value }: { icon: React.ElementType; value: number }) {
@@ -112,13 +122,28 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <div className="text-sm text-foreground">
-                      {totalPersons} personne{totalPersons > 1 ? 's' : ''}
-                    </div>
-                    {fieldMembers.length > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        {team.memberCount} accès · {fieldMembers.length} terrain
+                    {totalPersons === 0 ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Aucun membre</span>
+                        <EditTeamMembersDialog
+                          teamId={team.id}
+                          teamName={team.name}
+                          members={members}
+                          availableUsers={availableUsers}
+                          trigger={<AddMemberLink />}
+                        />
                       </div>
+                    ) : (
+                      <>
+                        <div className="text-sm text-foreground">
+                          {totalPersons} personne{totalPersons > 1 ? 's' : ''}
+                        </div>
+                        {fieldMembers.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            {team.memberCount} accès · {fieldMembers.length} terrain
+                          </div>
+                        )}
+                      </>
                     )}
                   </TableCell>
                   <TableCell>
@@ -134,28 +159,18 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
                   <MetricCell icon={Camera} value={summary?.terrainPhotosCount ?? 0} />
                   <MetricCell icon={Repeat2} value={summary?.activeRotationCount ?? 0} />
                   <TableCell>
-                    <div className="flex shrink-0 items-center gap-0.5">
-                      <EditTeamAppearanceButton
-                        teamId={team.id}
-                        initialName={team.name}
-                        initialColor={team.color}
-                        initialIcon={team.icon}
-                      />
-                      <EditTeamMembersDialog
-                        teamId={team.id}
-                        teamName={team.name}
-                        members={members}
-                        availableUsers={availableUsers}
-                      />
-                      <ArchiveTeamButton
-                        teamId={team.id}
-                        teamName={team.name}
-                        dependencies={{
-                          missions: deps.missions,
-                          futureInterventions: deps.futureInterventions,
-                        }}
-                      />
-                    </div>
+                    <TeamRowActionsMenu
+                      teamId={team.id}
+                      teamName={team.name}
+                      initialColor={team.color}
+                      initialIcon={team.icon}
+                      members={members}
+                      availableUsers={availableUsers}
+                      dependencies={{
+                        missions: deps.missions,
+                        futureInterventions: deps.futureInterventions,
+                      }}
+                    />
                   </TableCell>
                 </TableRow>
               )
@@ -181,35 +196,38 @@ export async function TeamsTable({ teams, availableUsers, activitySummaries }: P
                 >
                   <TeamBadge name={team.name} color={team.color} icon={team.icon} size="md" />
                 </Link>
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <EditTeamAppearanceButton
-                    teamId={team.id}
-                    initialName={team.name}
-                    initialColor={team.color}
-                    initialIcon={team.icon}
-                  />
-                  <EditTeamMembersDialog
-                    teamId={team.id}
-                    teamName={team.name}
-                    members={members}
-                    availableUsers={availableUsers}
-                  />
-                  <ArchiveTeamButton
-                    teamId={team.id}
-                    teamName={team.name}
-                    dependencies={{
-                      missions: deps.missions,
-                      futureInterventions: deps.futureInterventions,
-                    }}
-                  />
-                </div>
+                <TeamRowActionsMenu
+                  teamId={team.id}
+                  teamName={team.name}
+                  initialColor={team.color}
+                  initialIcon={team.icon}
+                  members={members}
+                  availableUsers={availableUsers}
+                  dependencies={{
+                    missions: deps.missions,
+                    futureInterventions: deps.futureInterventions,
+                  }}
+                />
               </div>
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <span>
-                  {totalPersons} personne{totalPersons > 1 ? 's' : ''}
-                  {fieldMembers.length > 0 && ` (${team.memberCount} accès · ${fieldMembers.length} terrain)`}
-                </span>
+                {totalPersons === 0 ? (
+                  <span className="flex items-center gap-2">
+                    Aucun membre
+                    <EditTeamMembersDialog
+                      teamId={team.id}
+                      teamName={team.name}
+                      members={members}
+                      availableUsers={availableUsers}
+                      trigger={<AddMemberLink />}
+                    />
+                  </span>
+                ) : (
+                  <span>
+                    {totalPersons} personne{totalPersons > 1 ? 's' : ''}
+                    {fieldMembers.length > 0 && ` (${team.memberCount} accès · ${fieldMembers.length} terrain)`}
+                  </span>
+                )}
               </div>
 
               <TeamReferentEditor

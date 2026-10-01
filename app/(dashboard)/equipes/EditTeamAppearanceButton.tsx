@@ -35,6 +35,11 @@ interface Props {
   initialName: string
   initialColor: string | null
   initialIcon: string | null
+  /** Mode contrôlé (ex. depuis TeamRowActionsMenu) — défaut = état interne inchangé. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Masque le trigger par défaut quand le dialog est ouvert depuis un menu externe. */
+  hideTrigger?: boolean
 }
 
 export function EditTeamAppearanceButton({
@@ -42,9 +47,14 @@ export function EditTeamAppearanceButton({
   initialName,
   initialColor,
   initialIcon,
+  open: controlledOpen,
+  onOpenChange,
+  hideTrigger,
 }: Props) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
   const [name, setName] = useState(initialName)
   const [color, setColor] = useState<string | null>(initialColor)
   const [icon, setIcon] = useState<TeamIconName | null>(
@@ -91,19 +101,21 @@ export function EditTeamAppearanceButton({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            data-testid={`edit-team-appearance-${teamId}`}
-            title="Modifier l'apparence (nom, couleur, icône)"
-          >
-            <Palette className="h-4 w-4" />
-            <span className="sr-only">Modifier l'apparence</span>
-          </Button>
-        }
-      />
+      {!hideTrigger && (
+        <DialogTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              data-testid={`edit-team-appearance-${teamId}`}
+              title="Modifier l'apparence (nom, couleur, icône)"
+            >
+              <Palette className="h-4 w-4" />
+              <span className="sr-only">Modifier l'apparence</span>
+            </Button>
+          }
+        />
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Apparence de l'équipe</DialogTitle>

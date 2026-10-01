@@ -151,7 +151,7 @@ export function AddIntervenantDialog({
                           {p.fullName}{p.job && <span className="font-normal text-muted-foreground"> — {p.job}</span>}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
-                          {[p.email, p.phone].filter(Boolean).join(' · ') || (p.isInternalAgent ? 'Agent interne' : 'Contact')}
+                          {[p.email, p.phone].filter(Boolean).join(' · ') || (p.isInternalAgent ? 'Interne' : 'Contact')}
                         </div>
                       </div>
                       <Button size="sm" variant="outline" onClick={() => reuse(p.contactId)} disabled={pending}>
@@ -173,7 +173,7 @@ export function AddIntervenantDialog({
 
             {/* Type — agent interne / contact externe. */}
             <div className="flex gap-2">
-              <TypeToggle active={isInternalAgent} onClick={() => setIsInternalAgent(true)} label="Agent interne" disabled={pending} />
+              <TypeToggle active={isInternalAgent} onClick={() => setIsInternalAgent(true)} label="Interne" disabled={pending} />
               <TypeToggle active={!isInternalAgent} onClick={() => setIsInternalAgent(false)} label="Contact externe" disabled={pending} />
             </div>
 
@@ -214,8 +214,7 @@ export function AddIntervenantDialog({
             )}
 
             <p className="text-[11px] text-muted-foreground">
-              Aucun compte ni e-mail d’invitation n’est créé. La personne pourra être citée et
-              rendue responsable d’une action quand son équipe est mobilisée sur le chantier.
+              Aucun compte n’est créé — cette personne pourra être citée et responsabilisée via son équipe.
             </p>
             <Button type="button" onClick={create} disabled={pending || fullName.trim().length < 1} className="w-full">
               <UserPlus /> {entityNoun === 'personne' ? 'Créer la personne' : 'Créer l’acteur'}
