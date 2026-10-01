@@ -10,6 +10,8 @@ import {
   assertRollbackEligible,
   ROLLBACK_TABLES,
   buildPlanSummary,
+  EVENTS,
+  ALLOWED_VISIT_MOTIVES,
 } from './demo-architect-koutio-seed'
 
 describe('demo-architect-koutio-seed — duid()', () => {
@@ -149,5 +151,22 @@ describe('demo-architect-koutio-seed — rollback réel (assertRollbackEligible)
     const membershipTable = ROLLBACK_TABLES.find((t) => t.table === 'public.organization_memberships')!
     expect(membershipTable.where).toBe(`organization_id = '${ORG_ID}'`)
     expect(membershipTable.where).not.toMatch(/user_id/)
+  })
+})
+
+describe('demo-architect-koutio-seed — EVENTS.visitMotive natif uniquement', () => {
+  it("ALLOWED_VISIT_MOTIVES porte exactement les 14 valeurs natives (contrainte DB site_reports_visit_motive_check, migration 186 — additive sur 162 — et MOTIVES d'app/(field)/m/site/[siteId]/visit-actions.ts)", () => {
+    expect(ALLOWED_VISIT_MOTIVES).toEqual([
+      'inspection', 'controle', 'reunion', 'avancement', 'reception',
+      'levee_reserves', 'constat', 'expertise', 'maintenance', 'libre',
+      'premiere', 'previsite_ao', 'prereception', 'sav',
+    ])
+  })
+
+  it('les 12 événements du seed utilisent uniquement des visit_motive natifs (aucune valeur inventée)', () => {
+    expect(EVENTS).toHaveLength(12)
+    for (const ev of EVENTS) {
+      expect(ALLOWED_VISIT_MOTIVES).toContain(ev.visitMotive)
+    }
   })
 })

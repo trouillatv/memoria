@@ -217,12 +217,26 @@ function p(name: string, role: string): Participant {
   return { name, role, kind: 'person', presence: 'P' }
 }
 
+// Source de vérité : contrainte DB site_reports_visit_motive_check (migration
+// 186_visit_motive_intents.sql, qui étend 162_field_visits.sql de façon additive —
+// toutes les valeurs historiques sont conservées) ET la constante MOTIVES utilisée
+// par le zod schema réel de démarrage/clôture de visite
+// (app/(field)/m/site/[siteId]/visit-actions.ts) — les deux définissent exactement
+// le même ensemble de 14 valeurs. Toute valeur hors de cette liste serait rejetée
+// par le CHECK constraint en base et par le zod schema en usage réel applicatif.
+const ALLOWED_VISIT_MOTIVES = [
+  'inspection', 'controle', 'reunion', 'avancement', 'reception',
+  'levee_reserves', 'constat', 'expertise', 'maintenance', 'libre',
+  'premiere', 'previsite_ao', 'prereception', 'sav',
+] as const
+type VisitMotive = (typeof ALLOWED_VISIT_MOTIVES)[number]
+
 type EventDef = {
   key: string
   start: string
   end: string
   title: string
-  visitMotive: string
+  visitMotive: VisitMotive
   outcome: string
   resolution?: string
   participants: Participant[]
@@ -344,6 +358,9 @@ const EVENTS: EventDef[] = [
   },
 ]
 const reportId = (key: string) => duid(key)
+
+export { EVENTS, ALLOWED_VISIT_MOTIVES }
+export type { VisitMotive }
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ACTIONS (30)
