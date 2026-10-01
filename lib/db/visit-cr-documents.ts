@@ -81,6 +81,8 @@ async function readVisitAndAnalysis(reportId: string): Promise<{
 export async function getOrCreateVisitCrDocument(
   reportId: string,
   userId: string | null,
+  /** Script interne uniquement (jamais le web) — cf. `createReportDocument`. */
+  actorUserId?: string | null,
 ): Promise<DbReportDocument | null> {
   const existing = await getVisitCrDocument(reportId)
   if (decideVisitCrDocument(existing).action === 'reuse') return existing
@@ -105,6 +107,7 @@ export async function getOrCreateVisitCrDocument(
       model: null,
       prompt_version: null,
       created_by: userId,
+      actorUserId,
     })
     return getReportDocument(id)
   } catch (err) {

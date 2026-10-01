@@ -22,6 +22,15 @@ export async function createReportDocument(input: {
   model: string | null
   prompt_version: string | null
   created_by: string | null
+  /**
+   * Identité d'AUTORISATION pour les appels hors contexte requête (scripts
+   * internes uniquement — jamais le web). PROVENANCE != AUTORISATION :
+   * `created_by` reste une métadonnée d'attribution, jamais réutilisée comme
+   * identité d'accès. Par défaut (web, pv-actions.ts) ce paramètre est omis :
+   * la vérification retombe sur les cookies de la requête courante. Un script
+   * interne doit le fournir EXPLICITEMENT — jamais déduit de `created_by`.
+   */
+  actorUserId?: string | null
 }): Promise<string> {
   const supabase = createAdminClient()
 
@@ -33,7 +42,10 @@ export async function createReportDocument(input: {
     .maybeSingle()
   if (!siteReport?.organization_id) throw new Error('Rapport introuvable ou sans organisation')
   const organization_id = siteReport.organization_id
-  const membership = await requireOrganizationMembership(organization_id)
+  const membership = await requireOrganizationMembership(
+    organization_id,
+    input.actorUserId !== undefined ? (input.actorUserId ? { id: input.actorUserId } : null) : undefined,
+  )
   if (!membership.ok) throw new Error(membership.error)
 
   const { data, error } = await supabase
