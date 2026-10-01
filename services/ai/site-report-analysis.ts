@@ -84,6 +84,87 @@ const analysisSchema = z.object({
 
 type AnalysisParsed = z.infer<typeof analysisSchema>
 
+// Schéma JSON natif Gemini (responseSchema) — contraint la forme de sortie à
+// la génération, en plus du parseur Zod final. Les champs nullable (.nullable()
+// dans analysisSchema) sont déclarés avec leur type mais omis de `required`,
+// convention déjà suivie par canonical-subject-trajectory.ts / site-story.ts / evolution-v2.ts.
+const ANALYSIS_GEMINI_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    participants: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name: { type: 'STRING' },
+          role: { type: 'STRING' },
+          kind: { type: 'STRING', enum: ['person', 'company', 'control', 'other'] },
+        },
+        required: ['name', 'kind'],
+      },
+    },
+    risks: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          kind: { type: 'STRING', enum: ['dependency', 'preparation', 'vigilance', 'risk'] },
+          label: { type: 'STRING' },
+          rationale: { type: 'STRING' },
+          waiting_party: { type: 'STRING' },
+          awaited: { type: 'STRING' },
+        },
+        required: ['kind', 'label'],
+      },
+    },
+    prior_updates: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          index: { type: 'NUMBER' },
+          status: { type: 'STRING', enum: ['still_open', 'done'] },
+          note: { type: 'STRING' },
+        },
+        required: ['index', 'status'],
+      },
+    },
+    proposals: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          type: { type: 'STRING', enum: [...PROPOSAL_TYPES] },
+          short_label: { type: 'STRING' },
+          rationale: { type: 'STRING' },
+          corps_etat: { type: 'STRING' },
+          assigned_to: { type: 'STRING' },
+          ai_confidence: { type: 'NUMBER' },
+          anomaly_category: { type: 'STRING', enum: [...ANOMALY_CATEGORIES] },
+          mission_link: {
+            type: 'OBJECT',
+            properties: {
+              mode: { type: 'STRING', enum: ['existing', 'new'] },
+              existing_mission_id: { type: 'STRING' },
+              new_mission_name: { type: 'STRING' },
+              new_mission_cadence: {
+                type: 'STRING',
+                enum: ['daily', 'weekly', 'biweekly', 'monthly', 'on_demand'],
+              },
+            },
+            required: ['mode'],
+          },
+          suggested_date: { type: 'STRING' },
+          due_date_kind: { type: 'STRING', enum: ['explicit', 'relative', 'none'] },
+          site_index: { type: 'NUMBER' },
+        },
+        required: ['type', 'short_label', 'rationale', 'ai_confidence', 'due_date_kind'],
+      },
+    },
+  },
+  required: ['participants', 'risks', 'prior_updates', 'proposals'],
+}
+
 export interface SiteReportProposal {
   type: SiteReportProposalType
   short_label: string
@@ -341,28 +422,49 @@ export async function runSiteReportAnalysisAgent(
       systemPrompt: SITE_REPORT_ANALYZER_V1.system,
       userMessage,
       responseSchema: analysisSchema,
+      geminiSchema: ANALYSIS_GEMINI_SCHEMA,
       modelTier: SITE_REPORT_ANALYZER_V1.modelTier,
-      maxOutputTokens: 2500,
+      maxOutputTokens: 16000,
     })
 
     let result: AnalysisParsed | undefined
+    let zodIssuesStructured: string[] | undefined
+    let jsonParseError: string | undefined
+    let zodIssuesText: string[] | undefined
 
     if (output.parsed !== undefined && output.parsed !== null) {
       const r = analysisSchema.safeParse(output.parsed)
-      if (r.success) result = r.data
+      if (r.success) {
+        result = r.data
+      } else {
+        zodIssuesStructured = r.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`)
+      }
     }
 
     if (result === undefined) {
       try {
         const raw = JSON.parse(output.text)
         const r = analysisSchema.safeParse(raw)
-        if (r.success) result = r.data
-      } catch {
-        // ignore
+        if (r.success) {
+          result = r.data
+        } else {
+          zodIssuesText = r.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.message}`)
+        }
+      } catch (e) {
+        jsonParseError = e instanceof Error ? e.message : String(e)
       }
     }
 
     if (result === undefined) {
+      console.error('[runSiteReportAnalysisAgent] Failed to parse output', {
+        finishReason: output.finishReason,
+        textLength: output.text?.length ?? 0,
+        structuredOutputPresent: output.parsed !== undefined && output.parsed !== null,
+        zodIssuesStructured,
+        jsonParseError,
+        zodIssuesText,
+        textExcerpt: (output.text ?? '').slice(0, 500),
+      })
       throw new Error('[runSiteReportAnalysisAgent] Failed to parse output')
     }
 
