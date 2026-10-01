@@ -18,6 +18,7 @@ import {
 import { listMembersOfTeam } from '@/lib/db/teams'
 import { listFieldMembersOfTeam } from '@/lib/db/team-field-members'
 import { getTeamActorInsight } from '@/lib/db/team-actor-insight'
+import { listTeamsActivitySummary, type TeamActivitySummary } from '@/lib/db/team-activity-summary'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { listOrgCatalog } from '@/lib/db/org-catalog'
 import type { TeamDrawerData } from './TeamDrawerBody'
@@ -61,6 +62,7 @@ export async function loadTeamDrawerData(
     availableSites,
     specialtyCatalog,
     actorInsight,
+    activitySummaries,
   ] = await Promise.all([
     listTeamFavoriteSites(teamId, 8),
     listTeamContractsCovered(teamId),
@@ -91,10 +93,22 @@ export async function loadTeamDrawerData(
     })(),
     listOrgCatalog(organizationId, 'team_specialty'),
     getTeamActorInsight(teamId, [organizationId]),
+    listTeamsActivitySummary([teamId]),
   ])
+
+  const activitySummary: TeamActivitySummary =
+    activitySummaries.get(teamId) ?? {
+      periodDays: 30,
+      realInterventionsCount: 0,
+      plannedInterventionsCount: 0,
+      sitesReallyCoveredCount: 0,
+      terrainPhotosCount: 0,
+      activeRotationCount: 0,
+    }
 
   return {
     overview,
+    activitySummary,
     ageLabel: ageLabelFromDays(overview.ageDays),
     favoriteSites,
     contractsCovered,

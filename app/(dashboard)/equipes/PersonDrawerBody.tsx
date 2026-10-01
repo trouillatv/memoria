@@ -13,9 +13,16 @@
 //
 // Pas de wording évaluatif, pas de classement, pas de comparaison entre
 // personnes.
+//
+// /EQUIPES V2 (Lot visuel 2026-10-01) — 4 onglets (Aperçu/Activité/Mémoire/
+// Équipes), même pattern que TeamDrawerBody.tsx : les sections ne changent
+// pas de source de données, seulement de regroupement visuel. Les murs de
+// zéros (ex. "0 action, 0 équipe" répétés) sont remplacés par un état vide
+// explicite par section plutôt que par une grille de compteurs à 0.
 
 import Link from 'next/link'
 import { Calendar, Building2, Users, ChevronRight, ClipboardList, Star, Image as ImageIcon } from 'lucide-react'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import type { PersonPeriod } from './loadPersonDrawerData'
 import type { PersonDrawerData } from './loadPersonDrawerData'
 
@@ -57,23 +64,6 @@ export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; p
           {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
         </div>
 
-        {currentTeams.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-            <Users className="h-3.5 w-3.5 text-brand-600" aria-hidden />
-            <span>
-              Équipe{currentTeams.length > 1 ? 's' : ''} actuelle{currentTeams.length > 1 ? 's' : ''} :{' '}
-              {currentTeams.map((t, i) => (
-                <span key={t.teamId}>
-                  {i > 0 && ', '}
-                  <Link href={`/equipes?team=${t.teamId}`} className="text-brand-700 hover:underline">
-                    {t.teamName}
-                  </Link>
-                </span>
-              ))}
-            </span>
-          </div>
-        )}
-
         {ref.kind === 'user' && (
           <div className="flex flex-wrap items-center gap-1.5">
             {(Object.keys(PERIOD_LABEL) as PersonPeriod[]).map((p) => (
@@ -97,147 +87,207 @@ export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; p
             ne sont pas encore datées assez finement pour cela.
           </p>
         )}
-
-        {userOverview && (
-          <div className="space-y-1 pt-2 border-t">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <Counter icon={Calendar} label="Participations attestées" value={userOverview.attestedInterventionsCount} />
-              <Counter icon={Star} label="Comme référent" value={userOverview.referentCount} />
-              <Counter icon={Building2} label="Chantiers distincts" value={userOverview.distinctSiteCount} />
-              <Counter icon={Users} label="Équipes distinctes" value={userOverview.distinctTeamCount} />
-            </div>
-            {userOverview.inProgressInterventionsCount > 0 && (
-              <p className="text-[11px] text-muted-foreground">
-                + {userOverview.inProgressInterventionsCount} intervention
-                {userOverview.inProgressInterventionsCount > 1 ? 's' : ''} en cours (non attestée
-                {userOverview.inProgressInterventionsCount > 1 ? 's' : ''})
-              </p>
-            )}
-          </div>
-        )}
-        {contactOverview && (
-          <div className="grid grid-cols-3 gap-3 pt-2 border-t">
-            <Counter icon={ClipboardList} label="Actions en cours" value={contactOverview.openActionCount} />
-            <Counter icon={ClipboardList} label="Actions faites" value={contactOverview.doneActionCount} />
-            <Counter icon={Users} label="Équipes terrain" value={contactOverview.teamCount} />
-          </div>
-        )}
       </header>
 
-      {/* ── Mémoire "user" — participations confirmées ─────────────────── */}
-      {ref.kind === 'user' && (
-        <section className="rounded-lg border bg-card p-4 space-y-3">
-          <h3 className="text-sm font-medium flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-brand-600" />
-            Participations attestées — {PERIOD_LABEL[period]}
-          </h3>
-          <p className="text-[11px] text-muted-foreground">
-            Uniquement des interventions où la présence de cette personne a été
-            réellement enregistrée, et déjà terminées (attestées) ou en cours.
-            L&apos;appartenance actuelle à une équipe ou une intervention
-            planifiée n&apos;apparaissent jamais ici sans preuve.
-          </p>
-          {!interventions || interventions.length === 0 ? (
+      <Tabs defaultValue="apercu">
+        <TabsList className="grid grid-cols-4 w-full">
+          <TabsTrigger value="apercu">Aperçu</TabsTrigger>
+          <TabsTrigger value="activite">Activité</TabsTrigger>
+          <TabsTrigger value="memoire">Mémoire</TabsTrigger>
+          <TabsTrigger value="equipes">Équipes</TabsTrigger>
+        </TabsList>
+
+        {/* ── Aperçu — compteurs cumulés + repères temporels ──────────────── */}
+        <TabsContent value="apercu" className="space-y-4 pt-3">
+          {userOverview && (
+            <div className="space-y-1">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <MiniKpi icon={Calendar} label="Participations attestées" value={userOverview.attestedInterventionsCount} />
+                <MiniKpi icon={Star} label="Comme référent" value={userOverview.referentCount} />
+                <MiniKpi icon={Building2} label="Chantiers distincts" value={userOverview.distinctSiteCount} />
+                <MiniKpi icon={Users} label="Équipes distinctes" value={userOverview.distinctTeamCount} />
+              </div>
+              {userOverview.inProgressInterventionsCount > 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  + {userOverview.inProgressInterventionsCount} intervention
+                  {userOverview.inProgressInterventionsCount > 1 ? 's' : ''} en cours (non attestée
+                  {userOverview.inProgressInterventionsCount > 1 ? 's' : ''})
+                </p>
+              )}
+              {(userOverview.firstConfirmedAt || userOverview.lastConfirmedAt) ? (
+                <p className="text-[11px] text-muted-foreground pt-1">
+                  Première participation attestée le {fmtDateShort(userOverview.firstConfirmedAt)}
+                  {' · '}dernière le {fmtDateShort(userOverview.lastConfirmedAt)}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground italic pt-1">
+                  Aucune participation attestée pour l&apos;instant.
+                </p>
+              )}
+            </div>
+          )}
+          {contactOverview && (
+            <div className="grid grid-cols-3 gap-2">
+              <MiniKpi icon={ClipboardList} label="Actions en cours" value={contactOverview.openActionCount} />
+              <MiniKpi icon={ClipboardList} label="Actions faites" value={contactOverview.doneActionCount} />
+              <MiniKpi icon={Users} label="Équipes terrain" value={contactOverview.teamCount} />
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── Activité — participations/actions, la mémoire "vivante" ────── */}
+        <TabsContent value="activite" className="space-y-4 pt-3">
+          {ref.kind === 'user' && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-brand-600" />
+                Participations attestées — {PERIOD_LABEL[period]}
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                Uniquement des interventions où la présence de cette personne a été
+                réellement enregistrée, et déjà terminées (attestées) ou en cours.
+                L&apos;appartenance actuelle à une équipe ou une intervention
+                planifiée n&apos;apparaissent jamais ici sans preuve.
+              </p>
+              {!interventions || interventions.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">
+                  Aucune participation attestée sur cette période.
+                </p>
+              ) : (
+                <ul className="divide-y -my-2">
+                  {interventions.map((it) => (
+                    <li key={it.interventionId} className="py-2">
+                      <Link href={`/sites/${it.siteId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm">
+                            <span className="font-medium">{it.siteName}</span>
+                            {it.contractName && <span className="text-muted-foreground"> · {it.contractName}</span>}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {fmtDateShort(it.effectiveDate)}
+                            {it.teamName && ` · ${it.teamName}`}
+                            {it.role === 'referent' && ' · Référent'}
+                            {it.confirmationBasis === 'in_progress' && ' · En cours'}
+                          </p>
+                        </div>
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+
+          {ref.kind === 'contact' && (
+            <section className="space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <ClipboardList className="h-4 w-4 text-brand-600" />
+                Actions assignées
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                Ce contact n&apos;a pas de compte MemorIA : sa mémoire se limite aux
+                faits structurellement rattachés (actions, équipe terrain), jamais
+                à une participation d&apos;intervention inventée.
+              </p>
+              {!contactActions || contactActions.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">Aucune action assignée.</p>
+              ) : (
+                <ul className="divide-y -my-2">
+                  {contactActions.map((a) => (
+                    <li key={a.id} className="py-2">
+                      <Link href={`/sites/${a.siteId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{a.title}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {a.siteName}
+                            {a.dueDate && ` · Échéance ${fmtDateShort(a.dueDate)}`}
+                          </p>
+                        </div>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md border bg-muted text-muted-foreground border-border shrink-0">
+                          {ACTION_STATUS_LABEL[a.status] ?? a.status}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+        </TabsContent>
+
+        {/* ── Mémoire — empreinte accumulée (photos terrain) ─────────────── */}
+        <TabsContent value="memoire" className="space-y-4 pt-3">
+          {ref.kind === 'user' && photos && photos.length > 0 ? (
+            <section className="space-y-3">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-brand-600" />
+                Photos terrain — {PERIOD_LABEL[period]}
+              </h3>
+              <p className="text-[11px] text-muted-foreground">
+                Uniquement les photos réellement prises par cette personne
+                (auteur enregistré). Aucune photo n&apos;est jamais attribuée via
+                une appartenance équipe.
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {photos.map((p) => (
+                  <Link
+                    key={p.id}
+                    href={`/sites/${p.siteId}`}
+                    className="aspect-square rounded-md overflow-hidden border bg-muted relative group"
+                    title={p.caption ?? p.siteName}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={p.signedUrl}
+                      alt={p.caption ?? p.siteName}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                    />
+                    <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
+                      {p.siteName}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : ref.kind === 'user' ? (
             <p className="text-sm text-muted-foreground italic">
-              Aucune participation attestée sur cette période.
+              Aucune photo terrain prise par cette personne sur cette période.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">
+              Un contact terrain n&apos;a pas de compte MemorIA : aucune photo ne
+              peut lui être attribuée comme auteur.
+            </p>
+          )}
+        </TabsContent>
+
+        {/* ── Équipes — appartenance actuelle, jamais un historique ───────── */}
+        <TabsContent value="equipes" className="space-y-3 pt-3">
+          <p className="text-[11px] text-muted-foreground">
+            Appartenance actuelle uniquement — n&apos;indique rien sur le passé.
+          </p>
+          {currentTeams.length === 0 ? (
+            <p className="text-sm text-muted-foreground italic">
+              Ne fait actuellement partie d&apos;aucune équipe.
             </p>
           ) : (
             <ul className="divide-y -my-2">
-              {interventions.map((it) => (
-                <li key={it.interventionId} className="py-2">
-                  <Link href={`/sites/${it.siteId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm">
-                        <span className="font-medium">{it.siteName}</span>
-                        {it.contractName && <span className="text-muted-foreground"> · {it.contractName}</span>}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {fmtDateShort(it.effectiveDate)}
-                        {it.teamName && ` · ${it.teamName}`}
-                        {it.role === 'referent' && ' · Référent'}
-                        {it.confirmationBasis === 'in_progress' && ' · En cours'}
-                      </p>
-                    </div>
+              {currentTeams.map((t) => (
+                <li key={t.teamId} className="py-2">
+                  <Link href={`/equipes?team=${t.teamId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                    <span className="text-sm font-medium flex items-center gap-2">
+                      <Users className="h-3.5 w-3.5 text-brand-600" />
+                      {t.teamName}
+                    </span>
                     <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   </Link>
                 </li>
               ))}
             </ul>
           )}
-        </section>
-      )}
-
-      {/* ── Photos terrain — taken_by=userId uniquement (FIX 1) ─────────── */}
-      {ref.kind === 'user' && photos && photos.length > 0 && (
-        <section className="rounded-lg border bg-card p-4 space-y-3">
-          <h3 className="text-sm font-medium flex items-center gap-2">
-            <ImageIcon className="h-4 w-4 text-brand-600" />
-            Photos terrain — {PERIOD_LABEL[period]}
-          </h3>
-          <p className="text-[11px] text-muted-foreground">
-            Uniquement les photos réellement prises par cette personne
-            (auteur enregistré). Aucune photo n&apos;est jamais attribuée via
-            une appartenance équipe.
-          </p>
-          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            {photos.map((p) => (
-              <Link
-                key={p.id}
-                href={`/sites/${p.siteId}`}
-                className="aspect-square rounded-md overflow-hidden border bg-muted relative group"
-                title={p.caption ?? p.siteName}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={p.signedUrl}
-                  alt={p.caption ?? p.siteName}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                />
-                <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1.5 py-0.5 text-[9px] text-white">
-                  {p.siteName}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* ── Mémoire "contact" — faits réellement liés ──────────────────── */}
-      {ref.kind === 'contact' && (
-        <section className="rounded-lg border bg-card p-4 space-y-3">
-          <h3 className="text-sm font-medium flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-brand-600" />
-            Actions assignées
-          </h3>
-          <p className="text-[11px] text-muted-foreground">
-            Ce contact n&apos;a pas de compte MemorIA : sa mémoire se limite aux
-            faits structurellement rattachés (actions, équipe terrain), jamais
-            à une participation d&apos;intervention inventée.
-          </p>
-          {!contactActions || contactActions.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">Aucune action assignée.</p>
-          ) : (
-            <ul className="divide-y -my-2">
-              {contactActions.map((a) => (
-                <li key={a.id} className="py-2">
-                  <Link href={`/sites/${a.siteId}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{a.title}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {a.siteName}
-                        {a.dueDate && ` · Échéance ${fmtDateShort(a.dueDate)}`}
-                      </p>
-                    </div>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-md border bg-muted text-muted-foreground border-border shrink-0">
-                      {ACTION_STATUS_LABEL[a.status] ?? a.status}
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+        </TabsContent>
+      </Tabs>
 
       <p className="text-[11px] text-muted-foreground italic text-center py-2">
         On ne transforme jamais une absence de preuve en présence supposée.
@@ -248,7 +298,7 @@ export function PersonDrawerBody({ data, pathname }: { data: PersonDrawerData; p
   )
 }
 
-function Counter({
+function MiniKpi({
   icon: Icon,
   label,
   value,
@@ -258,12 +308,14 @@ function Counter({
   value: number
 }) {
   return (
-    <div className="space-y-0.5">
-      <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
-        <Icon className="h-3 w-3" />
-        {label}
-      </p>
-      <p className="text-lg font-semibold tabular-nums">{value}</p>
+    <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <span className="text-sm font-semibold tabular-nums text-foreground">
+          {value > 0 ? value : <span className="text-muted-foreground/60">—</span>}
+        </span>
+        <span className="ml-1 text-[11px] text-muted-foreground">{label}</span>
+      </div>
     </div>
   )
 }

@@ -648,3 +648,86 @@ export async function listOrphanUsers(): Promise<OrphanUser[]> {
       role: u.role,
     }))
 }
+
+// ----------------------------------------------------------------------------
+// Orphan field contacts — pendant terrain de listOrphanUsers()
+// ----------------------------------------------------------------------------
+
+export interface OrphanContact {
+  id: string
+  fullName: string
+  job: string | null
+  companyName: string | null
+  isInternalAgent: boolean
+}
+
+/**
+ * Contacts terrain (company_contacts, sans compte applicatif) de l'org qui ne
+ * sont membres actifs d'aucune équipe ACTIVE — pendant de `listOrphanUsers()`
+ * pour l'autre population (cf. `countOrphanContacts` dans team-pulse.ts, qui
+ * applique le même filtre mais ne renvoie qu'un compte). Deux populations
+ * disjointes, jamais fusionnées par nom ou email : une personne terrain et un
+ * compte applicatif restent deux identités distinctes même si le bandeau
+ * « sans équipe » de la page Équipes les affiche désormais côte à côte.
+ */
+export async function listOrphanContacts(): Promise<OrphanContact[]> {
+  const supabase = createAdminClient()
+  const orgIds = await getOrgIdsOfUser()
+  // P1 isolation : FAIL-CLOSED — pas d'organisation → personne.
+  if (orgIds.length === 0) return []
+
+  const { data: contacts, error: cErr } = await supabase
+    .from('company_contacts')
+    .select('id, full_name, function, company_id, is_internal_agent')
+    .is('deleted_at', null)
+    .in('organization_id', orgIds)
+  if (cErr) throw cErr
+  if (!contacts || contacts.length === 0) return []
+
+  const { data: teamRows, error: tErr } = await supabase
+    .from('teams')
+    .select('id')
+    .eq('active', true)
+    .is('deleted_at', null)
+    .in('organization_id', orgIds)
+  if (tErr) throw tErr
+  const activeTeamIds = ((teamRows ?? []) as Array<{ id: string }>).map((t) => t.id)
+
+  let memberSet = new Set<string>()
+  if (activeTeamIds.length > 0) {
+    const { data: fieldRows, error: fErr } = await supabase
+      .from('team_field_members')
+      .select('contact_id')
+      .in('team_id', activeTeamIds)
+      .is('left_at', null)
+    if (fErr) throw fErr
+    memberSet = new Set(((fieldRows ?? []) as Array<{ contact_id: string }>).map((r) => r.contact_id))
+  }
+
+  type ContactRow = {
+    id: string
+    full_name: string
+    function: string | null
+    company_id: string | null
+    is_internal_agent: boolean
+  }
+  const orphanContacts = (contacts as ContactRow[]).filter((c) => !memberSet.has(c.id))
+  if (orphanContacts.length === 0) return []
+
+  // Résolution des noms d'entreprise en un seul appel (même patron que
+  // listFieldMembersOfTeam dans team-field-members.ts).
+  const companyIds = [...new Set(orphanContacts.map((c) => c.company_id).filter((id): id is string => !!id))]
+  const nameOf = new Map<string, string>()
+  if (companyIds.length > 0) {
+    const { data: cos } = await supabase.from('companies').select('id, name').in('id', companyIds)
+    for (const c of (cos ?? []) as Array<{ id: string; name: string }>) nameOf.set(c.id, c.name)
+  }
+
+  return orphanContacts.map((c) => ({
+    id: c.id,
+    fullName: c.full_name,
+    job: c.function,
+    companyName: c.company_id ? nameOf.get(c.company_id) ?? null : null,
+    isInternalAgent: c.is_internal_agent,
+  }))
+}

@@ -16,14 +16,16 @@ import { getCurrentUserWithProfile } from '@/lib/db/users'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
 import { getOrgsForSelector } from '@/components/ui/org-selector'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { listTeamsWithMemberCount, listOrphanUsers } from '@/lib/db/teams'
-import { getTeamsGlobalPulse } from '@/lib/db/team-pulse'
+import { listTeamsWithMemberCount, listOrphanUsers, listOrphanContacts } from '@/lib/db/teams'
+import { getTeamsGlobalPulse, parsePulsePeriod } from '@/lib/db/team-pulse'
+import { listTeamsActivitySummary } from '@/lib/db/team-activity-summary'
 import { Card, CardContent } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
 import { CreateTeamButton } from './CreateTeamButton'
-import { TeamRow } from './TeamRow'
-import { TeamsGlobalPulseRow } from './TeamsGlobalPulseRow'
-import { OrphansBulkAssign } from './OrphansBulkAssign'
+import { TeamsTable } from './TeamsTable'
+import { OrganisationKpiBlock } from './OrganisationKpiBlock'
+import { MemoireTerrainBlock } from './MemoireTerrainBlock'
+import { OrphansTable, type OrphanRow } from './OrphansTable'
 import { EquipesDetailSheet } from './EquipesDetailSheet'
 import { loadTeamDrawerData } from './loadTeamDrawerData'
 import { loadPersonDrawerData, parsePersonPeriod } from './loadPersonDrawerData'
@@ -119,6 +121,7 @@ export default async function EquipesPage({
     person?: string
     personKind?: string
     personPeriod?: string
+    period?: string
   }>
 }) {
   const user = await getCurrentUserWithProfile()
@@ -129,6 +132,7 @@ export default async function EquipesPage({
   const sp = await searchParams
   const personKind = sp.personKind === 'contact' ? 'contact' : 'user'
   const personPeriod = parsePersonPeriod(sp.personPeriod)
+  const pulsePeriod = parsePulsePeriod(sp.period)
 
   // FIX MULTI-ORG (revue ChatGPT/Vincent, cc83c29b) — orgIds doit être résolu
   // AVANT les appels qui en dépendent (listAssignableMembers, loadTeamDrawerData),
@@ -140,19 +144,50 @@ export default async function EquipesPage({
   // tomber toute la page (contrairement aux items CORE ci-dessus — teams,
   // orphelins, personnes assignables, org — qui restent bloquants à dessein).
   // Jamais de faux compteurs à 0 : `null` déclenche un état dégradé explicite
-  // dans TeamsGlobalPulseRow, la vraie requête reste corrigée ci-dessous, pas
-  // contournée.
-  const [teams, orphans, availableUsers, orgs, teamDrawerData, pulse] = await Promise.all([
+  // dans OrganisationKpiBlock/MemoireTerrainBlock, la vraie requête reste
+  // corrigée ci-dessous, pas contournée.
+  const [teams, orphans, orphanContacts, availableUsers, orgs, teamDrawerData, pulse] = await Promise.all([
     listTeamsWithMemberCount(),
     listOrphanUsers(),
+    listOrphanContacts(),
     listAssignableMembers(orgIds),
     getOrgsForSelector(),
     sp.team ? loadTeamDrawerData(sp.team, orgIds) : Promise.resolve(null),
-    getTeamsGlobalPulse().catch((error: unknown) => {
+    getTeamsGlobalPulse(Number(pulsePeriod)).catch((error: unknown) => {
       console.error('[equipes] pulse indisponible', error)
       return null
     }),
   ])
+
+  const teamsWithoutReferentCount = teams.filter((t) => !t.referent).length
+
+  // Bandeau « sans équipe » : les deux populations disjointes (comptes
+  // applicatifs + contacts terrain) sont affichées côte à côte, jamais
+  // fusionnées en base — seule la colonne Type du tableau les distingue
+  // (cf. OrphansTable.tsx pour le routage par nature vers l'action adaptée).
+  const orphanRows: OrphanRow[] = [
+    ...orphans.map((u) => ({
+      id: u.id,
+      kind: 'user' as const,
+      name: displayName(u.full_name, u.email),
+      job: u.role === 'manager' ? 'Manager' : u.role === 'chef_equipe' ? 'Chef d’équipe' : u.role,
+      companyName: null,
+    })),
+    ...orphanContacts.map((c) => ({
+      id: c.id,
+      kind: 'contact' as const,
+      name: c.fullName,
+      job: c.job,
+      companyName: c.companyName,
+    })),
+  ]
+
+  // Table dense : colonnes Activité/Sites/Photos/Roulements batchées en un
+  // seul jeu de requêtes pour TOUTES les équipes (Task #85), jamais une par
+  // équipe. Fenêtre fixe 30j, indépendante du sélecteur de période du bloc
+  // Mémoire terrain ci-dessus (compteur de colonne descriptif, pas un filtre
+  // utilisateur).
+  const activitySummaries = await listTeamsActivitySummary(teams.map((t) => t.id))
 
   const personDrawerData = sp.person
     ? await loadPersonDrawerData(sp.person, personKind, orgIds, personPeriod)
@@ -174,7 +209,8 @@ export default async function EquipesPage({
         <CreateTeamButton orgs={orgs} />
       </header>
 
-      <TeamsGlobalPulseRow pulse={pulse} />
+      <OrganisationKpiBlock pulse={pulse} teamsWithoutReferentCount={teamsWithoutReferentCount} />
+      <MemoireTerrainBlock pulse={pulse} period={pulsePeriod} />
 
       <Card>
         <CardContent className="p-0">
@@ -186,46 +222,24 @@ export default async function EquipesPage({
               variant="compact"
             />
           ) : (
-            <div className="divide-y" data-testid="teams-list">
-              {teams.map((team) => (
-                <TeamRow
-                  key={team.id}
-                  team={team}
-                  availableUsers={availableUsers}
-                />
-              ))}
-            </div>
+            <TeamsTable teams={teams} availableUsers={availableUsers} activitySummaries={activitySummaries} />
           )}
         </CardContent>
       </Card>
 
-      {orphans.length > 0 && (
+      {orphanRows.length > 0 && (
         <Card className="border-amber-200 bg-amber-50/40">
-          <CardContent className="space-y-2 py-4">
+          <CardContent className="space-y-3 py-4">
             <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
               <AlertCircle className="h-4 w-4" />
-              {orphans.length} {orphans.length > 1 ? 'comptes' : 'compte'} pas dans une équipe active
+              {orphanRows.length} {orphanRows.length > 1 ? 'personnes' : 'personne'} pas dans une équipe active
             </div>
             <p className="text-xs text-amber-800/80">
-              Ces comptes ne sont rattachés à aucune équipe active
-              {/* FIX C (revue ChatGPT/Vincent, 08e355e2) — « comptes », pas « personnes » : le
-                  pulse ci-dessus additionne aussi les contacts terrain (team_field_members),
-                  une population distincte que ce bandeau ne liste pas (rattachement en masse
-                  réservé aux comptes, cf. OrphansBulkAssign). */}
-              . Rattachez-les ci-dessous, ou via « Éditer » sur une équipe existante.
+              Deux populations distinctes (comptes applicatifs et contacts terrain), jamais
+              fusionnées en base — seule la colonne Type ci-dessous les distingue. Rattachez-les
+              en une fois, ou via « Éditer » sur une équipe existante.
             </p>
-            <div className="text-sm text-amber-900" data-testid="orphans-list">
-              {orphans.map((u, i) => (
-                <span key={u.id}>
-                  {i > 0 && <span className="mx-2 text-amber-700/60">·</span>}
-                  <span>{displayName(u.full_name, u.email)}</span>
-                </span>
-              ))}
-            </div>
-            <OrphansBulkAssign
-              orphans={orphans.map((u) => ({ id: u.id, name: displayName(u.full_name, u.email) }))}
-              teams={teams.map((t) => ({ id: t.id, name: t.name }))}
-            />
+            <OrphansTable orphans={orphanRows} teams={teams.map((t) => ({ id: t.id, name: t.name }))} />
           </CardContent>
         </Card>
       )}

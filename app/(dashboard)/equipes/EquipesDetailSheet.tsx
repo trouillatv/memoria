@@ -45,7 +45,7 @@ export function EquipesDetailSheet({
 
   return (
     <Sheet open onOpenChange={(o) => { if (!o) close() }}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-[420px]">
         {active === 'team' && team && <TeamDrawerBody data={team} />}
         {active === 'person' && person && <PersonDrawerBody data={person} pathname={pathname} />}
       </SheetContent>

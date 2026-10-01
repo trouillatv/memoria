@@ -19,11 +19,14 @@ import {
   Users,
   Calendar,
   ImageIcon,
-  AlertTriangle,
   Building2,
   Briefcase,
   Sparkles,
   ChevronRight,
+  ClipboardList,
+  MapPin,
+  Camera,
+  Repeat2,
 } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { AttentionBadge } from '../intervenants/fiche-ui'
@@ -48,6 +51,7 @@ import type {
 import type { TeamMemberWithUser } from '@/lib/db/teams'
 import type { FieldMember } from '@/lib/db/team-field-members'
 import type { TeamActorInsight } from '@/lib/db/team-actor-insight'
+import type { TeamActivitySummary } from '@/lib/db/team-activity-summary'
 
 function displayName(fullName: string | null, email: string): string {
   const t = (fullName ?? '').trim()
@@ -88,6 +92,7 @@ const STATUS_BADGE: Record<string, string> = {
 export interface TeamDrawerData {
   overview: TeamOverview
   ageLabel: string
+  activitySummary: TeamActivitySummary
   favoriteSites: TeamFavoriteSite[]
   contractsCovered: TeamContractCovered[]
   rhythm: TeamRhythmDay[]
@@ -106,6 +111,7 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
   const {
     overview,
     ageLabel,
+    activitySummary,
     favoriteSites,
     contractsCovered,
     rhythm,
@@ -183,12 +189,11 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
           </div>
         )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 border-t">
-          <Counter icon={Building2} label="Chantiers couverts" value={overview.counters.sitesCovered} />
-          <Counter icon={Briefcase} label="Contrats touchés" value={overview.counters.contractsCovered} />
-          <Counter icon={Calendar} label="Interventions" value={overview.counters.interventionsDocumented} />
-          <Counter icon={ImageIcon} label="Photos déposées" value={overview.counters.photosDeposited} />
-          <Counter icon={AlertTriangle} label="Anomalies traitées" value={overview.counters.anomaliesHandled} />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t">
+          <MiniKpi icon={ClipboardList} label={`Interventions ${activitySummary.periodDays}j`} value={activitySummary.realInterventionsCount} />
+          <MiniKpi icon={MapPin} label="Sites visités" value={activitySummary.sitesReallyCoveredCount} />
+          <MiniKpi icon={Camera} label="Photos terrain" value={activitySummary.terrainPhotosCount} />
+          <MiniKpi icon={Repeat2} label="Roulements actifs" value={activitySummary.activeRotationCount} />
         </div>
       </header>
 
@@ -196,6 +201,7 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
         <TabsList className="w-full">
           <TabsTrigger value="apercu">Aperçu</TabsTrigger>
           <TabsTrigger value="activite">Activité</TabsTrigger>
+          <TabsTrigger value="memoire">Mémoire</TabsTrigger>
           <TabsTrigger value="membres">Membres</TabsTrigger>
         </TabsList>
 
@@ -315,6 +321,45 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
             </section>
           </div>
 
+          <section className="rounded-lg border bg-card p-4 space-y-3">
+            <h3 className="text-sm font-medium flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-brand-600" />
+              Activité récente
+            </h3>
+            {recentInterventions.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">Aucune intervention récente.</p>
+            ) : (
+              <ul className="divide-y -my-2">
+                {recentInterventions.map((i) => {
+                  const planned = fmtPlannedRange(i.planned_start, i.planned_end)
+                  return (
+                    <li key={i.intervention_id} className="py-2">
+                      <Link href={`/sites/${i.site_id}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm">
+                            <span className="font-medium">{i.mission_name}</span>
+                            <span className="text-muted-foreground"> · {i.site_name}</span>
+                          </p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {fmtDateShort(i.scheduled_for)}
+                            {planned && ` · ${planned}`}
+                          </p>
+                        </div>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md border ${STATUS_BADGE[i.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
+                          {STATUS_LABEL[i.status] ?? i.status}
+                        </span>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </section>
+        </TabsContent>
+
+        {/* ── Mémoire ─────────────────────────────────────────────────── */}
+        <TabsContent value="memoire" className="space-y-4 pt-3">
           <div className="grid grid-cols-1 gap-4">
             <section className="rounded-lg border bg-card p-4 space-y-3">
               <h3 className="text-sm font-medium flex items-center gap-2">
@@ -412,41 +457,9 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
             </section>
           )}
 
-          <section className="rounded-lg border bg-card p-4 space-y-3">
-            <h3 className="text-sm font-medium flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-brand-600" />
-              Activité récente
-            </h3>
-            {recentInterventions.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">Aucune intervention récente.</p>
-            ) : (
-              <ul className="divide-y -my-2">
-                {recentInterventions.map((i) => {
-                  const planned = fmtPlannedRange(i.planned_start, i.planned_end)
-                  return (
-                    <li key={i.intervention_id} className="py-2">
-                      <Link href={`/sites/${i.site_id}`} className="flex items-center justify-between gap-2 hover:text-brand-700 transition-colors">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm">
-                            <span className="font-medium">{i.mission_name}</span>
-                            <span className="text-muted-foreground"> · {i.site_name}</span>
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {fmtDateShort(i.scheduled_for)}
-                            {planned && ` · ${planned}`}
-                          </p>
-                        </div>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded-md border ${STATUS_BADGE[i.status] ?? 'bg-muted text-muted-foreground border-border'}`}>
-                          {STATUS_LABEL[i.status] ?? i.status}
-                        </span>
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </section>
+          {favoriteSites.length === 0 && contractsCovered.length === 0 && recentPhotos.length === 0 && (
+            <p className="text-sm text-muted-foreground italic">Aucune mémoire terrain pour l&apos;instant.</p>
+          )}
         </TabsContent>
 
         {/* ── Membres ─────────────────────────────────────────────────── */}
@@ -537,7 +550,7 @@ export function TeamDrawerBody({ data }: { data: TeamDrawerData }) {
   )
 }
 
-function Counter({
+function MiniKpi({
   icon: Icon,
   label,
   value,
@@ -547,12 +560,14 @@ function Counter({
   value: number
 }) {
   return (
-    <div className="space-y-0.5">
-      <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1">
-        <Icon className="h-3 w-3" />
-        {label}
-      </p>
-      <p className="text-lg font-semibold tabular-nums">{value}</p>
+    <div className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/20 px-2.5 py-2">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <span className="text-sm font-semibold tabular-nums text-foreground">
+          {value > 0 ? value : <span className="text-muted-foreground/60">—</span>}
+        </span>
+        <span className="ml-1 text-[11px] text-muted-foreground">{label}</span>
+      </div>
     </div>
   )
 }

@@ -19,11 +19,17 @@ import { listOrphanUsers } from '@/lib/db/teams'
 import { isSystemMissionName } from '@/lib/db/system-missions'
 import { REAL_STATUSES } from '@/lib/db/team-profile'
 
+export { PULSE_PERIOD_VALUES, DEFAULT_PULSE_PERIOD, parsePulsePeriod, type PulsePeriod } from '@/lib/db/pulse-period'
+
 export interface TeamsGlobalPulse {
   periodDays: number
   activeTeamsCount: number
   /** team_members actifs (distinct) + team_field_members actifs (distinct) — jamais dédoublonnés entre les deux populations. */
   activePersonsInTeamsCount: number
+  /** Sous-détail de activePersonsInTeamsCount — comptes applicatifs (accès à MemorIA). */
+  activeAppUsersInTeamsCount: number
+  /** Sous-détail de activePersonsInTeamsCount — contacts terrain sans compte. */
+  activeFieldContactsInTeamsCount: number
   /**
    * FIX C (revue ChatGPT/Vincent, 08e355e2) — deux populations disjointes
    * additionnées (jamais fusionnées) : users sans membership actif dans une
@@ -44,6 +50,8 @@ function emptyPulse(periodDays: number): TeamsGlobalPulse {
     periodDays,
     activeTeamsCount: 0,
     activePersonsInTeamsCount: 0,
+    activeAppUsersInTeamsCount: 0,
+    activeFieldContactsInTeamsCount: 0,
     personsWithoutTeamCount: 0,
     realInterventionsCount: 0,
     sitesReallyCoveredCount: 0,
@@ -111,11 +119,11 @@ export async function getTeamsGlobalPulse(periodDays = 30): Promise<TeamsGlobalP
   // supprimées).
   const activeTeamIds = teams.filter((t) => t.active).map((t) => t.id)
 
-  const [orphanUsersCount, orphanContactsCount, activePersonsInTeamsCount] = await Promise.all([
+  const [orphanUsersCount, orphanContactsCount, personsInTeamsBreakdown] = await Promise.all([
     listOrphanUsers().then((rows) => rows.length),
     countOrphanContacts(admin, orgIds, activeTeamIds),
     (async () => {
-      if (activeTeamIds.length === 0) return 0
+      if (activeTeamIds.length === 0) return { appUsers: 0, fieldContacts: 0 }
       const [{ data: memberRows, error: mErr }, { data: fieldRows, error: fErr }] = await Promise.all([
         admin.from('team_members').select('user_id').in('team_id', activeTeamIds).is('left_at', null),
         admin.from('team_field_members').select('contact_id').in('team_id', activeTeamIds).is('left_at', null),
@@ -124,9 +132,12 @@ export async function getTeamsGlobalPulse(periodDays = 30): Promise<TeamsGlobalP
       if (fErr) throw fErr
       const distinctUsers = new Set(((memberRows ?? []) as Array<{ user_id: string }>).map((r) => r.user_id))
       const distinctContacts = new Set(((fieldRows ?? []) as Array<{ contact_id: string }>).map((r) => r.contact_id))
-      return distinctUsers.size + distinctContacts.size
+      return { appUsers: distinctUsers.size, fieldContacts: distinctContacts.size }
     })(),
   ])
+  const activeAppUsersInTeamsCount = personsInTeamsBreakdown.appUsers
+  const activeFieldContactsInTeamsCount = personsInTeamsBreakdown.fieldContacts
+  const activePersonsInTeamsCount = activeAppUsersInTeamsCount + activeFieldContactsInTeamsCount
   // Deux populations disjointes (users, contacts terrain) additionnées, jamais
   // dédupliquées entre elles — même doctrine que `activePersonsInTeamsCount`.
   const personsWithoutTeamCount = orphanUsersCount + orphanContactsCount
@@ -136,6 +147,8 @@ export async function getTeamsGlobalPulse(periodDays = 30): Promise<TeamsGlobalP
       periodDays,
       activeTeamsCount,
       activePersonsInTeamsCount,
+      activeAppUsersInTeamsCount,
+      activeFieldContactsInTeamsCount,
       personsWithoutTeamCount,
       realInterventionsCount: 0,
       sitesReallyCoveredCount: 0,
@@ -194,6 +207,8 @@ export async function getTeamsGlobalPulse(periodDays = 30): Promise<TeamsGlobalP
     periodDays,
     activeTeamsCount,
     activePersonsInTeamsCount,
+    activeAppUsersInTeamsCount,
+    activeFieldContactsInTeamsCount,
     personsWithoutTeamCount,
     realInterventionsCount: interventionIds.length,
     sitesReallyCoveredCount: siteIds.size,
