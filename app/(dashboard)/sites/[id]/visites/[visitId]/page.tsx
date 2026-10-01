@@ -357,7 +357,7 @@ export default async function VisitPage({ params }: { params: Promise<{ id: stri
           </span>
           {conducteur && (
             <span>
-              Par <span className="font-medium text-foreground">{conducteur}</span> · Conducteur de travaux
+              Par <span className="font-medium text-foreground">{conducteur}</span>
             </span>
           )}
           {!isImport && !visit.ended_at && <span>visite en cours</span>}

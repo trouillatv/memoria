@@ -251,3 +251,13 @@ describe('les libellés annoncent la relecture autant que la décision', () => {
     expect(cr).not.toContain('autoLoad={false}')
   })
 })
+
+describe('la byline ne prête aucun métier à l’auteur de la visite', () => {
+  it('resolveConducteur ne lit qu’un nom — aucun métier codé en dur', () => {
+    // La byline affichait « · Conducteur de travaux » en dur, pour TOUT
+    // auteur, quel que soit son rôle réel sur le chantier (audit B1.5,
+    // 2026-10-02). resolveConducteur() ne lit que users.full_name : aucun
+    // métier n'est prouvé ici, donc aucun métier ne doit être affiché.
+    expect(rendu).not.toMatch(/Conducteur de travaux/)
+  })
+})
