@@ -751,20 +751,26 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
     .is('left_at', null)
   const teamIds = (memberships ?? []).map((m) => m.team_id)
 
+  // P0 SECURITY (2026-10-02) — DOCTRINE : aucune équipe ACTIVE → aucun site
+  // accessible par ce chemin. Fail-closed : plus de fallback sur le legacy
+  // `interventions.team[]`, qui pouvait renvoyer des interventions d'une
+  // organisation que l'utilisateur a quittée (cf. lib/auth/site-scope.ts —
+  // même doctrine que /chantiers). « Historique != droit d'accès. »
+  // (Les managers/admins sans équipe passent par listOrgTodayInterventions,
+  // pas par cette fonction — ne pas élargir ce périmètre ici.)
+  if (teamIds.length === 0) return []
+
   // V5.2 — résoudre les mission_ids affectées aux équipes de l'user.
   // Filet de sécurité : les interventions générées AVANT le fix V2 ont
   // assigned_team_id=NULL. On les retrouve via leur mission quand celle-ci
   // porte assigned_team_id. Ainsi le chef voit ses interventions même si
   // l'intervention elle-même n'a pas encore été patchée.
-  let missionIds: string[] = []
-  if (teamIds.length > 0) {
-    const { data: missionRows } = await supabase
-      .from('missions')
-      .select('id')
-      .in('assigned_team_id', teamIds)
-      .is('deleted_at', null)
-    missionIds = (missionRows ?? []).map((m) => m.id)
-  }
+  const { data: missionRows } = await supabase
+    .from('missions')
+    .select('id')
+    .in('assigned_team_id', teamIds)
+    .is('deleted_at', null)
+  const missionIds = (missionRows ?? []).map((m) => m.id)
 
   // Fenêtre alignée sur le DateNav de /m (J-3 → J+3) avec marge fuseau Nouméa :
   // borne basse à -4 j (sinon J-2/J-3 du sélecteur de date restaient vides).
@@ -773,30 +779,24 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
 
   // V5.1 — join missions pour filtrer les missions système ("Traces libres
   // du site", cadence='on_demand') qui polluent /m.
-  let q = supabase
+  // V5.2 — double critère, tous deux dérivés des équipes ACTIVES de l'user :
+  // 1. assigned_team_id ∈ équipes actives (V2 sur l'intervention)
+  // 2. mission_id ∈ missions des équipes (V2 via mission, filet pour les
+  //    interventions générées avant le fix qui n'ont pas assigned_team_id)
+  // P0 SECURITY (2026-10-02) : plus de critère `team.cs.{userId}` — ce
+  // tableau legacy n'est plus jamais une source d'autorisation.
+  const orParts = [`assigned_team_id.in.(${teamIds.join(',')})`]
+  if (missionIds.length > 0) {
+    orParts.push(`mission_id.in.(${missionIds.join(',')})`)
+  }
+
+  const { data, error } = await supabase
     .from('interventions')
     .select('*, mission_cadence:missions!inner(cadence, name)')
     .gte('scheduled_at', yesterday)
     .lte('scheduled_at', inOneWeek)
     .order('scheduled_at', { ascending: true })
-
-  if (teamIds.length > 0) {
-    // V5.2 — triple critère :
-    // 1. team[] legacy contient userId (ancien modèle)
-    // 2. assigned_team_id ∈ equipes actives (V2 sur l'intervention)
-    // 3. mission_id ∈ missions des équipes (V2 via mission, filet pour
-    //    les interventions générées avant le fix qui n'ont pas assigned_team_id)
-    const orParts = [`team.cs.{${userId}}`, `assigned_team_id.in.(${teamIds.join(',')})`]
-    if (missionIds.length > 0) {
-      orParts.push(`mission_id.in.(${missionIds.join(',')})`)
-    }
-    q = q.or(orParts.join(','))
-  } else {
-    // Pas de team active : fallback sur le legacy team[]
-    q = q.contains('team', [userId])
-  }
-
-  const { data, error } = await q
+    .or(orParts.join(','))
   if (error) throw error
 
   // V5.1 — exclure les interventions sur missions système (Traces libres du site)
@@ -866,26 +866,32 @@ export async function getChefLaunchState(userId: string): Promise<ChefLaunchStat
     .eq('user_id', userId)
     .is('left_at', null)
   const teamIds = (memberships ?? []).map((m) => m.team_id as string)
+
+  // P0 SECURITY (2026-10-02) — même doctrine que listInterventionsVisibleToUser
+  // ci-dessus (lib/auth/site-scope.ts) : aucune équipe ACTIVE → aucune
+  // intervention via ce chemin. Fail-closed, plus de fallback `team.cs.{userId}`
+  // (legacy, pouvait rendre visible/« lançable » une intervention d'une
+  // organisation quittée).
+  if (teamIds.length === 0) return { inProgress: null, upcoming: [] }
+
   const today = todayLocalIso()
   const sel = 'id, status, mission:missions!inner(name, site:sites(name))'
-  const orFilter = `assigned_team_id.in.(${teamIds.join(',')}),team.cs.{${userId}}`
+  const orFilter = `assigned_team_id.in.(${teamIds.join(',')})`
 
   // 1. En cours — « Reprendre » (limite 1).
-  let q1 = supabase.from('interventions').select(sel).eq('status', 'in_progress')
+  const inProgressRes = await supabase.from('interventions').select(sel).eq('status', 'in_progress')
     .order('scheduled_at', { ascending: false }).limit(1)
-  q1 = teamIds.length > 0 ? q1.or(orFilter) : q1.contains('team', [userId])
-  const inProgressRes = await q1
+    .or(orFilter)
   const inProgress = mapChefIntervention((inProgressRes.data ?? [])[0] ?? null)
 
   // 2. À venir — planifiées aujourd'hui ou après (plafond 6, pour distinguer
   //    « une seule » (redirection directe) de « plusieurs » (choix).
-  let q2 = supabase.from('interventions').select(sel).eq('status', 'planned')
+  const upcomingRes = await supabase.from('interventions').select(sel).eq('status', 'planned')
     .gte('scheduled_for', today)
     .order('scheduled_for', { ascending: true })
     .order('planned_start', { ascending: true, nullsFirst: true })
     .limit(6)
-  q2 = teamIds.length > 0 ? q2.or(orFilter) : q2.contains('team', [userId])
-  const upcomingRes = await q2
+    .or(orFilter)
   const upcoming = (upcomingRes.data ?? [])
     .map(mapChefIntervention)
     .filter((x): x is ChefLaunchIntervention => x !== null)
@@ -955,6 +961,13 @@ export async function getSiteResumeContext(
     .is('left_at', null)
   const teamIds = (memberships ?? []).map((m) => m.team_id)
 
+  // P0 SECURITY (2026-10-02) — audité, VOLONTAIREMENT laissé inchangé : ce
+  // `team.cs.{userId}` ne décide d'aucun accès au chantier (siteId est déjà
+  // fourni par l'appelant, pour un site déjà affiché). Il ne fait que marquer
+  // « cet utilisateur a-t-il déjà visité CE site », y compris s'il y est allé
+  // hors affectation d'équipe formelle (cas admin testé explicitement par
+  // tests/lib/site-resume-context.test.ts). Pas la même classe de risque que
+  // le périmètre de visibilité des chantiers — cf. lib/auth/site-scope.ts.
   let lastVisitAt: string | null = null
   if (missionIds.length > 0) {
     let q = supabase
@@ -964,11 +977,9 @@ export async function getSiteResumeContext(
       .in('status', ['completed', 'validated'])
       .order('executed_at', { ascending: false, nullsFirst: false })
       .limit(1)
-    if (teamIds.length > 0) {
-      q = q.or(`team.cs.{${userId}},assigned_team_id.in.(${teamIds.join(',')})`)
-    } else {
-      q = q.contains('team', [userId])
-    }
+    q = teamIds.length > 0
+      ? q.or(`team.cs.{${userId}},assigned_team_id.in.(${teamIds.join(',')})`)
+      : q.contains('team', [userId])
     const { data: lastIntv } = await q
     const row = lastIntv?.[0]
     if (row) {

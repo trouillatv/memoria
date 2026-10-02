@@ -2,8 +2,7 @@ import Link from 'next/link'
 import { ChevronRight, MapPin, Building2 } from 'lucide-react'
 import { EmptyState } from '@/components/ui/empty-state'
 import { getCurrentUserWithProfile } from '@/lib/db/users'
-import { listActiveTeamIdsForUser } from '@/lib/db/teams'
-import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { listAccessibleSiteIdsForUser } from '@/lib/auth/site-scope'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
@@ -15,6 +14,11 @@ export const dynamic = 'force-dynamic'
  * tous les sites de l'organisation ; chef_equipe → ceux de ses missions.
  * (« Sites / proximité GPS » reviendra en onglet distinct quand le « près de moi »
  * sera réel — pour l'instant ce serait un doublon.)
+ *
+ * Référence fonctionnelle UNIQUE du périmètre chantier field (P0 SECURITY,
+ * 2026-10-02) : le calcul vit dans lib/auth/site-scope.ts et est réutilisé par
+ * /today et listInterventionsVisibleToUser, pour qu'ils ne puissent plus
+ * diverger. Ne JAMAIS réintroduire ici un calcul de périmètre local.
  */
 type SiteRow = { id: string; name: string; address: string | null }
 
@@ -22,42 +26,17 @@ export default async function ChantiersPage() {
   const user = await getCurrentUserWithProfile()
   if (!user) return null
 
-  const supabase = createAdminClient()
   let sites: SiteRow[] = []
+  const siteIds = await listAccessibleSiteIdsForUser(user)
 
-  // LECTURE M3 — « ce que je pilote » agrège les organisations où le compte est
-  // membre ACTIF, comme le desktop. `user.organization_id` n'est qu'une org par
-  // défaut : s'y tenir masquait les chantiers des autres entreprises du compte.
-  // Fail-closed : aucune appartenance → périmètre d'équipe, jamais l'org par défaut.
-  const orgIds = (user.role === 'admin' || user.role === 'manager') ? await getOrgIdsOfUser() : []
-
-  if (orgIds.length > 0) {
+  if (siteIds.length > 0) {
+    const supabase = createAdminClient()
     const { data } = await supabase
       .from('sites')
       .select('id, name, address')
-      .in('organization_id', orgIds)
-      .is('deleted_at', null)
+      .in('id', siteIds)
       .order('name')
     sites = (data ?? []) as SiteRow[]
-  } else {
-    const teamIds = await listActiveTeamIdsForUser(user.id)
-    if (teamIds.length > 0) {
-      const { data: missionRows } = await supabase
-        .from('missions')
-        .select('site_id')
-        .in('assigned_team_id', teamIds)
-        .is('deleted_at', null)
-      const siteIds = Array.from(new Set((missionRows ?? []).map((m) => m.site_id).filter((s): s is string => !!s)))
-      if (siteIds.length > 0) {
-        const { data } = await supabase
-          .from('sites')
-          .select('id, name, address')
-          .in('id', siteIds)
-          .is('deleted_at', null)
-          .order('name')
-        sites = (data ?? []) as SiteRow[]
-      }
-    }
   }
 
   return (

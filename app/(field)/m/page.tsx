@@ -23,6 +23,7 @@ import { getMorningDigestForSites, getOrgMorningDigest } from '@/lib/db/morning-
 import { MorningHero } from '@/app/(dashboard)/dashboard/MorningHero'
 // ── Pipeline dashboard (admin / manager en PWA ou préférence terrain) ─────────
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { listAccessibleSiteIdsForUser } from '@/lib/auth/site-scope'
 import { getOrganizationIdentityMap } from '@/lib/db/organisations'
 import type { OrgLabels } from '@/components/dashboard/OrgBadge'
 import { getAttentionDigest } from '@/lib/db/attention'
@@ -291,42 +292,16 @@ export default async function FieldHomePage({
 
   const supabase = createAdminClient()
 
-  // Étape 1 — Team IDs de l'agent (source canonique : assigned_team_id).
-  // Résolution séquentielle voulue : chefTeamIds est requis pour calculer
-  // agentSiteIds via missions.assigned_team_id, ce qui était impossible avec
-  // l'ancien calcul basé sur le legacy team[] (vide pour les V2 interventions).
+  // Étape 1 — Team IDs de l'agent : sert au backfill assigned_team_id et au
+  // handover brief ci-dessous, indépendant du périmètre chantier (étape 1bis).
   const chefTeamIds = await listActiveTeamIdsForUser(user.id)
 
-  // Sites dont une des missions de l'agent est responsable (assigned_team_id).
-  // Fallback legacy : interventions.team[] pour les comptes antérieurs à V2.
-  let agentSiteIds: string[] = []
-  if (chefTeamIds.length > 0) {
-    const { data: missionSiteRows } = await supabase
-      .from('missions')
-      .select('site_id')
-      .in('assigned_team_id', chefTeamIds)
-      .is('deleted_at', null)
-    agentSiteIds = Array.from(new Set(
-      (missionSiteRows ?? []).map((m) => m.site_id).filter((s): s is string => !!s)
-    ))
-  }
-  if (agentSiteIds.length === 0) {
-    const { data: legacyIntRes } = await supabase
-      .from('interventions')
-      .select('mission:missions(site_id)')
-      .contains('team', [user.id])
-      .limit(200)
-    agentSiteIds = Array.from(new Set(
-      (legacyIntRes ?? [])
-        .map((r) => {
-          const m = r.mission as { site_id?: string } | Array<{ site_id?: string }> | null
-          if (!m) return null
-          if (Array.isArray(m)) return m[0]?.site_id ?? null
-          return m.site_id ?? null
-        })
-        .filter((s): s is string => !!s)
-    ))
-  }
+  // Étape 1bis — Périmètre chantier, SOURCE UNIQUE : même politique que
+  // /chantiers (cf. lib/auth/site-scope.ts). P0 SECURITY (2026-10-02) : plus
+  // aucun fallback vers interventions.team[] — une ancienne présence dans ce
+  // tableau legacy ne confère plus l'accès, même cross-organisation.
+  // Historique != droit d'accès.
+  const agentSiteIds = await listAccessibleSiteIdsForUser(user)
 
   // Étape 2 — Génération paresseuse AVANT le fetch des interventions.
   // Obligation séquentielle : ensure doit inscrire les records récurrents en DB
