@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
+import { listActiveScopedTeamIdsForUser } from '@/lib/auth/site-scope'
 import { listSiteNotes } from '@/lib/db/sites'
 import { todayLocalIso, addDaysLocal } from '@/lib/time/local-date'
 import { buildScheduledAt, slotFromScheduledAt, buildPlannedTimestamp } from '@/lib/time/prestation-slot'
@@ -744,18 +745,19 @@ export async function listInterventionsVisibleToUser(userId: string): Promise<Db
   // Les interventions doctrine V2 utilisent `assigned_team_id` (pas le legacy
   // `team` array). Sans ce join, Moana / les chefs ne voient AUCUNE
   // intervention même quand ils sont membres actifs d'une équipe affectée.
-  const { data: memberships } = await supabase
-    .from('team_members')
-    .select('team_id')
-    .eq('user_id', userId)
-    .is('left_at', null)
-  const teamIds = (memberships ?? []).map((m) => m.team_id)
+  //
+  // P0 SECURITY (2026-10-02, durci le même jour) — SOURCE UNIQUE : même
+  // résolution d'équipes que /chantiers et /today (lib/auth/site-scope.ts),
+  // pour ne plus réimplémenter ici une vérification plus faible (qui ne
+  // regardait que `left_at`, pas `teams.active`/`deleted_at`/l'appartenance
+  // organisation ACTIVE). Une team_members stale dans une organisation
+  // quittée ne compte jamais.
+  const teamIds = await listActiveScopedTeamIdsForUser(userId)
 
-  // P0 SECURITY (2026-10-02) — DOCTRINE : aucune équipe ACTIVE → aucun site
-  // accessible par ce chemin. Fail-closed : plus de fallback sur le legacy
+  // DOCTRINE : aucune équipe ACTIVE scopée → aucun site accessible par ce
+  // chemin. Fail-closed : plus de fallback sur le legacy
   // `interventions.team[]`, qui pouvait renvoyer des interventions d'une
-  // organisation que l'utilisateur a quittée (cf. lib/auth/site-scope.ts —
-  // même doctrine que /chantiers). « Historique != droit d'accès. »
+  // organisation que l'utilisateur a quittée. « Historique != droit d'accès. »
   // (Les managers/admins sans équipe passent par listOrgTodayInterventions,
   // pas par cette fonction — ne pas élargir ce périmètre ici.)
   if (teamIds.length === 0) return []
@@ -860,18 +862,14 @@ function mapChefIntervention(r: unknown): ChefLaunchIntervention | null {
 
 export async function getChefLaunchState(userId: string): Promise<ChefLaunchState> {
   const supabase = createAdminClient()
-  const { data: memberships } = await supabase
-    .from('team_members')
-    .select('team_id')
-    .eq('user_id', userId)
-    .is('left_at', null)
-  const teamIds = (memberships ?? []).map((m) => m.team_id as string)
 
-  // P0 SECURITY (2026-10-02) — même doctrine que listInterventionsVisibleToUser
-  // ci-dessus (lib/auth/site-scope.ts) : aucune équipe ACTIVE → aucune
-  // intervention via ce chemin. Fail-closed, plus de fallback `team.cs.{userId}`
-  // (legacy, pouvait rendre visible/« lançable » une intervention d'une
-  // organisation quittée).
+  // P0 SECURITY (2026-10-02, durci le même jour) — SOURCE UNIQUE : même
+  // résolution d'équipes que listInterventionsVisibleToUser ci-dessus et que
+  // /chantiers / /today (lib/auth/site-scope.ts) — plus de requête `team_members`
+  // locale qui ne vérifiait que `left_at`. Fail-closed, plus de fallback
+  // `team.cs.{userId}` (legacy, pouvait rendre visible/« lançable » une
+  // intervention d'une organisation quittée).
+  const teamIds = await listActiveScopedTeamIdsForUser(userId)
   if (teamIds.length === 0) return { inProgress: null, upcoming: [] }
 
   const today = todayLocalIso()

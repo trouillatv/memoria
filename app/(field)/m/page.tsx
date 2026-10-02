@@ -19,7 +19,7 @@ import { listActiveVisitsForUser, listPendingTriageForUser, getRecentActivityFor
 import { findMissionAbsences } from '@/lib/ai/site-readings'
 import { listOrgTodayInterventions } from '@/lib/db/field-today'
 import { ManagerTodayView } from './ManagerTodayView'
-import { getMorningDigestForSites, getOrgMorningDigest } from '@/lib/db/morning-digest'
+import { getMorningDigestForSites } from '@/lib/db/morning-digest'
 import { MorningHero } from '@/app/(dashboard)/dashboard/MorningHero'
 // ── Pipeline dashboard (admin / manager en PWA ou préférence terrain) ─────────
 import { getOrgIdsOfUser } from '@/lib/auth/memberships'
@@ -353,38 +353,15 @@ export default async function FieldHomePage({
     }
   }
 
-  // Manager/admin sans équipe : la vue superviseur a besoin que la DATE CHOISIE
-  // soit générée (sinon un jour futur reste vide faute de records).
-  // PERF (régression 67b50f3) : avant, on régénérait TOUTE l'org
-  // (≈3 requêtes × nb sites) à CHAQUE chargement /m manager. Désormais, gate par
-  // un seul COUNT indexé (idx_interventions_org) : si la date affichée a déjà des
-  // interventions, les récurrences existent → on saute la génération coûteuse.
-  // Les interventions générées portent organization_id (cf. generator), donc ce
-  // count les voit dès le 1er passage : les chargements suivants sont gratuits.
-  if (agentSiteIds.length === 0 && (userRole === 'admin' || userRole === 'manager') && user.organization_id) {
-    const { count: existingForDate } = await supabase
-      .from('interventions')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', user.organization_id)
-      .eq('scheduled_for', selectedDate)
-    if (!existingForDate) {
-      const { data: orgSites } = await supabase
-        .from('sites')
-        .select('id')
-        .eq('organization_id', user.organization_id)
-        .is('deleted_at', null)
-      const orgSiteIds = (orgSites ?? []).map((s) => s.id as string)
-      if (orgSiteIds.length > 0) {
-        // Générer juste assez loin pour couvrir la date affichée (today → selectedDate),
-        // borné à la fenêtre max du générateur. Vue d'aujourd'hui = 1 jour, pas 4.
-        const [sy, sm, sd] = selectedDate.split('-').map(Number)
-        const [ty, tm, td] = todayIso.split('-').map(Number)
-        const dayDiff = Math.round((Date.UTC(sy, sm - 1, sd) - Date.UTC(ty, tm - 1, td)) / 86_400_000)
-        const daysAhead = Math.min(Math.max(dayDiff + 1, 1), 7)
-        await ensureTodayInterventionsForSites(orgSiteIds, daysAhead)
-      }
-    }
-  }
+  // P0 SECURITY (2026-10-02, Point 3) — bloc supprimé : il générait les
+  // interventions de TOUTE l'organisation de `user.organization_id` (legacy,
+  // jamais la source d'autorisation — cf. lib/auth/site-scope.ts) pour un
+  // admin/manager sans équipe. Ce chemin était déjà INATTEIGNABLE : tout
+  // admin/manager retourne plus haut (bloc « cockpit premium », ligne ~227)
+  // avant d'arriver ici — à ce point du fichier, `userRole` ne peut plus être
+  // que `chef_equipe`. Fermé avant merge sur mandat explicite de Vincent,
+  // même si dead code : aucune trace legacy ne doit pouvoir redevenir un
+  // chemin d'écriture, y compris un chemin aujourd'hui inatteignable.
 
   // Étape 3 — Fetch en parallèle : les records récurrents existent maintenant.
   const [interventions, handoverBriefs] = await Promise.all([
@@ -509,14 +486,13 @@ export default async function FieldHomePage({
         .sort((a, b) => b.weeksSince - a.weeksSince).slice(0, 2)
     : []
 
-  // Vue superviseur : pour les managers/admins sans intervention assignée,
-  // afficher toutes les interventions de l'organisation POUR LA DATE CHOISIE
-  // (pas seulement aujourd'hui — sinon hier/demain restaient vides côté manager).
+  // Vue superviseur org-wide (legacy `user.organization_id`) : SUPPRIMÉE (P0
+  // SECURITY, 2026-10-02, Point 3). Déjà INATTEIGNABLE ici — tout admin/manager
+  // retourne plus haut (bloc « cockpit premium », ligne ~227) ; passé ce point,
+  // `userRole` ne peut plus être que `chef_equipe`. `isManager` reste utile
+  // ligne ~583 (c'est une lecture de rôle, pas une source d'autorisation legacy).
   const isManager = userRole === 'admin' || userRole === 'manager'
-  const orgTodaySites =
-    isManager && interventions.length === 0 && user.organization_id
-      ? await listOrgTodayInterventions(user.organization_id, selectedDate)
-      : []
+  const orgTodaySites: Awaited<ReturnType<typeof listOrgTodayInterventions>> = []
   const selectedDayLabel = formatScheduledTime(selectedDate).day.toLowerCase()
 
   // ── Assemblage du cockpit ────────────────────────────────────────────────
@@ -730,12 +706,10 @@ export default async function FieldHomePage({
   // l'organisation entière, sauf superviseur sans chantier assigné (même repli
   // que le Journal). Aujourd'hui seulement ; pas de digest → rien (aucune
   // régression). Règle validée : sur mobile, le CTA mène au Journal.
-  const morningDigest = isToday
-    ? agentSiteIds.length > 0
-      ? await getMorningDigestForSites(agentSiteIds).catch(() => null)
-      : (userRole === 'admin' || userRole === 'manager') && user.organization_id
-        ? await getOrgMorningDigest(user.organization_id).catch(() => null)
-        : null
+  // P0 SECURITY (2026-10-02, Point 3) — repli `user.organization_id` supprimé :
+  // déjà inatteignable ici (même raison que orgTodaySites ci-dessus).
+  const morningDigest = isToday && agentSiteIds.length > 0
+    ? await getMorningDigestForSites(agentSiteIds).catch(() => null)
     : null
 
   // Narratif : on ouvre sur une salutation + la journée — une feuille de route,
