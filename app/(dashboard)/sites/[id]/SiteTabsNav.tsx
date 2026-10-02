@@ -17,6 +17,10 @@ export const SITE_TABS = [
   // On ne demande plus à l'utilisateur de deviner que ses visites vivent
   // dans la Chronologie.
   { key: 'visites',          label: 'Visites' },
+  // « Réunions » (mandat Vincent 2026-10-02) : cockpit /meetings existant,
+  // filtré sur ce chantier — route dédiée, distincte de Visites (CR captés
+  // sur le terrain) et de la fiche /reunion/<id> (le compte-rendu lui-même).
+  { key: 'meetings',         label: 'Réunions',  pathSuffix: '/meetings' },
   { key: 'chronologie',      label: 'Chronologie' },
   // Histoire = onglet de premier niveau depuis 2026-08-04. Doctrine :
   //   Chronologie = qu'est-ce qui s'est passé, événement après événement ?

@@ -280,11 +280,17 @@ export interface MeetingListRow {
   blockerCount: number
   /** Les blocages eux-mêmes (pour la vue groupée par réunion). */
   blockers: SiteReportRisk[]
+  /** Participants détectés (déjà présents sur la ligne, aucune requête de plus). */
+  participantsCount: number
+  /** Une version finale FIGÉE existe (report_final_versions) — « PV final ». */
+  hasFinalVersion: boolean
 }
 
 /** Toutes les réunions de l'organisation, enrichies pour la liste /meetings.
+ *  `opts.siteId` restreint au chantier (site_id direct OU lien report_sites,
+ *  même périmètre que listReportsBySite) — onglet « Réunions » du chantier.
  *  Résilient : si le socle compte-rendu n'est pas encore migré, renvoie []. */
-export async function listMeetings(): Promise<MeetingListRow[]> {
+export async function listMeetings(opts?: { siteId?: string }): Promise<MeetingListRow[]> {
   const supabase = createAdminClient()
   const orgIds = await getOrgIdsOfUser()
   if (orgIds.length === 0) return []
@@ -357,7 +363,14 @@ export async function listMeetings(): Promise<MeetingListRow[]> {
     }
   }
 
-  return reports.map((r) => {
+  // Version finale figée (mig 127) — présence seule, pas le contenu.
+  const { data: fvRows } = await supabase
+    .from('report_final_versions')
+    .select('report_id')
+    .in('report_id', reportIds)
+  const hasFinalVersion = new Set(((fvRows ?? []) as Array<{ report_id: string }>).map((f) => f.report_id))
+
+  const rows = reports.map((r) => {
     const siteSet = sitesByReport.get(r.id) ?? new Set<string>()
     const blockers = (r.risks ?? []).filter((x) => x.kind === 'dependency' || x.kind === 'risk')
     return {
@@ -374,8 +387,14 @@ export async function listMeetings(): Promise<MeetingListRow[]> {
       openActionCount: openActionCount.get(r.id) ?? 0,
       blockerCount: blockers.length,
       blockers,
+      participantsCount: (r.participants ?? []).length,
+      hasFinalVersion: hasFinalVersion.has(r.id),
     }
   })
+
+  if (!opts?.siteId) return rows
+  const wantedSiteId = opts.siteId
+  return rows.filter((row, i) => (sitesByReport.get(reports[i].id) ?? new Set<string>()).has(wantedSiteId))
 }
 
 // ── Transitions d'état ──────────────────────────────────────────────────────

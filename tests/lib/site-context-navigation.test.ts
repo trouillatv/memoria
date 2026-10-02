@@ -23,6 +23,13 @@ describe('resolveSiteTab — l’onglet actif', () => {
     expect(tab).toHaveProperty('pathSuffix', '/prestations')
   })
 
+  it('« Réunions » (mandat Vincent 2026-10-02) : onglet de premier niveau, route dédiée /meetings', () => {
+    expect(resolveSiteTab('meetings')).toBe('meetings')
+    const tab = SITE_TABS.find((t) => t.key === 'meetings')
+    expect(tab).toBeDefined()
+    expect(tab).toHaveProperty('pathSuffix', '/meetings')
+  })
+
   it('retombe sur l’Aperçu si absent ou inconnu (jamais d’écran vide)', () => {
     expect(resolveSiteTab(undefined)).toBe('apercu')
     expect(resolveSiteTab(null)).toBe('apercu')
